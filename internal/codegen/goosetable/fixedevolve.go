@@ -290,7 +290,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        let body = rec + 8;\n")
 	e.p("        if pick == 0 {\n")
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
-	e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
+	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
 	for i, plan := range plans {
 		e.p("        } else if pick == %d {\n", i+1)
@@ -300,7 +300,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		seq := 0
 		e.emitNodes(plan.nodes, "body", "", &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
-		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
+		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
 		e.emitWriterClamps(st, olds[i].Ranges)
 	}
@@ -393,7 +393,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 				continue
 			}
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			q := fmt.Sprintf("q%d", v)
 			e.p("            var %s: i64 = 0;\n", q)
 			e.p("            while %s < %d {\n                img[%s] = data[%s];\n                %s += 1;\n            }\n",
@@ -407,7 +407,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 				// f32 -> f64: read the old bits, convert by the value, write the
 				// f64 bits back (the FU ruling's quiet bit rides).
 				v := *seq
-				*seq = *seq + 1
+				*seq++
 				e.p("            var u%d: u32 = schema_rt::fixed_u32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
 				e.p("            var fv%d: f32 = schema_rt::fixed_bits_f32(u%d);\n", v, v)
 				e.p("            var d%d: f64 = fv%d;\n", v, v)
@@ -420,7 +420,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			}
 			if n.oldSize > 0 {
 				v := *seq
-				*seq = *seq + 1
+				*seq++
 				q := fmt.Sprintf("q%d", v)
 				e.p("            var %s: i64 = 0;\n", q)
 				e.p("            while %s < %d {\n                img[%s] = data[%s];\n                %s += 1;\n            }\n",
@@ -428,7 +428,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			}
 			if n.newSize > n.oldSize {
 				v := *seq
-				*seq = *seq + 1
+				*seq++
 				q := fmt.Sprintf("q%d", v)
 				e.p("            var %s: i64 = %d;\n", q, n.oldSize)
 				if n.signed {
@@ -452,7 +452,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			// count word or any destination byte lands, as gotable's
 			// tableFixedTextRefusal does.
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			e.p("            let cg%d: i64 = schema_rt::fixed_i32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
 			e.p("            if cg%d < 0 || cg%d > %d {\n                return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false);\n            }\n", v, v, n.count)
 		case nodeOrdinal:
@@ -462,7 +462,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			// counts it once per field per record, exactly as gotable's
 			// tableFixedOrdinal and tableFixedForgedBounds do.
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			e.p("            let or%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size)
 			e.p("            var ov%d: u64 = 0;\n", v)
 			for raw := int64(1); raw <= n.count; raw++ {
@@ -479,12 +479,12 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			// COUNTED ONCE (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12),
 			// matching gotable's unguarded None const and tableFixedForgedBounds.
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			e.p("            let ft%d: u64 = schema_rt::fixed_evolve_read_u(data, %s, %d);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.tagWidth)
 			e.p("            if ft%d > %d { report.oor += 1; }\n", v, n.count)
 		case nodeLoop:
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			i := fmt.Sprintf("e%d", v)
 			if n.counted {
 				cv := fmt.Sprintf("c%d", v)
@@ -502,7 +502,7 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase string,
 			e.p("                %s += 1;\n            }\n", i)
 		case nodeDefault:
 			v := *seq
-			*seq = *seq + 1
+			*seq++
 			e.p("            var ad%d: %s = %s { .. };\n", v, n.defaultType, n.defaultType)
 			e.p("            var ab%d: u8[>..] = [];\n", v)
 			e.p("            _%sFixedWrite(ab%d, ad%d);\n", n.defaultType, v, v)
@@ -565,14 +565,6 @@ type evolvePlan struct {
 func signedKind(k int) bool {
 	switch k {
 	case 2, 3, 4, 5, 20, 21, 22, 23, 24:
-		return true
-	}
-	return false
-}
-
-func unsignedKind(k int) bool {
-	switch k {
-	case 6, 7, 8, 9, 25, 26, 27, 28, 29:
 		return true
 	}
 	return false
@@ -713,7 +705,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		// each old variant names the reader ordinal by wire id, so a variant the
 		// old writer could not have written never lands a name only this reader
 		// has. A raw past the writer's count lands zero (None).
-		remap := make([]uint64, int(te.children)+1)
+		remap := make([]uint64, te.children+1)
 		for j := 0; j < te.children && oi+1+j < len(c.oldAll); j++ {
 			vid := c.oldAll[oi+1+j].id
 			for k := 0; k < me.children && ci+1+k < len(c.curAll); k++ {

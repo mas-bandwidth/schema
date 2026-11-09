@@ -242,7 +242,8 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 	}, phaseOneOff(t))
 	var red []string
 	for _, b := range bad {
-		red = append(red, b[:strings.Index(b, ":")])
+		name, _, _ := strings.Cut(b, ":")
+		red = append(red, name)
 	}
 	if !slices.Equal(red, []string{"retained_cap/retain_store"}) {
 		t.Fatalf("red %v, want exactly [retained_cap/retain_store]", red)
@@ -266,7 +267,8 @@ func TestMooCountCapReadOrderNegativeControl(t *testing.T) {
 	}, nil)
 	var red []string
 	for _, b := range bad {
-		red = append(red, b[:strings.Index(b, ":")])
+		name, _, _ := strings.Cut(b, ":")
+		red = append(red, name)
 	}
 	var want []string
 	for _, path := range countCapPaths {

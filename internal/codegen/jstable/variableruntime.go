@@ -686,6 +686,7 @@ function TableVariableLoad(c, bytes, report, retain) {
         st.nodes.push(null);
         // A blob this root does not place is raw bytes, not a field body.
         // Only an unplaced table record contributes pointer edges.
+        if (rec.tid === TableStringBlobId && !TableVariableUtf8Decode(rec.body).ok) { report.damaged = true; }
         if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push(rec.body); }
         continue;
       }
@@ -978,7 +979,10 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
   if (kind === 10 || kind === 11) {
     const from = sub.at;
     if (!TableVariableSkip(sub, kind)) { return false; }
-    return TableVariableRetainedFinite(sub.b, from, sub.at, kind);
+    if (!TableVariableRetainedFinite(sub.b, from, sub.at, kind)) {
+      if (!report.nonFiniteFloat) { report.nonFiniteFloat = "a float the wire carries"; }
+    }
+    return true;
   }
   return TableVariableSkip(sub, kind);
 }
@@ -997,7 +1001,16 @@ function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
     if (((to - from) & 1) !== 0) { return false; }
     return TableVariableWideDecode(b.subarray(from, to)) !== null;
   }
+  if (kind === 31) { return true; }
   if (kind === 32) { return from === to; }
+  const w = tableRetainWidth(kind);
+  if (w <= 0 || to - from !== w) { return false; }
+  if (kind === 1) { return b[from] <= 1; }
+  if (kind === 10 || kind === 11) {
+    if (!TableVariableRetainedFinite(b, from, to, kind)) {
+      if (!report.nonFiniteFloat) { report.nonFiniteFloat = "a float the wire carries"; }
+    }
+  }
   return true;
 }
 
@@ -1049,21 +1062,14 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     if (sub.bad || sub.at !== to) { return false; }
     return TableVariableNoteIndex(idx, st);
   }
+  if (kind === 30) {
+    const ref = sub.leb();
+    return !sub.bad && sub.at === to && ref <= table.length;
+  }
   if (kind === 13) {
     const L = sub.leb();
     if (sub.bad || sub.at + L !== to) { return false; }
-    let rode = null;
-    while (true) {
-      const ref = sub.leb();
-      if (sub.bad) { return false; }
-      if (ref === 0) { return sub.at === to; }
-      if (ref > table.length || sub.at >= to) { return false; }
-      if (rode === null) { rode = [ref]; } else if (rode.includes(ref)) { return false; } else { rode.push(ref); }
-      const k = sub.u8();
-      const f = sub.at;
-      if (!TableVariableSkip(sub, k)) { return false; }
-      if (!TableVariableCheckUnknown(b, f, sub.at, k, table, st)) { return false; }
-    }
+    return TableVariableNoteEdges(b.subarray(sub.at, to), table, st, st.report, 1);
   }
   // An unknown union, array or keyed payload still names every pointer it
   // carries (internal/tablewire/wirecheck.go graph). The field stays unknown.
@@ -1073,7 +1079,6 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     return inner.at === to;
   }
   if (kind === 12 || kind === 33 || kind === 32) {
-    const sub = new TableVariableReader(b, from, to);
     const L = sub.leb();
     if (sub.bad || sub.at + L !== to) { return false; }
     if (kind === 12) { return TableVariableUtf8Decode(b.subarray(sub.at, to)).ok; }
@@ -1081,7 +1086,6 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     return L === 0;
   }
   if (kind === 1) { return to - from === 1 && b[from] <= 1; }
-  if (kind === 10 || kind === 11) { return TableVariableRetainedFinite(b, from, to, kind); }
   return true;
 }
 
@@ -1132,14 +1136,14 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
         if (!TableVariableCountRefused(report)) { report.damaged = true; }
         return false;
       }
+      // AN UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.5, §6.6):
+      // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
+      // read, named <Table>.0x<id>
+      if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
+        if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
+        continue;
+      }
       if (retain !== null) {
-        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
-        // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
-        // read, named <Table>.0x<id>
-        if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
-          if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
-          continue;
-        }
         if (path === null) { report.retainLost++; }
         else { TableVariableRetainCapture(r.b, from, r.at, id, kind, table, retain, path, report); }
       }
@@ -1161,6 +1165,9 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       const mismatchFrom = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
       if (!TableVariableCheckUnknown(r.b, mismatchFrom, r.at, kind, table, st)) { report.damaged = true; return false; }
+      if (!TableVariableRetainedFinite(r.b, mismatchFrom, r.at, kind)) {
+        if (!report.nonFiniteFloat) { report.nonFiniteFloat = fd.nf || (c.name + "." + fd.n); }
+      }
       continue;
     }
     const placed = TableVariableReadField(fd, r, table, v, report, st, retain, path);
@@ -1870,15 +1877,45 @@ function TableVariableF32OfToken(tok, x) {
 // width; a non-finite value has no JSON spelling and the writer refuses (null)
 function TableVariableFloatText(v, single) {
   if (!Number.isFinite(v)) { return null; }
+  const f32OfToken = (tok, x) => {
+    const f = Math.fround(x);
+    if (f === x || Number.isNaN(x)) { return f; }
+    const b = new DataView(new ArrayBuffer(8));
+    const step = (val, up) => {
+      if (val === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+      if (val === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+      if (val === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+      b.setFloat32(0, val, true);
+      const u = b.getUint32(0, true);
+      b.setUint32(0, (val > 0) === up ? u + 1 : u - 1, true);
+      return b.getFloat32(0, true);
+    };
+    const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+    const at = (val) => (val === Infinity ? 2 ** 128 : val === -Infinity ? -(2 ** 128) : val);
+    if (at(lo) + at(hi) !== 2 * x) { return f; }
+    const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+    if (m === null) { return f; }
+    const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+    if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+    let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+    b.setFloat64(0, x, true);
+    const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+    const ex = (hiw >>> 20) & 0x7ff;
+    let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+    let e2 = ex === 0 ? -1074 : ex - 1075;
+    if (ex !== 0) { mant |= 1n << 52n; }
+    let right = x < 0 ? -mant : mant;
+    if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+    if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+    if (left === right) { return f; }
+    return left > right ? hi : lo;
+  };
   const low = single ? 6 : 15, high = single ? 9 : 17;
   for (let digits = low; ; digits++) {
     const text = TableVariableFormatG(v, digits);
     if (digits >= high) { return text; }
     const back = Number(text);
-    // the read-back is the ONE correctly-rounded conversion at the field's own
-    // width (W12): a float32's text parsed as a double and then narrowed
-    // rounds twice, and for two float32 magnitudes the answers part
-    if (single ? TableVariableF32OfToken(text, back) === v : back === v) { return text; }
+    if (single ? f32OfToken(text, back) === v : back === v) { return text; }
   }
 }
 
@@ -1914,6 +1951,9 @@ function TableVariableToJson(c, v) {
   TableVariableEntryCache = new Map();
   try {
     return TableVariableToJsonWalk(c, v);
+  } catch (e) {
+    if (e instanceof RangeError && e.message === "TableVariableNotText") { return null; }
+    throw e;
   } finally {
     TableVariableEntryCache = outer;
   }
@@ -1988,19 +2028,10 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       if (typeof val === "object" && (g.blobs.get(val) || 0) > 1) { return false; }
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
-    case "str": {
-      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
-      const s = TableVariableJsonString(val, true);
-      if (s === null) { return false; }
-      out.push(s); return true;
-    }
-    // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2,
-    // §16.3, §16.14 W0); the strict writer refuses an unpaired surrogate
-    case "wstr": {
-      const s = TableVariableJsonString(val, true);
-      if (s === null) { return false; }
-      out.push(s); return true;
-    }
+    case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
+    // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
+    // tabletext writeWString), and an unpaired surrogate refuses the write
+    case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
@@ -2013,14 +2044,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       for (let i = 0; i < n; i++) {
         if (i > 0) { out.push(","); }
         out.push(ind);
-        if (fd.tl) {
-          if (val[i].value === null) { out.push("null"); }
-          else {
-            const s = TableVariableJsonString(val[i].value, true);
-            if (s === null) { return false; }
-            out.push(s);
-          }
-        }
+        if (fd.tl) { out.push(val[i].value === null ? "null" : TableVariableJsonString(val[i].value)); }
         else if (!TableVariableJsonScalar(fd.e, val[i], depth + 1, g, out)) { return false; }
       }
       out.push("\n" + "  ".repeat(depth) + "]");

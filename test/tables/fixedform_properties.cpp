@@ -55,16 +55,18 @@ struct KnownRed
     int failed;
 };
 
-static KnownRed known_red[] = {
-    { "optional/absent-payload-residue-is-copied",
-      "the ?T payload gated on the present byte (§3.4: IGNORED on read)", 0, 0 },
-};
+// EMPTIED AS EACH NAMED RED LANDS. A listed case that PASSES fails the target.
+// `optional/absent-payload-residue-is-copied` landed with the C++ reference's
+// kTableFixedPresentDefaults entry (§3.4: an absent optional reads as its
+// declared defaults, never as the wire's residue).
+static KnownRed known_red_store[1];
+static const int known_red_n = 0;
 
 static KnownRed * find_red( const char * key )
 {
-    for ( KnownRed & r : known_red )
+    for ( int i = 0; i < known_red_n; ++i )
     {
-        if ( std::strcmp( r.key, key ) == 0 ) { return &r; }
+        if ( std::strcmp( known_red_store[i].key, key ) == 0 ) { return &known_red_store[i]; }
     }
     return NULL;
 }
@@ -94,10 +96,12 @@ static int file_slack()
 static int known_red_report()
 {
     int bad = 0;
-    const int n = (int) ( sizeof( known_red ) / sizeof( known_red[0] ) );
+    const int n = known_red_n;
+    (void) known_red_store;
     std::printf( "KNOWN-RED, %d case(s), each printed above and each waiting on a named fix:\n", n );
-    for ( const KnownRed & r : known_red )
+    for ( int i = 0; i < n; ++i )
     {
+        const KnownRed & r = known_red_store[i];
         std::printf( "  %-58s  %s  <- %s\n", r.key,
                      r.failed > 0 ? "RED  " : ( r.reached > 0 ? "GREEN" : "UNRUN" ), r.waits_on );
         if ( r.reached == 0 )
@@ -221,8 +225,8 @@ struct TAG##Codec \
                                     p, cap, g, fill_at, fill_count, r ); } \
     static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
     { NS::TableFixedFillRun( f, n, defaults, d ); } \
-    static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
-    { NS::TableFixedRun( p, n, g, s, d, r, NS::TYPE##FixedGuards ); } \
+    static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r, const uint8_t * defaults = NULL ) \
+    { NS::TableFixedRun( p, n, g, s, d, r, NS::TYPE##FixedGuards, defaults ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
     static uint64_t get64( const uint8_t * b ) { return NS::TableFixedGet64( b ); } \
     static uint64_t hash_of( const uint8_t * b, int64_t n ) { return NS::TableFixedHashOf( b, n ); } \
@@ -268,8 +272,8 @@ struct TAG##Codec \
                                     p, cap, g, fill_at, fill_count, r ); } \
     static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
     { NS::TableFixedFillRun( f, n, defaults, d ); } \
-    static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
-    { NS::TableFixedRun( p, n, g, s, d, r, NS::TYPE##FixedGuards ); } \
+    static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r, const uint8_t * defaults = NULL ) \
+    { NS::TableFixedRun( p, n, g, s, d, r, NS::TYPE##FixedGuards, defaults ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
     static uint64_t get64( const uint8_t * b ) { return NS::TableFixedGet64( b ); } \
     static uint64_t hash_of( const uint8_t * b, int64_t n ) { return NS::TableFixedHashOf( b, n ); } \
@@ -342,16 +346,13 @@ static int64_t load_compiled( typename F::T & v, const uint8_t * file, int64_t b
     // record. The identity plan's list is empty and the whole of this is a skip,
     // so the two loads below this gate stay the same load.
     typename F::T defaults;
-    if ( fill_count > 0 )
-    {
-        std::memset( (void *) &defaults, 0, sizeof( defaults ) );
-        F::reset( defaults );
-    }
+    std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+    F::reset( defaults );
     const typename F::Fill * fill = ( fill_count > 0 )
         ? (const typename F::Fill *) (const void *) ( (const uint8_t *) plan.data() + fill_at )
         : NULL;
     F::fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &v );
-    F::run( plan.data(), made, guarded, rec + 8, (uint8_t *) &v, &r );
+    F::run( plan.data(), made, guarded, rec + 8, (uint8_t *) &v, &r, (const uint8_t *) &defaults );
     return 1;
 }
 
@@ -367,7 +368,10 @@ static int64_t load_unclamped( typename F::T & v, const uint8_t * file, typename
     }
     std::memset( (void *) &v, 0, sizeof( v ) );
     F::reset( v );
-    F::run( F::plan, F::plan_count, F::plan_guarded, rec + 8, (uint8_t *) &v, &r );
+    typename F::T defaults;
+    std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+    F::reset( defaults );
+    F::run( F::plan, F::plan_count, F::plan_guarded, rec + 8, (uint8_t *) &v, &r, (const uint8_t *) &defaults );
     return 1;
 }
 

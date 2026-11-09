@@ -152,7 +152,7 @@ type messageStrictRow struct {
 	control [2]string
 }
 
-// the unknown entries a peer adds: a float32, a string and a table
+// the unknown entries a peer adds: a float32, a string and a table.
 const (
 	strictUnknownF32    = 0x5150515051505150
 	strictUnknownString = 0x5151515151515151

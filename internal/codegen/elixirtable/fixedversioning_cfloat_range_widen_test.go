@@ -96,7 +96,7 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     "the refusal built no value: #{inspect(values)}")
   check(report.unknown == 0 and report.widened == 0,
     "the refusal moved nothing: #{why(report)}")`
-  out, err = runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
+	out, err = runVersionProbe(t, elixirBin, "VNEW_cfloat_range_widen",
 		[]string{"VOLD_cfloat_range_widen"}, 0, pastFile, pastBody)
 	if err != nil {
 		t.Fatalf("past_: %v\n%s", err, out)

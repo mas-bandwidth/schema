@@ -531,7 +531,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
-    let last = null, landed = false, widened = false;
+    let last = null, landed = false, widened = false, kindBad = false;
     for (let i = 0; i < count; i++) {
       const elen = sub.leb();
       if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
@@ -539,7 +539,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       const scan = TableVariableMapKeyScan(fd, r.b, eat, eat + elen, table);
       if (scan.widened && !widened) { widened = true; report.widened++; }
-      if (scan.kindBad) { report.mismatch++; ents.length = 0; break; }
+      if (scan.kindBad) { kindBad = true; report.mismatch++; ents.length = 0; break; }
       if (!scan.ok) { report.damaged = true; break; }
       if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.oor++; continue; }
       let order = -1;
@@ -559,7 +559,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       landed = true;
     }
     // Bytes left inside a map's L after its entries are damage (decode.go mapField).
-    if (sub.at !== sub.end) { report.damaged = true; }
+    if (!kindBad && sub.at !== sub.end) { report.damaged = true; }
     for (const e of ents) { m.set(e.key, e.value); }
     if (st !== null && st.maps !== undefined) { st.maps.push({ m, ents }); }
   } else {
@@ -591,15 +591,20 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     report.widened++;
   }
   const arr = v[fd.n];
+  let rode = null;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
+    if (rode === null) { rode = [key]; } else if (rode.includes(key)) { report.damaged = true; break; } else { rode.push(key); }
     const elen = sub.leb();
     if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
     if (slot === undefined) {
       report.unknown++;
       if (retain !== null) { report.retainLost++; }
+      if (!TableVariableNoteContent(r.b, sub.at, sub.at + elen, ek, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+      }
       sub.at += elen;
       continue;
     }
@@ -744,6 +749,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     case "union": {
       const x = TableVariableUnionRead(f.u, r, table, report, st, retain, path, o);
       if (x === undefined) { return null; }
+      if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;
       return holder;
     }

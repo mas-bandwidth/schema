@@ -1464,7 +1464,10 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblv1::kTableFixedBool ) { past_the_set++; }
+            // kTableFixedPresentDefaults is the present flag plus an absent
+            // payload's declared defaults, not a range/clamp op.
+            if ( compiled[(size_t) i].op > tblv1::kTableFixedBool &&
+                 compiled[(size_t) i].op != tblv1::kTableFixedPresentDefaults ) { past_the_set++; }
         }
         check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 

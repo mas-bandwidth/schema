@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // runRecipe is one `go test ... -run <pattern>` recipe line.
@@ -218,9 +220,9 @@ var runPatternExceptions = []runPatternException{
 	{"make/go.mk:563", "same separate test/go-tables module, -run Fuzz"},
 	{"make/go.mk:564", "same separate test/go-tables module, -run Fuzz under -race"},
 	{"make/go.mk:601", "same separate test/go-tables module, and it runs under a -overlay built at recipe time"},
-	{"make/go.mk:989", "same separate test/go-tables module, -run '^TestSoak$$'"},
-	{"make/go.mk:1141", "same separate test/go-tables module, -run '^TestUsage$$'"},
-	{"make/go.mk:1159", "same separate test/go-tables module, -run '^TestKeyed'"},
+	{"make/go.mk:998", "same separate test/go-tables module, -run '^TestSoak$$'"},
+	{"make/go.mk:1150", "same separate test/go-tables module, -run '^TestUsage$$'"},
+	{"make/go.mk:1168", "same separate test/go-tables module, -run '^TestKeyed'"},
 	{"make/go.mk:543", "-run '^$$' runs no test on purpose: the recipe runs the fuzz target FuzzTableFrontEnd alone"},
 	{"make/go.mk:557", "-run '^$$' runs no test on purpose: the recipe runs a fuzz target alone"},
 	{"make/moo-text.mk:28", "-run '$(MOO_TEXT_GATES)' is a make variable defined at the top of make/moo-text.mk; the gate reads the recipe's literal text, so the pattern has no value until make expands it"},
@@ -289,6 +291,7 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 }
 
 func TestRunPatternGateRefusesAZeroMatchPattern(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	const fixture = `go test ./internal/ci -run '^TestEveryActionIsPinnedToACommit$$' -count=1
 go test ./internal/ci -run '^TestNoSuchTestExistsAnywhere$$' -count=1
@@ -305,6 +308,14 @@ go test ./internal/ci \
 }
 
 func TestEveryRunPatternMatchesATest(t *testing.T) {
+	// This gate lists several hundred distinct (pattern, package) pairs, and a
+	// `go test -list` compiles the package each time, so a full pass is minutes
+	// under SCHEMA_SLOW=1 and ~116 s in a plain run (measured 2026-11-09). It is
+	// a functional test of the whole makefile set, not a workflow-lint check, so
+	// it rides the SCHEMA_SLOW=1 lane (ci-full.yml's unit-rest row, which runs on
+	// the merge and nightly triggers) instead of the per-commit lint job. The
+	// fast per-commit smoke is TestRunPatternGateRefusesAZeroMatchPattern above.
+	slowtest.Gate(t, "the Go toolchain (it compiles each package to list its tests)")
 	root := repoRoot(t)
 	offenders := checkRunPatterns(t, root, makefileFiles(t, root), runPatternExceptions)
 	for _, o := range offenders {

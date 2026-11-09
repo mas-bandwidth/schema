@@ -456,7 +456,7 @@ func (g *tableGen) emitBlockSurface(bl *ir.BlockLayout) {
 	g.pf("    bool Create( const TableBlockAllocator & from )\n    {\n")
 	g.pf("        allocator = from;\n")
 	g.pf("        allocation = allocator.alloc( allocator.context, %sBlockMaxBytes + %d );\n", name, ir.BlockAlign-1)
-	g.pf("        if ( allocation == NULL ) { base = NULL; return false; }\n")
+	g.pf("        if ( allocation == NULL )\n        {\n            base = NULL;\n            return false;\n        }\n")
 	g.pf("        const uintptr_t raw = (uintptr_t) allocation;\n")
 	g.pf("        base = (uint8_t *) ( ( raw + %d ) & ~(uintptr_t) %d );\n", ir.BlockAlign-1, ir.BlockAlign-1)
 	g.pf("        return true;\n    }\n\n")
@@ -657,7 +657,7 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		g.pf("        return false;\n    }\n")
 	}
 	if len(bl.Arrays) == 0 {
-		g.pf("    (void) counts; (void) refusal; // no out-of-line array: no count to refuse\n")
+		g.pf("    (void) counts;\n    (void) refusal; // no out-of-line array: no count to refuse\n")
 	}
 	g.pf("    if ( storage.base == NULL )\n        return false; // Create was not called, or the allocator refused\n")
 	g.pf("    block.base = storage.base;\n")

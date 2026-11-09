@@ -34,7 +34,7 @@ const RuntimeDir = "_schema"
 // errors module and serialize.py, vendored by sha256 (runtime/SERIALIZE_PIN,
 // TestVendoredPythonSerializeIsThePin). The all: prefix keeps the files whose
 // names start with an underscore (__init__.py, _core.py), which a bare
-// go:embed pattern leaves out.
+// "go:embed" pattern leaves out.
 //
 //go:embed all:runtime/_schema
 var runtimeFS embed.FS

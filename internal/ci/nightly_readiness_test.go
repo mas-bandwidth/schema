@@ -12,6 +12,7 @@ import (
 // Execute the actual workflow shell, including its logging pipeline: a failed
 // acceptance program or an empty successful command cannot leave a pass receipt.
 func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
+	t.Parallel()
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/nightly-conformance.yml"))
 	if err != nil {
 		t.Fatal(err)

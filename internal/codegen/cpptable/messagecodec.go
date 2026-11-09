@@ -651,14 +651,14 @@ func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, 
 		inner = *entry.Shape.Inner
 	}
 	elem := slots + "[" + idx + "]"
-	switch {
-	case kind == tkTable:
+	switch kind {
+	case tkTable:
 		if pass == messagePassMeasure {
 			g.pf("                bits += elem_bits%s;\n", sfx)
 		} else {
 			g.pf("                if ( !%s ) { return false; }\n", g.msgSaveCall(f.Type.Name, elem))
 		}
-	case kind == tkEnum:
+	case tkEnum:
 		g.emitMessageEnumRef(f, elem, "                ", pass)
 	default:
 		g.emitMessageScalar(f, entry.Shape.Elem, inner, elem, "                ", pass)
@@ -672,12 +672,12 @@ func (g *tableGen) emitMessageKeyedRides(f *ir.Field, kind int, idx, ind string,
 	slots := g.keyedSlots("value.", f)
 	elem := slots + "[" + idx + "]"
 	g.pf("%sif ( !TableEnumNamed( (%s) ( %s + 1 ) ) ) { return %s; }\n", ind, f.KeyEnum, idx, messageBad(pass))
-	switch {
-	case kind == tkTable:
+	switch kind {
+	case tkTable:
 		g.pf("%sconst int64_t elem_bits%s = %s;\n", ind, sfx, g.msgMeasureCall(f.Type.Name, g.msgAt(pass), elem))
 		g.pf("%sif ( elem_bits%s < 0 ) { return %s; }\n", ind, sfx, messageBad(pass))
 		g.pf("%sif ( elem_bits%s <= %s ) { continue; } // an all-default slot elides\n", ind, sfx, msgRefBits)
-	case kind == tkEnum:
+	case tkEnum:
 		g.pf("%sif ( %s == %s ) { continue; } // a default slot elides\n", ind, elem, g.fieldDefaultExpr(f))
 		g.pf("%sif ( !TableEnumNamed( %s ) ) { return %s; }\n", ind, elem, messageBad(pass))
 	default:

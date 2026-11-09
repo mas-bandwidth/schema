@@ -2865,6 +2865,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3001,6 +3002,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3161,7 +3168,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -3293,6 +3300,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -3302,7 +3321,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -3311,7 +3331,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3336,12 +3356,21 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -3387,7 +3416,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -3480,6 +3514,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4038,7 +4073,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4232,22 +4273,34 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -4492,7 +4545,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -4646,7 +4700,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -5243,7 +5304,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5284,7 +5346,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5307,7 +5370,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5352,7 +5416,11 @@ inline TableOpenVerdict ArmorPlateLoadVerdict( ArmorPlate & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         ArmorPlateReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -5381,10 +5449,23 @@ inline TableOpenVerdict ArmorPlateLoadVerdict( ArmorPlate & value, const uint8_t
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = ArmorPlateLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; ArmorPlateReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { ArmorPlateReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        ArmorPlateReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        ArmorPlateReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { ArmorPlateReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        ArmorPlateReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -5484,15 +5565,31 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xdbae65ca25b4f315ull: // thickness
@@ -5508,26 +5605,52 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                             if ( entry.packing == 2 )
                             {
                                 uint64_t index = 0;
-                                if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                                if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count
+                                if ( !r.get( index, entry.value_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
+                                if ( index > (uint64_t) entry.qcount )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                } // above the step count
                                 value.thickness = (double) TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
                             }
                             else
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                                if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                                if ( !r.get( raw, 32 ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
+                                if ( !TableBitsFinite32( (uint32_t) raw ) )
+                                {
+                                    TableNonFiniteFloat( report );
+                                    return false;
+                                }
                                 value.thickness = (double) table_bits_to_float( (uint32_t) raw );
                             }
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) ) { TableNonFiniteFloat( report ); return false; } value.thickness = table_bits_to_double( raw ); }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
+                {
+                    TableNonFiniteFloat( report );
+                    return false;
+                    } value.thickness = table_bits_to_double( raw );
+                }
                 break;
             }
             case 0x026f7568983161e0ull: // material
@@ -5542,27 +5665,50 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull )
+                            {
+                                decoded_wide = (int64_t) 4294967295ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.material = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull )
+                    {
+                        decoded_wide = (int64_t) 4294967295ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.material = decoded_v;
                 }
@@ -5575,17 +5721,31 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 255ull )
+                    {
+                        decoded_wide = (int64_t) 255ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.layer = decoded_v;
                 }
@@ -5593,7 +5753,11 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -5614,7 +5778,11 @@ inline bool ArmorPlateLoadMessageBody( TableBitReader & r, const TableVocabulary
 inline int64_t ArmorPlateMeasureMessages( const ArmorPlate * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -5628,7 +5796,11 @@ inline int64_t ArmorPlateMeasureMessages( const ArmorPlate * values, int64_t cou
 inline int64_t ArmorPlateSaveMessages( const ArmorPlate * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -5656,13 +5828,22 @@ inline bool ArmorPlateLoadMessages( ArmorPlate * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !ArmorPlateLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ArmorPlateReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -5806,7 +5987,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5838,7 +6020,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5870,7 +6053,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5899,7 +6083,8 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5944,7 +6129,11 @@ inline TableOpenVerdict ArmorConfigLoadVerdict( ArmorConfig & value, const uint8
     if ( verdict != TableOpenOk )
     {
         ArmorConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -5973,10 +6162,23 @@ inline TableOpenVerdict ArmorConfigLoadVerdict( ArmorConfig & value, const uint8
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = ArmorConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; ArmorConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { ArmorConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        ArmorConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        ArmorConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { ArmorConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        ArmorConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -6102,15 +6304,31 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x538b8c566e9e4b38ull: // front
@@ -6120,8 +6338,13 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 if ( !ArmorPlateLoadMessageBody( r, vocabulary, report, index_bits, value.front ) ) { return false; }
@@ -6134,8 +6357,13 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 if ( !ArmorPlateLoadMessageBody( r, vocabulary, report, index_bits, value.rear ) ) { return false; }
@@ -6148,8 +6376,13 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -6157,15 +6390,31 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.rating = decoded_f;
@@ -6179,17 +6428,31 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 255ull )
+                    {
+                        decoded_wide = (int64_t) 255ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.tier = decoded_v;
                 }
@@ -6197,7 +6460,11 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -6218,7 +6485,11 @@ inline bool ArmorConfigLoadMessageBody( TableBitReader & r, const TableVocabular
 inline int64_t ArmorConfigMeasureMessages( const ArmorConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -6232,7 +6503,11 @@ inline int64_t ArmorConfigMeasureMessages( const ArmorConfig * values, int64_t c
 inline int64_t ArmorConfigSaveMessages( const ArmorConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6260,13 +6535,22 @@ inline bool ArmorConfigLoadMessages( ArmorConfig * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !ArmorConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ArmorConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -6383,7 +6667,8 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6406,7 +6691,8 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6457,7 +6743,11 @@ inline TableOpenVerdict FiringGroupLoadVerdict( FiringGroup & value, const uint8
     if ( verdict != TableOpenOk )
     {
         FiringGroupReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -6486,10 +6776,23 @@ inline TableOpenVerdict FiringGroupLoadVerdict( FiringGroup & value, const uint8
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = FiringGroupLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; FiringGroupReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { FiringGroupReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        FiringGroupReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        FiringGroupReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { FiringGroupReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        FiringGroupReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -6579,15 +6882,31 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x8ece059ad360b651ull: // barrel
@@ -6602,27 +6921,50 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull )
+                            {
+                                decoded_wide = (int64_t) 4294967295ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.barrel = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull )
+                    {
+                        decoded_wide = (int64_t) 4294967295ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.barrel = decoded_v;
                 }
@@ -6635,8 +6977,13 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -6644,15 +6991,31 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.cooldown = decoded_f;
@@ -6661,7 +7024,11 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -6682,7 +7049,11 @@ inline bool FiringGroupLoadMessageBody( TableBitReader & r, const TableVocabular
 inline int64_t FiringGroupMeasureMessages( const FiringGroup * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -6696,7 +7067,11 @@ inline int64_t FiringGroupMeasureMessages( const FiringGroup * values, int64_t c
 inline int64_t FiringGroupSaveMessages( const FiringGroup * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6724,13 +7099,22 @@ inline bool FiringGroupLoadMessages( FiringGroup * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !FiringGroupLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { FiringGroupReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -6796,13 +7180,13 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         // firing_groups: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
         // body length was built from, so measuring it twice can only agree.
-        int64_t elem_cache[ 32 ];
+        int64_t elem_cache[32];
         body_firing_groups += 1 + TableLebBytes( (uint64_t) ( value.firing_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
         {
             const int64_t elem_bytes = FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_i < 32 ) { elem_cache[ elem_i ] = elem_bytes; }
+            if ( elem_i < 32 ) { elem_cache[elem_i] = elem_bytes; }
             body_firing_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.header( ref_firing_groups, 14 );
@@ -6812,7 +7196,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         for ( int32_t elem_i = 0; elem_i < value.firing_groups_count; elem_i++ )
         {
             {
-                const int64_t elem_len = elem_i < 32 ? elem_cache[ elem_i ] : FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
+                const int64_t elem_len = elem_i < 32 ? elem_cache[elem_i] : FiringGroupMeasureBody( ids, value.firing_groups[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !FiringGroupSaveBody( w, ids, value.firing_groups[elem_i] ) ) return false;
@@ -6827,13 +7211,13 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         // missile_groups: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
         // body length was built from, so measuring it twice can only agree.
-        int64_t elem_cache[ 4 ];
+        int64_t elem_cache[4];
         body_missile_groups += 1 + TableLebBytes( (uint64_t) ( value.missile_groups_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
         {
             const int64_t elem_bytes = FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_i < 4 ) { elem_cache[ elem_i ] = elem_bytes; }
+            if ( elem_i < 4 ) { elem_cache[elem_i] = elem_bytes; }
             body_missile_groups += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.header( ref_missile_groups, 14 );
@@ -6843,7 +7227,7 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         for ( int32_t elem_i = 0; elem_i < value.missile_groups_count; elem_i++ )
         {
             {
-                const int64_t elem_len = elem_i < 4 ? elem_cache[ elem_i ] : FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
+                const int64_t elem_len = elem_i < 4 ? elem_cache[elem_i] : FiringGroupMeasureBody( ids, value.missile_groups[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !FiringGroupSaveBody( w, ids, value.missile_groups[elem_i] ) ) return false;
@@ -6922,7 +7306,8 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6950,33 +7335,53 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 32 ) { keep = 32; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        uint64_t keep = count;
+                        if ( keep > 32 )
                         {
-                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
-                            FiringGroupLoadBody( elem, value.firing_groups[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; FiringGroupReset( value.firing_groups[(int32_t) i] ); }
+                            keep = 32;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        sub.offset += (int64_t) elem_len;
-                        decoded = i + 1;
-                    }
-                    value.firing_groups_count = (int32_t) decoded;
-                    for ( int32_t tail = value.firing_groups_count; tail < previous_count; tail++ ) {
-                        FiringGroupReset( value.firing_groups[tail] );
-                    }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            uint64_t elem_len = 0;
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            {
+                                TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                                FiringGroupLoadBody( elem, value.firing_groups[(int32_t) i] );
+                                if ( elem.offset != elem.size )
+                                {
+                                    r.report->damaged = true;
+                                    FiringGroupReset( value.firing_groups[(int32_t) i] );
+                                }
+                            }
+                            sub.offset += (int64_t) elem_len;
+                            decoded = i + 1;
+                        }
+                        value.firing_groups_count = (int32_t) decoded;
+                        for ( int32_t tail = value.firing_groups_count; tail < previous_count; tail++ )
+                        {
+                            FiringGroupReset( value.firing_groups[tail] );
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6988,7 +7393,8 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7016,33 +7422,53 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 4 ) { keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        uint64_t keep = count;
+                        if ( keep > 4 )
                         {
-                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
-                            FiringGroupLoadBody( elem, value.missile_groups[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; FiringGroupReset( value.missile_groups[(int32_t) i] ); }
+                            keep = 4;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        sub.offset += (int64_t) elem_len;
-                        decoded = i + 1;
-                    }
-                    value.missile_groups_count = (int32_t) decoded;
-                    for ( int32_t tail = value.missile_groups_count; tail < previous_count; tail++ ) {
-                        FiringGroupReset( value.missile_groups[tail] );
-                    }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            uint64_t elem_len = 0;
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            {
+                                TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                                FiringGroupLoadBody( elem, value.missile_groups[(int32_t) i] );
+                                if ( elem.offset != elem.size )
+                                {
+                                    r.report->damaged = true;
+                                    FiringGroupReset( value.missile_groups[(int32_t) i] );
+                                }
+                            }
+                            sub.offset += (int64_t) elem_len;
+                            decoded = i + 1;
+                        }
+                        value.missile_groups_count = (int32_t) decoded;
+                        for ( int32_t tail = value.missile_groups_count; tail < previous_count; tail++ )
+                        {
+                            FiringGroupReset( value.missile_groups[tail] );
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7054,7 +7480,8 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7098,7 +7525,8 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7143,7 +7571,11 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     if ( verdict != TableOpenOk )
     {
         GunnerSettingsReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7172,10 +7604,23 @@ inline TableOpenVerdict GunnerSettingsLoadVerdict( GunnerSettings & value, const
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = GunnerSettingsLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; GunnerSettingsReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { GunnerSettingsReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        GunnerSettingsReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        GunnerSettingsReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { GunnerSettingsReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        GunnerSettingsReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -7309,15 +7754,31 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x260b8ca6b0c3db7full: // firing_groups
@@ -7327,8 +7788,13 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -7340,9 +7806,19 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 32 ) { kept = 32; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 32 )
+                    {
+                        kept = 32;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -7362,8 +7838,13 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -7375,9 +7856,19 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 )
+                    {
+                        kept = 4;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -7397,8 +7888,13 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -7406,15 +7902,31 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.reload_seconds = decoded_f;
@@ -7433,27 +7945,50 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull )
+                            {
+                                decoded_wide = (int64_t) 4294967295ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.gunner_id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull )
+                    {
+                        decoded_wide = (int64_t) 4294967295ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.gunner_id = decoded_v;
                 }
@@ -7461,7 +7996,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -7482,7 +8021,11 @@ inline bool GunnerSettingsLoadMessageBody( TableBitReader & r, const TableVocabu
 inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -7496,7 +8039,11 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
 inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7524,13 +8071,22 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !GunnerSettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { GunnerSettingsReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -7577,7 +8133,8 @@ static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ) == 300
 // which is also what zero-fills every byte of declared slack.
 inline void ArmorPlateFixedWriteBody( uint8_t * b, const ArmorPlate & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPutF64( b + 0, value.thickness );
     TableFixedPut32( b + 8, (uint32_t) value.material );
     TableFixedPut8( b + 12, (uint8_t) value.layer );
@@ -7587,7 +8144,8 @@ inline void ArmorPlateFixedWriteBody( uint8_t * b, const ArmorPlate & value )
 // which is also what zero-fills every byte of declared slack.
 inline void ArmorConfigFixedWriteBody( uint8_t * b, const ArmorConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     ArmorPlateFixedWriteBody( b + 0, value.front );
     ArmorPlateFixedWriteBody( b + 13, value.rear );
     TableFixedPutF32( b + 26, value.rating );
@@ -7598,7 +8156,8 @@ inline void ArmorConfigFixedWriteBody( uint8_t * b, const ArmorConfig & value )
 // which is also what zero-fills every byte of declared slack.
 inline void FiringGroupFixedWriteBody( uint8_t * b, const FiringGroup & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.barrel );
     TableFixedPutF32( b + 4, value.cooldown );
 }
@@ -7607,7 +8166,8 @@ inline void FiringGroupFixedWriteBody( uint8_t * b, const FiringGroup & value )
 // which is also what zero-fills every byte of declared slack.
 inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.firing_groups_count );
     for ( int64_t i = 0; i < (int64_t) value.firing_groups_count; ++i )
@@ -7868,13 +8428,13 @@ inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, 
     // all 32 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 32; i++ )
     {
-        if ( !FiringGroupCookBody( at + 0 + i * 8, value.firing_groups[ i ], order ) ) { return false; }
+        if ( !FiringGroupCookBody( at + 0 + i * 8, value.firing_groups[i], order ) ) { return false; }
     }
     table_cook_put( at + 256, (uint64_t) (uint32_t) value.firing_groups_count, 4, order );
     // all 4 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 4; i++ )
     {
-        if ( !FiringGroupCookBody( at + 260 + i * 8, value.missile_groups[ i ], order ) ) { return false; }
+        if ( !FiringGroupCookBody( at + 260 + i * 8, value.missile_groups[i], order ) ) { return false; }
     }
     table_cook_put( at + 292, (uint64_t) (uint32_t) value.missile_groups_count, 4, order );
     if ( !TableFloatFinite( value.reload_seconds ) ) { return false; } // a NaN or an infinity is refused (§3.3)

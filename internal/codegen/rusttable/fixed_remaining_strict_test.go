@@ -2,6 +2,7 @@ package rusttable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -304,9 +305,7 @@ func TestRustFixedRemainingRowsStrictNegativeControl(t *testing.T) {
 			t.Skipf("rustc not on PATH: %v", err)
 		}
 		sabotagedFiles := make(map[string][]byte, len(newFiles))
-		for k, v := range newFiles {
-			sabotagedFiles[k] = v
-		}
+		maps.Copy(sabotagedFiles, newFiles)
 		sabotagedFiles[fixedName] = []byte(planted)
 		out, err := runRangeWidenStrictProbe(t, oldFiles, sabotagedFiles)
 		if err == nil {

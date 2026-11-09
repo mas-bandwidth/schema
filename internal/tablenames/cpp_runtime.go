@@ -218,7 +218,7 @@ var cppSharedNames = []string{
 	"kTableAnnounceBytes", "kTableBytesTypeId", "kTableFixedBool", "kTableFixedConst", "kTableFixedCopy",
 	"kTableFixedCount", "kTableFixedEntryBytes", "kTableFixedForm", "kTableFixedHashAt",
 	"kTableFixedHeaderBytes", "kTableFixedLayoutHeaderBytes", "kTableFixedMaxDepth", "kTableFixedOrdinal",
-	"kTableFixedPresent", "kTableFixedRecordMaxBytes", "kTableFixedText", "kTableFixedTextBytes",
+	"kTableFixedPresent", "kTableFixedPresentDefaults", "kTableFixedRecordMaxBytes", "kTableFixedText", "kTableFixedTextBytes",
 	"kTableFixedTextUtf8", "kTableFixedTextWide", "kTableFixedWiden", "kTableFixedWidenF", "kTableJsonMaxDepth",
 	"kTableJsonMaxKey", "kTableJsonMaxNumber", "kTableMaxSegments", "kTableMessageBatchMax",
 	"kTableMessageEntriesHere", "kTableMessageRefBitsHere", "kTableSegmentBits", "kTableSegmentMask",

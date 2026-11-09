@@ -1247,9 +1247,19 @@ jobs:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
+    #
+    # THIS JOB ALSO BUILDS THE SHARED CONFORMANCE INPUTS ONCE. Every
+    # conformance leg used to rebuild bin/schema, build/conformance-harness
+    # and build/tables-generated from a wiped build/ (117 s of the go leg's
+    # 129-150 s kills at the 120 s fleet cap, 303 s uncapped in nightly
+    # 42458071627): the time was the build, not the run. `make
+    # conformance-shared` builds that tree once here; the legs below
+    # download it and build only their own driver, in parallel. The Go
+    # build cache is restored here on fleet runners too (not only
+    # hosted), so an ephemeral fleet runner starts warm.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1263,17 +1273,19 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored on fleet runners as well as hosted
+      # ones, so a cold fleet runner does not recompile the compiler and
+      # the harness from nothing. Restore only here — a save of the whole
+      # cache took longer than the build it would warm (measured on run
+      # 42569158490: the save ran past this job's then 5-minute cap and
+      # the artifact upload behind it was skipped); `go-test` remains
+      # the writer. See the block on that job.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1285,6 +1297,20 @@ jobs:
           matrix=$(go run ./test/conformance/harness matrix)
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - name: build the shared conformance inputs once
+        run: make -j"$(nproc)" conformance-shared
+
+      - name: hand the shared conformance inputs to every leg
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-shared
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated
+          retention-days: 1
+          if-no-files-found: error
 
   conformance:
     # Runs on a pull request only when it carries the `full-ci` label; on a
@@ -1327,20 +1353,39 @@ jobs:
           cache: false
 
       # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # Restored on fleet runners too, so the leg's own Go work (its driver
+      # where it has one) does not start from a cold cache.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE SHARED INPUTS, built once by conformance-matrix: bin/schema,
+      # build/conformance-harness and build/tables-generated. The artifact
+      # keeps the build job's timestamps, which predate this leg's checkout,
+      # so the stamp and the two binaries are touched (bin/schema first,
+      # the stamp last) to stand newer than the checked-out sources: make
+      # then builds only this leg's driver, not the shared tree again. The
+      # artifact also drops the binaries' executable bit (run 42571699474:
+      # `./bin/schema: Permission denied` in every leg that generates), so
+      # it is restored here.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: conformance-shared
+          path: .
+
+      - name: stand the shared inputs newer than this checkout
+        run: |
+          chmod +x bin/schema build/conformance-harness
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated/.stamp
 
       # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
       # same release archive, the same sha256 refused before it is unpacked,
@@ -1442,9 +1487,11 @@ jobs:
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
-      # PATH rather than in dist/, cargo not in a homebrew keg.
-      - name: build the harness and the ${{ matrix.lang }} driver
-        run: make ${{ matrix.targets }} ${{ matrix.env }}
+      # PATH rather than in dist/, cargo not in a homebrew keg. The shared
+      # inputs above are already built, so this builds only the leg's own
+      # driver (and its base64 row where it has one), in parallel.
+      - name: build the ${{ matrix.lang }} driver
+        run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
@@ -1812,7 +1859,8 @@ jobs:
   # about the code in the diff, not about the compiler that built it — and it
   # fits the budget now that it is sharded by unit (issue #684): one row per
   # independent piece, so the run pays the longest piece rather than the sum.
-  # The controls keep their own rows, so nothing runs less than it did.
+  # The controls keep their own rows; the reduced host-order checks stay
+  # per-commit and the full corpus battery and control run nightly.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -1843,6 +1891,25 @@ jobs:
       # is the `tables` and `collections` rows and the pair is the same pair
       # whether one job runs them or three. `c-control` is the C twin. They are
       # what prove the matrix can go red.
+      #
+      # PER-COMMIT SMOKE vs NIGHTLY BATTERY (green-be-nightly). The four heavy
+      # rows on the card were control 322 s, tables 282 s, go-control 250 s and
+      # go 136 s. Run 42581682964 at ecc2d21ba, job wall from started_at to
+      # completed_at: tables 46 s, control 44 s, collections 82 s, cook 76 s,
+      # c 85 s, c-control 103 s, go 127 s. The go make step
+      # (conformance-big-endian) was 96 s inside that 127 s job, past the 110 s
+      # row budget, so the full Go harness moves to certify.yml and this go row
+      # runs conformance-big-endian-smoke: three units, host bytes against
+      # qemu-s390x (the matrix entry keeps target: conformance-big-endian for
+      # TestTheBigEndianJobIsShardedByUnit and the make step dispatches
+      # conformance-big-endian-smoke when matrix.leg == 'go'). The full C++
+      # battery and its host-order control stay nightly as
+      # tables-big-endian-tables-full and tables-big-endian-control-full. After
+      # that split the slowest row left here is c-control at 103 s, under the
+      # 110 s budget; the smoke target itself measured 8.7 s on amd-2 with
+      # bin/schema warm (2026-11-09), and the row's floor is checkout, the Go
+      # toolchain and the cache restore. Big-endian reds stay with
+      # green-be-message-form, green-be-control and green-conf-go-big-endian.
       matrix:
         include:
           - leg: tables
@@ -1859,8 +1926,6 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
-          - leg: go-control
-            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1869,8 +1934,9 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache on hosted Linux: `go-test` runs on the self-hosted
+      # fleet, so the `go` row here is the hosted-Linux writer (saving both
+      # host tools and GOOS=linux GOARCH=s390x packages for the next run).
       - name: where this runner keeps the Go build cache
         shell: bash
         run: |
@@ -1886,13 +1952,17 @@ jobs:
       - name: the pinned cross toolchain and emulator
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
-            qemu-user=1:8.2.2+ds-0ubuntu1.18
+          if [ "${{ matrix.leg }}" = "go" ]; then
+            sudo apt-get install -y --no-install-recommends               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          else
+            sudo apt-get install -y --no-install-recommends               g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          fi
 
       - name: what the pins resolved to
         run: |
-          s390x-linux-gnu-g++-13 --version | head -1
+          if [ "${{ matrix.leg }}" != "go" ]; then
+            s390x-linux-gnu-g++-13 --version | head -1
+          fi
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
@@ -1924,7 +1994,15 @@ jobs:
       # package as its table sources, and those import it — hence both siblings
       # above, in every row.
       - name: ${{ matrix.target }}
-        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        env:
+          GOFLAGS: ${{ matrix.leg == 'go' && '-gcflags=all=-l' || '' }}
+        run: make -j"$(nproc)" ${{ matrix.leg == 'go' && 'conformance-big-endian-smoke' || matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.leg == 'go'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
@@ -1983,6 +2061,18 @@ jobs:
       # SHA and no tool runs `@latest`, and every csproj's TargetFramework
       # matches the one .NET SDK pin. It is a Go test, so `go test ./...` and
       # `make test` carry it too; this step is where the verdict is named.
+      #
+      # THIS STEP RUNS internal/ci'S FAST HALF ONLY. The package also holds
+      # functional tests that build or run toolchains, which skip at
+      # internal/slowtest.Gate without SCHEMA_SLOW=1 and would blow this
+      # per-commit job's two-minute rule: the -run pattern gate
+      # (TestEveryRunPatternMatchesATest) measured 116 s alone (2026-11-09),
+      # the wide-scalar probe (TestWideScalarProbeModuleBoundary) builds
+      # cmd/schema and runs make (20 s), and the resource-bounds and
+      # hostile-corpus runners are interpreter-bound.
+      # They all ride ci-full.yml's unit-rest row, which sets SCHEMA_SLOW=1 and
+      # runs on the merge and nightly triggers, so nothing is checked less than
+      # before — it moved down this lane, not out of it.
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
       - name: golangci-lint
@@ -2440,17 +2530,26 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
-  # one nightly group. `go run ./tools/negativecontrols check` prints the
-  # count, so it is one command rather than a number to keep in step by hand.
+  # branch's own pull-request runs. As of the base-* split below (runs
+  # 42556155793 and 42554833739), the plan held 180 groups: 156 pull-request
+  # groups (672 targets) and 24 nightly groups (44 targets), with 742 controls
+  # defined in all; after the subsequent leg splits on main it holds 212
+  # groups: 146 pull-request groups (615 targets) and 66 nightly groups (107
+  # targets), with 748 controls defined in all (`go run ./tools/negativecontrols
+  # check` prints that count, so it is one command rather than a number to keep
+  # in step by hand).
   #
-  # The base toolchain carries 134 of them and takes twenty-eight jobs rather
-  # than one: the map gate alone is 17 controls at 4 s each on the author's
-  # machine and about 2x that on the runner, and the conformance driver's two
-  # sabotage rebuilds are 45 s and 47 s of runner time on their own. The
-  # tolerant-wire family is one control per job: each rebuilds the compiler
-  # under a source overlay and then fuzzes the sabotaged wire, 55 s to 80 s
-  # each, so no two of them fit together.
+  # The base-* (non-C) toolchain carries 170 targets in 47 groups from this
+  # split: 29 pull-request groups (135 targets) and 18 nightly groups (35
+  # targets) — 173 targets in 48 groups (30 pull-request groups / 138 targets
+  # and 18 nightly groups / 35 targets) with base-cpp-discard (3 pull-request
+  # targets) —
+  # rather than one job: the map gate alone is 17 controls at 4 s each on the
+  # author's machine and about 2x that on the runner, and the conformance
+  # driver's two sabotage rebuilds are 45 s and 47 s of runner time on their
+  # own. The tolerant-wire family is one control per job: each rebuilds the
+  # compiler under a source overlay and then fuzzes the sabotaged wire, 55 s
+  # to 80 s each, so no two of them fit together.
   #
   # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
   # was inside the rule but eight of them sat between 100 s and 111 s, which is
@@ -2459,14 +2558,38 @@ jobs:
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
-  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
-  # instead: tables-message-form-negative-control drives 49 sabotage rows one
-  # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
-  # the plan, certify.yml runs that tier on the schedule it carries, and
+  # CONTROLS THAT DO NOT FIT THE RULE AT ANY GROUP SIZE run nightly instead
+  # (the nightly tier in certify.yml, on the schedule it carries), and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
-  # control cannot leave this file without landing on that one. The message
-  # form's other blades stay here. The group keeps its name at one target,
-  # because it is where the next control that outgrows the rule lands.
+  # control cannot leave this file without landing on that one. The oldest is
+  # tables-message-form-negative-control (49 sabotage rows one submake each at
+  # 124 s, against a 120 s rule); its other blades stay here.
+  #
+  # The base-* (non-C) rows that moved to nightly on runs 42556155793 and
+  # 42554833739 did so because a single target, or the compile it cannot run
+  # without, already exceeds the ~75 s per-commit control ceiling (117-140 s
+  # wall, killed at 2m), so no pull-request grouping can hold them:
+  # base-conformance-1 (>107 s control, 131 s wall: all C++ CONFORMANCE_SOURCES
+  # compiled twice), base-conformance-reference (>77 s for build/conformance-cpp
+  # alone, killed at 136 s wall), base-conformance-2-1, base-conformance-2-2
+  # and base-conformance-2-3 (86 s, >88 s loaded, for the
+  # build/tables-generated-go/.stamp prerequisite before any control runs),
+  # base-conformance-go-rows (39-88 s plus 49 s of stamps before 45 rows),
+  # base-conformance-cpp (82 s control/104 s wall; >84 s, killed at 140 s wall
+  # loaded), base-conformance-absence (>106 s/129 s wall and >111 s/130 s wall,
+  # killed both times), base-maps-depth (84 s for depth alone, killed at 135 s
+  # wall), base-maps-keys (81 s for key-domain alone, killed at 135-140 s wall),
+  # base-maps-order (86 s for place-failure alone, killed at 137 s wall),
+  # base-arms-all (>83 s control, killed at 136 s wall; the seven leaves stay
+  # per-commit in base-arms-1/-2/-3, only the serial umbrella moves),
+  # base-shared-node-1 (stamp 39 s/72 s wall quiet, >99 s killed at 134 s wall
+  # loaded), base-shared-node-2 (>113 s/136 s wall and >106 s/129 s wall,
+  # killed), base-cpp-soak (67 s quiet, >85 s in g++ killed at 138 s wall
+  # loaded), base-keyed-iteration (>81 s/140 s wall and >111 s/128 s wall,
+  # killed), base-keyed-shift (>104 s/129 s wall and >63 s in g++ at 137 s wall,
+  # killed) and base-cpp-hostile-corpus (68 s/90 s wall quiet, >93 s killed at
+  # 138 s wall loaded). The per-group `why` lines in
+  # make/negative-controls.json carry the same numbers beside their targets.
   #
   # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control
   # carries no recipe: it names the retain oracle and the retain class leaves,

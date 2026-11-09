@@ -1068,10 +1068,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -3038,6 +3050,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3174,6 +3187,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3334,7 +3353,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -3466,6 +3485,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -3475,7 +3506,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -3484,7 +3516,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3509,12 +3541,21 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -3560,7 +3601,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -3653,6 +3699,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4211,7 +4258,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4405,22 +4458,34 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -4665,7 +4730,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -4819,7 +4885,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -5951,10 +6024,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -7641,18 +7716,34 @@ static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
 {
-    if ( raw == NULL ) { len = -1; return NULL; }
+    if ( raw == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
-    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
-    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    if ( u > (uint32_t) INT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    {
+        len = -1;
+        return NULL;
+    }
     len = (int32_t) u;
     return (const char *) ( raw + 8 );
 }
 
 inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
     return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
@@ -7661,13 +7752,25 @@ inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRe
 }
 inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
-    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
 {
-    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    if ( ctx.arena == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_at_( *ctx.arena, ref, len );
 }
 
@@ -7677,7 +7780,11 @@ inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, con
     if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
     if ( len > 0 && text == NULL ) { return false; }
     if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
-    if ( len == 0 ) { slot.value = 0; return true; }
+    if ( len == 0 )
+    {
+        slot.value = 0;
+        return true;
+    }
     uint32_t at = 0;
     uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
     if ( dst == NULL ) { return false; }
@@ -7767,7 +7874,11 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
     int32_t len = 0;
     const char * bytes = schema_table_text_at_( ctx, src, len );
     if ( bytes == NULL ) { return false; }
-    if ( len == 0 ) { dst.value = 0; return true; }
+    if ( len == 0 )
+    {
+        dst.value = 0;
+        return true;
+    }
     at = ( at + 7 ) & ~(int64_t) 7;
     const int64_t need = TableAlignUp64( 9 + (int64_t) len );
     if ( at + need > capacity ) { return false; }
@@ -7786,9 +7897,17 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
 inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t len = 0;
-    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += (int64_t) len;
-    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len > (uint64_t) kTableBlobMaxLength )
+    {
+        reason = blob_over_size_cap;
+        return false;
+    }
     if ( len == 0 ) { return true; }
     at = ( at + 7 ) & ~(int64_t) 7;
     at += TableAlignUp64( 9 + (int64_t) len );
@@ -9043,7 +9162,8 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 );
+                w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBody( ctx, numbering, w, ids, value.inner.leaf ) ) { return false; }
                 break;
             }
@@ -9052,7 +9172,8 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.inner.plain ) );
                 break;
             }
@@ -9118,7 +9239,8 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9127,11 +9249,27 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                     break;
                 }
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.inner.type = InnerType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.inner.type = InnerType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -9150,7 +9288,8 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Leaf;
@@ -9167,7 +9306,12 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.inner.type = InnerType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -9185,7 +9329,8 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Plain;
@@ -9355,7 +9500,8 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
-                w.header( arm_ref, 15 ); w.putleb( (uint64_t) arm_payload ); // inner
+                w.header( arm_ref, 15 );
+                w.putleb( (uint64_t) arm_payload ); // inner
                 if ( value.outer.inner.type == InnerType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                 else
                 {
@@ -9370,7 +9516,8 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
+                            w.header( arm_refa, 13 );
+                            w.putleb( (uint64_t) arm_payloada ); // leaf
                             if ( !LeafSaveBody( ctx, numbering, w, ids, value.outer.inner.leaf ) ) { return false; }
                             break;
                         }
@@ -9379,7 +9526,8 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
-                            w.header( arm_refa, 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
+                            w.header( arm_refa, 4 );
+                            w.putleb( (uint64_t) arm_payloada ); // plain
                             w.put32( uint32_t( value.outer.inner.plain ) );
                             break;
                         }
@@ -9393,7 +9541,8 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.outer.plain ) );
                 break;
             }
@@ -9478,7 +9627,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9487,11 +9637,27 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     break;
                 }
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.outer.type = OuterType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.outer.type = OuterType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -9510,22 +9676,43 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Inner;
                             {
                                 uint64_t arm_inner_ref = 0;
-                                if ( !sub.getleb( arm_inner_ref ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                if ( !sub.getleb( arm_inner_ref ) )
+                                {
+                                    value.outer.type = OuterType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 value.outer.inner.type = InnerType::None;
                                 if ( arm_inner_ref != 0 ) // the zero reference is the inner union's None
                                 {
-                                    if ( arm_inner_ref > (uint64_t) r.ids->count ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( arm_inner_ref > (uint64_t) r.ids->count )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     const uint64_t arm_inner_id = r.ids->at( arm_inner_ref );
-                                    if ( !sub.has( 1 ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( !sub.has( 1 ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     const uint8_t arm_inner_kind = sub.get8();
                                     uint64_t arm_inner_len = 0;
-                                    if ( !sub.getleb( arm_inner_len ) || !sub.room( arm_inner_len ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( !sub.getleb( arm_inner_len ) || !sub.room( arm_inner_len ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     TableReader arm_inner( sub.buffer + sub.offset, (int64_t) arm_inner_len, r.report, r.ids );
                                     switch ( arm_inner_id ) // the arm's NAME hash (§5)
                                     {
@@ -9549,7 +9736,12 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                                 {
                                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                                     // that is not that width is the arm's own framing damage (§3)
-                                                    if ( arm_inner.size != TableKindWidth( arm_inner_kind ) ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                                    if ( arm_inner.size != TableKindWidth( arm_inner_kind ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
                                                     memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
                                                     int64_t widened_v = 0;
                                                     if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) )
@@ -9578,7 +9770,9 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                             value.outer.inner.plain = decoded_v;
                                             break;
                                         }
-                                        default: r.report->unknown++; break; // an arm this reader cannot name
+                                        default:
+                                            r.report->unknown++;
+                                             break; // an arm this reader cannot name
                                     }
                                     sub.offset += (int64_t) arm_inner_len;
                                 }
@@ -9593,7 +9787,12 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -9611,7 +9810,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Plain;
@@ -9646,7 +9846,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9675,7 +9876,8 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -9699,13 +9901,19 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
-                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
+                                if ( fill.worker != NULL )
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9724,10 +9932,16 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -9750,13 +9964,19 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
-                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
+                                if ( fill.worker != NULL )
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9774,13 +9994,19 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -10010,14 +10236,30 @@ inline bool NestExtentPack( const Ctx & ctx, const Nest & src, Nest & dst, uint8
 inline bool InnerWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t arm_ref = 0;
-    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_ref ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload
-    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }
+    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint64_t arm_id = r.ids->at( arm_ref );
-    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }
+    if ( !r.has( 1 ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += 1; // the arm's kind byte
     uint64_t arm_len = 0;
-    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint8_t * arm_body = r.buffer + r.offset;
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
@@ -10048,14 +10290,30 @@ inline bool InnerWireArmsExtent( const uint8_t * body, int64_t length, int64_t &
 inline bool OuterWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t arm_ref = 0;
-    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_ref ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload
-    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }
+    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint64_t arm_id = r.ids->at( arm_ref );
-    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }
+    if ( !r.has( 1 ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += 1; // the arm's kind byte
     uint64_t arm_len = 0;
-    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint8_t * arm_body = r.buffer + r.offset;
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
@@ -12307,7 +12565,8 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 );
+                w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                 break;
             }
@@ -12316,7 +12575,8 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.inner.plain ) );
                 break;
             }
@@ -12388,7 +12648,8 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12398,11 +12659,27 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                 }
                 TableRetainDiscardField( retain, path, 0 );
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.inner.type = InnerType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.inner.type = InnerType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -12421,7 +12698,8 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Leaf;
@@ -12438,7 +12716,12 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.inner.type = InnerType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -12456,7 +12739,8 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.inner.type = InnerType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.inner.type = InnerType::Plain;
@@ -12627,7 +12911,8 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
-                w.header( arm_ref, 15 ); w.putleb( (uint64_t) arm_payload ); // inner
+                w.header( arm_ref, 15 );
+                w.putleb( (uint64_t) arm_payload ); // inner
                 if ( value.outer.inner.type == InnerType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                 else
                 {
@@ -12642,7 +12927,8 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
+                            w.header( arm_refa, 13 );
+                            w.putleb( (uint64_t) arm_payloada ); // leaf
                             if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                             break;
                         }
@@ -12651,7 +12937,8 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
-                            w.header( arm_refa, 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
+                            w.header( arm_refa, 4 );
+                            w.putleb( (uint64_t) arm_payloada ); // plain
                             w.put32( uint32_t( value.outer.inner.plain ) );
                             break;
                         }
@@ -12665,7 +12952,8 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.outer.plain ) );
                 break;
             }
@@ -12756,7 +13044,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12766,11 +13055,27 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                 }
                 TableRetainDiscardField( retain, path, 0 );
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.outer.type = OuterType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.outer.type = OuterType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -12789,22 +13094,43 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Inner;
                             {
                                 uint64_t arm_inner_ref = 0;
-                                if ( !sub.getleb( arm_inner_ref ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                if ( !sub.getleb( arm_inner_ref ) )
+                                {
+                                    value.outer.type = OuterType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
                                 value.outer.inner.type = InnerType::None;
                                 if ( arm_inner_ref != 0 ) // the zero reference is the inner union's None
                                 {
-                                    if ( arm_inner_ref > (uint64_t) r.ids->count ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( arm_inner_ref > (uint64_t) r.ids->count )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     const uint64_t arm_inner_id = r.ids->at( arm_inner_ref );
-                                    if ( !sub.has( 1 ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( !sub.has( 1 ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     const uint8_t arm_inner_kind = sub.get8();
                                     uint64_t arm_inner_len = 0;
-                                    if ( !sub.getleb( arm_inner_len ) || !sub.room( arm_inner_len ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( !sub.getleb( arm_inner_len ) || !sub.room( arm_inner_len ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     TableReader arm_inner( sub.buffer + sub.offset, (int64_t) arm_inner_len, r.report, r.ids );
                                     switch ( arm_inner_id ) // the arm's NAME hash (§5)
                                     {
@@ -12828,7 +13154,12 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                                 {
                                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                                     // that is not that width is the arm's own framing damage (§3)
-                                                    if ( arm_inner.size != TableKindWidth( arm_inner_kind ) ) { value.outer.inner.type = InnerType::None; r.report->damaged = true; break; }
+                                                    if ( arm_inner.size != TableKindWidth( arm_inner_kind ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
                                                     memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
                                                     int64_t widened_v = 0;
                                                     if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) )
@@ -12857,7 +13188,9 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                             value.outer.inner.plain = decoded_v;
                                             break;
                                         }
-                                        default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name
+                                        default:
+                                            r.report->unknown++;
+                                             r.report->retain_lost++; break; // an arm this reader cannot name
                                     }
                                     sub.offset += (int64_t) arm_inner_len;
                                 }
@@ -12872,7 +13205,12 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.outer.type = OuterType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -12890,7 +13228,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.outer.type = OuterType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.outer.type = OuterType::Plain;
@@ -12925,7 +13264,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12954,7 +13294,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -12978,13 +13319,19 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
-                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
+                                if ( fill.worker != NULL )
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -13003,10 +13350,16 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -13029,13 +13382,19 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
-                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
+                                if ( fill.worker != NULL )
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -13053,13 +13412,19 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:

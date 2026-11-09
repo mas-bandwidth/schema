@@ -180,9 +180,10 @@ func loadFixEEngineFor(t *testing.T, units map[string][]string, unitKey, rootNam
 	var rep tabletext.Report
 	ok, derr := decode(m, inst, data, &rep)
 	var o loadFixEAnswer
-	if tablewire.Refused(derr) {
+	switch {
+	case tablewire.Refused(derr):
 		o.refused = true
-	} else if tablewire.ReadRefusal(derr) {
+	case tablewire.ReadRefusal(derr):
 		if tablewire.RefusalReason(derr) == tablewire.ReasonBlobShared {
 			o.loaded = true
 			o.saveFail = true
@@ -190,7 +191,7 @@ func loadFixEEngineFor(t *testing.T, units map[string][]string, unitKey, rootNam
 		}
 		o.counts.malformed = true
 		return o, true
-	} else if derr != nil {
+	case derr != nil:
 		return o, false
 	}
 	o.loaded = true

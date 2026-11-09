@@ -81,7 +81,7 @@ func TestEnumCollectionReferencesElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if ok == c.damaged || tablewire.ReadRefusal(e) != c.damaged || (!c.damaged && int(report.Unknown) != c.unknown) {
+			if ok == c.damaged || tablewire.ReadRefusal(e) != c.damaged || (!c.damaged && report.Unknown != c.unknown) {
 				t.Fatalf("%s/%s oracle: %v %+v %v", field, c.name, ok, report, e)
 			}
 			canonical := ""
@@ -196,7 +196,7 @@ end
 `, hex.EncodeToString(c.wire), c.name+" ", c.name+" ")
 			continue
 		}
-		if e != nil || !ok || load.Refused || int(load.Retained) != c.retained || load.Unknown != 2 || load.RetainLost != 0 {
+		if e != nil || !ok || load.Refused || load.Retained != c.retained || load.Unknown != 2 || load.RetainLost != 0 {
 			t.Fatalf("%s load: %v %v %+v", c.name, ok, e, load)
 		}
 		want, e := tablewire.EncodeRetain(m, v, &store, &save)

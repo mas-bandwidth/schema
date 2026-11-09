@@ -31,6 +31,7 @@ let FixedRefuseOk: i64 = 0;
 let FixedRefuseReservedNotZero: i64 = 4;
 let FixedRefuseTruncated: i64 = 6;
 let FixedRefuseInvalidValue: i64 = 14;
+let FixedRefuseWireDamaged: i64 = 16;
 let FixedRefuseOutOfRange: i64 = 18;
 let FixedRefuseIntegrityMismatch: i64 = 22;
 let FixedRefusePreviousForm: i64 = 25;
@@ -59,6 +60,7 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         4 => "reserved_not_zero",
         6 => "truncated",
         14 => "invalid_value",
+        16 => "wire_damaged",
         18 => "out_of_range",
         22 => "integrity_mismatch",
         25 => "previous_form",

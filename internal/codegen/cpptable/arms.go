@@ -226,7 +226,7 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 		g.pf("%sfor ( int32_t i%s = 0; i%s < %s; i%s++ ) { w.put16( (uint16_t) %s[i%s] ); } // two bytes each, little-endian\n", ind, sfx, sfx, count, sfx, value, sfx)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
-		g.pf("%sw.put8( %d ); w.putleb( (uint64_t) %s ); // bytes ride as an array of u8 (§2.5)\n", ind, tkU8, count)
+		g.pf("%[1]sw.put8( %[2]d );\n%[1]sw.putleb( (uint64_t) %[3]s ); // bytes ride as an array of u8 (§2.5)\n", ind, tkU8, count)
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Array != ir.ArrayNone:
 		n := fmt.Sprintf("%d", f.ArrayBound)
@@ -264,7 +264,7 @@ func armWireLength(v ir.UnionVariant) int { return ir.ArmWireFixedWidth(v.F) }
 // counts, and damage discards the whole load (§3, §4).
 func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx string) {
 	if v.Void() {
-		g.pf("%sif ( %s.size != 0 ) { %s = %s; r.report->damaged = true; break; } // a payload-free arm carries no payload (§2.6, §3)\n", ind, rdr, tag, none)
+		g.pf("%[1]sif ( %[2]s.size != 0 )\n%[1]s{\n%[1]s    %[3]s = %[4]s;\n%[1]s    r.report->damaged = true;\n%[1]s    break;\n%[1]s} // a payload-free arm carries no payload (§2.6, §3)\n", ind, rdr, tag, none)
 		return
 	}
 	f := v.F
@@ -293,8 +293,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s{\n%s    uint32_t %s = uint32_t( %s.size );\n", ind, ind, length, rdr)
 		g.pf("%s    uint32_t %s = %s;\n", ind, keep, length)
 		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
-		g.pf("%s    if ( !TableUtf8Valid( %s.buffer + %s.offset, %s.size ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, rdr, rdr, tag, none)
-		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
+		g.pf("%[1]s    if ( !TableUtf8Valid( %[2]s.buffer + %[3]s.offset, %[4]s.size ) )\n%[1]s    {\n%[1]s        %[5]s = %[6]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, rdr, rdr, tag, none)
+		g.pf("%[1]s    if ( %[2]s > %[3]d )\n%[1]s    {\n%[1]s        %[4]s = (uint32_t) TableUtf8Clamp( %[5]s.buffer + %[6]s.offset, %[7]s.size, %[8]d );\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
 		g.pf("%s    memcpy( %s, %s.buffer + %s.offset, %s );\n", ind, value, rdr, rdr, keep)
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
@@ -302,14 +302,14 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	case f.Type.Kind == ir.TWString:
 		// AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table), so
 		// an ODD L is that arm's own framing damage: the union reads None.
-		g.pf("%sif ( ( %s.size & 1 ) != 0 ) { %s = %s; r.report->damaged = true; break; } // an odd L is not a wstring at any length (§3)\n", ind, rdr, tag, none)
+		g.pf("%[1]sif ( ( %[2]s.size & 1 ) != 0 )\n%[1]s{\n%[1]s    %[3]s = %[4]s;\n%[1]s    r.report->damaged = true;\n%[1]s    break;\n%[1]s} // an odd L is not a wstring at any length (§3)\n", ind, rdr, tag, none)
 		g.establishArm(v, base, ind)
 		units, keep := "arm_units"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    const int64_t %s = %s.size / 2;\n", ind, ind, units, rdr)
 		g.pf("%s    int64_t %s = %s;\n", ind, keep, units)
 		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
-		g.pf("%s    if ( !TableUtf16Valid( %s.buffer + %s.offset, %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, rdr, units, tag, none)
-		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
+		g.pf("%[1]s    if ( !TableUtf16Valid( %[2]s.buffer + %[3]s.offset, %[4]s ) )\n%[1]s    {\n%[1]s        %[5]s = %[6]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, rdr, units, tag, none)
+		g.pf("%[1]s    if ( %[2]s > %[3]d )\n%[1]s    {\n%[1]s        %[4]s = TableUtf16Clamp( %[5]s.buffer + %[6]s.offset, %[7]s, %[8]d );\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
 		g.pf("%s    for ( int64_t i%s = 0; i%s < %s; i%s++ ) { %s[i%s] = (char16_t) TableUtf16Unit( %s.buffer + %s.offset, i%s ); }\n", ind, sfx, sfx, keep, sfx, value, sfx, rdr, rdr, sfx)
 		g.pf("%s    %s[%s] = 0;\n", ind, value, keep)
 		g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
@@ -333,15 +333,15 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%sif ( !%s.has( 2 ) ) { break; }\n", ind, rdr)
 		g.pf("%s{\n%s    uint8_t %s = %s.get8();\n", ind, ind, ek, rdr)
 		g.pf("%s    uint64_t %s = 0;\n", ind, n)
-		g.pf("%s    if ( !%s.getleb( %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, n, tag, none)
+		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, n, tag, none)
 		if widenableElement(f) {
 			// THE WIDENING BRANCH at an array arm's element kind (§4), inside
 			// the mismatch branch: the arm is already selected, so the
 			// elements decode at the wire kind's width and the arm is done
 			g.pf("%s    if ( %s != %d )\n%s    {\n", ind, ek, elemKind, ind)
-			g.pf("%s        if ( !TableKindWidens( %s, %d ) ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break; }\n", ind, ek, elemKind, tag, none)
+			g.pf("%[1]s        if ( !TableKindWidens( %[2]s, %[3]d ) )\n%[1]s        {\n%[1]s            %[4]s = %[5]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = kind_mismatch;\n%[1]s            break;\n%[1]s        }\n", ind, ek, elemKind, tag, none)
 			g.pf("%s        uint64_t widened_keep%s = %s;\n", ind, sfx, n)
-			g.pf("%s        if ( widened_keep%s > %d ) { widened_keep%s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, sfx, bound, sfx, bound)
+			g.pf("%[1]s        if ( widened_keep%[2]s > %[3]d )\n%[1]s        {\n%[1]s            widened_keep%[4]s = %[5]d;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, sfx, bound, sfx, bound)
 			g.pf("%s        TableReader widened_sub%s( %s.buffer + %s.offset, %s.size - %s.offset, r.report, r.ids );\n", ind, sfx, rdr, rdr, rdr, rdr)
 			countLvalue := ""
 			if counted {
@@ -350,12 +350,12 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.emitWidenedElements(f, elemKind, ek, value+"[%s]", countLvalue, "widened_keep"+sfx, ind+"        ", "widened_sub"+sfx)
 			g.pf("%s        break;\n%s    }\n", ind, ind)
 		} else {
-			g.pf("%s    if ( %s != %d ) { %s = %s; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break; }\n", ind, ek, elemKind, tag, none)
+			g.pf("%[1]s    if ( %[2]s != %[3]d )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        break;\n%[1]s    }\n", ind, ek, elemKind, tag, none)
 		}
 		g.pf("%s    uint64_t %s = %s;\n", ind, keep, n)
-		g.pf("%s    if ( %s > %d ) { %s = %d; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, keep, bound, keep, bound)
+		g.pf("%[1]s    if ( %[2]s > %[3]d )\n%[1]s    {\n%[1]s        %[4]s = %[5]d;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, keep, bound, keep, bound)
 		if f.Type.Kind == ir.TBytes {
-			g.pf("%s    if ( !%s.room( %s ) ) { %s = uint64_t( %s.size - %s.offset ); r.report->damaged = true; }\n", ind, rdr, keep, keep, rdr, rdr)
+			g.pf("%[1]s    if ( !%[2]s.room( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = uint64_t( %[5]s.size - %[6]s.offset );\n%[1]s        r.report->damaged = true;\n%[1]s    }\n", ind, rdr, keep, keep, rdr, rdr)
 			g.pf("%s    memcpy( %s, %s.buffer + %s.offset, (size_t) %s );\n", ind, value, rdr, rdr, keep)
 			g.pf("%s    %s = (int32_t) %s;\n", ind, count, keep)
 		} else {
@@ -383,26 +383,26 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 	case kind == tkEnum:
 		g.pf("%s{\n", ind)
 		g.emitEnumRefLoad(f, value, ind+"    ", rdr, fmt.Sprintf("%s = %s; r.report->damaged = true; break;", tag, none))
-		g.pf("%s    if ( %s.offset != %s.size ) { %s = %s; r.report->damaged = true; break; } // an L that is not the reference's own length (§3)\n", ind, rdr, rdr, tag, none)
+		g.pf("%[1]s    if ( %[2]s.offset != %[3]s.size )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    } // an L that is not the reference's own length (§3)\n", ind, rdr, rdr, tag, none)
 		g.pf("%s}\n", ind)
 	case kind == tkUnion:
 		un := f.Type.Ref.(*ir.Union)
 		ref, id, length := "arm_inner_ref"+sfx, "arm_inner_id"+sfx, "arm_inner_len"+sfx
 		inner, innerKind := "arm_inner"+sfx, "arm_inner_kind"+sfx
 		g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, ref)
-		g.pf("%s    if ( !%s.getleb( %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, ref, tag, none)
+		g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, ref, tag, none)
 		g.pf("%s    %s.type = %sType::None;\n", ind, value, un.Name)
 		g.pf("%s    if ( %s != 0 ) // the zero reference is the inner union's None\n%s    {\n", ind, ref, ind)
 		// A LENGTH-SHAPED ARM'S DAMAGED PAYLOAD IS THAT ARM'S OWN FRAMING
 		// DAMAGE (§3): the inner union runs past the arm's `L`, so the arm is
 		// not decoded: malformed counts, and damage discards the whole load
 		// (§4)
-		g.pf("%s        if ( %s > (uint64_t) r.ids->count ) { %s = %s; r.report->damaged = true; break; }\n", ind, ref, tag, none)
+		g.pf("%[1]s        if ( %[2]s > (uint64_t) r.ids->count )\n%[1]s        {\n%[1]s            %[3]s = %[4]s;\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind, ref, tag, none)
 		g.pf("%s        const uint64_t %s = r.ids->at( %s );\n", ind, id, ref)
-		g.pf("%s        if ( !%s.has( 1 ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, tag, none)
+		g.pf("%[1]s        if ( !%[2]s.has( 1 ) )\n%[1]s        {\n%[1]s            %[3]s = %[4]s;\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind, rdr, tag, none)
 		g.pf("%s        const uint8_t %s = %s.get8();\n", ind, innerKind, rdr)
 		g.pf("%s        uint64_t %s = 0;\n", ind, length)
-		g.pf("%s        if ( !%s.getleb( %s ) || !%s.room( %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, length, rdr, length, tag, none)
+		g.pf("%[1]s        if ( !%[2]s.getleb( %[3]s ) || !%[4]s.room( %[5]s ) )\n%[1]s        {\n%[1]s            %[6]s = %[7]s;\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind, rdr, length, rdr, length, tag, none)
 		g.pf("%s        TableReader %s( %s.buffer + %s.offset, (int64_t) %s, r.report, r.ids );\n", ind, inner, rdr, rdr, length)
 		g.pf("%s        switch ( %s ) // the arm's NAME hash (§5)\n%s        {\n", ind, id, ind)
 		for _, in := range un.Variants {
@@ -415,7 +415,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			g.emitArmLoad(in, value, ind+"                ", inner, value+".type", un.Name+"Type::None", sfx+"a")
 			g.pf("%s                break;\n%s            }\n", ind, ind)
 		}
-		g.pf("%s            default: r.report->unknown++;%s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
+		g.pf("%[1]s            default:\n%[1]s                r.report->unknown++;\n%[1]s                %[2]s break; // an arm this reader cannot name\n", ind, g.retainLostInline())
 		g.pf("%s        }\n", ind)
 		g.pf("%s        %s.offset += (int64_t) %s;\n", ind, rdr, length)
 		g.pf("%s    }\n", ind)

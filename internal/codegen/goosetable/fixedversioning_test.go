@@ -938,7 +938,7 @@ func gooseAssign(t *testing.T, wst, rst *ir.Struct, segs []string, value string)
 		}
 		prefix += "." + ir.GoExportName(rf.Name)
 		text := rf.Type.Kind == ir.TString || rf.Type.Kind == ir.TBytes || rf.Type.Kind == ir.TWString
-		if idx >= 0 && !(last && text) {
+		if idx >= 0 && (!last || !text) {
 			prefix += fmt.Sprintf("[%d]", idx)
 		}
 		if last {

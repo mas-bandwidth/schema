@@ -82,7 +82,7 @@ func TestRetainingUnionArmWideningElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if ok == tc.refused || tablewire.ReadRefusal(e) != tc.refused || (!tc.refused && int(report.Widened) != tc.widened) || (tc.refused && (!report.Refused || report.Reason == "")) {
+			if ok == tc.refused || tablewire.ReadRefusal(e) != tc.refused || (!tc.refused && report.Widened != tc.widened) || (tc.refused && (!report.Refused || report.Reason == "")) {
 				t.Fatalf("%s/%s independent report: %v %v %+v", field, tc.name, ok, e, report)
 			}
 			canonical := ""

@@ -28,7 +28,7 @@ table Root {
 }
 `
 
-// the parser line the fix added, and the planted edit that takes it out
+// the parser line the fix added, and the planted edit that takes it out.
 const dartTextRepeatSkipCheck = "if (!keys.add(k)) throw FormatException('text_damaged: repeated key', s, i);"
 
 var dartTextRepeatSkipCases = []struct {

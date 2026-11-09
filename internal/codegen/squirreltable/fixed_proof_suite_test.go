@@ -355,7 +355,7 @@ func squirrelUnionArms(u *ir.Unit) string {
 		if un == nil {
 			un = u.TableUnions[name]
 		}
-		b.WriteString(fmt.Sprintf("addUnion(function() { return T.%s(); }, [null", name))
+		fmt.Fprintf(&b, "addUnion(function() { return T.%s(); }, [null", name)
 		for _, v := range un.Variants {
 			if v.Void() {
 				b.WriteString(", null")
@@ -882,23 +882,6 @@ r[1].OptPresent = true; r[1].Opt.A = 33; r[1].Opt.B = 44;`
 		return `r[1].A = 42; r[1].S = "test";`
 	default:
 		panic("missing squirrelSetupFor case: " + id)
-	}
-}
-
-func squirrelCheckFor(id string) string {
-	switch id {
-	case "bool-values":
-		return `if (rows[0].A != false || rows[0].B != true || rows[1].A != true || rows[1].B != false) throw "bool-values mismatch";`
-	case "signed-integers":
-		return `if (rows[0].A != -128 || rows[1].A != 127 || rows[1].D != 9223372036854775807 || rows[2].D != -2) throw "signed-integers mismatch";`
-	case "unsigned-integers":
-		return `if (rows[0].A != 255 || rows[1].D != 0 || rows[2].D != 4294967296) throw "unsigned-integers mismatch";`
-	case "signed-128":
-		return `if (rows[0].A[0] != 0 || rows[1].A[1] != 9223372036854775807 || rows[2].A[0] != 1) throw "signed-128 mismatch";`
-	case "unsigned-128":
-		return `if (rows[0].A[0] != -1 || rows[1].A[0] != 0 || rows[2].A[0] != 1 || rows[2].A[1] != 0) throw "unsigned-128 mismatch";`
-	default:
-		return ""
 	}
 }
 

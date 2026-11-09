@@ -1311,7 +1311,7 @@ async function wireFuzz() {
             for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
             const rep = {};
             const n = loadMessages(values, vocabulary, wire, rep);
-            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat) || ((rep.Mismatch | 0) + (rep.Oor | 0) > 0 && !rep.Damaged);
             // A batch that delivers no body is damage: no form byte, a short
             // count, or a body the reader discards. A named verdict is a
             // refusal. The pipe reads damaged, not malformed, and a default
@@ -1344,9 +1344,12 @@ async function wireFuzz() {
               report: {
                 reason: rep.Reason ?? "",
                 unknown: rep.Unknown | 0,
+                mismatch: rep.Mismatch | 0,
                 kindMismatch: rep.Mismatch | 0,
                 widened: rep.Widened | 0,
+                oor: rep.Oor | 0,
                 clamped: rep.Oor | 0,
+                repeated: 0,
                 duplicate: 0,
                 malformed,
                 damaged: malformed,

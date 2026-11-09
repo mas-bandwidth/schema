@@ -1025,10 +1025,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -4467,6 +4479,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -4603,6 +4616,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -4763,7 +4782,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -4895,6 +4914,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -4904,7 +4935,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -4913,7 +4945,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -4938,12 +4970,21 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -4989,7 +5030,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -5082,6 +5128,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -5640,7 +5687,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -5834,22 +5887,34 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -6094,7 +6159,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -6248,7 +6314,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -7316,10 +7389,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -9663,7 +9738,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9676,7 +9752,11 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.active = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.active = bool_byte != 0;
+                }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -9685,7 +9765,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9714,7 +9795,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9727,7 +9809,11 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.has_target = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.has_target = bool_byte != 0;
+                }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
@@ -9745,15 +9831,26 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                        else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        if ( decoded_v < 0 )
+                        {
+                            decoded_v = 0;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        else if ( decoded_v > 1000 )
+                        {
+                            decoded_v = 1000;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.target_id = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9767,8 +9864,18 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                if ( decoded_v < 0 )
+                {
+                    decoded_v = 0;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
+                else if ( decoded_v > 1000 )
+                {
+                    decoded_v = 1000;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.target_id = decoded_v;
                 break;
             }
@@ -9778,7 +9885,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9807,7 +9915,8 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9816,7 +9925,11 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -9824,10 +9937,16 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
                     r.report->damaged = true;
                     memset( value.note, 0, sizeof( value.note ) );
                     value.note_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 8 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.note, r.buffer + r.offset, (size_t) keep );
                 value.note[keep] = 0;
                 value.note_length = (int32_t) keep;
@@ -9907,7 +10026,11 @@ template <typename Ctx>
 inline bool PatrolPack( const Ctx & ctx, TablePackMap & seen, const Patrol & src, Patrol & dst, uint8_t * base, int64_t capacity, int64_t & used )
 {
     memcpy( (void *) &dst, (const void *) &src, sizeof( Patrol ) ); // trivially copyable, by construction
-    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;
+    (void) ctx;
+    (void) seen;
+    (void) base;
+    (void) capacity;
+    (void) used;
     return true;
 }
 
@@ -10085,7 +10208,8 @@ inline uint32_t PatrolNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t
 inline void PatrolNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at )
 {
     (void) nodes; // every node this root can name is a FIXED table
-    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
+    (void) r;
+    (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) type_id;
 }
 
@@ -10862,7 +10986,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10875,7 +11000,11 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.active = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.active = bool_byte != 0;
+                }
                 break;
             }
             case 0x2281498aa0200e40ull: // speed
@@ -10884,7 +11013,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10913,7 +11043,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10926,7 +11057,11 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.has_target = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.has_target = bool_byte != 0;
+                }
                 break;
             }
             case 0xb7bc9ac015a25050ull: // target_id
@@ -10944,15 +11079,26 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                        else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        if ( decoded_v < 0 )
+                        {
+                            decoded_v = 0;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        else if ( decoded_v > 1000 )
+                        {
+                            decoded_v = 1000;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.target_id = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10966,8 +11112,18 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                else if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                if ( decoded_v < 0 )
+                {
+                    decoded_v = 0;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
+                else if ( decoded_v > 1000 )
+                {
+                    decoded_v = 1000;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.target_id = decoded_v;
                 break;
             }
@@ -10977,7 +11133,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11006,7 +11163,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11015,7 +11173,11 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -11023,10 +11185,16 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
                     r.report->damaged = true;
                     memset( value.note, 0, sizeof( value.note ) );
                     value.note_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 8 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 8 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 8 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.note, r.buffer + r.offset, (size_t) keep );
                 value.note[keep] = 0;
                 value.note_length = (int32_t) keep;
@@ -11064,7 +11232,8 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
 inline void PatrolNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNodeMap & nodes, uint8_t * at, TableRetain * retain, uint32_t node )
 {
     (void) nodes; // every node this root can name is a FIXED table
-    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
+    (void) r;
+    (void) at; // this root's numbering is always empty: nothing is ever decoded
     (void) type_id;
     (void) retain;
     (void) node;
