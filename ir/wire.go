@@ -379,7 +379,8 @@ func fixedField(f *Field, m map[*Struct]fixedAnswer) bool {
 // wirePos tracks the wire bit position modulo 8 through a struct's items.
 // known=false means the position cannot be determined statically; the
 // analysis is conservative — unknown never enables an optimization, so a
-// wrong "unknown" costs speed, never wire bytes.
+// wrong "unknown" costs speed, never wire bytes. tla/WireAlign.tla is its
+// layout model.
 type wirePos struct {
 	mod   int64
 	known bool
@@ -500,6 +501,10 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 		case f.Type.Kind == TString || f.Type.Kind == TBytes:
 			// each element ends aligned (§4.7); bounds are ≥ 1 (§4.4)
 			return wireAligned
+		case isUnion:
+			// each element is its tag and one arm: give up, as a union does
+			// from an unknown entry
+			return wireUnknown
 		case isStruct:
 			// exit-from-unknown is entry-independent: if it is known, every
 			// element exits there (bounds are ≥ 1); otherwise give up
@@ -536,11 +541,31 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 		// position matters
 		return structAlignExit(f.Type.Ref.(*Struct), pos, m)
 	case isUnion:
-		return wireUnknown
+		return unionAlignExit(f.Type.Ref.(*Union), pos, m)
 	}
 	// every remaining scalar kind is fixed-width, and maxBitsScalar is exact
 	// for it (TInt/TBits/TBool/TFloat32±compressed/TFloat64/Enum/Flags)
 	return pos.add(maxBitsScalar(f, nil))
+}
+
+// unionAlignExit is a union field's exit position from pos. The wire is the
+// tag, then the selected arm alone (SPEC §4.8): None and a payload-free arm
+// are the tag alone. The exit is known only when every arm leaves where None
+// does. tla/WireAlign.tla models this walk.
+func unionAlignExit(u *Union, pos wirePos, m *alignMemo) wirePos {
+	tagged := pos.add(BitsRequired(big.NewInt(0), big.NewInt(u.Max)))
+	if !tagged.known {
+		return wireUnknown
+	}
+	for _, v := range u.Variants {
+		if v.Void() {
+			continue
+		}
+		if afterField(v.F, tagged, m) != tagged {
+			return wireUnknown
+		}
+	}
+	return tagged
 }
 
 // structAlignExit is one nested struct's exit position from pos. The nested
