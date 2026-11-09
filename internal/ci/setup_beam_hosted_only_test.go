@@ -2,6 +2,7 @@ package ci
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"testing"
@@ -73,36 +74,60 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 	return errs
 }
 
-// setupBeamExemptWorkflows names the workflow files this card may not change —
-// they are outside its PATHS — but which still carry erlef/setup-beam steps
-// that predate the hosted-runner rule. They are owed the same guard by the
-// streams that own them: leg.yml:130-131 gates only on matrix.otp, and
-// certify.yml:177,409,579,863 are ungated or gate only on matrix.otp. The
-// exemption is explicit and file-scoped, exactly as setup_java_test.go's
-// ci-fast/ci-full exemption is: every other workflow — and every workflow added
-// later — is still held to the guard, so this cannot hide a new ungated step.
-var setupBeamExemptWorkflows = map[string]bool{
-	"leg.yml":     true,
-	"certify.yml": true,
+// setupBeamExemptSteps names, by workflow and by the line of its `uses:`,
+// the erlef/setup-beam steps this card may not change — leg.yml and
+// certify.yml are outside its PATHS — but which still predate the
+// hosted-runner rule. They are owed the same guard by the streams that own
+// them: leg.yml:130 gates only on matrix.otp, and certify.yml:177,409,579,863
+// are ungated or gate only on matrix.otp. The exemption is step-scoped, not
+// file-scoped (setup_java_test.go's ci-fast/ci-full exemption is the model
+// for naming it at all): every other step — in any other workflow, in a
+// workflow added later, or a new step in these two files — is still held to
+// the guard, so this cannot hide a new ungated step. When an owning stream
+// gates one of these steps, delete its line here; the gate fails on a stale
+// exemption so the list cannot outlive the steps it names.
+var setupBeamExemptSteps = map[string][]int{
+	"leg.yml":     {130},
+	"certify.yml": {177, 409, 579, 863},
+}
+
+// nonExemptSetupBeamErrorsFrom drops only the errors naming an exempt
+// step above.
+func nonExemptSetupBeamErrorsFrom(all []string) []string {
+	var errs []string
+	for _, err := range all {
+		exempt := false
+		for name, lines := range setupBeamExemptSteps {
+			for _, line := range lines {
+				if strings.HasPrefix(err, fmt.Sprintf("%s:%d:", name, line)) {
+					exempt = true
+				}
+			}
+		}
+		if !exempt {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
+// nonExemptSetupBeamErrors runs the check over every workflow and drops
+// only the errors naming an exempt step above.
+func nonExemptSetupBeamErrors(wfs map[string]string) []string {
+	return nonExemptSetupBeamErrorsFrom(checkEverySetupBeamIsHostedOnly(wfs))
 }
 
 // TestEverySetupBeamIsHostedOnly holds the fleet rule across every workflow
-// this card may change: every erlef/setup-beam step in it — in particular
+// under .github/workflows: every erlef/setup-beam step — in particular
 // ci-full.yml's conformance and negative-controls jobs, which run on the
 // fleet's self-hosted schema runners — is gated on a hosted runner, so no
-// workflow can add an ungated setup-beam again. leg.yml and certify.yml are
-// exempt only because this card's PATHS exclude them; see
-// setupBeamExemptWorkflows.
+// workflow can add an ungated setup-beam again. The only exceptions are the
+// steps named in setupBeamExemptSteps, outside this card's PATHS.
 func TestEverySetupBeamIsHostedOnly(t *testing.T) {
 	t.Parallel()
 	all := workflows(t, repoRoot(t))
-	checked := make(map[string]string, len(all))
 	steps := 0
-	for name, data := range all {
-		if setupBeamExemptWorkflows[name] {
-			continue
-		}
-		checked[name] = data
+	for _, data := range all {
 		for raw := range strings.SplitSeq(data, "\n") {
 			trimmed := strings.TrimSpace(raw)
 			if strings.HasPrefix(trimmed, "#") {
@@ -114,12 +139,46 @@ func TestEverySetupBeamIsHostedOnly(t *testing.T) {
 		}
 	}
 	if steps == 0 {
-		t.Fatal("no erlef/setup-beam step in the workflows this gate reads — it would pass over an empty set")
+		t.Fatal("no erlef/setup-beam step under .github/workflows — this gate would pass over an empty set")
 	}
-	for _, err := range checkEverySetupBeamIsHostedOnly(checked) {
+	raw := checkEverySetupBeamIsHostedOnly(all)
+	for name, lines := range setupBeamExemptSteps {
+		for _, line := range lines {
+			found := false
+			for _, err := range raw {
+				if strings.HasPrefix(err, fmt.Sprintf("%s:%d:", name, line)) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s:%d: exempt setup-beam step is no longer ungated — remove it from setupBeamExemptSteps", name, line)
+			}
+		}
+	}
+	for _, err := range nonExemptSetupBeamErrors(all) {
 		t.Error(err)
 	}
-	t.Logf("%d setup-beam steps gated across %d workflows (%d exempt)", steps, len(checked), len(setupBeamExemptWorkflows))
+	exempt := 0
+	for _, lines := range setupBeamExemptSteps {
+		exempt += len(lines)
+	}
+	t.Logf("%d setup-beam steps across %d workflows (%d exempt steps)", steps, len(all), exempt)
+}
+
+// TestSetupBeamExemptionIsStepScoped proves the exemption cannot hide what
+// it does not name: an ungated step in a new workflow, and an ungated step
+// at a new line of an exempt workflow, both still report.
+func TestSetupBeamExemptionIsStepScoped(t *testing.T) {
+	t.Parallel()
+	errs := []string{
+		"leg.yml:130: erlef/setup-beam runs without",
+		"leg.yml:999: erlef/setup-beam runs without",
+		"brand-new.yml:12: erlef/setup-beam runs without",
+	}
+	kept := nonExemptSetupBeamErrorsFrom(errs)
+	if len(kept) != 2 || !strings.HasPrefix(kept[0], "leg.yml:999:") || !strings.HasPrefix(kept[1], "brand-new.yml:12:") {
+		t.Errorf("step-scoped exemption kept %v, want leg.yml:999 and brand-new.yml:12", kept)
+	}
 }
 
 // TestSetupBeamHostedGateNegativeControls removes the guard from each of
@@ -145,8 +204,9 @@ func TestSetupBeamHostedGateNegativeControls(t *testing.T) {
 			t.Fatalf("%s:%s no longer carries the hosted guard %q", wf, job, gated)
 		}
 		ungated := strings.Replace(body, gated, "        if: matrix.otp != ''\n", 1)
-		mutated := map[string]string{wf: strings.Replace(base, body, ungated, 1)}
-		errs := checkEverySetupBeamIsHostedOnly(mutated)
+		mutated := maps.Clone(wfs)
+		mutated[wf] = strings.Replace(base, body, ungated, 1)
+		errs := nonExemptSetupBeamErrors(mutated)
 		if len(errs) != 1 || !strings.Contains(errs[0], wf+":") || !strings.Contains(errs[0], "erlef/setup-beam runs without") {
 			t.Errorf("%s:%s: removing the guard did not report exactly one ungated setup-beam; it reported %v", wf, job, errs)
 		}
