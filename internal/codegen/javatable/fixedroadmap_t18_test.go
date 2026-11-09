@@ -800,13 +800,21 @@ func t18R27(t *testing.T) {
 			}
 		} else {
 			reader := t18LoadUnit(t, tk.r.reader)
+			writer := reader
+			if tk.r.writer != tk.r.reader && m.Row != "cfloat_range_widen" {
+				writer = t18LoadUnit(t, tk.r.writer)
+			}
 			keys := make([]string, 0, len(want))
 			for k := range want {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				if _, past := t18Bound(reader, m.Root, k, want[k]); past {
+				_, past := t18Bound(reader, m.Root, k, want[k])
+				if !past && writer != reader {
+					_, past = t18Bound(writer, m.Root, k, want[k])
+				}
+				if past {
 					pastKeys = append(pastKeys, m.File+":"+k+"="+want[k])
 					pastBound++
 				}
