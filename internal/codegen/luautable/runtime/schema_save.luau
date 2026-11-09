@@ -576,7 +576,7 @@ local function write_keyed(c: any, fd: any, w: any, val: any): boolean
 	local e = fd.e
 	for slot = 1, fd.bound do
 		local keyvs = fd.keyvs
-		local x = val[slot]
+		local x = elem_at(val, slot)
 		if keyvs == nil or keyvs[slot] == nil then
 			-- a descriptor that names no key ids (luautable.go does not emit
 			-- them yet): a slot at its default needs none and elides; any other
@@ -993,9 +993,9 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 	for _, fd in d.fields do
 		if not guard_holds(fd, v) or (fd.present ~= nil and not v[fd.present]) then continue end
 		local val = v[fd.slot]
-		if fd.keyvs ~= nil and typeof(val) == "table" then
+		if fd.keyvs ~= nil and (typeof(val) == "table" or typeof(val) == "buffer") then
 			for slot, pair in fd.keyvs do
-				if pair[3] == true and not elem_is_default(fd.e, val[slot], nil) then
+				if pair[3] == true and not elem_is_default(fd.e, elem_at(val, slot), nil) then
 					return { name = "invalid_value", field = d.name .. "." .. fd.name, variant = pair[1] }
 				end
 			end
