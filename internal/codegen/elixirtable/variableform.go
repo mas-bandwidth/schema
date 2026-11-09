@@ -1469,6 +1469,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(empty_report(), {:non_finite_float, name})}
 
+    # A bits(N) value past the range its WIDTH implies refuses the read (§4),
+    # and the reason names the field.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
@@ -1495,6 +1500,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
+
+  defp reasoned(report, {:out_of_range, name}),
+    do: Map.put(report, :reason, "out_of_range: " <> name)
 
   defp reasoned(report, _damage),
     do: Map.put(report, :reason, "wire_damaged")
@@ -3391,6 +3399,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp clamp_int(v, %{min: _lo, max: hi}, _report) when v > hi,
     do: {hi, throw(:wire_damaged)}
+
+  # A bits(N) field RIDES AS THE NARROWEST UNSIGNED KIND THAT HOLDS IT (§3), so
+  # its payload can carry a value above 2^N - 1 that the declaration cannot.
+  # THE READ NEVER CLAMPS (§4): the value past the range the WIDTH implies
+  # refuses the whole load, out_of_range, naming the field.
+  defp clamp_int(v, %{bits: bits, name: name}, report) when is_integer(bits) and bits > 0 do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
 
   defp clamp_int(v, _f, report), do: {v, report}
 
@@ -5886,6 +5904,12 @@ const variableRetainSource = `
     # (docs/SPEC-TABLES.md §3.3): nothing lands and nothing is retained
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
+       %{retain | records: [], used: 0, ids: []}}
+
+    # A bits(N) value past the range its WIDTH implies refuses the retaining
+    # read as it does the plain one (§4): nothing lands and nothing is retained.
+    {:out_of_range, name} ->
+      {:error, :out_of_range, reasoned(report, {:out_of_range, name}),
        %{retain | records: [], used: 0, ids: []}}
 
     :wire_damaged ->
