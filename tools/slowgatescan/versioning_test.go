@@ -25,17 +25,24 @@ var versioningWant = map[string]string{
 }
 
 // elixirRows are the versioning-elixir matrix rows. tables-elixir-versioning
-// is not one make invocation on them: run 42567880192 measured that target's
-// go test at 146.548s, over the 110s budget, so the two row-loop tests are
-// split by versionRows and the other TestFixedVersioning tests are the rest
-// row. TestCIFullVersioningRowsPerLeg checks the split covers the make
-// recipe's -run and drops no versionRows name.
+// is not one make invocation on them. Run 42567880192 measured that target's
+// go test at 146.548s. Five rows were not enough: run 42572560186 measured
+// new-1 at 214.857s, new-2 at 235.705s, old-1 at 128.737s and the other
+// TestFixedVersioning tests at 434.068s. old-2 was 6.858s and stays one row.
+// TestCIFullVersioningRowsPerLeg checks the split covers the make recipe's
+// -run and drops no versionRows name.
 var elixirRows = []string{
-	"versioning-elixir-new-1",
-	"versioning-elixir-new-2",
-	"versioning-elixir-old-1",
+	"versioning-elixir-new-1a",
+	"versioning-elixir-new-1b",
+	"versioning-elixir-new-2a",
+	"versioning-elixir-new-2b",
+	"versioning-elixir-old-1a",
+	"versioning-elixir-old-1b",
 	"versioning-elixir-old-2",
-	"versioning-elixir-rest",
+	"versioning-elixir-rest-1",
+	"versioning-elixir-rest-2",
+	"versioning-elixir-rest-3",
+	"versioning-elixir-rest-4",
 }
 
 func versioningFindings(content string) []string {
@@ -210,7 +217,7 @@ func elixirFixedVersioningTests(root string) ([]string, error) {
 }
 
 // elixirMakeRun is the -run pattern on make/elixir.mk's tables-elixir-versioning
-// recipe: the suite the five rows have to cover between them.
+// recipe: the suite the elixir rows have to cover between them.
 func elixirMakeRun(root string) (string, error) {
 	b, err := os.ReadFile(filepath.Join(root, "make/elixir.mk"))
 	if err != nil {
@@ -320,10 +327,13 @@ func elixirPartitionFindings(job string, rows, tests []string, makeRun string) [
 	}
 	// The halves name versionRows, the two parents, and nothing else.
 	parents := map[string]string{
-		"versioning-elixir-new-1": "TestFixedVersioningNewReadsOld",
-		"versioning-elixir-new-2": "TestFixedVersioningNewReadsOld",
-		"versioning-elixir-old-1": "TestFixedVersioningOldRefusesNew",
-		"versioning-elixir-old-2": "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-new-1a": "TestFixedVersioningNewReadsOld",
+		"versioning-elixir-new-1b": "TestFixedVersioningNewReadsOld",
+		"versioning-elixir-new-2a": "TestFixedVersioningNewReadsOld",
+		"versioning-elixir-new-2b": "TestFixedVersioningNewReadsOld",
+		"versioning-elixir-old-1a": "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-old-1b": "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-old-2":  "TestFixedVersioningOldRefusesNew",
 	}
 	named := map[string]int{}
 	for row, parent := range parents {
@@ -347,10 +357,9 @@ func elixirPartitionFindings(job string, rows, tests []string, makeRun string) [
 			}
 		}
 	}
-	rest := byRow["versioning-elixir-rest"]
-	if rest.run != makeRun {
-		findings = append(findings, "rest -run "+rest.run+" != make recipe "+makeRun)
-	}
+	// The other TestFixedVersioning tests are the rows that are not halves.
+	// Together they have to match the makefile -run, one row each, and a
+	// half's Parent/^(names)$ pattern must not select them.
 	for _, test := range tests {
 		if !matchesRun(makeRun, test) {
 			continue
