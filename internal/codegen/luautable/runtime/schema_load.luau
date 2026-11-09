@@ -837,6 +837,16 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
+-- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function put(dst: any, i: number, x: any)
+	if typeof(dst) == "buffer" then
+		buffer.writeu8(dst, i - 1, x)
+	else
+		dst[i] = x
+	end
+end
+
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. A key this reader cannot name is
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
@@ -903,7 +913,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -1047,16 +1057,6 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	-- its live length rides as n, the table.pack convention, and the save reads it
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
 	return true
-end
-
--- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
--- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
-	if typeof(dst) == "buffer" then
-		buffer.writeu8(dst, i - 1, x)
-	else
-		dst[i] = x
-	end
 end
 
 -- the bytes one text-list element contributes to its total
