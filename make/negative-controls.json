@@ -404,7 +404,7 @@
     {
       "name": "base-c-skip-timestamp",
       "when": "nightly",
-      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md \u00a73): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and a pinned featurewitnesses ArrayRoot body carrying one unknown kind-36 field replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 75 s on run 42556155793 and 106 s on run 42554833739 (96-126 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C wire-fuzz driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
+      "why": "the C reader's kind-36 skip control (docs/SPEC-TABLES.md §3): the timestamp kind taken out of the generated skip table in a scratch copy, the wire-fuzz driver rebuilt against it, and a pinned featurewitnesses ArrayRoot body carrying one unknown kind-36 field replayed against the engine. Alone for the reason base-c-wire is: a complete C driver compile is the floor of the job. Moved nightly: its control step measured 75 s on run 42556155793 and 106 s on run 42554833739 (96-126 s wall), on top of the shared setup and build. It is already a single control whose floor is one complete C wire-fuzz driver compile, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-skip-timestamp-kind-negative-control"
       ]
@@ -673,12 +673,26 @@
       ]
     },
     {
-      "name": "message-form",
+      "name": "message-form-count",
       "when": "pull-request",
-      "why": "the message form's blades: the count, the emitter and the text content rule. The one control of this family that drives the sabotage rows one submake each does not fit the owner's rule alone, so it runs nightly. Measured under 16 s over 3 controls.",
+      "why": "the message form's count-width blade (docs/SPEC-TABLES.md §3.3): one emitter overlay rebuild and one C++ compile of the count probe. Split from the former single `message-form` group, which ran 130-148 s and was killed at 120 s on runs 42556155793 and 42554833739; measured 16 s of control time alone on vision (under 6 s on a quiet host).",
       "targets": [
-        "tables-message-form-count-negative-control",
-        "tables-message-form-emitter-negative-control",
+        "tables-message-form-count-negative-control"
+      ]
+    },
+    {
+      "name": "message-form-emitter",
+      "when": "pull-request",
+      "why": "the message form's emitter blade (docs/SPEC-TABLES.md §3.3: the slot-off-by-one and count-sixteen-bits sabotages through two emitter overlay rebuilds and two C++ compiles). Split from the former single `message-form` group, which ran 130-148 s and was killed at 120 s on runs 42556155793 and 42554833739; measured 15 s of control time alone on vision (under 6 s on a quiet host).",
+      "targets": [
+        "tables-message-form-emitter-negative-control"
+      ]
+    },
+    {
+      "name": "message-form-text",
+      "when": "pull-request",
+      "why": "the message form's text-content blade (docs/SPEC-TABLES.md §3.3: one emitter overlay rebuild and one C++ compile of the ill-formed-U+0000 probe). Split from the former single `message-form` group, which ran 130-148 s and was killed at 120 s on runs 42556155793 and 42554833739; measured 4 s of control time alone on vision.",
+      "targets": [
         "tables-message-form-text-negative-control"
       ]
     },
@@ -693,7 +707,7 @@
     {
       "name": "base-c-strict-load",
       "when": "pull-request",
-      "why": "the C strict-read control (docs/SPEC-TABLES.md \u00a76.5): the plain read names made tolerant through a go test -overlay of the C emitter, so compiler/tablescstrictload_test.go must go red. Its overlay rebuild of the compiler test binary took about 2.5 minutes inside the base job on run 40618210451 and pushed that job past its five-minute timeout, so it runs alone.",
+      "why": "the C strict-read control (docs/SPEC-TABLES.md §6.5): the plain read names made tolerant through a go test -overlay of the C emitter, so compiler/tablescstrictload_test.go must go red. Its overlay rebuild of the compiler test binary took about 2.5 minutes inside the base job on run 40618210451 and pushed that job past its five-minute timeout, so it runs alone.",
       "targets": [
         "tables-c-strict-load-negative-control"
       ]
@@ -745,7 +759,7 @@
     {
       "name": "base-c-finite",
       "when": "nightly",
-      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single SCHEMA_SLOW go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
+      "why": "the C leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md §3.3, the 2026-10-27 finite rule): it blinds each check in the emitted C in turn (the variable read at both widths, the message read at both widths, the fixed finite pass, the retained unknown, and the file, message, fixed and cook writers) and requires exactly that check's rows of TestCFiniteFloats red and every other row green. Ten small cc builds of one probe unit, about 3 s together on the author's machine (arm64 macOS). Moved nightly: on the fleet its control step measured 99 s on run 42556155793 and 77 s on run 42554833739 (132-133 s wall), on top of the shared setup and build; that 3 s figure was the author's quiet machine and is not the fleet measurement. It is a single SCHEMA_SLOW go test that blinds ten checks in turn, so no grouping can cut it further; it moves to the nightly tier (certify.yml), where it still runs in full, instead of leaving the per-commit leg.",
       "targets": [
         "tables-c-finite-float-negative-control"
       ]
@@ -769,7 +783,7 @@
     {
       "name": "base-c-discard",
       "when": "pull-request",
-      "why": "the C leg's WHOLE-LOAD DISCARD control (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): it removes each read's discard from the emitted C in turn (the value read, the region read, the retaining read, the builder read and both text reads) and requires exactly that read's rows of TestDamageDiscardsTheWholeLoadC red and every other row green. Six small cc builds of one probe unit, about 10 s together on hetzner1, so well inside the rule on its own row.",
+      "why": "the C leg's WHOLE-LOAD DISCARD control (docs/SPEC-TABLES.md §4, damage discards the whole load): it removes each read's discard from the emitted C in turn (the value read, the region read, the retaining read, the builder read and both text reads) and requires exactly that read's rows of TestDamageDiscardsTheWholeLoadC red and every other row green. Six small cc builds of one probe unit, about 10 s together on hetzner1, so well inside the rule on its own row.",
       "targets": [
         "tables-c-discard-negative-control",
         "tables-c-cycle-negative-control",
@@ -779,7 +793,7 @@
     {
       "name": "base-cpp-discard",
       "when": "pull-request",
-      "why": "the C++ leg's WHOLE-LOAD DISCARD controls (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): each removes one read's discard from a COPY of the emitter through a Go build overlay and requires TestDamageDiscardsTheWholeLoadCPP red on that read's own line \u2014 the value read's LoadVerdict (codecs.go), the region read and the builder load (pointers.go). The controls are anchored on the strict read's current names: the plain Load and the damaged flag, never the retired LoadTolerant and malformed spellings. Three small C++ builds of one probe unit, well inside the rule on its own row.",
+      "why": "the C++ leg's WHOLE-LOAD DISCARD controls (docs/SPEC-TABLES.md §4, damage discards the whole load): each removes one read's discard from a COPY of the emitter through a Go build overlay and requires TestDamageDiscardsTheWholeLoadCPP red on that read's own line — the value read's LoadVerdict (codecs.go), the region read and the builder load (pointers.go). The controls are anchored on the strict read's current names: the plain Load and the damaged flag, never the retired LoadTolerant and malformed spellings. Three small C++ builds of one probe unit, well inside the rule on its own row.",
       "targets": [
         "tables-cpp-discard-negative-control",
         "tables-cpp-region-discard-negative-control",
@@ -789,7 +803,7 @@
     {
       "name": "wire-fuzz-cpp-cycle",
       "when": "nightly",
-      "why": "the C++ cycle-verdict control (docs/SPEC-TABLES.md \u00a73.1): the verdict is removed from a COPY of arena.go through a Go build overlay and TestPointerNamingAnOpenNodeIsRefusedCPP runs as one SCHEMA_SLOW gate. It is its own row. In CI full run 42608548526 on head 9480e504b this row ran 119 s (11:24:11Z..11:26:10Z), past the 110 s per-commit ceiling and close to the 120 s kill, so it moves to nightly like its linear twin wire-fuzz-cpp-cycle-linear, whose recipe sets go test -timeout 300s and whose probe has no alarm. One control, nightly, where the job timeout is 60 minutes.",
+      "why": "the C++ cycle-verdict control (docs/SPEC-TABLES.md §3.1): the verdict is removed from a COPY of arena.go through a Go build overlay and TestPointerNamingAnOpenNodeIsRefusedCPP runs as one SCHEMA_SLOW gate. It is its own row. In CI full run 42608548526 on head 9480e504b this row ran 119 s (11:24:11Z..11:26:10Z), past the 110 s per-commit ceiling and close to the 120 s kill, so it moves to nightly like its linear twin wire-fuzz-cpp-cycle-linear, whose recipe sets go test -timeout 300s and whose probe has no alarm. One control, nightly, where the job timeout is 60 minutes.",
       "targets": [
         "tables-cpp-cycle-negative-control"
       ]
@@ -797,7 +811,7 @@
     {
       "name": "wire-fuzz-cpp-cycle-linear",
       "when": "nightly",
-      "why": "the C++ linear-walk control (docs/SPEC-TABLES.md \u00a73.1): a COPY of arena.go enters a shared node once per path, and TestDiamondChainLoadsLinearCPP must go red. The recipe is SCHEMA_SLOW=1 go test -timeout 300s, and cppHeldRun's probe has no alarm, so a walk that does not return holds the job until that timeout. 300 s cannot fit a per-commit row (110 s target, 2-minute kill). Nightly, one control. This card has not timed a completed run; the bound is the timeout written in the recipe.",
+      "why": "the C++ linear-walk control (docs/SPEC-TABLES.md §3.1): a COPY of arena.go enters a shared node once per path, and TestDiamondChainLoadsLinearCPP must go red. The recipe is SCHEMA_SLOW=1 go test -timeout 300s, and cppHeldRun's probe has no alarm, so a walk that does not return holds the job until that timeout. 300 s cannot fit a per-commit row (110 s target, 2-minute kill). Nightly, one control. This card has not timed a completed run; the bound is the timeout written in the recipe.",
       "targets": [
         "tables-cpp-cycle-linear-negative-control"
       ]
@@ -814,7 +828,7 @@
     {
       "name": "wire-fuzz-cpp-refusal",
       "when": "pull-request",
-      "why": "the C++ retaining-load refusal control (docs/SPEC-TABLES.md \u00a73.3, \u00a76.6): the store reset is removed from a COPY of pointers.go and TestRefusedLoadsHandBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, so it does not share a job with the fixed-batch twin. Measured 23 s in CI full run 42608548526 (and 63 s in run 42613741359), under the 110 s per-commit ceiling.",
+      "why": "the C++ retaining-load refusal control (docs/SPEC-TABLES.md §3.3, §6.6): the store reset is removed from a COPY of pointers.go and TestRefusedLoadsHandBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, so it does not share a job with the fixed-batch twin. Measured 23 s in CI full run 42608548526 (and 63 s in run 42613741359), under the 110 s per-commit ceiling.",
       "targets": [
         "tables-cpp-retain-refusal-negative-control"
       ]
@@ -822,7 +836,7 @@
     {
       "name": "wire-fuzz-cpp-fixed-refusal",
       "when": "pull-request",
-      "why": "the C++ fixed-batch refusal control (docs/SPEC-TABLES.md \u00a74, \u00a76.5): the no_layout reset is removed from a COPY of fixedform.go and TestFixedRefusalHandsBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, beside the retaining-load twin, so the two compiles do not share a per-commit job. Measured 41 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
+      "why": "the C++ fixed-batch refusal control (docs/SPEC-TABLES.md §4, §6.5): the no_layout reset is removed from a COPY of fixedform.go and TestFixedRefusalHandsBackNothingCPP runs as one SCHEMA_SLOW gate. Its own row, beside the retaining-load twin, so the two compiles do not share a per-commit job. Measured 41 s in CI full run 42608548526 (and 28 s in run 42616597055), under the 110 s per-commit ceiling.",
       "targets": [
         "tables-cpp-fixed-refusal-negative-control"
       ]
@@ -846,7 +860,7 @@
     {
       "name": "wire-fuzz-oracle",
       "when": "nightly",
-      "why": "the tolerant-wire oracle's body-span clamp (docs/SPEC-TABLES.md \u00a74.2), removed from a COPY of decode.go and replayed through build/wire-fuzz-cpp at --n 0. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
+      "why": "the tolerant-wire oracle's body-span clamp (docs/SPEC-TABLES.md §4.2), removed from a COPY of decode.go and replayed through build/wire-fuzz-cpp at --n 0. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
       "targets": [
         "tables-wire-fuzz-oracle-negative-control"
       ]
@@ -956,7 +970,7 @@
     {
       "name": "moo-view",
       "when": "pull-request",
-      "why": "the moo unit view's controls (docs/SPEC-TABLES.md \u00a78.7; make/moo-view.mk), on the moo pin .github/actions/moo restores into dist/moo: each breaks one claim of the corpus gate in a copy of the generated text (a printer that leaves a multi-line doc unflattened, a declaration dropped from the registry's tables set, a general arm's arm_offset moved one byte, a field's doc emptied, a field of a type no table reaches given a wire id) and requires the listing red on the line that claim owns. One go test of internal/codegen/mootable under SCHEMA_SLOW; the five subtests measured under 0.4 s each on vision, so the row is the package's compile plus the pin's cache restore.",
+      "why": "the moo unit view's controls (docs/SPEC-TABLES.md §8.7; make/moo-view.mk), on the moo pin .github/actions/moo restores into dist/moo: each breaks one claim of the corpus gate in a copy of the generated text (a printer that leaves a multi-line doc unflattened, a declaration dropped from the registry's tables set, a general arm's arm_offset moved one byte, a field's doc emptied, a field of a type no table reaches given a wire id) and requires the listing red on the line that claim owns. One go test of internal/codegen/mootable under SCHEMA_SLOW; the five subtests measured under 0.4 s each on vision, so the row is the package's compile plus the pin's cache restore.",
       "targets": [
         "tables-moo-view-negative-controls"
       ],
@@ -1049,7 +1063,7 @@
     {
       "name": "cs-finite-float",
       "when": "pull-request",
-      "why": "the C# finite rule (docs/SPEC-TABLES.md \u00a73.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. Four probe builds, 8 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. Four probe builds, 8 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "tables-cs-finite-float-negative-control"
       ],
@@ -1067,7 +1081,7 @@
     {
       "name": "cs-wire-fuzz-repeated-id",
       "when": "pull-request",
-      "why": "the C# wire-alone walk's repeated field id (docs/SPEC-TABLES.md \u00a76.5): one pointer table generated in-process, the two duplicate refusals taken out of the emitted WireWalk, and the check required to go red. A go test of internal/codegen/cstable, not a C# leg rebuild and not an interpreter. The printed base defines the make target and names it in no group, so it lands here alone on the pull request.",
+      "why": "the C# wire-alone walk's repeated field id (docs/SPEC-TABLES.md §6.5): one pointer table generated in-process, the two duplicate refusals taken out of the emitted WireWalk, and the check required to go red. A go test of internal/codegen/cstable, not a C# leg rebuild and not an interpreter. The printed base defines the make target and names it in no group, so it lands here alone on the pull request.",
       "targets": [
         "tables-cs-wire-fuzz-repeated-id-negative-control"
       ]
@@ -1168,7 +1182,7 @@
     {
       "name": "cs-block-home",
       "when": "nightly",
-      "why": "the C# block-home control (docs/SPEC-TABLES.md \u00a719.2): the emitted-for-the-unit home taken out of the block emitter, so a unit whose block runtime has nowhere to land must fail to compile. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42588004197, the one-target row finished at 139 s wall with no assertion failure (job 2026-11-09T09:05:39Z-09:07:58Z, the control went red and the job succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
+      "why": "the C# block-home control (docs/SPEC-TABLES.md §19.2): the emitted-for-the-unit home taken out of the block emitter, so a unit whose block runtime has nowhere to land must fail to compile. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42588004197, the one-target row finished at 139 s wall with no assertion failure (job 2026-11-09T09:05:39Z-09:07:58Z, the control went red and the job succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
       "targets": [
         "tables-block-home-negative-control"
       ],
@@ -1177,7 +1191,7 @@
     {
       "name": "cs-block-inline",
       "when": "nightly",
-      "why": "the C# block inline-array control (docs/SPEC-TABLES.md \u00a72.7): a bounded array inside a nested record projected out of line, so compiling the corpus or Verify() must go red. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42598278281, the one-target row finished at 246 s wall with no assertion failure (job 2026-11-09T10:10:17Z-10:14:23Z, the make step succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
+      "why": "the C# block inline-array control (docs/SPEC-TABLES.md §2.7): a bounded array inside a nested record projected out of line, so compiling the corpus or Verify() must go red. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42598278281, the one-target row finished at 246 s wall with no assertion failure (job 2026-11-09T10:10:17Z-10:14:23Z, the make step succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
       "targets": [
         "tables-block-inline-array-negative-control"
       ],
@@ -1312,7 +1326,7 @@
     {
       "name": "cs-leg-region-blob-shared",
       "when": "nightly",
-      "why": "the C# table leg's region-blob-shared control (make/cs.mk cs_leg_sabotage): the native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md \u00a72.5), so blob_shared's region writes the blob two slots late, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42593314285, the one-target row was cancelled at 344 s wall with no assertion failure (job 2026-11-09T09:45:08Z-09:50:52Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
+      "why": "the C# table leg's region-blob-shared control (make/cs.mk cs_leg_sabotage): the native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots late, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42593314285, the one-target row was cancelled at 344 s wall with no assertion failure (job 2026-11-09T09:45:08Z-09:50:52Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-region-blob-shared-negative-control"
       ],
@@ -1330,7 +1344,7 @@
     {
       "name": "cs-leg-discard",
       "when": "nightly",
-      "why": "the C# table leg's managed-load discard (make/cs.mk cs_leg_sabotage, table-cs-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md \u00a74), the managed load's discard taken out, so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone. On this branch, run 42593314285, the one-target row was cancelled at 345 s wall with no assertion failure (job 2026-11-09T09:43:28Z-09:49:13Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
+      "why": "the C# table leg's managed-load discard (make/cs.mk cs_leg_sabotage, table-cs-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the managed load's discard taken out, so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone. On this branch, run 42593314285, the one-target row was cancelled at 345 s wall with no assertion failure (job 2026-11-09T09:43:28Z-09:49:13Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-discard-negative-control"
       ],
@@ -1339,7 +1353,7 @@
     {
       "name": "cs-leg-region-discard",
       "when": "nightly",
-      "why": "the C# table leg's region-load discard (make/cs.mk cs_leg_sabotage2, table-cs-region-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md \u00a74), the native region load's discard taken out (the retaining load is derived from it), so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone. It is already one control paying one full leg rebuild (43-101 s on a quiet runner), so it cannot be split further; that rebuild alone exceeds the ~75 s control-time target before the ~30 s setup and shared build, and the 162 s quiet-runner pair above is not representative of the loaded fleet, where today's rows run 117-147 s. Its identical-cost sibling cs-leg-discard was cancelled at 345 s wall on run 42593314285 and runs nightly, as does every other full-leg-rebuild C# control in this family. It cannot fit the per-commit budget alone, so it runs nightly.",
+      "why": "the C# table leg's region-load discard (make/cs.mk cs_leg_sabotage2, table-cs-region-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the native region load's discard taken out (the retaining load is derived from it), so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone. It is already one control paying one full leg rebuild (43-101 s on a quiet runner), so it cannot be split further; that rebuild alone exceeds the ~75 s control-time target before the ~30 s setup and shared build, and the 162 s quiet-runner pair above is not representative of the loaded fleet, where today's rows run 117-147 s. Its identical-cost sibling cs-leg-discard was cancelled at 345 s wall on run 42593314285 and runs nightly, as does every other full-leg-rebuild C# control in this family. It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-region-discard-negative-control"
       ],
@@ -1348,7 +1362,7 @@
     {
       "name": "cs-leg-builder-discard",
       "when": "nightly",
-      "why": "the C# table leg's builder-discard control (make/cs.mk cs_leg_sabotage): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md \u00a74), the builder load's discard taken out of builderload.go, so a builder load damaged inside a nested body answers true with the decoded root. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule). It is already one control, so it cannot be split further. On run 42572541131 the row was cancelled at the job's 5-minute timeout (wall 319 s) and cannot fit under 110 s, so it moves here (certify.yml's nightly schedule).",
+      "why": "the C# table leg's builder-discard control (make/cs.mk cs_leg_sabotage): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the builder load's discard taken out of builderload.go, so a builder load damaged inside a nested body answers true with the decoded root. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule). It is already one control, so it cannot be split further. On run 42572541131 the row was cancelled at the job's 5-minute timeout (wall 319 s) and cannot fit under 110 s, so it moves here (certify.yml's nightly schedule).",
       "targets": [
         "tables-cs-leg-builder-discard-negative-control"
       ],
@@ -1382,46 +1396,118 @@
       "dotnet": "pin"
     },
     {
-      "name": "rust",
+      "name": "rust-cards-packet",
       "when": "pull-request",
-      "why": "the Rust port's name gate and its four packet families. Measured 3 s over 5 controls, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 8 s over 3 controls on the author's machine. The tables soak's control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature: the allocator call count must go red while the live-heap drift line stays flat) rides here too: 6 s on the Linux bench, the fixed-form corpus and the generated Rust crates already built. The JSON-hostile control (the old reader planted through a go test overlay: exactly the fifteen \u00a716.3 refusal rows of TestJsonHostileTextRefusalsRust must red) rides here too: 2 s on the author's machine. The cook write's finite-float control (put_f32/put_f64's NaN and infinity refusal dropped through go test -overlay, so TestCookWriteRust must red on its FINITE probe alone) rides here too: 6 s on the author's machine. The wire fuzzer's control (the node reader's out-of-range malformed verdict dropped through go build -overlay, the all-roots driver rebuilt, and the enumerated passes required red on the report) rides here too: 24 s on the author's machine, 20 of them the driver build. The conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated with that compiler, the conformance driver rebuilt against them, and rust / json-read required red while json-write and wire stay green) rides here too: 19 s on the author's machine, most of it the driver build. The text differential's control (the emitted float32 writer capped at six significant digits in memory, required red on the text comparison against the Go engine) rides here too: about 1 s on the author's machine. The accessor/descriptor agreement's two controls (a cook accessor pair swapped and a block pointer slot moved through go build -overlay, each required to red exactly its own fields) ride here too. The numbering walk's control (the grouped walk planted in the emitter through go test -overlay: arms_ptr and maps_pointers must red) and the float NaN control (table_widen_f32's bit surgery replaced by the hardware conversion through go test -overlay: the signalling NaNs must red) ride here too. The allocation gate's control (one Box planted per walked block row through the gate crate's negative-control feature: that row must red at exactly 192 a call and every other row stay green) rides here too: 6 s on the author's machine from a clean crate build. The keyed accessor's control (the None half, the E.Max half and the shift taken out of table_enums.rs in turn, each required to red exactly its own clause) rides here too. The map writer's sort control (each writer's sort made a no-op, each required to red its own clause) rides here too. The cook of maps and lists' three controls (the carve laying a map's entries unsorted, an array unaligned, and a 128-bit holder's extent at the floor of eight, each through go build -overlay with the gate rebuilt against the regenerated mapdemo, listdemo and widelistdemo crates and required red on its own line) ride here too: about 60 s on intel, most of it the crate builds. The 3.0.0 proof's controls ride here too, each measured on vision (64 cores, warm build): the cook layout asserts taken out of the emitter (3 s), the fixed cook's scalar put made order-blind (4 s), the cook's and the block's order-word checks taken out in turn (7 s), the `&node` label renamed (9 s), two edited copies of docs/USAGE.md (9 s), the release tier's three scalings taken away (2 s), a clippy-only lint planted in a copy of a generated unit (10 s), and the conformance driver rebuilt with every absence written as an answer (about 30 s of driver build, the walk control's cost). The finite float rule's control (eight sabotages of the generated Rust, each required to red exactly its own clauses) rides here too: under 2 s on the author's machine, rustc alone. The framing control (docs/LAYERS/1-framing.md, F6, T8) rebuilds the conformance driver over copies of the tblr1 crate without the 4096-entry cap and the graphdemo crate without the cycle refusal, and requires framing red on frame_entries_4097 and the three cycle rows; then over a graphdemo that takes a built node for an open one, and requires framing red on node_diamond_chain.",
+      "why": "the Rust card driver's three controls (render, upgrade, taskhash, each required to red exactly its own surface) and the four packet families' Rust legs (arm defaults, defaults, UTF-8, wide), each one small cargo build off the generated tree. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 41 s of control time over the 7 controls on vision (cards render 9 s, upgrade 4 s, hash 4 s, packet arm-defaults 5 s, defaults 8 s, utf8 6 s, wide 6 s; 11 s on the author's quiet machine).",
       "targets": [
         "cards-rust-conformance-negative-control",
         "cards-rust-conformance-upgrade-negative-control",
         "cards-rust-conformance-hash-negative-control",
-        "conformance-negative-control-rust-walk",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
         "packet-utf8-rust-negative-control",
-        "packet-wide-rust-negative-control",
-        "tables-rust-alloc-negative-control",
+        "packet-wide-rust-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-walk",
+      "when": "pull-request",
+      "why": "the Rust conformance walk control (the emitted JSON reader's field-key match sabotaged through go build -overlay, the units regenerated and the conformance driver rebuilt against them, requiring rust / json-read red while json-write and wire stay green) paired with the cook-write finite-float and JSON-hostile go-test overlay controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739) so no row carries two complete-driver rebuilds. Measured 60 s of control time over the 3 controls on vision (walk 50 s, cook-write 6 s, json-hostile 5 s; 27 s on the author's quiet machine).",
+      "targets": [
+        "conformance-negative-control-rust-walk",
         "tables-rust-cook-write-negative-control",
-        "tables-rust-json-differential-negative-control",
-        "tables-rust-accessor-negative-control",
-        "tables-rust-slot-negative-control",
-        "tables-rust-number-walk-negative-control",
-        "tables-rust-json-hostile-negative-control",
-        "tables-rust-names-negative-control",
-        "tables-rust-runtime-home-negative-control",
-        "tables-rust-guard-negative-control",
-        "tables-rust-retain-negative-control",
-        "tables-rust-soak-negative-control",
-        "tables-rust-wire-fuzz-negative-control",
-        "tables-rust-keyed-negative-control",
-        "tables-rust-map-sort-negative-control",
-        "tables-rust-cook-layout-negative-control",
+        "tables-rust-json-hostile-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-conformance-framing",
+      "when": "pull-request",
+      "why": "the Rust conformance framing control (docs/LAYERS/1-framing.md, F6, T8) and per-case absence control (docs/PORTING.md I4), with the byte-order, order-word, node-label and cook-layout 3.0.0 proof controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 58 s of control time over the 6 controls on vision (framing 9 s, absent 12 s, byte-order 7 s, order-word 11 s, node-label 15 s, cook-layout 6 s).",
+      "targets": [
+        "conformance-negative-control-rust-framing",
+        "conformance-rust-absent-negative-control",
         "tables-rust-byte-order-negative-control",
         "tables-rust-order-word-negative-control",
         "tables-rust-node-label-negative-control",
-        "tables-rust-usage-negative-control",
-        "tables-rust-release-negative-control",
-        "tables-rust-clippy-negative-control",
-        "conformance-rust-absent-negative-control",
-        "conformance-negative-control-rust-framing",
-        "tables-rust-finite-float-negative-control",
-        "tables-rust-cook-map-negative-control",
+        "tables-rust-cook-layout-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-wire-fuzz",
+      "when": "pull-request",
+      "why": "the Rust wire-fuzz differential control (the node reader's out-of-range malformed verdict dropped through go build -overlay, the all-roots driver rebuilt, and the enumerated passes required red on the report). Split into its own row from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739) because the all-roots driver rebuild and enumerated run measured 66 s of control time alone on vision (24 s on the author's quiet machine).",
+      "targets": [
+        "tables-rust-wire-fuzz-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-tables-1",
+      "when": "pull-request",
+      "why": "first slice of the Rust table emitter's go-test and go-build overlay controls: the numbering walk and float NaN control, the keyed accessor's three clauses (None, E.Max, shift), the map writer's sort control, and the accessor/descriptor and block-slot agreement controls. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 59 s of control time over the 5 controls on vision (number-walk 15 s, keyed 10 s, map-sort 15 s, accessor 10 s, slot 9 s).",
+      "targets": [
+        "tables-rust-number-walk-negative-control",
+        "tables-rust-keyed-negative-control",
+        "tables-rust-map-sort-negative-control",
+        "tables-rust-accessor-negative-control",
+        "tables-rust-slot-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-tables-2",
+      "when": "pull-request",
+      "why": "second slice of the Rust table emitter's overlay controls: the variable-form and fixed-form damage-discard controls, the guard control, the name gate, the runtime-home control, and the JSON text-differential control. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 62 s of control time over the 6 controls on vision (discard 24 s, fixed-discard 19 s, guard 5 s, names 5 s, runtime-home 6 s, json-differential 5 s).",
+      "targets": [
         "tables-rust-discard-negative-control",
-        "tables-rust-fixed-discard-negative-control"
+        "tables-rust-fixed-discard-negative-control",
+        "tables-rust-guard-negative-control",
+        "tables-rust-names-negative-control",
+        "tables-rust-runtime-home-negative-control",
+        "tables-rust-json-differential-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-retain-soak",
+      "when": "pull-request",
+      "why": "the Rust retention control and the tables soak control (one matched alloc/free pair per case per iteration through the soak crate's negative-control feature, requiring the allocator call count red while live-heap drift stays flat). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 56 s of control time over the 2 controls on vision (retain 38 s, soak 18 s).",
+      "targets": [
+        "tables-rust-retain-negative-control",
+        "tables-rust-soak-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-clippy-alloc",
+      "when": "pull-request",
+      "why": "the Rust clippy-clean drift control (a clippy-only lint planted in a copy of a generated unit), the allocation-gate control (one Box planted per walked block row through the gate crate's negative-control feature), and the finite-float rule's eight sabotages. Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 64 s of control time over the 3 controls on vision (clippy 39 s, alloc 15 s, finite-float 10 s).",
+      "targets": [
+        "tables-rust-clippy-negative-control",
+        "tables-rust-alloc-negative-control",
+        "tables-rust-finite-float-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-release-usage",
+      "when": "pull-request",
+      "why": "the Rust release-tier scaling refusal control (three scalings taken away) and the docs/USAGE.md example verification control (two edited copies of docs/USAGE.md). Split from the former 36-target `rust` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 50 s of control time over the 2 controls on vision (release 27 s, usage 23 s).",
+      "targets": [
+        "tables-rust-release-negative-control",
+        "tables-rust-usage-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "rust-cook-map",
+      "when": "nightly",
+      "why": "the Rust cook of maps and lists' three controls (the carve laying a map's entries unsorted, an array unaligned, and a 128-bit holder's extent at the floor of eight, each rebuilding the compiler under go build -overlay, regenerating the mapdemo, listdemo and widelistdemo crates, and rebuilding the gate from scratch with cargo test). Moved to the nightly tier (certify.yml) when splitting the 36-target `rust` group on 2026-11-09: this single target measured 116 s warm and 124 s cold alone on vision, past the ~75 s per-row control budget and the 120 s per-commit cap at any group size.",
+      "targets": [
+        "tables-rust-cook-map-negative-control"
       ],
       "rust": "stable"
     },
@@ -1534,7 +1620,7 @@
       "name": "js-discard",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md \u00a74): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (\u00a73.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
+      "why": "the JavaScript leg's DAMAGE DISCARDS THE WHOLE LOAD controls (docs/SPEC-TABLES.md §4): the variable form's discard and the message batch's discard, each removed from a tools/sabotage copy of one internal/codegen/jstable source reached by a Go overlay, each requiring its gate (TestDamageDiscardsTheWholeLoadJavaScript, TestMessageFormBatchJavaScript) red on its own line; and the cycle check blinded to an OPEN vertex (§3.1), requiring TestCyclicWireIsDamageJavaScript red on a cyclic wire. A group of its own so the js and js-proof jobs keep their measured time; two go test runs of the jstable package under node.",
       "targets": [
         "tables-js-discard-negative-control",
         "tables-js-batch-discard-negative-control",
@@ -1607,7 +1693,7 @@
     {
       "name": "dart-tables-1",
       "when": "pull-request",
-      "why": "the Dart port's table gates' controls, half: the versioning, the fuzz oracle, the keyed, the order, the fuzz-lead, the names, the runtime home, the standalone, the accessor/descriptor agreement and the slot. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-2 split the table gates so each row stays inside the rule. The versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
+      "why": "the Dart port's table gates' controls, half: the versioning, the fuzz oracle, the keyed, the order, the fuzz-lead, the names, the runtime home, the standalone, the accessor/descriptor agreement and the slot. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-2 split the table gates so each row stays inside the rule. The versioning gate's control adds about ten seconds for one column over every row of §5.7.",
       "targets": [
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
@@ -1660,7 +1746,7 @@
     {
       "name": "java-packet",
       "when": "pull-request",
-      "why": "the Java port's four packet families, with the packet FINITE-FLOAT control (SPEC.md \u00a74.3): arm defaults, defaults, UTF-8, wide and finite-float, each one schema build and one small javac off the generated tree, a few seconds. Split out of the `java` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-cards carries the card facade and the conformance-harness.",
+      "why": "the Java port's four packet families, with the packet FINITE-FLOAT control (SPEC.md §4.3): arm defaults, defaults, UTF-8, wide and finite-float, each one schema build and one small javac off the generated tree, a few seconds. Split out of the `java` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-cards carries the card facade and the conformance-harness.",
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
@@ -1705,7 +1791,7 @@
     {
       "name": "java-versioning",
       "when": "nightly",
-      "why": "the Java fixed-form VERSIONING control alone (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of \u00a75.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21, and the row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); it is one control, so it cannot be split further on the pull request, and it moves to the nightly tier.",
+      "why": "the Java fixed-form VERSIONING control alone (§5.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of §5.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21, and the row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); it is one control, so it cannot be split further on the pull request, and it moves to the nightly tier.",
       "targets": [
         "tables-java-versioning-negative-control"
       ],
@@ -1714,7 +1800,7 @@
     {
       "name": "java-finite",
       "when": "pull-request",
-      "why": "the Java leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md \u00a73.3, the 2026-10-27 finite rule): it removes each check from the generated code in turn (the variable read, the retained unknown, the message read, the fixed read, the variable writer, the record accessor) and requires exactly that check's lines of TestJavaFiniteFloats red and every other line green. Six javac-and-run probes over one small unit, about 2 s each on the author's machine (arm64 macOS), so well inside the rule on its own row.",
+      "why": "the Java leg's FINITE TABLE FLOAT control (docs/SPEC-TABLES.md §3.3, the 2026-10-27 finite rule): it removes each check from the generated code in turn (the variable read, the retained unknown, the message read, the fixed read, the variable writer, the record accessor) and requires exactly that check's lines of TestJavaFiniteFloats red and every other line green. Six javac-and-run probes over one small unit, about 2 s each on the author's machine (arm64 macOS), so well inside the rule on its own row.",
       "targets": [
         "tables-java-finite-float-negative-control"
       ],
@@ -1723,7 +1809,7 @@
     {
       "name": "java-discard",
       "when": "pull-request",
-      "why": "the Java leg's DAMAGE DISCARDS THE WHOLE LOAD control (docs/SPEC-TABLES.md \u00a74): it removes the discard from the generated load, the text read and the retaining load in turn and requires TestDamageDiscardsTheWholeLoadJava red on exactly that entry point. Three javac-and-run passes over four small units.",
+      "why": "the Java leg's DAMAGE DISCARDS THE WHOLE LOAD control (docs/SPEC-TABLES.md §4): it removes the discard from the generated load, the text read and the retaining load in turn and requires TestDamageDiscardsTheWholeLoadJava red on exactly that entry point. Three javac-and-run passes over four small units.",
       "targets": [
         "tables-java-discard-negative-control"
       ],
@@ -1732,7 +1818,7 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm\u2019s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind\u2019s count inside the map\u2019s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire’s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm’s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind’s count inside the map’s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
@@ -1767,7 +1853,7 @@
     {
       "name": "java-proof-2",
       "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table\u2019s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
+      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table’s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
       "targets": [
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
@@ -1858,7 +1944,7 @@
     {
       "name": "elixir-fixed-form",
       "when": "pull-request",
-      "why": "the Elixir fixed form's control: one byte off the write template reds the reference byte match. It rebuilds only the nine fixed-form units through the overlay, not the variable corpus, so it measured 26 s in the old `elixir-versioning` group (the other two thirds \u2014 versioning's go-test and the hostile corpus's full rebuild \u2014 moved or stayed apart on their own rows).",
+      "why": "the Elixir fixed form's control: one byte off the write template reds the reference byte match. It rebuilds only the nine fixed-form units through the overlay, not the variable corpus, so it measured 26 s in the old `elixir-versioning` group (the other two thirds — versioning's go-test and the hostile corpus's full rebuild — moved or stayed apart on their own rows).",
       "targets": [
         "tables-elixir-fixed-form-negative-control"
       ],
@@ -1878,7 +1964,7 @@
     {
       "name": "elixir-discard",
       "when": "pull-request",
-      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): removing the plain read's discard from a copy of the emitter reds TestDamageDiscardsTheWholeLoadElixir on a framing vector. It generates and runs three units under the overlay, so it is a group of its own.",
+      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md §4): removing the plain read's discard from a copy of the emitter reds TestDamageDiscardsTheWholeLoadElixir on a framing vector. It generates and runs three units under the overlay, so it is a group of its own.",
       "targets": [
         "tables-elixir-discard-negative-control"
       ],
@@ -1922,7 +2008,7 @@
     {
       "name": "elixir-nightly-accessors",
       "when": "nightly",
-      "why": "the rest of the Elixir corpus-rebuild controls: the accessor, slot and retain agreement gates (each a sabotaged full-corpus compile, as the old elixir-1/-2 carried them), the two json-hostile rows (each a sabotaged corpus compile, about 60 s on the studio), the hostile-corpus plant (a planted reader rebuilt over the whole corpus plus two runner passes), reach (a copied ebin recompiled under a sabotaged emitter) and wire-fuzz-refusal (which pays the corpus compile its row owns). These moved to the nightly tier with elixir-nightly-conformance and elixir-nightly-emitter on 2026-11-09 because each exceeds the per-commit control budget on its own. REACH RETIRED (green-negctl-elixir-anchors-2): the rule it watched is gone from the code \u2014 since the whole-load discard landed, nested damage throws :wire_damaged and discards the load, so a non-finite float after that damage is never reached as a non-finite refusal (variable_load answers malformed/wire_damaged for all three reach_ vectors, and load answers :previous_form under the now-fixed ProfileConfig), and the harness wireVerdict compares only read acceptance, its non-finite verdict no longer existing; the superseding discard rule keeps its own elixir-discard control, and the retired reach target only checks the three vectors still refuse on the plain build.",
+      "why": "the rest of the Elixir corpus-rebuild controls: the accessor, slot and retain agreement gates (each a sabotaged full-corpus compile, as the old elixir-1/-2 carried them), the two json-hostile rows (each a sabotaged corpus compile, about 60 s on the studio), the hostile-corpus plant (a planted reader rebuilt over the whole corpus plus two runner passes), reach (a copied ebin recompiled under a sabotaged emitter) and wire-fuzz-refusal (which pays the corpus compile its row owns). These moved to the nightly tier with elixir-nightly-conformance and elixir-nightly-emitter on 2026-11-09 because each exceeds the per-commit control budget on its own. REACH RETIRED (green-negctl-elixir-anchors-2): the rule it watched is gone from the code — since the whole-load discard landed, nested damage throws :wire_damaged and discards the load, so a non-finite float after that damage is never reached as a non-finite refusal (variable_load answers malformed/wire_damaged for all three reach_ vectors, and load answers :previous_form under the now-fixed ProfileConfig), and the harness wireVerdict compares only read acceptance, its non-finite verdict no longer existing; the superseding discard rule keeps its own elixir-discard control, and the retired reach target only checks the three vectors still refuse on the plain build.",
       "targets": [
         "tables-elixir-accessor-negative-control",
         "tables-elixir-slot-negative-control",
@@ -2084,9 +2170,10 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120, and the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control). The message form's four blades run on the pull request, so what moves nightly is those passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control); and the Go conformance driver's message-surface control (conformance-negative-control-go-message) runs 117 s alone on hulk including a cold generated-Go tree and driver build, past the per-row rule, so it moved here on 2026-11-09 when the go-message group was split. The message form's four blades still run on the pull request, so what moves nightly is these passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
+        "conformance-negative-control-go-message",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ],
@@ -2196,32 +2283,52 @@
       "lobster": "v2026.8"
     },
     {
-      "name": "go-containers",
+      "name": "go-containers-1",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4). The counted-tail and counted-work controls are re-anchored onto the strict read's Reset loops in internal/codegen/gotable/codecs.go (the whole-value reset at LoadBody entry now clears counted struct and union array tails, the rule the old per-field loops held), held by TestCountedUnionTailReset and TestCountedStructTailResetWork. The arm-framing control is re-anchored onto the strict measure's root framing and root extent walk in internal/codegen/gotable/regions.go, which must refuse a damaged arm reference before any body resolves it.",
+      "why": "the Go container family's six modes (sort, ascending, duplicate, key-domain, dead, cap) and the builder-union refusal control. Split from the former 14-target `go-containers` group, which ran 130-148 s and was killed at 120 s on runs 42556155793 and 42554833739. Measured 42 s of control time over the 2 controls on vision (containers 37 s, builders 5 s).",
       "targets": [
         "tables-go-containers-negative-controls",
-        "tables-go-accessor-negative-control",
-        "tables-go-slot-negative-control",
-        "tables-go-runtime-home-negative-control",
-        "tables-go-block-race-negative-control",
-        "tables-go-block-fill-refuser-negative-control",
+        "tables-go-builders-negative-control"
+      ]
+    },
+    {
+      "name": "go-containers-2",
+      "when": "pull-request",
+      "why": "the Go caller-allocation ownership controls (three modes plus the compiled-pin runtime mode) and the bounded-retention controls. Split from the former 14-target `go-containers` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 40 s of control time over the 3 controls on vision (allocator 18 s, allocator-runtime 13 s, retain 10 s).",
+      "targets": [
         "tables-go-allocator-negative-controls",
         "tables-go-allocator-runtime-negative-control",
-        "tables-go-retain-negative-controls",
-        "tables-go-builders-negative-control",
-        "tables-go-measure-negative-controls",
+        "tables-go-retain-negative-controls"
+      ]
+    },
+    {
+      "name": "go-containers-3",
+      "when": "pull-request",
+      "why": "the Go runtime-home overlay rebuild, the FIXED FORM's byte oracle against the C++ reference corpus (docs/SPEC-TABLES.md §3.4), the accessor/descriptor and slot agreement pair, the block race and fill-refuser controls, and the text-differential and finite-float slowgate probes. Split from the former 14-target `go-containers` group (killed at 130-148 s on runs 42556155793 and 42554833739). Measured 45 s of control time over the 8 controls on vision (runtime-home 14 s, fixed-form 10 s, accessor 6 s, slot 3 s, block-race 4 s, block-fill-refuser 2 s, text-differential 3 s, finite-float 3 s).",
+      "targets": [
+        "tables-go-runtime-home-negative-control",
         "tables-go-fixed-form-negative-control",
+        "tables-go-accessor-negative-control",
+        "tables-go-slot-negative-control",
+        "tables-go-block-race-negative-control",
+        "tables-go-block-fill-refuser-negative-control",
         "tables-go-text-differential-negative-control",
         "tables-go-finite-float-negative-control"
       ]
     },
     {
+      "name": "go-containers-measure",
+      "when": "pull-request",
+      "why": "the Go measure family's six modes (measure-cycle, measure-count, wire-damage, counted-tail, counted-work, arm-framing). The counted-tail and counted-work controls are re-anchored onto the strict read's Reset loops in internal/codegen/gotable/codecs.go (the whole-value reset at LoadBody entry now clears counted struct and union array tails, the rule the old per-field loops held), held by TestCountedUnionTailReset and TestCountedStructTailResetWork. The arm-framing control is re-anchored onto the strict measure's root framing and root extent walk in internal/codegen/gotable/regions.go, which must refuse a damaged arm reference before any body resolves it. Split into its own row from the former 14-target `go-containers` group (killed at 130-148 s on runs 42556155793 and 42554833739) because the six measure modes measured 67 s of control time alone on vision.",
+      "targets": [
+        "tables-go-measure-negative-controls"
+      ]
+    },
+    {
       "name": "go-message",
       "when": "pull-request",
-      "why": "the generated Go MESSAGE form's controls (docs/SPEC-TABLES.md \u00a73.3): the conformance driver's message surface with one byte of the login_full batch flipped (red on that row, wire green), and the in-package controls of internal/codegen/gotable/messageform_negative_test.go, each planting one fault in a copy of the generated source (batch count on write and on read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer) and requiring its gate's probe red on its own message. Measured on hulk (17 cores, load 45 from other jobs): the message control 117 s including a cold generated-Go tree and driver build, the in-package controls 23 s with a warm build cache, 13 s through make.",
+      "why": "the generated Go MESSAGE form's in-package controls of internal/codegen/gotable/messageform_negative_test.go (docs/SPEC-TABLES.md §3.3: batch count on write and read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer). Measured 23 s with a warm build cache on hulk (13 s through make, 8 s on vision). The conformance driver's message-surface control (conformance-negative-control-go-message, 117 s alone on hulk including a cold generated-Go tree and driver build) does not fit the ~75 s control budget at any group size, so it moved to the nightly tier.",
       "targets": [
-        "conformance-negative-control-go-message",
         "tables-go-message-form-negative-controls"
       ]
     },
@@ -2241,7 +2348,7 @@
     {
       "name": "go-discard",
       "when": "pull-request",
-      "why": "DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md \u00a74): two overlay rebuilds of the gotable emitter, each removing one discard guard, and TestDamageDiscardsTheWholeLoadGo red on that guard's own line. Go only.",
+      "why": "DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): two overlay rebuilds of the gotable emitter, each removing one discard guard, and TestDamageDiscardsTheWholeLoadGo red on that guard's own line. Go only.",
       "targets": [
         "tables-go-discard-negative-control"
       ]
@@ -2255,18 +2362,32 @@
       ]
     },
     {
-      "name": "go-proof",
+      "name": "go-proof-1",
       "when": "pull-request",
-      "why": "the Go leg's proof-cell controls (docs/PORTING.md M5, M11, M14, I4, I12, J3, J4, J6): each sabotages the generated unit or the emitter its gate guards through a go build or go test overlay and requires that gate red on its own words. Go and the serialize.go sibling, nothing else. Measured 45 s of control time together on amd-1 and 78 s on hulk (2026-10-31; hulk: keyed 13 s, layout 5 s, graph label 5 s, usage 3 s, absent 11 s, cards 8 s, clean 11 s, release 22 s), inside the 120 s rule.",
+      "why": "first slice of the Go leg's proof-cell controls (docs/PORTING.md M11, I12, J3): the release-tier scaling refusal (22 s on hulk, 30 s on vision), the block layout contract (5 s on hulk, 14 s on vision), and the docs/USAGE.md surface check (3 s on hulk, 21 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 30 s of control time on hulk (65 s on vision).",
       "targets": [
-        "tables-go-keyed-negative-control",
+        "tables-go-release-negative-control",
         "tables-go-layout-contract-negative-control",
-        "tables-go-graph-label-negative-control",
-        "tables-go-usage-negative-control",
+        "tables-go-usage-negative-control"
+      ]
+    },
+    {
+      "name": "go-proof-2",
+      "when": "pull-request",
+      "why": "second slice of the Go leg's proof-cell controls (docs/PORTING.md M14, I4, J6): the conformance driver's per-case absence surface (11 s on hulk, 15 s warm on vision), the card renderer check (8 s on hulk, 24 s on vision), and the &node graph-label check (5 s on hulk, 13 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (52 s warm on vision).",
+      "targets": [
         "conformance-negative-control-go-absent",
         "cards-conformance-go-negative-control",
-        "tables-go-clean-negative-control",
-        "tables-go-release-negative-control"
+        "tables-go-graph-label-negative-control"
+      ]
+    },
+    {
+      "name": "go-proof-3",
+      "when": "pull-request",
+      "why": "third slice of the Go leg's proof-cell controls (docs/PORTING.md M5, J4): the keyed accessor's three clauses (13 s on hulk, 3 s warm on vision) and the clean-vet/clean-format gate (11 s on hulk, 37 s on vision). Split from the former 8-target `go-proof` group (78 s together on hulk, killed at 130-148 s on runs 42556155793 and 42554833739). Measured 24 s of control time on hulk (40 s warm on vision).",
+      "targets": [
+        "tables-go-keyed-negative-control",
+        "tables-go-clean-negative-control"
       ]
     },
     {
@@ -2649,7 +2770,7 @@
     },
     {
       "target": "tables-lua-finite-float-negative-control",
-      "reason": "the Lua leg's finite-float reversed witness (docs/SPEC-TABLES.md \u00a73.3) is the Go test TestLuaFiniteFloatNegativeControl in internal/codegen/luatable, which ci-full.yml's go-test job runs under the pinned Lua 5.4.8 (make dist-lua) on every pull request, as part of go test ./...; the shared negative-control leg has no Lua toolchain to run it a second time."
+      "reason": "the Lua leg's finite-float reversed witness (docs/SPEC-TABLES.md §3.3) is the Go test TestLuaFiniteFloatNegativeControl in internal/codegen/luatable, which ci-full.yml's go-test job runs under the pinned Lua 5.4.8 (make dist-lua) on every pull request, as part of go test ./...; the shared negative-control leg has no Lua toolchain to run it a second time."
     },
     {
       "target": "schema-lua-version-differential-negative-control",
