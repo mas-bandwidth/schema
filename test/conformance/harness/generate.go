@@ -35,12 +35,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cookedReportClean holds a cook's report to clean: any count is a reason the
-// fixture is not the tool's.
-func cookedReportClean(inst Instance, r compiler.TableReport) bool {
-	return r.Silent()
-}
-
 type units struct {
 	c      *compiler.Compiler
 	loaded map[string]*ir.Unit
@@ -718,7 +712,10 @@ func oracleRefusesJSONWrite(unit *ir.Unit, wr JSONWriteRefusal) error {
 	value := model.New(root)
 	var report tabletext.Report
 	if ok, err := tablewire.Decode(model, value, wire, &report); !ok || err != nil {
-		return fmt.Errorf("the wire does not load: %v", err)
+		if err != nil {
+			return fmt.Errorf("the wire does not load: %w", err)
+		}
+		return fmt.Errorf("the wire does not load")
 	}
 	if err := applyJSONWriteDamage(value, wr.Damage); err != nil {
 		return err

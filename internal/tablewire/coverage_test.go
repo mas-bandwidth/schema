@@ -467,49 +467,6 @@ func TestStreamPointerArmRegion(t *testing.T) {
 	}
 }
 
-const covRetainSender = `package retaincover
-
-enum Kind { A, B }
-
-union Pick
-{
-    tally int32 | min = 0, max = 100
-    note  string(8)
-}
-
-fixed table Item { n int32 }
-
-table Root
-{
-    keep int32
-    s    string(8)
-    w    wstring(8)
-    f    float32
-    freq float32 | min = -1, max = 1, resolution = 0.01
-    b    bytes(4)
-    arr    [..3]uint16
-    kind   Kind
-    pick   Pick
-    d      int64
-    h      uint64
-    yes    bool
-    f64    float64
-    wide   int128 | min = -1000000000000000000000, max = 1000000000000000000000
-    uwide  uint128
-    bitsv  bits(9)
-    names  map[string(4)]string(6)
-    keyed  [Kind]Item
-}
-`
-
-const covRetainReader = `package retaincover
-
-fixed table Root
-{
-    keep int32
-}
-`
-
 const covRetainFileSender = `package retainfile
 
 enum Key { A, B }

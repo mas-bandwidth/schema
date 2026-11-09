@@ -32,7 +32,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -226,7 +225,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(goose, "run", "main.goose")
+	cmd := gooserun.Command(t, goose, "run", "main.goose")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

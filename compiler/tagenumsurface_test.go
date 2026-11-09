@@ -23,7 +23,7 @@ import (
 // enum's surface is made against a target that is emitting the declared enum's
 // surface in the same file. The enum has THREE variants and the union has two,
 // so every extent below names the tag enum and not its neighbor.
-const tagEnumUnit = `package tag
+const tagEnumUnit = `package tagenum
 
 enum ShipType { Fighter, Bomber, Scout }
 

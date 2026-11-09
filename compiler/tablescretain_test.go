@@ -57,7 +57,7 @@ int main(void){
  uint8_t storage[8192],out[8192];TableRetainId ids[128];TableRetain keep={0};TableReport report={0};const Root * root;int64_t bytes,need,cap;uint8_t * region;
  keep.bytes=storage;keep.capacity=sizeof(storage);keep.ids=ids;keep.id_capacity=128;
  need=root_load_measure(wire,sizeof(wire));CHECK(need>0);region=(uint8_t *)malloc((size_t)need);CHECK(region);
- root=root_load_retain(region,need,wire,sizeof(wire),&keep,&report);CHECK(root);CHECK(!report.malformed&&!report.refused&&report.unknown==13&&report.retained==13&&!report.retain_lost);CHECK(keep.count==13&&keep.id_used==0);
+ root=root_load_retain(region,need,wire,sizeof(wire),&keep,&report);CHECK(root);CHECK(!report.refused&&report.unknown==13&&report.retained==13&&!report.retain_lost);CHECK(keep.count==13&&keep.id_used==0);
  bytes=root_measure_retain(root,&keep);CHECK(bytes==(int64_t)sizeof(wire));CHECK(root_save_retain(root,&keep,out,bytes,&report)==bytes);CHECK(!report.retain_lost);CHECK(!memcmp(wire,out,(size_t)bytes));
  CHECK(root_save_retain(root,&keep,out,bytes,NULL)==-1);
  for(cap=0;cap<bytes;cap++){memset(out,0xa5,sizeof(out));CHECK(root_save_retain(root,&keep,out,cap,&report)==-1);CHECK(out[cap]==0xa5);}
@@ -109,7 +109,7 @@ func TestCTableRetainFramedDepth(t *testing.T) {
 			}
 			runCTableWireProbe(t, old, fmt.Sprintf(`#include "ProbeTable.h"
 static const uint8_t wire[]={%s};
-int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report={0};uint8_t store[8192],out[8192];const Root * root;int64_t need=root_load_measure(wire,sizeof(wire)),bytes;uint8_t * region;if(need<0)return 1;region=(uint8_t *)malloc((size_t)need);if(!region)return 2;retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;root=root_load_retain(region,need,wire,sizeof(wire),&retain,&report);if(!root||report.malformed||report.refused||report.unknown!=1||report.retained!=%d||report.retain_lost!=%d)return 3;bytes=root_measure_retain(root,&retain);if(bytes<0||root_save_retain(root,&retain,out,sizeof(out),&report)!=bytes)return 4;free(region);return 0;}
+int main(void){TableRetain retain={0};TableRetainId ids[256];TableReport report={0};uint8_t store[8192],out[8192];const Root * root;int64_t need=root_load_measure(wire,sizeof(wire)),bytes;uint8_t * region;if(need<0)return 1;region=(uint8_t *)malloc((size_t)need);if(!region)return 2;retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;root=root_load_retain(region,need,wire,sizeof(wire),&retain,&report);if(!root||report.refused||report.unknown!=1||report.retained!=%d||report.retain_lost!=%d)return 3;bytes=root_measure_retain(root,&retain);if(bytes<0||root_save_retain(root,&retain,out,sizeof(out),&report)!=bytes)return 4;free(region);return 0;}
 `, octets.String(), kept, 1-kept))
 		})
 	}

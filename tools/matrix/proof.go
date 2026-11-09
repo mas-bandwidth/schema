@@ -332,7 +332,6 @@ func CaseUnits(root string) (map[string]string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer f.Close()
 	units := map[string]bool{}
 	var order []string
 	var lines [][]string
@@ -353,6 +352,12 @@ func CaseUnits(root string) (map[string]string, []string, error) {
 		lines = append(lines, w)
 	}
 	if err := sc.Err(); err != nil {
+		if cerr := f.Close(); cerr != nil {
+			return nil, nil, cerr
+		}
+		return nil, nil, err
+	}
+	if err := f.Close(); err != nil {
 		return nil, nil, err
 	}
 	out := map[string]string{}
@@ -624,7 +629,7 @@ func computeCell(in Inputs, row, lang string) Cell {
 		c.Status, c.Why = StatusRed, "no case of this row was answered: the leg ran nothing here"
 		return c
 	}
-	var passed, ruled []answer
+	var passed []answer
 	var absent, failed, missing []string
 	rulings := map[string]bool{}
 	for _, a := range answers {
@@ -633,7 +638,6 @@ func computeCell(in Inputs, row, lang string) Cell {
 			passed = append(passed, a)
 		case "absent":
 			if id := in.Rulings.caseRuling(a.surface, a.name, lang); id != "" {
-				ruled = append(ruled, a)
 				rulings[id] = true
 				continue
 			}

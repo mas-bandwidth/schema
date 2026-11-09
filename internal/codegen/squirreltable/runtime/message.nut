@@ -4,7 +4,7 @@ local _M = vargv[0];
 local setSlot = function(o, k, v) { if (k in o) o[k] = v; else o[k] <- v; };
 local reset = function(r) {
   if (r == null) return;
-  setSlot(r, "unknown", 0); setSlot(r, "mismatch", 0); setSlot(r, "widened", 0); setSlot(r, "oor", 0);
+  setSlot(r, "unknown", 0); setSlot(r, "widened", 0);
   setSlot(r, "bodyDamaged", false); setSlot(r, "refused", false); setSlot(r, "reason", null);
 };
 
@@ -229,63 +229,54 @@ messageWidenF32 = function(bits) {
 };
 // f32 rounds a double to the nearest float32 and back, exactly
 f32 = function(x) { return messageWidenF32(messageNarrowF32(x.tofloat())); };
+// THE READ IS STRICT (docs/SPEC-TABLES.md §6.5): the first refusal by name
+// stops the walk, and LoadMessages refuses the whole batch by that name.
+// Damage is r.bad with no name; a named refusal is r.bad with r.refusal.
+local refuseRead = function(r, why) {
+  if (r.refusal == null) r.refusal = why;
+  r.bad = true;
+};
 // THE ONE RULE (§3.3): a finite float32 read into a COMPRESSED float32 field
-// clamps to the declared range and counts, a -0 lands as +0, and a float32
-// widened into a float64 field clamps nothing (the Go engine's rangeFloat)
-local messageClampFloat = function(r, fd, v) {
+// outside the declared range refuses out_of_range, a -0 lands as +0, and a
+// float32 widened into a float64 field has no range (the Go engine's rangeFloat)
+local messageRangeFloat = function(r, fd, v) {
   if (!fd.f32 || fd.fmin == null) return v;
-  if (v < fd.fmin) { r.oor++; return f32(fd.fmin); }
-  if (v > fd.fmax) { r.oor++; return f32(fd.fmax); }
+  if (v < fd.fmin || v > fd.fmax) { refuseRead(r, "out_of_range"); return 0.0; }
   if (v == 0.0) return 0.0;
   return v;
+};
+// KIND 12's CONTENT RULE (§3, textValid in internal/tablewire/text.go):
+// well-formed UTF-8 with no zero byte, over n bytes of the batch at byte at
+local messageTextOk = function(b, at, n) {
+  local i = 0;
+  while (i < n) {
+    local b0 = b[at + i];
+    if (b0 == 0) return false;
+    if (b0 < 0x80) { i++; continue; }
+    local need, cp;
+    if ((b0 & 0xe0) == 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) == 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) == 0xf0) { need = 3; cp = b0 & 0x07; }
+    else return false;
+    if (i + need >= n) return false;
+    for (local k = 1; k <= need; k++) {
+      local bb = b[at + i + k];
+      if ((bb & 0xc0) != 0x80) return false;
+      cp = (cp << 6) | (bb & 0x3f);
+    }
+    local min = need == 1 ? 0x80 : (need == 2 ? 0x800 : 0x10000);
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    i += 1 + need;
+  }
+  return true;
+};
+local reservedId = function(id) {
+  return id == 0xfffffffffffffffd || id == 0xfffffffffffffffe || id == 0xffffffffffffffff;
 };
 local bitCount = function(n) {
   local bits = 0;
   while (n > 0) { bits++; n = n >> 1; }
   return bits;
-};
-local skipRemoteEntry;
-local skipRemoteBody;
-// THE UNKNOWN SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
-// message_skip_depth): every reader-side skip starts at 0, a body's fields are
-// skipped at the body's own depth, and a nested body, a union arm or a walked
-// element is one level down; past 128 the batch is malformed, and 128 itself
-// still skips (internal/codegen/darttable/messageform_batch.go, skipEntry).
-skipRemoteEntry = function(T,v,r,e,depth) {
-  if(depth>128){r.bad=true;return;}
-  local sh=e.Shape,k=sh.Kind;
-  if(k==0||k==32)return;
-  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en==null||en.Shape.Kind!=0||(en.Id==0xfffffffffffffffd||en.Id==0xfffffffffffffffe||en.Id==0xffffffffffffffff))r.bad=true;return;}
-  if(k==13){skipRemoteBody(T,v,r,depth+1);return;}
-  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm==null||arm.Shape.Kind==0||(arm.Id==0xfffffffffffffffd||arm.Id==0xfffffffffffffffe||arm.Id==0xffffffffffffffff)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
-  if(k==12||k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max){r.bad=true;return;}if(k==12&&!alignRead(r)){r.bad=true;return;}skip(r,n*(k==12?8:16));return;}
-  if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
-  if(k==14||k==16){local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}if(k==14&&e.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}for(local i=0;i<n;i++){if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipRemoteEntry(T,v,r,e.Element,depth+1);if(r.bad)return;}return;}
-  if(k==17){r.bad=true;return;}
-  if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
-};
-skipRemoteBody = function(T,v,r,depth) {
-  if(depth>128){r.bad=true;return;}
-  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Entries.len()){r.bad=true;return;}local entry=v.Entries[ref-1];if(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff){r.bad=true;return;}skipRemoteEntry(T,v,r,entry,depth);if(r.bad)return;}
-};
-local findSlot = function(T, id) {
-  for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
-  return 0;
-};
-local idAt = function(v, ref) {
-  if (v == null || ref <= 0 || ref > v.Ids.len()) return null;
-  return v.Ids[ref - 1];
-};
-local findField = function(T, id) {
-  foreach (name, d in T.Descriptors) foreach (f in d.fields) if (f.id == id) return f;
-  return null;
-};
-local numberBits = function(fd) {
-  if (fd.shape == "bool") return 1;
-  if (fd.shape == "flags") return fd.flagbits;
-  if (fd.lo != null && fd.hi != null) return bitCount(fd.hi - fd.lo);
-  if (fd.bits > 0) return fd.bits;
-  return fd.width * 8;
 };
 // WIDE TEXT ON THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): kind 33's
 // content rule, SURROGATES PAIRED and no zero unit (wideValid in
@@ -303,6 +294,72 @@ local wideValid = function(units) {
     } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
   }
   return true;
+};
+local skipRemoteEntry;
+local skipRemoteBody;
+// THE UNKNOWN SKIP WALK IS BOUNDED AT DEPTH 128 (docs/SPEC-TABLES.md §3.3,
+// message_skip_depth): every reader-side skip starts at 0, a body's fields are
+// skipped at the body's own depth, and a nested body, a union arm or a walked
+// element is one level down; past 128 the batch is malformed, and 128 itself
+// still skips (internal/codegen/darttable/messageform_batch.go, skipEntry).
+// EVERY WIRE-ALONE RULE HOLDS ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §6.5,
+// "DECIDABLE FROM THE WIRE ALONE", applied to every byte, skipped or decoded):
+// a reference, ill-formed text, a non-finite float, a quantized index above its
+// step count, a repeated field id in a body and a repeated keyed slot each
+// refuse the batch whether or not this reader declares the field.
+skipRemoteEntry = function(T,v,r,e,depth) {
+  if(depth>128){r.bad=true;return;}
+  local sh=e.Shape,k=sh.Kind;
+  if(k==0||k==32)return;
+  if(k==30){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local en=v.Entries[ref-1];if(en.Shape.Kind!=0||reservedId(en.Id))r.bad=true;return;}
+  if(k==13){skipRemoteBody(T,v,r,depth+1);return;}
+  if(k==15){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local arm=v.Entries[ref-1];if(arm.Shape.Kind==0||reservedId(arm.Id)){r.bad=true;return;}skipRemoteEntry(T,v,r,arm,depth+1);return;}
+  if(k==12){local n=get(r,sh.Bits);if(r.bad||n>sh.Max||!alignRead(r)||r.bits+n*8>r.b.len()*8){r.bad=true;return;}if(!messageTextOk(r.b,r.bits/8,n)){r.bad=true;return;}r.bits+=n*8;return;}
+  if(k==33){local n=get(r,sh.Bits);if(r.bad||n>sh.Max||r.bits+n*16>r.b.len()*8){r.bad=true;return;}local units=array(n);for(local i=0;i<n;i++)units[i]=get(r,16);if(!wideValid(units))r.bad=true;return;}
+  if(k==31){if(!alignRead(r)){r.bad=true;return;}local n=get(r,32);if(r.bad)return;skip(r,n*8);return;}
+  if(k==11){local raw=get(r,64);if(!r.bad&&(raw&0x7ff0000000000000)==0x7ff0000000000000)refuseRead(r,"non_finite_float");return;}
+  if(k==10&&sh.Packing==2){local index=get(r,sh.Bits);if(r.bad)return;if(index>sh.QCount){r.bad=true;return;}local x=f32(f32(f32(f32(index.tofloat())/f32(sh.QCount.tofloat()))*sh.QDelta)+sh.QMin);if(x-x!=0)refuseRead(r,"non_finite_float");return;}
+  if(k==10){local raw=get(r,32);if(!r.bad&&(raw&0x7f800000)==0x7f800000)refuseRead(r,"non_finite_float");return;}
+  if(k==14||k==16){
+    local n=get(r,sh.Bits)+sh.Min;if(r.bad||n>sh.Max){r.bad=true;return;}
+    local ek=e.Element.Kind;
+    if(k==14&&ek==6&&!alignRead(r)){r.bad=true;return;}
+    // A RUN OF FIXED-WIDTH ELEMENTS NO RULE LOOKS INSIDE IS ARITHMETIC, so a
+    // hostile count over a zero-width element buys no loop
+    if(k==14&&ek!=10&&ek!=11&&ek!=12&&ek!=13&&ek!=14&&ek!=15&&ek!=16&&ek!=17&&ek!=30&&ek!=31&&ek!=33){
+      if(ek==0||ek==32)return;
+      local width=e.Element.Shape.Bits;if(width<0){r.bad=true;return;}
+      skip(r,n*width);return;
+    }
+    local keys=k==16?[]:null;
+    for(local i=0;i<n;i++){
+      local before=r.bits;
+      if(k==16){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||reservedId(ke.Id)||keys.find(ke.Id)!=null){r.bad=true;return;}keys.append(ke.Id);}
+      skipRemoteEntry(T,v,r,e.Element,depth+1);if(r.bad)return;
+      // A WALKED ELEMENT THAT CONSUMED NO BITS is damage, as the Go engine's
+      // tableMessageSkip holds it, so the walk is bounded by the batch's bits
+      if(r.bits==before){r.bad=true;return;}
+    }
+    return;
+  }
+  if(k==17){r.bad=true;return;}
+  if(sh.Bits<0){r.bad=true;return;}skip(r,sh.Bits);
+};
+skipRemoteBody = function(T,v,r,depth) {
+  if(depth>128){r.bad=true;return;}
+  local seen=[];
+  for(;;){local ref=get(r,v.RefBits);if(r.bad||ref==0)return;if(ref>v.Count){r.bad=true;return;}local entry=v.Entries[ref-1];if(reservedId(entry.Id)||seen.find(entry.Id)!=null){r.bad=true;return;}seen.append(entry.Id);skipRemoteEntry(T,v,r,entry,depth);if(r.bad)return;}
+};
+local findSlot = function(T, id) {
+  for (local i = 0; i < T.TableMessageIds.len(); i++) if (T.TableMessageIds[i] == id) return i + 1;
+  return 0;
+};
+local numberBits = function(fd) {
+  if (fd.shape == "bool") return 1;
+  if (fd.shape == "flags") return fd.flagbits;
+  if (fd.lo != null && fd.hi != null) return bitCount(fd.hi - fd.lo);
+  if (fd.bits > 0) return fd.bits;
+  return fd.width * 8;
 };
 local wideClamp = function(units, bound) {
   local cut = bound;
@@ -353,7 +410,6 @@ local writeBody;
 local writePayload;
 local readBody;
 local readPayload;
-local skipPayload;
 local kindWidens;
 local readBatch;
 
@@ -408,11 +464,11 @@ local writeScalar = function(T, w, fd, value) {
 local readScalar = function(r, T, v, fd, shape) {
   if (fd.shape == "bool") return get(r, 1) != 0;
   if (fd.shape == "enum") {
-    local ref = get(r, v.RefBits), id = idAt(v, ref);
-    if (ref == 0) return null;
-    if (id == null) { r.bad = true; return null; }
-    local entry=v.Entries[ref-1];
-    if(entry.Shape.Kind!=0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return null;}
+    local ref = get(r, v.RefBits);
+    if (r.bad || ref == 0) return null;
+    if (ref > v.Count) { r.bad = true; return null; }
+    local entry=v.Entries[ref-1], id=entry.Id;
+    if(entry.Shape.Kind!=0||reservedId(id)){r.bad=true;return null;}
     local name = null, dep = false;
     foreach (p in fd.variants) {
       if (p[1] == id) { name = p[0]; dep = p.len() > 2 && p[2]; break; }
@@ -425,30 +481,33 @@ local readScalar = function(r, T, v, fd, shape) {
   }
   if (fd.shape == "float") {
     // A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
-    // §3.3), before the bits become a value: the first name wins and the
-    // batch refuses whole (LoadMessages). A quantized float's index always
-    // names a finite value.
-    if (shape.Kind==11) {local raw=get(r,64);if(r.bad)return 0.0;if((raw&0x7ff0000000000000)==0x7ff0000000000000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return casti2f(raw);}
-    if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}return messageClampFloat(r,fd,messageWidenF32(raw));}
+    // §3.3), before the bits become a value: the batch refuses whole
+    // (LoadMessages), non_finite_float: <Owner>.<field>.
+    if (shape.Kind==11) {local raw=get(r,64);if(r.bad)return 0.0;if((raw&0x7ff0000000000000)==0x7ff0000000000000){refuseRead(r,"non_finite_float: "+fd.nf);return 0.0;}return casti2f(raw);}
+    if (shape.Kind==10 && shape.Packing!=2) {local raw=get(r,32);if(r.bad)return 0.0;if((raw&0x7f800000)==0x7f800000){refuseRead(r,"non_finite_float: "+fd.nf);return 0.0;}return messageRangeFloat(r,fd,messageWidenF32(raw));}
     // ir.TableMessageDequantize, bit for bit: an index above the step count is
-    // damage and never oor (§3.3, SPEC.md §4.3), every product rounds to
-    // float32, and the float lands under the reader's own declared range
-    if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(r.bad)return 0.0;if(index>shape.QCount){r.bad=true;return 0.0;}local n=f32(f32(index.tofloat())/f32(shape.QCount.tofloat()));local scaled=f32(n*shape.QDelta);return messageClampFloat(r,fd,f32(scaled+shape.QMin));}
-    if (shape.Kind==10) return messageWidenF32(get(r, 32));
-    return casti2f(get(r, 64));
+    // damage (§3.3, SPEC.md §4.3), every product rounds to float32, a value
+    // that rounds past the largest float32 is non_finite_float, and the float
+    // is held to the reader's own declared range
+    if (shape.Kind==10 && shape.Packing==2) {local index=get(r,shape.Bits);if(r.bad)return 0.0;if(index>shape.QCount){r.bad=true;return 0.0;}local n=f32(f32(index.tofloat())/f32(shape.QCount.tofloat()));local scaled=f32(n*shape.QDelta);local x=f32(scaled+shape.QMin);if(x-x!=0){refuseRead(r,"non_finite_float: "+fd.nf);return 0.0;}return messageRangeFloat(r,fd,x);}
+    r.bad = true; return 0.0;
   }
   local bits = shape.Bits, x = get(r, bits);
+  if (r.bad) return 0;
   if (shape.Packing == 1) x += shape.Base;
   else {
     if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
   }
+  // A VALUE OUTSIDE THE READER'S RANGE REFUSES out_of_range (docs/SPEC-TABLES.md
+  // §3.3, §6.5): never a clamp
   if (fd.shape == "int" && fd.lo != null && fd.hi != null) {
     if (fd.kind == 9) {
       local MIN = 0x8000000000000000;
-      if ((x ^ MIN) < (fd.lo ^ MIN)) { x = fd.lo; r.oor++; }
-      else if ((x ^ MIN) > (fd.hi ^ MIN)) { x = fd.hi; r.oor++; }
-    } else if(x<fd.lo){x=fd.lo;r.oor++;}else if(x>fd.hi){x=fd.hi;r.oor++;}
+      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, "out_of_range"); return 0; }
+    } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
   }
+  // bits(N) holds N bits: a value past them is outside the reader's range
+  if (fd.shape == "int" && fd.bits > 0 && fd.bits < 64 && (x < 0 || x > (1 << fd.bits) - 1)) { refuseRead(r, "out_of_range"); return 0; }
   return x;
 };
 
@@ -500,80 +559,92 @@ writePayload = function(T, w, fd, value, depth) {
   writeScalar(T, w, fd, value);
 };
 
-skipPayload = function(T, v, r, fd, depth) {
-  if (depth > 128) { r.bad = true; return; }
-  if (fd.shape == "str" || fd.shape == "bytes") {
-    local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
-    if (!alignRead(r)) { r.bad = true; return; } skip(r, n * 8); return;
-  }
-  if (fd.shape == "wstr") {
-    local n = get(r, bitCount(fd.bound)); if (r.bad || n > fd.bound) { r.bad = true; return; }
-    skip(r, n * 16); return;
-  }
-  if (fd.shape == "tab") { local d = T.Descriptors[fd.table]; for (;;) { local ref=get(r,v.RefBits); if(r.bad||ref==0)return; local id=idAt(v,ref); local f=id==null?null:d.byId[id]; if(f==null){r.bad=true;return;} skipPayload(T,v,r,f,depth+1); } }
-  if (fd.shape == "union") {
-    local ref=get(r,v.RefBits); if(r.bad||ref==0)return;
-    local id=idAt(v,ref), ud=T[fd.table+"Descriptor"], arm=null;
-    if(id==null){r.bad=true;return;} foreach(a in ud.arms) if(a.id==id) arm=a;
-    if(arm==null){r.bad=true;return;} if(arm.payload!=null) skipPayload(T,v,r,arm.payload,depth+1); return;
-  }
-  if (fd.shape == "arr") {
-    // §3.3: consume byte alignment and raw kind-6 elements, or keyed refs before each element.
-    local n = fd.list || fd.counted || fd.elem.shape == "bytes" || (fd.keyvariants != null) ? get(r, bitCount(fd.bound-fd.min)) + fd.min : fd.bound;
-    if(fd.elem.shape == "bytes") { if(!alignRead(r)){r.bad=true;return;} skip(r,n*8); return; }
-    for(local i=0;i<n;i++){if((fd.keyvariants != null)){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}}skipPayload(T,v,r,fd.elem,depth+1);} return;
-  }
-  if(fd.shape=="enum"){local ref=get(r,v.RefBits);if(ref>v.Count)r.bad=true;return;}
-  skip(r, numberBits(fd));
+// THE DECLARED ELEMENT KIND (docs/SPEC-TABLES.md §3.3): a bytes(N) is a kind
+// 14 of u8, an array its element's kind, and anything else carries none
+local declaredElem = function(fd) {
+  if (fd.shape == "bytes") return 6;
+  if (fd.shape == "arr") return fd.elem.kind;
+  return 0;
+};
+// §4's WIDENING RULE read off the ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3, the Go
+// engine's emitMessageCompatibility): 0 the declared kind, 1 a widening, -1 a
+// kind mismatch, which refuses the batch
+local compatKinds = function(kind, elem, mine, mineElem) {
+  if (kind == mine && elem == mineElem) return 0;
+  if (elem == mineElem && kindWidens(kind, mine)) return 1;
+  if (kind == mine && mine == 14 && kindWidens(elem, mineElem)) return 1;
+  return -1;
+};
+local entryElem = function(entry) {
+  return (entry.Kind == 14 || entry.Kind == 16) ? entry.Element.Kind : 0;
 };
 
 readPayload = function(T, v, r, fd, owner, member, depth, entry) {
   if (depth > 128) { r.bad = true; return; }
-  if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry,0);return;}
-  if(entry.Kind!=fd.kind)r.widened++;
   if (fd.shape == "str") {
-    local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max){r.bad=true;return;}
-    if(!alignRead(r)){r.bad=true;return;}
-    local s="";if(n>fd.bound)r.oor++;for(local i=0;i<n;i++){local c=get(r,8)&0xff;if(i<fd.bound)s+=format("%c",c);}
+    // THE LENGTH, THE ALIGN, THEN THE BYTES; kind 12's content rule is damage
+    // and a length past this reader's bound refuses length_over_bound
+    local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max||!alignRead(r)||r.bits+n*8>r.b.len()*8){r.bad=true;return;}
+    local at=r.bits/8;
+    if(!messageTextOk(r.b,at,n)){r.bad=true;return;}
+    if(n>fd.bound){refuseRead(r,"length_over_bound");return;}
+    local s="";for(local i=0;i<n;i++)s+=format("%c",r.b[at+i]);r.bits+=n*8;
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {
-    local n=get(r,entry.Shape.Bits);if(r.bad||n<entry.Shape.Min||n>entry.Shape.Max){r.bad=true;return;}
-    if(!alignRead(r)){r.bad=true;return;}
-    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.oor++;
-    local b=blob(kept);for(local i=0;i<n;i++){local x=get(r,8)&0xff;if(i<kept)b[i]=x;}
+    local n=get(r,entry.Shape.Bits)+entry.Shape.Min;if(r.bad||n>entry.Shape.Max||!alignRead(r)||r.bits+n*8>r.b.len()*8){r.bad=true;return;}
+    if(n>fd.bound){refuseRead(r,"length_over_bound");return;}
+    local at=r.bits/8,b=blob(n);for(local i=0;i<n;i++)b[i]=r.b[at+i];r.bits+=n*8;
     owner[member]=b;return;
   }
   if (fd.shape == "wstr") {
     local n=get(r,entry.Shape.Bits);if(r.bad||n>entry.Shape.Max||r.bits+n*16>r.b.len()*8){r.bad=true;return;}
     local units=array(n);for(local i=0;i<n;i++)units[i]=get(r,16);
     if(r.bad||!wideValid(units)){r.bad=true;return;}
-    if(n>fd.bound){r.oor++;units=wideClamp(units,fd.bound);}
+    if(n>fd.bound){refuseRead(r,"length_over_bound");return;}
     owner[member]=units;return;
   }
   if(fd.shape=="tab"){local child=T.Descriptors[fd.table].make();readBody(T,v,r,T.Descriptors[fd.table],child,depth+1);owner[member]=child;return;}
   if(fd.shape=="union"){
     local ref=get(r,v.RefBits);if(r.bad)return;
-    local id=idAt(v,ref),ud=T[fd.table+"Descriptor"],u=ud.make(),arm=null;
-    if(ref!=0&&id==null){r.bad=true;return;}
-    if(ref!=0){local entry=v.Entries[ref-1];if(entry.Shape.Kind==0||(entry.Id==0xfffffffffffffffd||entry.Id==0xfffffffffffffffe||entry.Id==0xffffffffffffffff)){r.bad=true;return;}}
-    foreach(a in ud.arms)if(a.id==id)arm=a;
-    if(arm==null&&ref!=0){if(ref>v.Count){r.bad=true;return;}r.unknown++;skipRemoteEntry(T,v,r,v.Entries[ref-1],0);owner[member]=u;return;}
-    if(arm!=null){u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,v.Entries[ref-1]);}
+    local ud=T[fd.table+"Descriptor"],u=ud.make();
+    if(ref==0){owner[member]=u;return;}
+    if(ref>v.Count){r.bad=true;return;}
+    local ae=v.Entries[ref-1];if(ae.Shape.Kind==0||reservedId(ae.Id)){r.bad=true;return;}
+    local arm=null;foreach(a in ud.arms)if(a.id==ae.Id){arm=a;break;}
+    if(arm==null){r.unknown++;skipRemoteEntry(T,v,r,ae,0);owner[member]=u;return;}
+    local mine=arm.payload==null?32:arm.payload.kind,mineElem=arm.payload==null?0:declaredElem(arm.payload);
+    local c=compatKinds(ae.Kind,entryElem(ae),mine,mineElem);
+    if(c<0){refuseRead(r,"kind_mismatch");return;}
+    if(c>0)r.widened++;
+    u.Type=arm.tag;if(arm.payload!=null)readPayload(T,v,r,arm.payload,u,arm.member,depth+1,ae);
     owner[member]=u;return;
   }
   if(fd.shape=="arr"){
-    // §3.3: kind 14 counts and aligns byte elements; kind 16 restores each element by key name.
-    local shape=entry.Shape,n=get(r,shape.Bits)+shape.Min;
-    if(r.bad||n<shape.Min||n>shape.Max){r.bad=true;return;}
-    local kept=n<fd.bound?n:fd.bound;if(kept<n)r.oor++;
-    if(entry.Element.Kind==6&&!alignRead(r)){r.bad=true;return;}
-    local keyed=(fd.keyvariants != null),a=keyed?owner[member]:[];if(!keyed){local size=((fd.list||fd.counted)?kept:fd.bound);for(local j=0;j<size;j++)a.append(fd.elem.def);}
+    // §3.3: kind 14 counts and aligns byte elements; kind 16 restores each
+    // element by key name. The element kinds were held to the declaration at
+    // the field (compatKinds), so each element reads at the announced shape.
+    local shape=entry.Shape,n=get(r,shape.Bits)+shape.Min,element=entry.Element;
+    if(r.bad||n>shape.Max){r.bad=true;return;}
+    local holder={value=null};
+    if(fd.keyvariants==null){
+      if(element.Kind==6&&!alignRead(r)){r.bad=true;return;}
+      if(n>fd.bound){refuseRead(r,"count_over_bound");return;}
+      local size=((fd.list||fd.counted)?n:fd.bound),a=array(size,fd.elem.def);
+      for(local i=0;i<n;i++){readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;a[i]=holder.value;}
+      owner[member]=a;return;
+    }
+    // A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3); an element under
+    // a key this reader does not name is read under the element declaration
+    // and dropped, counted unknown
+    local a=owner[member],keys=[];
     for(local i=0;i<n;i++){
-      local index=i;
-      if(keyed){local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||(ke.Id==0xfffffffffffffffd||ke.Id==0xfffffffffffffffe||ke.Id==0xffffffffffffffff)){r.bad=true;return;}index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id)index=j;if(index<0){r.unknown++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}}
-      if(entry.Element.Kind!=fd.elem.kind&&!kindWidens(entry.Element.Kind,fd.elem.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry.Element,0);if(r.bad)return;continue;}
-      local holder={value=null};readPayload(T,v,r,fd.elem,holder,"value",depth+1,entry.Element);if(index<kept)a[index]=holder.value;if(r.bad)return;
+      local key=get(r,v.RefBits);if(r.bad||key==0||key>v.Count){r.bad=true;return;}
+      local ke=v.Entries[key-1];if(ke.Shape.Kind!=0||reservedId(ke.Id)||keys.find(ke.Id)!=null){r.bad=true;return;}
+      keys.append(ke.Id);
+      local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}
+      readPayload(T,v,r,fd.elem,holder,"value",depth+1,element);if(r.bad)return;
+      if(index<0)r.unknown++;else a[index]=holder.value;
     }
     owner[member]=a;return;
   }
@@ -606,14 +677,23 @@ kindWidens = function(kind, declared) {
 
 readBody = function(T, v, r, d, value, depth) {
   if(depth>128){r.bad=true;return;}
+  // A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
+  // or unknown
+  local seen=[];
   for(;;){
     local ref=get(r,v.RefBits);if(r.bad)return;
     if(ref==0)return;
-    local id=idAt(v,ref);if(id==null||ref>v.Entries.len()){r.bad=true;return;}
-    if(id==0xfffffffffffffffd||id==0xfffffffffffffffe||id==0xffffffffffffffff){r.bad=true;return;}
-    local entry=v.Entries[ref-1],fd=null;if(id in d.byId)fd=d.byId[id];
+    if(ref>v.Count){r.bad=true;return;}
+    local entry=v.Entries[ref-1],id=entry.Id;
+    if(reservedId(id)||seen.find(id)!=null){r.bad=true;return;}
+    seen.append(id);
+    local fd=(id in d.byId)?d.byId[id]:null;
     if(fd==null){r.unknown++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
-    if(entry.Kind!=fd.kind&&!kindWidens(entry.Kind,fd.kind)){r.mismatch++;skipRemoteEntry(T,v,r,entry,0);if(r.bad)return;continue;}
+    // AN ANNOUNCED KIND THAT IS NOT THE DECLARED ONE AND NOT A WIDENING
+    // REFUSES THE BATCH (docs/SPEC-TABLES.md §3.3, §4), kind_mismatch
+    local c=compatKinds(entry.Kind,entryElem(entry),fd.kind,declaredElem(fd));
+    if(c<0){refuseRead(r,"kind_mismatch");return;}
+    if(c>0)r.widened++;
     if(fd.optional)value[fd.member + "Present"] = true;
     readPayload(T,v,r,fd,value,fd.member,depth+1,entry);
     if(r.bad)return;
@@ -640,40 +720,43 @@ _M.MeasureMessages <- function(T, root, values, report) {
 _M.SaveMessages <- function(T, root, values, out, report) {
   return writeBatch(T,root,values,out,false,report);
 };
+// LoadMessages IS THE STRICT READ (docs/SPEC-TABLES.md §3.3, §6.5): the whole
+// batch, or no body. Each body reads into a fresh row in the caller's storage
+// slot (omitted fields take their declared defaults, whatever the slot held).
+// On a refusal every row the read wrote, the refused one included, is reset
+// to its declared defaults, and rows it never reached are untouched: the Go
+// engine's LoadMessages, which resets values[0..i] and, on a bad batch end,
+// values[0..count-1]. Damage answers 0 with bodyDamaged and wire_damaged; a
+// named refusal (kind_mismatch, out_of_range, length_over_bound,
+// count_over_bound, non_finite_float) answers -1 with that name.
 _M.LoadMessages <- function(T, root, storage, v, bytes, report) {
   reset(report);
   if(v==null||!("Announced" in v)||!v.Announced)return refuse(report,"no_vocabulary");
-  if(bytes==null||bytes.len()<2){if(report!=null)report.bodyDamaged<-true;return -1;}
+  if(bytes==null||bytes.len()<2){if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}return -1;}
   if((bytes[0]&0xff)!=2)return refuse(report,"newer_form");
   local count = (bytes[1]&0xff)+1;
   if(count>storage.len())return refuse(report,"batch_too_large");
   local d=T.Descriptors[root];
   if(d==null||!d.fixed)return refuse(report,"message_form_plain_table:"+root);
-  if(storage.len()<count)return refuse(report,"batch_too_large");
   // THE BATCH AS AN ARRAY OF BYTES: indexing a blob is a native metamethod,
   // and the interpreter cannot grow its stack inside one, so a deep but legal
   // nesting would die in the bit reader rather than at the depth bound.
   local raw=array(bytes.len());for(local i=0;i<raw.len();i++)raw[i]=bytes[i]&0xff;
-  local r={b=raw,bits=16,bad=false,unknown=0,mismatch=0,widened=0,oor=0,nonFinite=null};
-  local walked=readBatch(T,v,r,d,storage,count,bytes,report);
-  // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
-  // §3.3), outranking every other verdict: no body of it is delivered
-  // Damage discards every body, including bodies decoded before the stop.
-  if(walked!=count || r.nonFinite!=null) {
-    for(local i=0;i<count;i++)storage[i]=d.make();
-    if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
-    return 0;
-  }
-  return walked;
+  local r={b=raw,bits=16,bad=false,unknown=0,widened=0,refusal=null,written=0};
+  local whole=readBatch(T,v,r,d,storage,count);
+  if(report!=null){report.unknown=r.unknown;report.widened=r.widened;}
+  if(whole)return count;
+  for(local i=0;i<r.written;i++)storage[i]=d.make();
+  if(r.refusal!=null)return refuse(report,r.refusal);
+  if(report!=null){report.bodyDamaged=true;report.refused=true;report.reason="wire_damaged";}
+  return 0;
 };
-readBatch = function(T, v, r, d, storage, count, bytes, report) {
+readBatch = function(T, v, r, d, storage, count) {
   for(local k=0;k<count;k++){
-    local before=r.bits;readBody(T,v,r,d,storage[k],0);
-    if(report!=null){report.unknown+=r.unknown;report.mismatch+=r.mismatch;report.widened+=r.widened;report.oor+=r.oor;}
-    r.unknown=0;r.mismatch=0;r.widened=0;r.oor=0;
-    if(r.bad){if(report!=null)report.bodyDamaged<-true;return k;}
-    if(r.bits==before){if(report!=null)report.bodyDamaged<-true;return k;}
+    storage[k]=d.make();r.written=k+1;
+    readBody(T,v,r,d,storage[k],0);
+    if(r.bad)return false;
   }
-  if(!alignRead(r)||r.bits!=bytes.len()*8){if(report!=null)report.bodyDamaged<-true;return -1;}
-  return count;
+  // THE TRAILING PAD IS ZERO AND NOTHING FOLLOWS IT (§3.3, §4)
+  return alignRead(r)&&r.bits==r.b.len()*8;
 };

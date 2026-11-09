@@ -165,8 +165,11 @@ fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
-// surface_wire: every instance loaded and saved back (§3). A save the writer
-// refuses by name (a blob two slots name, §2.5) is a named absence.
+// surface_wire: every instance loaded and saved back (§3). A blob two slots
+// name (§2.5) is refused by the strict read itself: that refusal is the row's
+// answer (the corpus marks it wire-refused), a named absence, and any other
+// refusal of a corpus instance fails the run. A save the writer refuses by
+// name is a named absence.
 fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -187,6 +190,10 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        if root < 0 && report.reason == schema_rt::LoadRefuseBlobShared {
+            absent(f[1], "blob_shared");
+            continue;
+        }
         if root < 0 {
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
