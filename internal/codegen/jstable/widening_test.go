@@ -45,8 +45,9 @@ table Rec
 //     module: five widenings, every value kept, and the reason empty, because
 //     a widening is a successful read and Go's TableReport.Reason is empty for
 //     a file read;
-//   - the committed narrow list wire (list_scalar_widen.bin, the corpus's
-//     reports.txt row `0,0,1,0,0,false,read`) beside its pristine twin;
+//   - the committed narrow list wire (list_scalar_widen.bin) beside its
+//     pristine twin: nine bytes left inside the scores array's L, which the
+//     reference refuses (testdata/conformance/tables/reports.txt);
 //   - the REFUSALS, each named as the reference leg names it: form byte 2 is
 //     `message_form_as_file`, form byte 3 (the fixed form, newer than this
 //     one) and a byte no form defines are `newer_form`, every one with refused
@@ -107,11 +108,8 @@ const quiet = (r) => r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.rep
 {
   const report = new lists.TableVariableReport();
   const value = lists.SaveLoad(new Uint8Array(readFileSync(process.argv[5])), report);
-  check("narrow read", value !== null, report);
-  if (value !== null) {
-    check("narrow scores", value.scores.length === 3 && value.scores[0] === 10 && value.scores[1] === 0 && value.scores[2] === 0, value.scores);
-  }
-  check("narrow report", report.reason === "" && report.widened === 1 && report.refused === 0 && !report.damaged && quiet(report), report);
+  // element kind 2, three i8 values, nine bytes still inside that L
+  check("narrow read", value === null && report.damaged && report.widened === 1 && report.refused === 0 && report.reason === "" && quiet(report), report);
   const baseline = new lists.TableVariableReport();
   const clean = lists.SaveLoad(new Uint8Array(readFileSync(process.argv[6])), baseline);
   check("pristine read", clean !== null, baseline);

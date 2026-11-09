@@ -151,7 +151,7 @@ func TestJsFiniteFloatNegativeControl(t *testing.T) {
 		{"retained read", "NarrowVariable.js",
 			"if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {",
 			"if (false) {",
-			[]string{"the narrow reader retained a NaN"}},
+			[]string{"the narrow reader retained a NaN", "a plain read landed an unknown NaN"}},
 		{"block accessor", "ProbeBlock.js",
 			"if ((view.getUint32(at, true) & 0x7f800000) === 0x7f800000) { TableBlockRefuseFloat(view, field); return 0; }",
 			"",
@@ -409,7 +409,10 @@ for (const [field, wire] of [
   if (narrow.VarLoadRetain(wire, store(), bad) !== null || !bad.reason.startsWith("non_finite_float: Var.0x")) {
     fail("the narrow reader retained a NaN: " + JSON.stringify(bad));
   }
-  if (narrow.VarLoad(wire, new narrow.TableVariableReport()) === null) { fail("a plain read refused an unknown float it does not retain"); }
+  const plainBad = new narrow.TableVariableReport();
+  if (narrow.VarLoad(wire, plainBad) !== null || !plainBad.reason.startsWith("non_finite_float: Var.0x")) {
+    fail("a plain read landed an unknown NaN: " + JSON.stringify(plainBad));
+  }
 }
 
 // ---- 5) the message form ----
