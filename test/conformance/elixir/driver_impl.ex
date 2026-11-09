@@ -614,6 +614,29 @@ defmodule Driver do
           end
       end
     end
+
+    for [name, unit, root, wire | rest] <- rows(rows, "json-write-refusal") do
+      mod = table_module(unit)
+
+      case mod do
+        nil ->
+          write_absent(outdir, name <> ".json")
+
+        _ ->
+          case mod.load(root, File.read!(wire)) do
+            {:ok, value, _report} ->
+              value = damage_text(value, List.first(rest))
+
+              case mod.to_json(root, value) do
+                {:ok, text} -> write(outdir, name <> ".json", text)
+                _ -> write(outdir, name <> ".json", "refused\n")
+              end
+
+            _ ->
+              write(outdir, name <> ".json", "refused\n")
+          end
+      end
+    end
   end
 
   defp run("cook-write", rows, outdir) do
@@ -640,9 +663,15 @@ defmodule Driver do
       mod = table_module(unit)
 
       case report_line(mod, root, wire) do
-        :absent -> write_absent(outdir, name)
-        {line, value} -> write(outdir, name, line <> value_text(mod, root, value, name))
-        line -> write(outdir, name, line)
+        :absent ->
+          write_absent(outdir, name)
+
+        {line, value} ->
+          write(outdir, name, line <> value_text(mod, root, value, name))
+          write_wire(mod, root, value, outdir, name)
+
+        line ->
+          write(outdir, name, line)
       end
     end
   end
@@ -660,29 +689,38 @@ defmodule Driver do
           write_absent(outdir, name)
 
         mod ->
-          case mod.load(root, File.read!(wire)) do
-            {:ok, value, report} ->
-              line = report_counters(report) <> ",read\n"
+          bytes = File.read!(wire)
+
+          loaded =
+            if match?(<<1, _::binary>>, bytes) and function_exported?(mod, :variable_load, 2) do
+              mod.variable_load(root, bytes)
+            else
+              mod.load(root, bytes)
+            end
+
+          case loaded do
+            {:ok, value, _report} ->
+              write_wire(mod, root, value, outdir, name)
 
               cond do
                 rest == ["no-value"] ->
-                  write(outdir, name, line)
+                  write(outdir, name, "read\n")
 
                 true ->
                   case mod.to_json(root, value) do
-                    {:ok, text} -> write(outdir, name, line <> IO.iodata_to_binary(text))
+                    {:ok, text} -> write(outdir, name, "read\n" <> IO.iodata_to_binary(text))
                     _ -> raise "#{name}: to_json refused the value"
                   end
               end
 
             {:error, _refusal, %{reason: "unknown_form"}} ->
-              write(outdir, name, "0,0,0,0,0,false,refused\n")
+              write(outdir, name, "refused\n")
 
-            {:error, _refusal, %{reason: "wire_damaged"} = report} ->
-              write(outdir, name, report_counters(report) <> ",read\n")
+            {:error, _refusal, %{reason: "wire_damaged"}} ->
+              write(outdir, name, "refused\n")
 
             {:error, _refusal, _report} ->
-              write(outdir, name, "0,0,0,0,0,false,refused\n")
+              write(outdir, name, "refused\n")
 
             _ ->
               write_absent(outdir, name)
@@ -709,8 +747,8 @@ defmodule Driver do
               case mod.save(root, value) do
                 {:ok, wire} ->
                   {:ok, _back, _r2} = mod.load(root, wire)
-                  line = report_counters(report) <> ",read\n"
-                  write(outdir, name, line <> value_text(mod, root, value, name))
+                  write(outdir, name, "read\n" <> value_text(mod, root, value, name))
+                  write(outdir, name <> ".wire", wire)
 
                 {:error, _} ->
                   write(outdir, name, "refused\n")
@@ -807,7 +845,7 @@ defmodule Driver do
         roomy
       end
 
-    {:ok, value, report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
+    {:ok, value, _report, retain} = mod.load_retain(root, data, fresh.(cap), empty)
     size = mod.measure_retain(root, value, retain)
     {:ok, out, save, retain} = mod.save_retain(root, value, retain, empty)
 
@@ -820,11 +858,10 @@ defmodule Driver do
     if saves do
       write(outdir, name, out)
     else
-      write(
-        outdir,
-        name,
-        "#{report.retained},#{report.retain_lost},#{report.unknown} #{save.retain_lost}\n"
-      )
+      case mod.to_json(root, value) do
+        {:ok, text} -> write(outdir, name, "read\n" <> IO.iodata_to_binary(text))
+        _ -> raise "#{name}: to_json refused the value"
+      end
     end
   end
 
@@ -917,6 +954,28 @@ defmodule Driver do
     end
   end
 
+  # The canonical write-back wire an accepted read owes beside its answer
+  # (test/conformance/README.md): report, framing and json-hostile write the
+  # whole value as JSON AND as the wire, so a port that decodes the right value
+  # but saves different bytes has not returned it.
+  defp write_wire(mod, root, value, outdir, name) do
+    case mod.save(root, value) do
+      {:ok, bytes} -> write(outdir, name <> ".wire", bytes)
+      _ -> raise "#{name}: save refused the value"
+    end
+  end
+
+  # The json-write-refusal damage, planted in the loaded value in code: a
+  # narrow field's ill-formed UTF-8 (61 FF 62) and a wide field's unpaired
+  # surrogate (0061 D800 0062, spelled in its CESU-8 bytes, the one binary
+  # form the value surface can hold of it).
+  defp damage_text(value, "narrow:" <> field), do: Map.put(value, field, <<0x61, 0xFF, 0x62>>)
+
+  defp damage_text(value, "wide:" <> field),
+    do: Map.put(value, field, <<0x61, 0xED, 0xA0, 0x80, 0x62>>)
+
+  defp damage_text(value, _damage), do: value
+
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
@@ -925,19 +984,25 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set. Any other named refusal
   # (missing_required, count_over_extent_cap, non_finite_float) is refused.
   defp report_line(mod, root, wire) do
-    case mod.load(root, File.read!(wire)) do
-      {:ok, value, report} ->
-        {report_counters(report) <> ",read\n", value}
+    loaded =
+      if function_exported?(mod, :strict_load, 2) do
+        mod.strict_load(root, File.read!(wire))
+      else
+        mod.load(root, File.read!(wire))
+      end
+
+    case loaded do
+      {:ok, value, _report} ->
+        {"read\n", value}
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
-        "0,0,0,0,0,false,refused\n"
+        "refused\n"
 
-      {:error, _refusal, %{reason: "wire_damaged"} = report} ->
-        # a damaged load returns no value, and its report stands
-        report_counters(report) <> ",read\n"
+      {:error, _refusal, %{reason: "wire_damaged"}} ->
+        "refused\n"
 
       {:error, _refusal, _report} ->
-        "0,0,0,0,0,false,refused\n"
+        "refused\n"
 
       _ ->
         :absent
@@ -959,18 +1024,6 @@ defmodule Driver do
   # retain_lost) and a reason, or {:error, reason, report} with no value.
   # Damage is the reason "wire_damaged"; a named refusal is any other reason.
   defp damaged?(report), do: Map.get(report, :reason, "") == "wire_damaged"
-
-  defp report_counters(report) do
-    [
-      Map.get(report, :unknown, 0),
-      0,
-      Map.get(report, :widened, 0),
-      0,
-      0,
-      if(damaged?(report), do: "true", else: "false")
-    ]
-    |> Enum.join(",")
-  end
 
   defp write_absent(outdir, name) do
     File.write!(Path.join(outdir, name <> ".absent"), "")
