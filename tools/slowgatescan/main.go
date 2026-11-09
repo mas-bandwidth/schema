@@ -93,8 +93,24 @@ type ciStep struct {
 func main() {
 	coverage := flag.String("coverage", "", "a plain `go test -v ./...` or `go test -json ./...` transcript to account for, test by test")
 	emitGatedRun := flag.Bool("emit-gated-run", false, "print an anchored -run pattern selecting every test that reaches slowtest.Gate, and exit")
+	emitShardPackages := flag.Bool("emit-shard-packages", false, "print the gated packages of one coverage shard, space-separated, and exit")
+	shardHalf := flag.String("half", "all", "with -emit-shard-packages: codegen, rest or all")
+	shardIndex := flag.Int("shard", -1, "with -emit-shard-packages: shard index, or -1 for every gated package of the half")
+	shardCount := flag.Int("shards", 1, "with -emit-shard-packages: number of shards")
 	root := flag.String("C", ".", "repository root")
 	flag.Parse()
+
+	if *emitShardPackages {
+		pkgs, err := shardPackages(*root, *shardHalf, *shardIndex, *shardCount)
+		if err != nil {
+			fail("emitting shard packages: %v", err)
+		}
+		if err == nil && len(pkgs) == 0 {
+			fail("emitting shard packages: shard %d of %d holds no gated package", *shardIndex, *shardCount)
+		}
+		fmt.Println(strings.Join(pkgs, " "))
+		return
+	}
 
 	if *emitGatedRun {
 		pattern, err := gatedRunPattern(*root)

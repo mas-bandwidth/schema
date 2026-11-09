@@ -22,13 +22,42 @@ import (
 // every other test in these packages already runs in ci-full.yml's
 // SCHEMA_SLOW=1 unit rows.
 func gatedRunPattern(root string) (string, error) {
-	gated, err := gatedPackages(root)
+	byDir, err := gatedTestPackages(root)
 	if err != nil {
 		return "", err
 	}
+	var names []string
+	seen := map[string]bool{}
+	for _, tests := range byDir {
+		for _, name := range tests {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return "", fmt.Errorf("no gated test reaches slowtest.Gate")
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	b.WriteString("^(")
+	for i, n := range names {
+		if i > 0 {
+			b.WriteString("|")
+		}
+		b.WriteString(regexp.QuoteMeta(n))
+	}
+	b.WriteString(")$")
+	return b.String(), nil
+}
+
+// gatedTestPackages returns, per package directory (slash-separated,
+// relative to root), the sorted top-level tests that reach slowtest.Gate.
+func gatedTestPackages(root string) (map[string][]string, error) {
 	funcs, err := moduleFuncs(root)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	reaching := map[funcKey]bool{}
 	for key, body := range funcs {
@@ -51,8 +80,6 @@ func gatedRunPattern(root string) (string, error) {
 			}
 		}
 	}
-	var names []string
-	seen := map[string]bool{}
 	dirs := map[string]bool{}
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -73,7 +100,7 @@ func gatedRunPattern(root string) (string, error) {
 		}
 		return nil
 	})
-	_ = gated
+	out := map[string][]string{}
 	for rel := range dirs {
 		dir := filepath.Join(root, filepath.FromSlash(rel))
 		tests, err := declaredTests(dir)
@@ -81,26 +108,15 @@ func gatedRunPattern(root string) (string, error) {
 			continue
 		}
 		for name := range tests {
-			if reaching[funcKey{dir: rel, name: name}] && !seen[name] {
-				seen[name] = true
-				names = append(names, name)
+			if reaching[funcKey{dir: rel, name: name}] {
+				out[rel] = append(out[rel], name)
 			}
 		}
 	}
-	if len(names) == 0 {
-		return "", fmt.Errorf("no gated test reaches slowtest.Gate")
+	for rel := range out {
+		sort.Strings(out[rel])
 	}
-	sort.Strings(names)
-	var b strings.Builder
-	b.WriteString("^(")
-	for i, n := range names {
-		if i > 0 {
-			b.WriteString("|")
-		}
-		b.WriteString(regexp.QuoteMeta(n))
-	}
-	b.WriteString(")$")
-	return b.String(), nil
+	return out, nil
 }
 
 type funcKey struct {

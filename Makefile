@@ -7589,38 +7589,34 @@ slow-gate-coverage: deps
 
 # THE SAME ACCOUNTING, SHARDED, for ci-full.yml's slow-gate rows. The two
 # halves below were killed at the fleet's 120 s per-commit limit (130 s and
-# 136 s on main, 2026-11): one plain `go test` over either half does not fit
-# under 110 s once the Lua pin (23 s) is paid. So ci-full.yml runs each half
-# as SLOWGATE_SHARDS parallel rows, row k taking a rotating round-robin
-# of the sorted `go list` output (each block of shards packages is offset
-# by five, so heavy packages at the same position in two blocks — gotable
-# and squirreltable, 24 apart — do not land on the same row). With no
-# SLOWGATE_SHARD set, each target
-# still reads its whole half, which is what a workstation asks for. The
+# 136 s on main, 2026-11), and twelve package shards still left a row at
+# 257 s in its step on the fleet (run 42595533414, slow-gate-codegen-10):
+# compiling the test binary of every package in a half, gated or not, was
+# the wall. So each target now reads only its half's GATED packages —
+# `slowgatescan -emit-shard-packages` prints them, derived from the same
+# call graph as the -run pattern — because a package with no gated test
+# contributes no skip to the transcript and its pass or failure is the
+# SCHEMA_SLOW=1 unit rows' verdict, already run per commit. ci-full.yml
+# runs one gated package per row (SLOWGATE_SHARDS rows, assigned by
+# gated-test count, heaviest first, so gotable and squirreltable never
+# share a row). With no SLOWGATE_SHARD set, each target still reads every
+# gated package of its half, which is what a workstation asks for. The
 # verdict is per skip, so every shard reaches the verdict one plain
-# `go test ./...` reaches for the skips in its own transcript. The package
-# lists are spelled out rather than passed in a variable so
-# `slowgatescan`'s static audit still reads them (and still excuses these
-# targets through make/slow-gate-exceptions.txt, by target and package).
-# Nothing is dropped or moved nightly: the shards together read exactly
-# the packages the two halves read before, and within those packages the
-# -run pattern `slowgatescan -emit-gated-run` prints selects only the
-# tests that reach slowtest.Gate (directly or through a helper, in their
-# own package or an imported runner package). That is all the accounting
-# has ever read from the transcript: a non-gated test's pass or failure is
-# the SCHEMA_SLOW=1 unit rows' verdict, already run per commit, and
-# running it again here in plain mode was most of the wall this split
-# removes. The scanner still fails a shard whose transcript holds no
-# skip, and still fails any skip it reads that nobody runs.
-SLOWGATE_SHARDS ?= 12
+# `go test ./...` reaches for the skips in its own transcript. Nothing is
+# dropped or moved nightly: the shards together read every gated package
+# the two halves read before, and within those packages the -run pattern
+# selects only the tests that reach slowtest.Gate. The scanner still
+# fails a shard whose transcript holds no skip, and still fails any skip
+# it reads that nobody runs.
+SLOWGATE_SHARDS ?= 26
 .PHONY: slow-gate-coverage-codegen slow-gate-coverage-rest
 slow-gate-coverage-codegen: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go list ./internal/codegen/... | awk -v shard="$(SLOWGATE_SHARD)" -v shards="$(SLOWGATE_SHARDS)" 'shard == "" || ((NR - 1) % shards + int((NR - 1) / shards) * 5) % shards == shard') > build/slowgate/codegen-plain.log 2>&1 || true
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go run ./tools/slowgatescan -emit-shard-packages -half codegen -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/codegen-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/codegen-plain.log
 slow-gate-coverage-rest: deps
 	@mkdir -p build/slowgate
-	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go list ./... | grep -v '/internal/codegen/' | awk -v shard="$(SLOWGATE_SHARD)" -v shards="$(SLOWGATE_SHARDS)" 'shard == "" || ((NR - 1) % shards + int((NR - 1) / shards) * 5) % shards == shard') > build/slowgate/rest-plain.log 2>&1 || true
+	go test -json -run "$$(go run ./tools/slowgatescan -emit-gated-run)" $$(go run ./tools/slowgatescan -emit-shard-packages -half rest -shard $(if $(SLOWGATE_SHARD),$(SLOWGATE_SHARD),-1) -shards $(SLOWGATE_SHARDS)) > build/slowgate/rest-plain.log 2>&1 || true
 	go run ./tools/slowgatescan -coverage build/slowgate/rest-plain.log
 # THE VULNERABILITY GATE. `make` is the one entry, so the gates both workflows
 # run are targets here: `vuln` runs the scanner pinned and direct, and the

@@ -199,14 +199,14 @@ jobs:
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
     #   unit-elixir     — go test internal/codegen/elixirtable, alone
-    #   slow-gate-codegen-0..11 — the slowtest accounting (schema#988) over
-    #                     the emitter packages, sharded by package
+    #   slow-gate-codegen-0..25 — the slowtest accounting (schema#988) over
+    #                     the emitter packages, one gated package per row
     #                     (Makefile SLOWGATE_SHARD/SLOWGATE_SHARDS)
-    #   slow-gate-rest-0..5 — the same accounting over every other package,
-    #                     sharded the same way. The unsharded halves were
+    #   slow-gate-rest-0..10 — the same accounting over every other gated
+    #                     package, one per row. The unsharded halves were
     #                     killed at 120 s on main (130 s / 136 s); each shard
     #                     row must finish under 110 s. Together the rows
-    #                     read exactly the packages the two halves read.
+    #                     read exactly the gated packages the halves read.
     #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
     #                     and Elixir legs, with the three SDKs only that row
     #                     needs
@@ -228,7 +228,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, slow-gate-rest-10, versioning ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -507,12 +507,15 @@ jobs:
       # interpreter is resolved, as the Squirrel pin note already records
       # for its pin. The pins were 13-46 s a row here and a network fetch
       # that can 504; the unit rows still install every pin.
-      # EIGHTEEN ROWS, ONE VERDICT: the accounting is per skip, so each
-      # shard of the emitter packages and of the rest, read on its own
-      # row, reaches the verdict one plain `go test ./...` would for its
-      # skips. The two unsharded halves were killed at 120 s (130 s /
-      # 136 s on main); the shards split them round-robin by package so
-      # no row pays that wall. tools/slowgatescan's
+      # THIRTY-SEVEN ROWS, ONE VERDICT: the accounting is per skip, so
+      # each shard of the emitter packages and of the rest, read on its
+      # own row, reaches the verdict one plain `go test ./...` would for
+      # its skips. The two unsharded halves were killed at 120 s (130 s /
+      # 136 s on main), and twelve shards over every package still left a
+      # row at 257 s in its step (run 42595533414): each row now runs ONE
+      # gated package (`slowgatescan -emit-shard-packages`, assigned by
+      # gated-test count), and a package with no gated test is not
+      # compiled here at all. tools/slowgatescan's
       # TestSlowGateCoverageShardsCoverAllShards holds the shard indices
       # below to exactly 0..SLOWGATE_SHARDS-1 per half.
       - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 0
@@ -563,29 +566,105 @@ jobs:
         if: matrix.group == 'slow-gate-codegen-11'
         run: make slow-gate-coverage-codegen SLOWGATE_SHARD=11
 
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 12
+        if: matrix.group == 'slow-gate-codegen-12'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=12
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 13
+        if: matrix.group == 'slow-gate-codegen-13'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=13
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 14
+        if: matrix.group == 'slow-gate-codegen-14'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=14
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 15
+        if: matrix.group == 'slow-gate-codegen-15'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=15
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 16
+        if: matrix.group == 'slow-gate-codegen-16'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=16
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 17
+        if: matrix.group == 'slow-gate-codegen-17'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=17
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 18
+        if: matrix.group == 'slow-gate-codegen-18'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=18
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 19
+        if: matrix.group == 'slow-gate-codegen-19'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=19
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 20
+        if: matrix.group == 'slow-gate-codegen-20'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=20
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 21
+        if: matrix.group == 'slow-gate-codegen-21'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=21
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 22
+        if: matrix.group == 'slow-gate-codegen-22'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=22
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 23
+        if: matrix.group == 'slow-gate-codegen-23'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=23
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 24
+        if: matrix.group == 'slow-gate-codegen-24'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=24
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 25
+        if: matrix.group == 'slow-gate-codegen-25'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=25
+
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 0
         if: matrix.group == 'slow-gate-rest-0'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=0 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=0 SLOWGATE_SHARDS=11
 
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 1
         if: matrix.group == 'slow-gate-rest-1'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=1 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=1 SLOWGATE_SHARDS=11
 
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 2
         if: matrix.group == 'slow-gate-rest-2'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=2 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=2 SLOWGATE_SHARDS=11
 
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 3
         if: matrix.group == 'slow-gate-rest-3'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=3 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=3 SLOWGATE_SHARDS=11
 
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 4
         if: matrix.group == 'slow-gate-rest-4'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=4 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=4 SLOWGATE_SHARDS=11
 
       - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 5
         if: matrix.group == 'slow-gate-rest-5'
-        run: make slow-gate-coverage-rest SLOWGATE_SHARD=5 SLOWGATE_SHARDS=6
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=5 SLOWGATE_SHARDS=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 6
+        if: matrix.group == 'slow-gate-rest-6'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=6 SLOWGATE_SHARDS=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 7
+        if: matrix.group == 'slow-gate-rest-7'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=7 SLOWGATE_SHARDS=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 8
+        if: matrix.group == 'slow-gate-rest-8'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=8 SLOWGATE_SHARDS=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 9
+        if: matrix.group == 'slow-gate-rest-9'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=9 SLOWGATE_SHARDS=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 10
+        if: matrix.group == 'slow-gate-rest-10'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=10 SLOWGATE_SHARDS=11
 
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
       # test/conformance/go/rows, which `go test ./...` never sees because they
