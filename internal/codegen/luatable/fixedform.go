@@ -9,7 +9,9 @@ package luatable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
@@ -26,6 +28,7 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	Ranges  []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`.
@@ -41,9 +44,38 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: fixedHashBytes + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
+}
+
+// fixedWriterRanges is one lineage entry's WRITER ranges
+// (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6): for each ranged integer leaf of
+// the reader's root that the older writer bounded at the same scalar kind
+// (ir.TableFixedWriterRanges, ir.TableFixedWriterField), the writer's raw
+// bounds keyed by the field's wire id.
+func fixedWriterRanges(st *ir.Struct, e FixedLineageEntry, own uint64) string {
+	if e.Wire == own || len(e.Ranges) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, r := range e.Ranges {
+		for _, f := range st.Fields {
+			if _, ok := ir.TableFixedWriterField(f, r); !ok {
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }",
+				idLit(ir.TableFieldWireId(f)),
+				lua.IntLiteral(big.NewInt(r.Lo)),
+				lua.IntLiteral(big.NewInt(r.Hi))))
+			break
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", ranges = { " + strings.Join(parts, ", ") + " }"
 }
 
 // fixedLineageFor is the lineage the emitter lays down for one table: the
@@ -370,15 +402,16 @@ func emitFixedForm(m *Module) error {
 			if e.Retired {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
+			ranges := fixedWriterRanges(st, e, hash)
 			if len(e.Layout) > 1024 {
 				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
 				for i := 0; i < len(e.Layout); i += 20 {
 					end := min(i+20, len(e.Layout))
 					m.Printf("      %s,\n", lua.ByteString(e.Layout[i:end]))
 				}
-				m.Printf("    }),\n    record = %d,\n  },\n", e.Record)
+				m.Printf("    }),\n    record = %d%s,\n  },\n", e.Record, ranges)
 			} else {
-				m.Printf("  { hash = %s, layout = %s, record = %d },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record)
+				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record, ranges)
 			}
 		}
 		m.Printf("}\n")
