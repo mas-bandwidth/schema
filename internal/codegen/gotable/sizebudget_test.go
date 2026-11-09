@@ -84,7 +84,8 @@ const (
 	// +71: a duplicate key in a skipped JSON object refuses the whole read (SPEC-TABLES §16.2)
 	// +226: strict wire-fuzz checks for trailing body bytes, unknown framed slots/arms, and shared blobs (SPEC-TABLES §4, §6.5)
 	// +95: the fixed read lands scalars little-endian-to-native in caller storage (green-conf-go-big-endian-2)
-	goExamplesLineBudget = 59870
+	// +231: a message save refuses ill-formed UTF-8 and UTF-16 text (NUL, a stray byte, an unpaired surrogate or a zero unit) the way the fixed writer does (SPEC.md §5.1 row 8, SPEC-TABLES §5)
+	goExamplesLineBudget = 60101
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

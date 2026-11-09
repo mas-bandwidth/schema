@@ -17,7 +17,9 @@ var goFuzzUnitDir = filepath.Join("internal", "codegen", "gotable", "fuzzunit")
 
 // TestGoFuzzUnitIsCurrent pins internal/codegen/gotable/fuzzunit to what
 // `schema generate --lang go` emits for tables/examples today, the way
-// TestGoBenchTreesAreCurrent pins the bench trees. The fuzz targets in that
+// TestGoBenchTreesAreCurrent (internal/ci) pins the bench trees — including
+// the message writer's ill-formed-text refusals (docs/SPEC.md §5.1 row 8),
+// which regenerated this tree and the bench trees together. The fuzz targets in that
 // directory read the committed package, so a stale copy would fuzz a reader
 // the compiler no longer emits.
 func TestGoFuzzUnitIsCurrent(t *testing.T) {

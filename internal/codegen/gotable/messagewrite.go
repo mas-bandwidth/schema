@@ -117,8 +117,17 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		g.emitMessageValue(e, ir.TableVocabularyEntry{Kind: entry.Shape.Elem, Shape: *entry.Shape.Inner}, expr+"[i]", ind+"\t")
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
+		// THE WRITE-SIDE TEXT RULE REACHES THE MESSAGE FORM TOO (docs/SPEC.md
+		// §5.1 row 8): the reader refuses text that is not well-formed UTF-8 or
+		// holds a NUL, so SaveMessages refuses it rather than writing bytes its
+		// own read would refuse. The storage check above already put Length in
+		// 0..N, so the scan is over the used bytes only.
+		g.pf("%s{\n%s\tn := int(%sLength)\n%s\tvar hi, z uint64\n", ind, ind, expr, ind)
+		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUTF8Word", false)
+		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
 		g.pf("%sw.Put(uint64(%sLength),%d);w.Raw(%s[:%sLength])\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case f.Type.Kind == ir.TWString:
+		g.pf("%sif !tableUtf16UnitsValid(%s[:%sLength]) { return false }\n", ind, expr, expr)
 		g.pf("%sw.Put(uint64(%sLength),%d);for i := range int32(%sLength) {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case isStructRef(f.Type):
 		g.pf("%sif !%sSaveMessageBody(w,&%s){return false}\n", ind, f.Type.Name, expr)
