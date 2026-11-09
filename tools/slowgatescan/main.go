@@ -92,8 +92,18 @@ type ciStep struct {
 
 func main() {
 	coverage := flag.String("coverage", "", "a plain `go test -v ./...` or `go test -json ./...` transcript to account for, test by test")
+	emitGatedRun := flag.Bool("emit-gated-run", false, "print an anchored -run pattern selecting every test that reaches slowtest.Gate, and exit")
 	root := flag.String("C", ".", "repository root")
 	flag.Parse()
+
+	if *emitGatedRun {
+		pattern, err := gatedRunPattern(*root)
+		if err != nil {
+			fail("emitting the gated -run pattern: %v", err)
+		}
+		fmt.Println(pattern)
+		return
+	}
 
 	gated, err := gatedPackages(*root)
 	if err != nil {
