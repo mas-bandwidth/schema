@@ -206,6 +206,14 @@ ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refu
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
 
+**The packet writer has its own surface**, `write-refusal-packet`: one packet
+type carries a ranged integer and a fixed raw value, a counted array, a text
+length, an enum ordinal and a union tag, and each refused value sits beside the
+lawful value at the same boundary. The Go leg generates and executes the packet
+writer (test/conformance/harness/writerefusal_packet_test.go), and its negative
+control removes one check from a copy of the emitter and requires the surface to
+go red.
+
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.
 An accepted `report`, `framing` or `json-hostile` row owes its complete canonical
