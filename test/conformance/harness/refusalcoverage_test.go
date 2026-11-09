@@ -22,6 +22,8 @@ func TestRefusalCoverageMatchesScoredVerdicts(t *testing.T) {
 		{"message local reason", "message", "case.absent", "different diagnostic", outcomePass, false, 1, 0, 0},
 		{"message writes bytes", "message", "case", "unexpected", outcomeFail, false, 0, 0, 1},
 		{"message no answer", "message", "", "", outcomeFail, false, 0, 0, 1},
+		{"announcement malformed refused", "message", "case.absent", AnnouncementMalformed, outcomePass, false, 1, 0, 0},
+		{"announcement malformed accepted", "message", "case", "bytes", outcomeFail, false, 0, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

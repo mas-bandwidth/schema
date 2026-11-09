@@ -992,6 +992,9 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-lobster", streamToDevPR); ok {
 		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-lobster below main")
 	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-squirrel", streamToDevPR); ok {
+		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-squirrel below main")
+	}
 	// the Lobster rows run exactly when the plan selects the Lobster leg
 	lobsterIntoMain := sameRepoMainUnlabeled
 	lobsterIntoMain.PlanLegs = `["lobster"]`
@@ -1000,6 +1003,15 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-lobster ran with no Lobster leg in the plan")
+	}
+	// the Squirrel card rows run exactly when the plan selects the Squirrel leg
+	squirrelIntoMain := sameRepoMainUnlabeled
+	squirrelIntoMain.PlanLegs = `["squirrel"]`
+	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", squirrelIntoMain); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("same-repo PR into main selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
+	}
+	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
+		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
 	}
 	for _, job := range []string{"generated", "pins", "cs-tables"} {
 		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, streamToDevPR); err != nil || !ok {
@@ -1028,6 +1040,59 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		wfName, jobName, _ := strings.Cut(wantKey, ":")
 		if ok, err := jobSelectsSelfHosted(wfs[wfName], jobName, streamToDevPR); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not select self-hosted %s (err=%v)", wantKey, err))
+		}
+	}
+
+	// CI fast and CI full run on a pull request whatever its base. A sprint
+	// card branch is not main, dev, or fixed-table-form, and neither is an
+	// arbitrary feature branch. Push triggers are unchanged.
+	unnamedBase := ciEvent{
+		Name:     "pull_request",
+		Branch:   "feature/not-a-named-base",
+		HeadRef:  "sprint/schema/shared-2856-ci-every-base-2",
+		Repo:     repo,
+		HeadRepo: repo,
+		PlanPkgs: planPkgs,
+		PlanLegs: planLegs,
+	}
+	for _, job := range []string{"plan", "lint-fast", "block-gate", "go-test-touched"} {
+		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
+		}
+	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
+		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
+	}
+	for _, job := range []string{"generated", "pins", "cs-tables"} {
+		if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], job, unnamedBase); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-full.yml:%s (err=%v)", job, err))
+		}
+	}
+	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", unnamedBase); ok {
+		errs = append(errs, "unlabeled PR into an unnamed base ran ci-full.yml:go-test")
+	}
+	unnamedLabeled := unnamedBase
+	unnamedLabeled.Labels = []string{"full-ci"}
+	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", unnamedLabeled); err != nil || !ok {
+		errs = append(errs, fmt.Sprintf("labeled PR into an unnamed base did not select ci-full.yml:go-test (err=%v)", err))
+	}
+	forkUnnamed := unnamedBase
+	forkUnnamed.HeadRepo = forkRepo
+	forkUnnamed.Labels = []string{"full-ci"}
+	for _, wfName := range []string{"ci-fast.yml", "ci-full.yml"} {
+		if branches := workflowTriggerBranches(wfs[wfName])["pull_request"]; len(branches) != 0 {
+			errs = append(errs, fmt.Sprintf("%s pull_request filters bases %v; it must run whatever the base is", wfName, branches))
+		}
+		for _, sh := range shJobs {
+			if sh.Workflow != wfName {
+				continue
+			}
+			ok, err := jobSelectsSelfHosted(wfs[sh.Workflow], sh.Job, forkUnnamed)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s eval error on fork PR into an unnamed base: %v", sh.Key(), err))
+			} else if ok {
+				errs = append(errs, fmt.Sprintf("%s admits fork PR into an unnamed base onto self-hosted runner", sh.Key()))
+			}
 		}
 	}
 
@@ -1109,12 +1174,13 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 	// does not name it (a push-and-pull-request replay, say).
 	// The plan here selects the Lobster leg too, whose rows are a job of
 	// their own (ci-fast.yml leg-gate-lobster) gated on that selection.
+	// leg-gate-squirrel is gated the same way on the Squirrel leg.
 	dispatchEv := ciEvent{
 		Name:     "workflow_dispatch",
 		Branch:   "main",
 		Repo:     repo,
 		PlanPkgs: planPkgs,
-		PlanLegs: `["go","lobster"]`,
+		PlanLegs: `["go","lobster","squirrel"]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1167,6 +1233,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-lobster",
+		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
 		"ci-full.yml:conformance",
@@ -1327,11 +1394,18 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "ci-full.yml:go-test admits fork PR (base=main, labels=[full-ci])",
 		},
 		{
-			name:      "drop dev from ci-fast pull_request branches",
+			name:      "restore a named-base filter on ci-fast pull_request",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "branches: [ main, dev, fixed-table-form ]",
-			newSubstr: "branches: [ main, fixed-table-form ]",
-			wantErr:   "stream-to-dev PR did not run ci-fast.yml:plan",
+			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n  workflow_dispatch:\n",
+			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n  workflow_dispatch:\n",
+			wantErr:   "PR into an unnamed base did not run ci-fast.yml:plan",
+		},
+		{
+			name:      "restore a named-base filter on ci-full pull_request",
+			workflow:  "ci-full.yml",
+			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
+			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
+			wantErr:   "PR into an unnamed base did not run ci-full.yml:pins",
 		},
 		{
 			name:      "drop dev from ci-full push and pull_request branches",

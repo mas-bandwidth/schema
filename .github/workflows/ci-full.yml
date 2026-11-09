@@ -97,6 +97,7 @@ on:
     # runs the whole of this file. Feature branches do not: their pull request
     # already ran it on the same head (2026-10-29).
     branches: [ main, dev, fixed-table-form ]
+  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
     # every job below is gated on that, except `generated`, `pins` and
@@ -104,7 +105,6 @@ on:
     # near the hot paths, or anything that moves the C++ emitters, asks for the
     # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
     # is the other way, and needs no label.
-    branches: [ main, dev, fixed-table-form ]
     types: [ opened, synchronize, reopened, labeled ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
@@ -131,6 +131,7 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
+  PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -937,13 +938,15 @@ jobs:
     name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
         group: [ moo-compiler, moo-table, goose ]
+    env:
+      PGROUP_WALL: ''
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2531,6 +2534,8 @@ jobs:
     # top, so five minutes is generous and a row that reaches it is a row that
     # left the rule. A ceiling wide enough to hide that is not a timeout.
     timeout-minutes: 5
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
