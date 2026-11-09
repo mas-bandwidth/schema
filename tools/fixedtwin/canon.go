@@ -734,10 +734,13 @@ func collapse(s string) []string {
 	return lines
 }
 
-// The C fixed-count/length sibling lands on sprint/schema-c before its forward
-// merge to schema-cpp. Until then, compare the common C/C++ runtime while the
-// C++ refusal scan is covered against Go by cpptable/fixedbound_test.go. Remove
-// this named exclusion when that forward merge supplies the C scan.
+// THE COUNT AND TEXT PRE-SCAN IS THE STRICT READ, so it is not erased
+// blindly: a scan whose count or length refusal has been weakened stays in
+// the source and the twin diff reds on it. Only the reference's own scan,
+// with both bound clauses intact, is stripped here because the C leg answers
+// the same rule in table_fixed_apply; the Apply pair is compared on both
+// sides by the runtime diff. Delete this exclusion when the C leg emits the
+// scan too.
 func stripPendingCBoundScan(s string) string {
 	for _, name := range []string{"TableFixedRefuseScan", "table_fixed_refuse_scan"} {
 		i := strings.Index(s, name+"(")
@@ -750,11 +753,38 @@ func stripPendingCBoundScan(s string) string {
 			continue
 		}
 		end := matchingBrace(s, i+open)
-		if end >= 0 {
-			s = s[:start] + s[end+1:]
+		if end < 0 {
+			continue
 		}
+		if !strictCountTextScan(s[i : end+1]) {
+			continue
+		}
+		s = s[:start] + s[end+1:]
 	}
 	return s
+}
+
+// strictCountTextScan reports whether fn is the whole count/text bound rule:
+// a count past the plan size and a text length past the plan's unit capacity
+// each refuse by name. The names are mapped first so the C spelling, if it
+// ever supplies the scan, is held to the same text.
+func strictCountTextScan(fn string) bool {
+	fn = applyIdents(fn)
+	fn = strings.ReplaceAll(fn, "->", ".")
+	fn = reSpaces.ReplaceAllString(fn, " ")
+	for _, clause := range []string{
+		"p.op == kTableFixedCount",
+		"v > (int32_t) p.size",
+		"why = count_over_bound",
+		"p.op == kTableFixedText",
+		"(uint32_t) v > cap",
+		"why = length_over_bound",
+	} {
+		if !strings.Contains(fn, clause) {
+			return false
+		}
+	}
+	return true
 }
 
 // THE C COUNTER IS NAMED FOR ITS REFUSAL. C calls the read loop's counter
