@@ -764,8 +764,8 @@
     },
     {
       "name": "cs-tables-retain",
-      "when": "pull-request",
-      "why": "the C# table codec's retain control (test/cs-tables/retain-negative-control). Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
+      "when": "nightly",
+      "why": "the C# table codec's retain control (test/cs-tables/retain-negative-control). Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s). On this branch, run 42593314285, the one-target row was cancelled at 336 s wall with no assertion failure (job 2026-11-09T09:44:50Z-09:50:26Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-retain-negative-control"
       ],
@@ -810,8 +810,8 @@
     },
     {
       "name": "cs-hostile-corpus",
-      "when": "pull-request",
-      "why": "the C# hostile-corpus control (docs/HOSTILE-CORPUS.md): it requires the unplanted corpus green, flips one passing accepted and one passing refused verdict in a scratch copy of the manifest, and requires the runner to go red naming both; one dispatch generation and one SDK build, about 10 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# hostile-corpus control (docs/HOSTILE-CORPUS.md): it requires the unplanted corpus green, flips one passing accepted and one passing refused verdict in a scratch copy of the manifest, and requires the runner to go red naming both; one dispatch generation and one SDK build, about 10 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42593314285, the one-target row was cancelled at 341 s wall with no assertion failure (job 2026-11-09T09:44:56Z-09:50:37Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "schema-cs-runs-hostile-corpus-negative-control"
       ],
@@ -939,8 +939,8 @@
     },
     {
       "name": "cs-cook-root",
-      "when": "pull-request",
-      "why": "the C# cook-open root control: the root-length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "when": "nightly",
+      "why": "the C# cook-open root control: the root-length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42593314285, the one-target row was cancelled at 351 s wall with no assertion failure (job 2026-11-09T09:42:08Z-09:47:59Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cook-open-cs-root-negative-control"
       ],
@@ -1056,8 +1056,8 @@
     },
     {
       "name": "cs-leg-region-blob-shared",
-      "when": "pull-request",
-      "why": "the C# table leg's region-blob-shared control (make/cs.mk cs_leg_sabotage): the native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots late, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# table leg's region-blob-shared control (make/cs.mk cs_leg_sabotage): the native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots late, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42593314285, the one-target row was cancelled at 344 s wall with no assertion failure (job 2026-11-09T09:45:08Z-09:50:52Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-region-blob-shared-negative-control"
       ],
@@ -1074,8 +1074,8 @@
     },
     {
       "name": "cs-leg-discard",
-      "when": "pull-request",
-      "why": "the C# table leg's managed-load discard (make/cs.mk cs_leg_sabotage, table-cs-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the managed load's discard taken out, so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone.",
+      "when": "nightly",
+      "why": "the C# table leg's managed-load discard (make/cs.mk cs_leg_sabotage, table-cs-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the managed load's discard taken out, so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone. On this branch, run 42593314285, the one-target row was cancelled at 345 s wall with no assertion failure (job 2026-11-09T09:43:28Z-09:49:13Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-leg-discard-negative-control"
       ],
