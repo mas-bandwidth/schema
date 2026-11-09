@@ -753,6 +753,16 @@ conformance-negative-control-go-framing: build/conformance-harness build/conform
 conformance-negative-control-go-write-refusal: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control write-refusal
 
+# THE FIXED AND MESSAGE WRITERS' controls, one per surface (docs/SPEC.md §5.1):
+# each removes one ranged-scalar check from a copy of the generated Go writer
+# and requires its own surface to go red while the read surfaces stay green.
+.PHONY: conformance-negative-control-go-write-refusal-fixed conformance-negative-control-go-write-refusal-message
+conformance-negative-control-go-write-refusal-fixed: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-refusal-fixed
+
+conformance-negative-control-go-write-refusal-message: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control write-refusal-message
+
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's
@@ -766,6 +776,8 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	$(MAKE) conformance-negative-control-go-text-refusal
 	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) conformance-negative-control-go-write-refusal
+	$(MAKE) conformance-negative-control-go-write-refusal-fixed
+	$(MAKE) conformance-negative-control-go-write-refusal-message
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz

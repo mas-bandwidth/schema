@@ -1,0 +1,142 @@
+#!/bin/sh
+# One write-refusal control, shared by the legs whose writers are generated.
+#
+# The control patches a COPY of the generated writer under build/, builds the
+# leg's conformance driver against that copy, and runs the harness. The surface
+# the control names must go red while the read surface beside it stays green,
+# which is what says the control localises the writer and not the harness.
+#
+# The Go leg drives its own script (test/conformance/go/negative-control), which
+# builds with an overlay rather than a copied tree.
+set -eu
+
+lang=$1
+surface=$2
+out=build/write-refusal-control-$lang-$surface
+root=$(pwd)
+
+rm -rf "$out"
+mkdir -p "$out"
+
+case "$lang" in
+cpp)
+	cp -R build/tables-generated "$out/generated"
+	file=$out/generated/examples/TablesTable.h
+	case "$surface" in
+	write-refusal)
+		perl -0pi -e 's{(?m)(^inline int64_t WeaponConfigMeasureBody\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif ( !TableFloatFinite( value.damage ) ) { return -1; }\E~if ( false ) { return -1; } \/\/ SABOTAGED: variable write guard removed~; $b}se' "$file"
+		perl -0pi -e 's{(?m)(^TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif ( !TableFloatFinite( value.damage ) ) { return false; }\E~if ( false ) { return false; } \/\/ SABOTAGED: variable write guard removed~; $b}se' "$file"
+		;;
+	write-refusal-fixed)
+		perl -0pi -e 's{\Qfor ( int64_t k = 0; k < count; ++k ) { if ( !RootConfigFixedFiniteBody( values[k] ) ) { return -1; } }\E}{for ( int64_t k = 0; k < count; ++k ) { } /* SABOTAGED: fixed write guard removed */}g' "$file"
+		;;
+	write-refusal-message)
+		perl -0pi -e 's{(?m)(^inline int64_t WeaponConfigMeasureMessageBody\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif ( !TableFloatFinite( value.damage ) ) { return -1; }\E~if ( false ) { return -1; } \/\/ SABOTAGED: message write guard removed~; $b}se' "$file"
+		perl -0pi -e 's{(?m)(^inline bool WeaponConfigSaveMessageBody\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif ( !TableFloatFinite( value.damage ) ) { return false; }\E~if ( false ) { return false; } \/\/ SABOTAGED: message write guard removed~; $b}se' "$file"
+		;;
+	*) echo "unknown surface: $surface" >&2; exit 1 ;;
+	esac
+	grep -rq SABOTAGED "$out/generated" || { echo "negative control patched nothing: $lang $surface" >&2; exit 1; }
+	$WR_COMPILER $WR_FLAGS test/conformance/cpp/main.cpp $WR_SOURCES -o "$out/driver-bin"
+	;;
+c)
+	cp -R build/tables-generated-c "$out/generated"
+	file=$out/generated/examples/TablesTable.h
+	case "$surface" in
+	write-refusal)
+		perl -0pi -e 's{(?m)(^static SCHEMA_UNUSED int tabledemo_weapon_config_save_body\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif ( !tabledemo_table_float_finite( value->damage ) ) { return 0; }\E~if ( 0 ) { return 0; } \/* SABOTAGED: variable write guard removed *\/~; $b}se' "$file"
+		;;
+	write-refusal-fixed)
+		perl -0pi -e 's{\Qif ( !schema_tabledemo_root_config_fixed_finite_body_( values + k ) ) { return -1; }\E}{if ( 0 ) { return -1; } /* SABOTAGED: fixed write guard removed */}g' "$file"
+		;;
+	write-refusal-message)
+		perl -0pi -e 's{(?m)(^static SCHEMA_UNUSED int tabledemo_weapon_config_save_message_body\([^\n]*\)\n\{.*?\n\})}{my $b=$1; $b =~ s~\Qif(!tabledemo_table_float_finite(value->damage)) return 0;\E~if(0) return 0; \/* SABOTAGED: message write guard removed *\/~; $b}se' "$file"
+		;;
+	*) echo "unknown surface: $surface" >&2; exit 1 ;;
+	esac
+	grep -rq SABOTAGED "$out/generated" || { echo "negative control patched nothing: $lang $surface" >&2; exit 1; }
+	$WR_COMPILER $WR_FLAGS $WR_SOURCES -o "$out/driver-bin" -lm
+	;;
+rust)
+	cp -R build/tables-generated-rust "$out/generated"
+	case "$surface" in
+	write-refusal)
+		file=$out/generated/tabledemo/src/tables_table.rs
+		perl -0pi -e 's{\Qif !v.damage.is_finite() { table_float_refuse(ids, "WeaponConfig.damage"); }\E}{if false { table_float_refuse(ids, "WeaponConfig.damage"); } // SABOTAGED: variable write guard removed}g' "$file"
+		;;
+	write-refusal-fixed)
+		file=$out/generated/tabledemo/src/tables_fixed.rs
+		perl -0pi -e 's#\Qif values.iter().any(|value| !weapon_config_fixed_finite_body(value).is_empty()) {\E#if false \&\& values.iter().any(|value| !weapon_config_fixed_finite_body(value).is_empty()) { // SABOTAGED: fixed write guard removed#g' "$file"
+		;;
+	write-refusal-message)
+		file=$out/generated/tabledemo/src/tables_message.rs
+		perl -0pi -e 's{\Qif !value.damage.is_finite() { return false; }\E}{if false { return false; } // SABOTAGED: message write guard removed}g' "$file"
+		;;
+	*) echo "unknown surface: $surface" >&2; exit 1 ;;
+	esac
+	grep -rq SABOTAGED "$out/generated" || { echo "negative control patched nothing: $lang $surface" >&2; exit 1; }
+	mkdir -p "$out/driver"
+	cp -R test/conformance/rust/src "$out/driver/src"
+	sed -e "s|build/tables-generated-rust/|$root/$out/generated/|g" test/conformance/rust/Cargo.toml > "$out/driver/Cargo.toml"
+	( cd "$out/driver" && PATH="$WR_RUSTUP:$PATH" CARGO_TARGET_DIR="$root/$out/target" cargo build --quiet )
+	cp "$out/target/debug/conformance-rust" "$out/driver-bin"
+	;;
+cs)
+	cp -R build/tables-generated-cs "$out/generated"
+	file=$out/generated/examples/TablesTable.cs
+	case "$surface" in
+	write-refusal)
+		perl -0pi -e 's{\Qif (!float.IsFinite(v.Damage)) return false;\E}{if (false) return false; // SABOTAGED: variable write guard removed}g' "$file"
+		;;
+	write-refusal-fixed)
+		perl -0pi -e 's{\Qif (!float.IsFinite(value.Damage)) return "WeaponConfig.damage";\E}{if (false) return "WeaponConfig.damage"; // SABOTAGED: fixed write guard removed}g' "$file"
+		;;
+	write-refusal-message)
+		file=$out/generated/examples/TabledemoTable.cs
+		perl -0pi -e 's{\Qw.Put(bits, ValueBits(f.Kind, shape));\E}{w.Put(bits ^ 1, ValueBits(f.Kind, shape)); // SABOTAGED: message value moved}g' "$file"
+		;;
+	*) echo "unknown surface: $surface" >&2; exit 1 ;;
+	esac
+	grep -rq SABOTAGED "$out/generated" || { echo "negative control patched nothing: $lang $surface" >&2; exit 1; }
+	$WR_DOTNET build test/conformance/cs --nologo -v quiet \
+		-p:TablesGeneratedDir="$root/$out/generated" \
+		-p:CardsGeneratedDir="$root/$out/generated/cards" \
+		-p:BaseIntermediateOutputPath="$root/$out/obj/" \
+		-o "$out/checker" > "$out/build.log" 2>&1 || \
+		{ cat "$out/build.log"; echo "negative control: the sabotaged C# driver does not compile" >&2; exit 1; }
+	;;
+*)
+	echo "unknown language: $lang" >&2
+	exit 1
+	;;
+esac
+
+case "$lang" in
+cs)
+	printf '#!/bin/sh\nexec "%s" "%s/checker/schemaconformance.dll" "$@"\n' "$WR_DOTNET" "$root/$out" > "$out/driver"
+	;;
+*)
+	printf '#!/bin/sh\nexec "%s/driver-bin" "$@"\n' "$root/$out" > "$out/driver"
+	;;
+esac
+chmod +x "$out/driver"
+printf '%s %s/driver\n' "$lang" "$out" > "$out/drivers.txt"
+
+if ./build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the $surface guard removal left the $lang leg green" >&2
+	cat "$out/log"
+	exit 1
+fi
+
+case "$surface" in
+write-refusal)        gone=$surface;        green=wire ;;
+write-refusal-fixed)  gone=$surface;        green=wire ;;
+write-refusal-message) gone=$surface;       green=message ;;
+esac
+
+grep -q "$lang / $gone:" "$out/log" || \
+	{ echo "NEGATIVE CONTROL FAILED: the $lang leg went red, but not on $gone" >&2; cat "$out/log"; exit 1; }
+grep -Eq "^$green +pass" "$out/log" || \
+	{ echo "NEGATIVE CONTROL FAILED: $green went red too, so the control localises nothing" >&2; cat "$out/log"; exit 1; }
+grep -m1 "$lang / $gone:" "$out/log"
+echo "negative control: a removed $lang $surface guard turns that surface red while $green stays green"

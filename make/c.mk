@@ -2118,3 +2118,28 @@ test-c: tables-c-cycle
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-c/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE WRITE CONTRACT'S controls (docs/SPEC.md §5.1): one per writer. Each
+# removes one write guard from a COPY of the generated C and rebuilds the
+# conformance driver against it, so the surface it names must go red while the
+# read surface beside it stays green.
+.PHONY: conformance-negative-control-c-write-refusal
+conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
+	@WR_COMPILER="$(CC)" \
+	 WR_FLAGS="$(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal/generated/,$(C_CONFORMANCE_INCLUDES))" \
+	 WR_SOURCES="$(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal/generated/,$(C_CONFORMANCE_SOURCES))" \
+	 sh test/conformance/write-refusal-negative-control c write-refusal
+
+.PHONY: conformance-negative-control-c-write-refusal-fixed
+conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
+	@WR_COMPILER="$(CC)" \
+	 WR_FLAGS="$(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal-fixed/generated/,$(C_CONFORMANCE_INCLUDES))" \
+	 WR_SOURCES="$(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal-fixed/generated/,$(C_CONFORMANCE_SOURCES))" \
+	 sh test/conformance/write-refusal-negative-control c write-refusal-fixed
+
+.PHONY: conformance-negative-control-c-write-refusal-message
+conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
+	@WR_COMPILER="$(CC)" \
+	 WR_FLAGS="$(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal-message/generated/,$(C_CONFORMANCE_INCLUDES))" \
+	 WR_SOURCES="$(subst build/tables-generated-c/,build/write-refusal-control-c-write-refusal-message/generated/,$(C_CONFORMANCE_SOURCES))" \
+	 sh test/conformance/write-refusal-negative-control c write-refusal-message
