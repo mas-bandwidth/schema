@@ -591,6 +591,38 @@ local function readUnion(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 	return v
 end
 
+-- A [N]uint8 or [E]uint8 is a buffer, 0-based; every other array is a
+-- 1-based list (docs/PORT-LUAU.md, THE TYPE MAPPING). The constructor's value
+-- says which: slots is the reader's mine slots at their defaults, in the same
+-- shape, and slotAt / setSlot read and write one 1-based slot of either.
+local function slots(def: any, mine: number): any
+	if typeof(def) == "buffer" then
+		local b = buffer.create(mine)
+		buffer.copy(b, 0, def, 0, math.min(mine, buffer.len(def)))
+		return b
+	end
+	local out = table.create(mine)
+	for i = 1, mine do
+		out[i] = if def ~= nil then def[i] else nil
+	end
+	return out
+end
+
+local function slotAt(x: any, i: number): any
+	if typeof(x) == "buffer" then
+		return if i <= buffer.len(x) then buffer.readu8(x, i - 1) else nil
+	end
+	return x[i]
+end
+
+local function setSlot(x: any, i: number, v: any)
+	if typeof(x) == "buffer" then
+		buffer.writeu8(x, i - 1, v)
+	else
+		x[i] = v
+	end
+end
+
 local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): (any, any)
 	local we, re = w.children[1], r.children[1]
 	if f.s == "bytes" then
@@ -612,25 +644,19 @@ local function readArray(f: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 		-- the bound THE PLAN CARRIES is the WRITER's own (bill §12.5)
 		if count > theirs then error(refuse("count_over_bound"), 0) end
 		if count > mine then count = mine end
-		local out = table.create(mine)
-		for i = 1, mine do
-			out[i] = if def ~= nil then def[i] else nil
-		end
+		local out = slots(def, mine)
 		for i = 1, count do
-			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(e, we, re, buf, at + head + (i - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 		return out, count
 	end
 	-- a fixed array: the writer's elements land, the reader's slots past them
 	-- keep THE ELEMENT'S DEFAULTS (§5.2 EMIT kind 14, bill §12.6)
-	local out = table.create(mine)
-	for i = 1, mine do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, mine)
 	for i = 1, math.min(theirs, mine) do
-		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, out[i])
-		if got ~= MISSING then out[i] = got end
+		local got = readPair(e, we, re, buf, at + (i - 1) * we.size, cx, slotAt(out, i))
+		if got ~= MISSING then setSlot(out, i, got) end
 	end
 	return out, nil
 end
@@ -638,18 +664,14 @@ end
 local function readKeyed(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, def: any): any
 	local wkey, we = w.children[1], w.children[2]
 	local rkey, re = r.children[1], r.children[2]
-	local slots = #rkey.children
-	local out = table.create(slots)
-	for i = 1, slots do
-		out[i] = if def ~= nil then def[i] else nil
-	end
+	local out = slots(def, #rkey.children)
 	-- per reader slot, the writer's slot of the key variant with the same id
 	-- (§5.2 EMIT kind 16); a slot an appended key opened keeps its default
-	for i = 1, slots do
+	for i = 1, #rkey.children do
 		local j = if w == r then i else childIndexById(wkey.children, rkey.children[i].id)
 		if j ~= 0 then
-			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, out[i])
-			if got ~= MISSING then out[i] = got end
+			local got = readPair(f.e, we, re, buf, at + (j - 1) * we.size, cx, slotAt(out, i))
+			if got ~= MISSING then setSlot(out, i, got) end
 		end
 	end
 	return out
@@ -828,21 +850,21 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 			local c = childAt(n, 1) :: Node
 			shift(c, COUNT)
 			for i = 1, count do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(COUNT + count * c.size))
 		elseif f.array == "keyed" then
 			local c = childAt(n, 2) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
 		else
 			local c = childAt(n, 1) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, value[slot][i], buf)
+				writeOne(e, c, slotAt(value[slot], i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
