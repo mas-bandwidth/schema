@@ -122,8 +122,7 @@ func cppFramingRun(t *testing.T, root, bin string, rows []cppFramingRow) map[str
 // and are never compared.
 func cppFramingVerdict(answer []byte) string {
 	line, _, _ := strings.Cut(string(answer), "\n")
-	fields := strings.Split(line, ",")
-	return strings.TrimSpace(fields[len(fields)-1])
+	return strings.TrimSpace(line[strings.LastIndex(line, ",")+1:])
 }
 
 func cppFramingCheck(t *testing.T, root string, answers map[string][]byte, rows []cppFramingRow) []string {
