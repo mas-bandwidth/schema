@@ -964,7 +964,7 @@ static partial class Program
             byte[] wire=File.ReadAllBytes(f[4]);
             var report=new RT.TableReport();
             long need=RT.Schema.NodeLoadMeasure(wire);
-            if(need<0) { return 1; }
+            if(need<0) { if(!saved) { File.WriteAllText(Path.Combine(outDir,f[1]),"refused\n"); } continue; }
             int bodies=1;
             byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)need,64);
             RT.TableRetain[] stores=new RT.TableRetain[bodies]; IntPtr[] roots=new IntPtr[bodies];
@@ -975,7 +975,7 @@ static partial class Program
                 if(f[5]=="short")
                 { RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],new RT.TableReport()); stores[0].Capacity=stores[0].Used-1; }
                 roots[0]=(IntPtr)RT.Schema.NodeLoadRetain((IntPtr)region,need,wire,ref stores[0],report);
-                if(report.Damaged || report.Refused) { return 1; }
+                if(roots[0]==IntPtr.Zero || report.Damaged || report.Refused) { if(!saved) { File.WriteAllText(Path.Combine(outDir,f[1]),"refused\n"); } continue; }
                 using var bytes=new MemoryStream(); var save=new RT.TableReport();
                 for(int i=0;i<bodies;i++)
                 {
@@ -986,7 +986,25 @@ static partial class Program
                     bytes.Write(output);
                 }
                 if(saved) { File.WriteAllBytes(Path.Combine(outDir,f[1]),bytes.ToArray()); }
-                else { File.WriteAllText(Path.Combine(outDir,f[1]),report.Retained+","+report.RetainLost+","+report.Unknown+" "+save.RetainLost+"\n"); }
+                else
+                {
+                    // `read\n` plus the complete known §16 value: retention
+                    // keeps unknown records for the save and never changes
+                    // the value a reader of this build sees.
+                    var known=RT.Schema.NodeLoadBuilder((IntPtr)region);
+                    if(known==null) { return 1; }
+                    long jsize=RT.Schema.NodeToJsonMeasure(known);
+                    if(jsize<0) { return 1; }
+                    byte[] jtext=new byte[jsize];
+                    if(RT.Schema.NodeToJson(known,jtext)!=jsize) { return 1; }
+                    byte[] head=Encoding.ASCII.GetBytes("read\n");
+                    byte[] both=new byte[head.Length+jtext.Length];
+                    head.CopyTo(both,0); jtext.CopyTo(both,head.Length);
+                    File.WriteAllBytes(Path.Combine(outDir,f[1]),both);
+                    // The write-back wire beside a retain answer is the
+                    // retained save itself.
+                    File.WriteAllBytes(Path.Combine(outDir,f[1]+".wire"),bytes.ToArray());
+                }
             }
             finally
             {

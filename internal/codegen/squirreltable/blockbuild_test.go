@@ -249,54 +249,90 @@ func TestSquirrelBlockBuilderMatchesTheCorpus(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(blockBuilderProbe))
 
-	stdout := sqrun.Run(t, dir, "main.nut", nil)
 	pinned := map[string]string{
 		"RenderFrame": "block_render",
 		"PaddedFrame": "block_padded",
 	}
-	got := map[string]string{}
-	count := 0
-	claimed := 0
-	for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
-		fields := strings.Fields(line)
-		switch {
-		case len(fields) == 4 && fields[0] == "BLOCK":
-			got[fields[1]] = fields[3]
-			if fields[2] != fmt.Sprint(len(fields[3])/2) {
-				t.Errorf("%s: the builder measured %s bytes, the hex line carries %d", fields[1], fields[2], len(fields[3])/2)
-			}
-		case len(fields) == 2 && fields[0] == "count":
-			fmt.Sscan(fields[1], &claimed)
-		case len(fields) > 0 && fields[0] == "FAIL":
-			t.Errorf("the Squirrel builder probe reported: %s", line)
-		case line != "":
-			t.Errorf("unexpected output %q", line)
-		}
-	}
-	for table, name := range pinned {
-		want, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", name+".bin"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got[table] != fmt.Sprintf("%x", want) {
-			first := -1
-			shown := min(len(got[table])/2, len(want))
-			for i := range shown {
-				if got[table][2*i:2*i+2] != fmt.Sprintf("%02x", want[i]) {
-					first = i
-					break
+	// check runs the probe over one directory of emitted modules and answers
+	// every way the build differs from the corpus, with the instances it held.
+	check := func(dir string) (bad []string, count int) {
+		stdout := sqrun.Run(t, dir, "main.nut", nil)
+		got := map[string]string{}
+		claimed := 0
+		for line := range strings.SplitSeq(strings.TrimRight(string(stdout), "\n"), "\n") {
+			fields := strings.Fields(line)
+			switch {
+			case len(fields) == 4 && fields[0] == "BLOCK":
+				got[fields[1]] = fields[3]
+				if fields[2] != fmt.Sprint(len(fields[3])/2) {
+					bad = append(bad, fmt.Sprintf("%s: the builder measured %s bytes, the hex line carries %d", fields[1], fields[2], len(fields[3])/2))
 				}
+			case len(fields) == 2 && fields[0] == "count":
+				fmt.Sscan(fields[1], &claimed)
+			case len(fields) > 0 && fields[0] == "FAIL":
+				bad = append(bad, "the Squirrel builder probe reported: "+line)
+			case line != "":
+				bad = append(bad, fmt.Sprintf("unexpected output %q", line))
 			}
-			if first < 0 && len(got[table])/2 != len(want) {
-				first = shown
-			}
-			t.Errorf("%s: the Squirrel builder's bytes do not match testdata/wire/tables/%s.bin (%d bytes); first difference at %d", table, name, len(want), first)
-			continue
 		}
-		count++
+		for table, name := range pinned {
+			want, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", name+".bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got[table] != fmt.Sprintf("%x", want) {
+				first := -1
+				shown := min(len(got[table])/2, len(want))
+				for i := range shown {
+					if got[table][2*i:2*i+2] != fmt.Sprintf("%02x", want[i]) {
+						first = i
+						break
+					}
+				}
+				if first < 0 && len(got[table])/2 != len(want) {
+					first = shown
+				}
+				bad = append(bad, fmt.Sprintf("%s: the Squirrel builder's bytes do not match testdata/wire/tables/%s.bin (%d bytes); first difference at %d", table, name, len(want), first))
+				continue
+			}
+			count++
+		}
+		if count != len(pinned) || claimed != len(pinned) {
+			bad = append(bad, fmt.Sprintf("built %d of %d block corpus instances (probe counted %d)", count, len(pinned), claimed))
+		}
+		return bad, count
 	}
-	if count != len(pinned) || claimed != len(pinned) {
-		t.Errorf("built %d of %d block corpus instances (probe counted %d)", count, len(pinned), claimed)
+	bad, count := check(dir)
+	for _, e := range bad {
+		t.Error(e)
 	}
 	t.Logf("built %d block corpus instances", count)
+
+	// THE NEGATIVE CONTROLS: the emitted builder (schema_table_blockbuild.nut,
+	// runtime/blockbuild.nut) sabotaged one clause at a time; the probe must
+	// go red against the pinned blocks or Go's refusals.
+	for _, blade := range []struct{ name, anchor, replace string }{
+		{"array offsets unaligned", "    offset = alignUp(offset, a.align);\n", ""},
+		{"byte order word unwritten", "  for (local i = 0; i < 8; i++) blob[origin + 16 + i] = (i == 0) ? 1 : 0;\n", ""},
+		{"negative count accepted", `if (typeof c != "integer" || c < 0 || c > a.max) {`, `if (typeof c != "integer" || c > a.max) {`},
+	} {
+		t.Run("negative control "+blade.name, func(t *testing.T) {
+			bladed := t.TempDir()
+			if err := os.CopyFS(bladed, os.DirFS(dir)); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(bladed, "blockdemo", "schema_table_blockbuild.nut")
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := strings.Count(string(src), blade.anchor); n != 1 {
+				t.Fatalf("the blade's anchor %q is in %s %d times, want 1", blade.anchor, path, n)
+			}
+			writeFile(t, path, []byte(strings.Replace(string(src), blade.anchor, blade.replace, 1)))
+			if bad, _ := check(bladed); len(bad) == 0 {
+				t.Fatal("the sabotaged builder still matches the corpus; the differential does not see this clause")
+			}
+		})
+	}
 }

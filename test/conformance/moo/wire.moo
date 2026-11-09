@@ -7,7 +7,9 @@
 --   report  Load the wire, the verdict `read` or `refused`, then the §16 text
 --           of the value and its write-back wire when the read reads
 --   framing the same answer over the framing vectors, without the text when
---           the row says `no-value` (docs/LAYERS/1-framing.md)
+--           the row says `no-value` (docs/LAYERS/1-framing.md); a framing
+--           vector is a form-1 file read as the variable form even at a
+--           fixed root, and its value is written back in the root's own form
 --
 -- through the emitted table_load.moo and table_save.moo and the descriptors the
 -- unit's <Base>Table modules register. ctx is the one block.moo documents, with
@@ -64,8 +66,14 @@ return function(ctx: any): { [string]: Surface }
 	-- (test/conformance/README.md). A framing line is
 	-- `framing <case> <unit> <root> <wire> [no-value]`; a no-value row owes the
 	-- verdict and the write-back wire, never the text.
-	local function answer(f: { string }, withText: boolean)
-		local v = loadWire(f)
+	local function answer(f: { string }, withText: boolean, variable: boolean)
+		local v: any
+		if variable then
+			ctx.tables(f[3])
+			v = ctx.readVariable(f[3], f[4], ctx.inputs(f[5]))
+		else
+			v = loadWire(f)
+		end
 		if v == nil then
 			ctx.say(f[2], "refused\n")
 			return
@@ -96,7 +104,7 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				answer(f, true)
+				answer(f, true, false)
 			end
 		end,
 	}
@@ -108,7 +116,7 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				answer(f, f[6] ~= "no-value")
+				answer(f, f[6] ~= "no-value", true)
 			end
 		end,
 	}

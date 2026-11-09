@@ -329,7 +329,10 @@ func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 		if fs[2] != "graphdemo" {
 			t.Fatalf("%s names unit %s, not graphdemo", fs[1], fs[2])
 		}
-		if want := "malformed"; !load && fs[5] != want {
+		// THE VERDICT IS THE WHOLE CONTRACT (docs/rulings.json
+		// refusal-verdict-only): a cycle row is refused, and why is this
+		// leg's own diagnostic.
+		if want := "refused"; !load && fs[5] != want {
 			t.Fatalf("%s: the manifest's verdict is %s, not %s", fs[1], fs[5], want)
 		}
 		rows = append(rows, row{fs[1], fs[3], filepath.Join(repo, fs[4]), load})
@@ -345,7 +348,39 @@ func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := loadUnitForMeasure(t, repo, "tables/pointers")
-	jsDiscardRun(t, u, nil, fmt.Sprintf(`
+	// THE OVERWRITTEN SELF-EDGE: the root body names `next` twice, first as
+	// the root itself and then as null, and the node record's own self-edge
+	// is nulled. Its verdict is the Go engine's (a repeated field id is
+	// damage under strict-only, docs/plans/strict-only.md decision 5), so the
+	// probe below owes exactly what the oracle answers.
+	var selfWire string
+	for _, r := range rows {
+		if r.Case == "node_cycle_self" {
+			selfWire = r.Wire
+		}
+	}
+	base, err := os.ReadFile(selfWire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	over := make([]byte, 0, len(base)+3)
+	over = append(over, base[:7]...)
+	over = append(over, 3, 17, 1, 3, 17, 0)
+	over = append(over, base[10:]...)
+	for i := 13; i+2 < len(over); i++ {
+		if over[i] == 3 && over[i+1] == 17 && over[i+2] == 2 {
+			over[i+2] = 0
+			break
+		}
+	}
+	gm := tabletext.NewModel(u)
+	var grep tabletext.Report
+	overLoads, err := tablewire.Decode(gm, gm.New(gm.Lookup("ListNode")), over, &grep)
+	if err != nil && !tablewire.ReadRefusal(err) {
+		t.Fatalf("overwritten_self_cycle: the oracle failed: %v", err)
+	}
+	overLoads = overLoads && err == nil
+	jsDiscardRun(t, u, map[string][]byte{"overwritten_self_cycle.bin": over}, fmt.Sprintf(`
 for (const row of %s) {
   const wire = new Uint8Array(readFileSync(row.wire));
   const r = new m.TableVariableReport();
@@ -354,13 +389,13 @@ for (const row of %s) {
   const rr = new m.TableVariableReport();
   const rv = m[row.root + "LoadRetain"](wire, retain, rr);
   if (row.load) {
-    if (v === null || r.damaged) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
-    if (rv === null || rr.damaged) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
+    if (v === null || r.err() !== null) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
+    if (rv === null || rr.err() !== null) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
     continue;
   }
-  if (v !== null || !r.damaged) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
-  if (rv !== null || !rr.damaged || retain.used !== 0 || retain.count !== 0) {
-    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.damaged + " used=" + retain.used + ")");
+  if (v !== null || r.err() === null) { fail(row.case + ": a cyclic wire loaded (reason=" + r.err() + ")"); }
+  if (rv !== null || rr.err() === null || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": a cyclic wire loaded retained (reason=" + rr.err() + " used=" + retain.used + ")");
   }
 }
 // Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
@@ -371,34 +406,24 @@ for (const row of %s) {
   unreached[9] = 0;
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(unreached, r);
-  if (v !== null || !r.damaged) { fail("unreached_cycle: loaded (malformed=" + r.damaged + ")"); }
+  if (v !== null || r.err() === null) { fail("unreached_cycle: a cyclic wire loaded (reason=" + r.err() + ")"); }
 }
-// Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
-// in the root body must load cleanly with next === null because only final stored
-// slots belong to the loaded graph (§3.1).
+// Overwritten self-edge in the same body (built and judged by the Go engine
+// above): this leg owes the oracle's verdict, and a read that returns holds
+// next === null, the final stored slot (§3.1).
 {
-  const selfRow = (%s).find(x => x.case === "node_cycle_self");
-  const base = new Uint8Array(readFileSync(selfRow.wire));
-  // Insert [3, 17, 1] before [3, 17, 2] at offset 7, and change [3, 17, 2] to [3, 17, 0]
-  // while zeroing the node record's self-edge so the only self-edge was the overwritten one.
-  const over = new Uint8Array(base.length + 3);
-  over.set(base.subarray(0, 7), 0);
-  over.set([3, 17, 1, 3, 17, 0], 7);
-  over.set(base.subarray(10), 13);
-  // In the node record body (which starts after the node header), replace [3, 17, 2] with [3, 17, 0]
-  for (let i = 13; i + 2 < over.length; i++) {
-    if (over[i] === 3 && over[i + 1] === 17 && over[i + 2] === 2) {
-      over[i + 2] = 0;
-      break;
-    }
-  }
+  const over = new Uint8Array(readFileSync("overwritten_self_cycle.bin"));
   const r = new m.TableVariableReport();
   const v = m.ListNodeLoad(over, r);
-  if (v === null || r.damaged || v.next !== null) {
-    fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+  if (%t) {
+    if (v === null || r.err() !== null || v.next !== null) {
+      fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+    }
+  } else if (v !== null || r.err() === null) {
+    fail("overwritten_self_cycle: a repeated field id loaded (the oracle refuses it)");
   }
 }
-`, js, js, js))
+`, js, js, overLoads))
 
 	// List, map, and false-guard pointer-slot cycles (§2.8, §2.9, §3.1).
 	cu := loadSchemaString(t, "cycle.schema", `package cyclecheck
@@ -494,9 +519,9 @@ for (const [name, wantLoad] of [
   const r = new m.TableVariableReport();
   const v = m.NodeLoad(wire, r);
   if (wantLoad) {
-    if (v === null || r.damaged) { fail(name + ": did not load: " + JSON.stringify(r)); }
+    if (v === null || r.err() !== null) { fail(name + ": did not load: " + JSON.stringify(r)); }
   } else {
-    if (v !== null || !r.damaged) { fail(name + ": a cyclic wire loaded (malformed=" + r.damaged + ")"); }
+    if (v !== null || r.err() === null) { fail(name + ": a cyclic wire loaded (reason=" + r.err() + ")"); }
   }
 }
 `)

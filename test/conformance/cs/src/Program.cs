@@ -68,6 +68,7 @@ static partial class Program
         public int Unknown, KindMismatch = 0, Widened, Clamped = 0, Duplicate = 0, BlobShared = 0;
         public bool Refused;
         public bool Malformed;
+        public string Reason;
     }
 
     sealed class Codec
@@ -83,6 +84,7 @@ static partial class Program
         public string Unit;
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
+        public Func<byte[], Report, object> VariableLoad; // a fixed root's variable-form read; framing only
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
         public LoadMeasureOf LoadMeasure;
@@ -538,6 +540,7 @@ static partial class Program
                 TReport inner = make();
                 load(value, bytes, inner);
                 Fill(report, copy(inner));
+                FillReason(report, inner);
                 return value;
             },
             Load = (bytes, report) =>
@@ -546,6 +549,7 @@ static partial class Program
                 TReport inner = make();
                 bool ok = load(value, bytes, inner);
                 Fill(report, copy(inner));
+                FillReason(report, inner);
                 return ok ? (object)value : null;
             },
             Measure = v => measure((TValue)v),
@@ -556,6 +560,7 @@ static partial class Program
                 TReport inner = make();
                 bool ok = fromJson(value, text, inner);
                 Fill(report, copy(inner));
+                FillReason(report, inner);
                 return ok ? (object)value : null;
             },
             ToJsonMeasure = v => toJsonMeasure((TValue)v),
@@ -578,6 +583,13 @@ static partial class Program
         to.Widened = from.Widened;
         to.Refused = from.Refused;
         to.Malformed = from.Malformed;
+        to.Reason = from.Reason;
+    }
+
+    static void FillReason<TReport>(Report to, TReport inner)
+    {
+        var f = typeof(TReport).GetField("Reason");
+        if (f != null) to.Reason = f.GetValue(inner) as string;
     }
 
     static Codec Find(string unit, string root)
@@ -594,6 +606,17 @@ static partial class Program
 
     // ---- the surfaces
 
+    static bool ShareBlob(object value, string source, string alias)
+    {
+        var type = value.GetType();
+        string Cap(string s) { return s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s.Substring(1); }
+        var sf = type.GetField(Cap(source));
+        var af = type.GetField(Cap(alias));
+        if (sf == null || af == null) return false;
+        af.SetValue(value, sf.GetValue(value));
+        return true;
+    }
+
     static int SurfaceCookWrite(string outDir)
     {
         foreach (string[] f in Kind("cook-write"))
@@ -601,14 +624,27 @@ static partial class Program
             string[] instance = lines.Find(c => c[0] == "instance" && c[1] == f[1]);
             Codec codec = Find(instance[2], instance[3]);
             if (codec == null || codec.Cook == null) { SpillAbsent(outDir, f[1]); SpillAbsent(outDir, f[1] + "-be"); continue; }
-            object value = codec.Load(File.ReadAllBytes(instance[4]), new Report());
+            // The construction recipe: read the line's text input where it
+            // names one, else the instance's wire; a share pair then points
+            // the alias blob slot at the source slot's blob (§7.6).
+            Report report = new Report();
+            object value;
+            bool fromWire = !(f.Length > 2 && f[2] != "-");
+            if (!fromWire) { value = codec.FromJson(File.ReadAllBytes(f[2]), report); }
+            else { value = codec.Load(File.ReadAllBytes(instance[4]), report); }
+            if (StrictRefused(value, report)) { Console.Error.WriteLine("cook input did not read: " + f[1]); return 1; }
+            if (f.Length > 4 && f[3] != "-")
+            {
+                fromWire = false;
+                if (!ShareBlob(value, f[3], f[4])) { Console.Error.WriteLine("cook share did not apply: " + f[1]); return 1; }
+            }
             long size = codec.CookMeasure(value);
             if (size < 0) { Console.Error.WriteLine("cook measure failed: " + f[1]); return 1; }
             byte[] bytes = new byte[checked((int)size)];
             foreach (bool big in new bool[] { false, true })
             {
                 if (!codec.Cook(value, bytes, big)) { Console.Error.WriteLine("cook failed: " + f[1]); return 1; }
-                if(codec.NativeCook!=null)
+                if(fromWire && codec.NativeCook!=null)
                 {
                     byte[] native;
                     try { native=codec.NativeCook(File.ReadAllBytes(instance[4]),big); }
@@ -660,6 +696,13 @@ static partial class Program
             object value = codec.Load(wire, report);
             if (value == null)
             {
+                // A blob two slots name is refused by the one read and by
+                // every writer (§2.5): that refusal is this row's answer.
+                if (report.Reason != null && report.Reason.Contains("blob_shared"))
+                {
+                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
+                    continue;
+                }
                 Console.Error.WriteLine("driver: " + f[1] + " does not load");
                 return 1;
             }
@@ -765,7 +808,54 @@ static partial class Program
             }
             File.WriteAllBytes(Path.Combine(outDir, f[1] + ".json"), text);
         }
+        // The values the writer refuses (§16.14): load, damage a text field
+        // in code where the line names one, then ToJson must refuse.
+        foreach (string[] f in Kind("json-write-refusal"))
+        {
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null) { SpillAbsent(outDir, f[1] + ".json"); continue; }
+            Report report = new Report();
+            object value = codec.Load(File.ReadAllBytes(f[4]), report);
+            if (StrictRefused(value, report)) { Console.Error.WriteLine("driver: " + f[1] + " does not load"); return 1; }
+            if (!DamageText(value, f[5])) { Console.Error.WriteLine("driver: " + f[1] + " damage did not apply"); return 1; }
+            long size = codec.ToJsonMeasure(value);
+            if (size < 0)
+            {
+                File.WriteAllText(Path.Combine(outDir, f[1] + ".json"), "refused\n");
+                continue;
+            }
+            byte[] text = new byte[checked((int)size)];
+            if (codec.ToJson(value, text) != size) { File.WriteAllText(Path.Combine(outDir, f[1] + ".json"), "refused\n"); continue; }
+            File.WriteAllBytes(Path.Combine(outDir, f[1] + ".json"), text);
+        }
         return 0;
+    }
+
+    static bool DamageText(object value, string damage)
+    {
+        if (damage == "none") return true;
+        string[] parts = damage.Split(new char[] { ':' }, 2);
+        if (parts.Length != 2) return false;
+        string Cap(string s) { return s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s.Substring(1); }
+        var type = value.GetType();
+        var field = type.GetField(Cap(parts[1]));
+        var length = type.GetField(Cap(parts[1]) + "Length");
+        if (field == null || length == null) return false;
+        if (parts[0] == "narrow")
+        {
+            var arr = field.GetValue(value) as byte[];
+            if (arr == null || arr.Length < 3) return false;
+            arr[0] = 0x61; arr[1] = 0xFF; arr[2] = 0x62;
+        }
+        else if (parts[0] == "wide")
+        {
+            var arr = field.GetValue(value) as char[];
+            if (arr == null || arr.Length < 3) return false;
+            arr[0] = 'a'; arr[1] = '\uD800'; arr[2] = 'b';
+        }
+        else return false;
+        length.SetValue(value, 3);
+        return true;
     }
 
     // json-hostile: one tree per rule the text form states (§16.2, §16.3,
@@ -788,42 +878,49 @@ static partial class Program
             byte[] text = File.ReadAllBytes(Path.Combine(f[4], f[3] + ".json"));
             Report report = new Report();
             object value = codec.FromJson(text, report);
-            if (value == null || report.Malformed)
+            if (StrictRefused(value, report))
             {
                 File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
                 continue;
             }
-            string verdict = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
-                             report.Duplicate + ",false,read\n";
-            byte[] answer = WithValue(codec, value, verdict, f[1]);
-            if (answer == null) return 1;
-            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
+            int rc = AnswerRead(outDir, f[1], codec, value);
+            if (rc != 0) return rc;
         }
         return 0;
     }
 
-    // The value half of a `report` and `json-hostile` answer
-    // (test/conformance/README.md): the report line, then the §16 text of the
-    // value the read left. Null when the writer refuses the value.
-    static byte[] WithValue(Codec codec, object value, string head, string name)
+    // The strict read's verdict: the whole value or a refusal, with no
+    // partial value in either form (test/conformance/README.md).
+    static bool StrictRefused(object value, Report report)
     {
-        byte[] line = System.Text.Encoding.ASCII.GetBytes(head);
+        return value == null || report.Refused || report.Malformed;
+    }
+
+    static bool SpillWire(Codec codec, object value, string outDir, string name)
+    {
+        long size = codec.Measure(value);
+        if (size < 0) { Console.Error.WriteLine("driver: " + name + " holds a value its measure refuses"); return false; }
+        byte[] buffer = new byte[checked((int)size)];
+        if (codec.Save(value, buffer) != size) { Console.Error.WriteLine("driver: " + name + " saves a size its measure did not name"); return false; }
+        File.WriteAllBytes(Path.Combine(outDir, name + ".wire"), buffer);
+        return true;
+    }
+
+    // An accepted strict read owes `read\n`, the complete §16 text and the
+    // canonical write-back wire in `<case>.wire`.
+    static int AnswerRead(string outDir, string name, Codec codec, object value)
+    {
         long size = codec.ToJsonMeasure(value);
-        if (size < 0)
-        {
-            Console.Error.WriteLine("driver: " + name + " holds a value ToJson refuses");
-            return null;
-        }
-        byte[] text = new byte[size];
-        if (codec.ToJson(value, text) != size)
-        {
-            Console.Error.WriteLine("driver: " + name + " writes a text its measure did not name");
-            return null;
-        }
-        byte[] both = new byte[line.Length + text.Length];
-        line.CopyTo(both, 0);
-        text.CopyTo(both, line.Length);
-        return both;
+        if (size < 0) { Console.Error.WriteLine("driver: " + name + " holds a value ToJson refuses"); return 1; }
+        byte[] text = new byte[checked((int)size)];
+        if (codec.ToJson(value, text) != size) { Console.Error.WriteLine("driver: " + name + " writes a text its measure did not name"); return 1; }
+        if (!SpillWire(codec, value, outDir, name)) return 1;
+        byte[] head = Encoding.ASCII.GetBytes("read\n");
+        byte[] both = new byte[head.Length + text.Length];
+        head.CopyTo(both, 0);
+        text.CopyTo(both, head.Length);
+        File.WriteAllBytes(Path.Combine(outDir, name), both);
+        return 0;
     }
 
     static int SurfaceReport(string outDir)
@@ -833,25 +930,19 @@ static partial class Program
             Codec codec = Find(f[2], f[3]);
             if (codec == null)
             {
-                // C# refuses a pointered unit's wire by name (§11), so it has
-                // no codec here and says so per case
                 SpillAbsent(outDir, f[1]);
                 continue;
             }
             byte[] wire = File.ReadAllBytes(f[4]);
             Report report = new Report();
             object value = codec.Load(wire, report);
-            bool malformed = report.Malformed || (value == null && !report.Refused);
-            string text = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
-                          report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
-            if (value == null || malformed || report.Refused)
+            if (StrictRefused(value, report))
             {
-                File.WriteAllText(Path.Combine(outDir, f[1]), text);
+                File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
                 continue;
             }
-            byte[] answer = WithValue(codec, value, text, f[1]);
-            if (answer == null) return 1;
-            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
+            int rc = AnswerRead(outDir, f[1], codec, value);
+            if (rc != 0) return rc;
         }
         return 0;
     }
@@ -875,37 +966,32 @@ static partial class Program
             }
             byte[] wire = File.ReadAllBytes(f[4]);
             Report report = new Report();
-            object value = codec.Load(wire, report);
-            bool malformed = report.Malformed || (value == null && !report.Refused);
-            string head = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
-                          report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
-            // THE NATIVE LOADS answer the same row: the region load and the
-            // builder load must refuse exactly what the managed load refuses,
-            // so a disagreement is written into the answer and the row fails
-            string native = NativeFramingDisagrees(f[2], f[3], wire, malformed);
-            if (native != null) { head = native + "\n" + head; }
-            byte[] answer = System.Text.Encoding.ASCII.GetBytes(head);
-            if (value != null && !report.Refused && !noValue)
+            if (wire.Length > 0 && wire[0] == 1 && !StrictWireCheck(wire))
             {
-                long size = codec.ToJsonMeasure(value);
-                if (size < 0)
-                {
-                    if (f[0] == "framing") { File.WriteAllBytes(Path.Combine(outDir, f[1]), answer); continue; }
-                    Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
-                    return 1;
-                }
-                byte[] text = new byte[size];
-                if (codec.ToJson(value, text) != size)
-                {
-                    Console.Error.WriteLine("driver: " + f[1] + " writes a text its measure did not name");
-                    return 1;
-                }
-                byte[] both = new byte[answer.Length + text.Length];
-                answer.CopyTo(both, 0);
-                text.CopyTo(both, answer.Length);
-                answer = both;
+                File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
+                continue;
             }
-            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
+            // Framing vectors are form-1 bytes: a fixed root reads them
+            // through its variable-form entry, then writes back in its own
+            // (fixed) form via Save (docs/SPEC-TABLES.md §3.4).
+            var read = codec.VariableLoad ?? codec.Load;
+            object value = read(wire, report);
+            bool refused = StrictRefused(value, report);
+            string native = NativeFramingDisagrees(f[2], f[3], wire, refused);
+            if (native != null) { Console.Error.WriteLine("driver: " + f[1] + ": " + native); return 1; }
+            if (refused)
+            {
+                File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
+                continue;
+            }
+            if (noValue)
+            {
+                if (!SpillWire(codec, value, outDir, f[1])) return 1;
+                File.WriteAllText(Path.Combine(outDir, f[1]), "read\n");
+                continue;
+            }
+            int rc = AnswerRead(outDir, f[1], codec, value);
+            if (rc != 0) return rc;
         }
         return 0;
     }
@@ -2316,6 +2402,7 @@ static partial class Program
     static int Main(string[] args)
     {
         RegisterMessages();
+        RegisterFixed();
         RegisterNativeCooks();
         if(args.Length==1 && args[0]=="wire-fuzz-builder") { RegisterBuilders(); return WireFuzz(true); }
         if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }

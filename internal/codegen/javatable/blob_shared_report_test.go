@@ -22,7 +22,6 @@ type blobSharedReportCase struct {
 }
 
 func TestJavaBlobSharedReportCensus(t *testing.T) {
-	t.Skip("generator gap, re-pinned and red: a node record no pointer reaches is damage (strict-only decision 11, the all_null case); the Java load checks only for cycles (variableform.go, the node-table load), so it keeps a value the oracle refuses")
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
 

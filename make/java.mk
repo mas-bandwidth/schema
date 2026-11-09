@@ -2381,11 +2381,13 @@ test-java: tables-java-view tables-java-descriptor-doc
 # shared nodes) passing is the linear-time check: a walk that re-entered a
 # closed node would not finish. Its negative control recompiles two units
 # twice. First, one rule out of each: tblr1 without the id table's 4096-entry
-# cap (§3, THE DISTINCTNESS CHECK; F6), and the pointers unit's ListNode load
+# cap (§3, THE DISTINCTNESS CHECK; F6), and the pointers unit's load
 # without the cycle check (§3.1, §4; T8); framing must go RED on
-# frame_entries_4097 and the three cycle rows. Second, the pointers unit's
-# cycle walk taking a CLOSED node for an open one, so a share reads as a
-# cycle: framing must go RED on node_diamond_chain.
+# frame_entries_4097 and the three cycle rows. Both cycle sabotages edit the
+# wire-alone check's graph walk (TableVariable.WireCheck.graph), which judges
+# the pointer graph before any value is decoded (tla/ReadOrder.tla). Second,
+# the pointers unit's cycle walk taking a CLOSED node for an open one, so a
+# share reads as a cycle: framing must go RED on node_diamond_chain.
 JAVA_FRAMING_CONTROL := build/conformance-java-framing-control
 .PHONY: conformance-java-framing conformance-negative-control-java-framing
 conformance-java-framing: build/conformance-harness build-conformance-java
@@ -2397,9 +2399,9 @@ conformance-negative-control-java-framing: build/conformance-harness build-confo
 	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/pointers/
 	@cp build/tables-generated-java/pointers/*.java $(JAVA_FRAMING_CONTROL)/share/
 	@sed -i.orig 's/count < 0 || count > 4096 || count/count < 0 || count/' $(JAVA_FRAMING_CONTROL)/r1/TableVariable.java
-	@sed -i.orig 's/if (TableVariable.cyclic(nt))/if (false \&\& TableVariable.cyclic(nt))/' $(JAVA_FRAMING_CONTROL)/pointers/ListNodeVariable.java
-	@sed -i.orig 's/if (state\[t\] == 1) {/if (state[t] != 0) {/' $(JAVA_FRAMING_CONTROL)/share/TableVariable.java
-	@for f in r1/TableVariable.java pointers/ListNodeVariable.java share/TableVariable.java; do \
+	@sed -i.orig 's/if (mark\[t\] == 1) {/if (mark[t] == 1) { continue; } if (false) {/' $(JAVA_FRAMING_CONTROL)/pointers/TableVariable.java
+	@sed -i.orig 's/if (mark\[t\] == 1) {/if (mark[t] != 0) {/' $(JAVA_FRAMING_CONTROL)/share/TableVariable.java
+	@for f in r1/TableVariable.java pointers/TableVariable.java share/TableVariable.java; do \
 		! cmp -s $(JAVA_FRAMING_CONTROL)/$$f $(JAVA_FRAMING_CONTROL)/$$f.orig || \
 			{ echo "NEGATIVE CONTROL: the sabotage of $$f did not apply"; exit 1; }; done
 	@rm $(JAVA_FRAMING_CONTROL)/*/*.orig
