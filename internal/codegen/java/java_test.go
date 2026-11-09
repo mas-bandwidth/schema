@@ -10,6 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The Java compressed-float writer must clamp the quantized integer to the step
@@ -284,4 +285,174 @@ func funcBody(t *testing.T, text, sig string) string {
 		t.Fatalf("closing brace of %q not found", sig)
 	}
 	return before
+}
+
+const bulkAlignSchema = `package bulkalign
+
+type Small
+{
+    v uint8 | min = 0, max = 127
+}
+
+union U
+{
+    a Small
+}
+
+type T
+{
+    align
+    u    U
+    data [4]uint8
+}
+
+type Aligned
+{
+    align
+    data [4]uint8
+}
+`
+
+const bulkAlignDriver = `import bulkalign.BulkAlign;
+import java.util.Arrays;
+
+public final class BulkAlignDriver {
+    private BulkAlignDriver() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    public static void main(String[] args) {
+        BulkAlign.T in = new BulkAlign.T();
+        in.u.type = BulkAlign.UType.NONE;
+        in.data[0] = 1;
+        in.data[1] = 2;
+        in.data[2] = 3;
+        in.data[3] = 4;
+
+        byte[] buf = new byte[BulkAlign.T_MAX_BYTES];
+        int writtenBits = BulkAlign.writeTBits(in, buf, 0);
+        if (writtenBits != 33) {
+            fail("writtenBits: want 33, got " + writtenBits);
+        }
+        byte[] wantWire = new byte[] {0x02, 0x04, 0x06, 0x08, 0x00};
+        byte[] gotWire = Arrays.copyOf(buf, (writtenBits + 7) >>> 3);
+        if (!Arrays.equals(gotWire, wantWire)) {
+            fail("wire bytes: want " + Arrays.toString(wantWire) + ", got " + Arrays.toString(gotWire));
+        }
+
+        BulkAlign.T out = new BulkAlign.T();
+        out.u.type = BulkAlign.UType.A;
+        int readBits = BulkAlign.readTBits(out, buf, 0, writtenBits);
+        if (readBits != writtenBits) {
+            fail("readBits: want " + writtenBits + ", got " + readBits);
+        }
+        if (out.u.type != BulkAlign.UType.NONE) {
+            fail("round-trip u.type: want NONE (0), got " + out.u.type);
+        }
+        if (!Arrays.equals(out.data, in.data)) {
+            fail("round-trip data: want " + Arrays.toString(in.data) + ", got " + Arrays.toString(out.data));
+        }
+
+        BulkAlign.Aligned alIn = new BulkAlign.Aligned();
+        alIn.data[0] = 1;
+        alIn.data[1] = 2;
+        alIn.data[2] = 3;
+        alIn.data[3] = 4;
+        byte[] alBuf = new byte[BulkAlign.ALIGNED_MAX_BYTES];
+        int alBits = BulkAlign.writeAlignedBits(alIn, alBuf, 0);
+        BulkAlign.Aligned alOut = new BulkAlign.Aligned();
+        if (BulkAlign.readAlignedBits(alOut, alBuf, 0, alBits) != alBits || !Arrays.equals(alOut.data, alIn.data)) {
+            fail("Aligned round-trip failed");
+        }
+
+        System.out.println("ok");
+    }
+}
+`
+
+func parseBulkAlignUnit(t *testing.T) *ir.Unit {
+	t.Helper()
+	f, errs := parser.Parse("BulkAlign.schema", []byte(bulkAlignSchema))
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "BulkAlign.schema", Name: "BulkAlign.schema", Base: "BulkAlign", Bytes: []byte(bulkAlignSchema), AST: f,
+	}})
+	if len(cerrs) != 0 {
+		t.Fatal(cerrs)
+	}
+	return u
+}
+
+func runBulkAlignProbe(t *testing.T, generated string) {
+	t.Helper()
+	javac, javaBin := compressedFloatJavaTools(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(filepath.Join(src, "bulkalign"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "bulkalign", "BulkAlign.java"), []byte(generated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "BulkAlignDriver.java"), []byte(bulkAlignDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(javac, "--release", "17", "-nowarn", "-d", classes,
+		filepath.Join(src, "bulkalign", "BulkAlign.java"), filepath.Join(src, "BulkAlignDriver.java"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	run := exec.Command(javaBin, "-ea", "-cp", classes, "BulkAlignDriver")
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("driver: %s", out)
+	}
+}
+
+func TestJavaBulkBytesAlignmentGuard(t *testing.T) {
+	t.Parallel()
+
+	u := parseBulkAlignUnit(t)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["BulkAlign.java"])
+	writeAligned := funcBody(t, text, "public static int writeAlignedBits(")
+	if !strings.Contains(writeAligned, "if ((pos & 7) == 0)") {
+		t.Errorf("writeAlignedBits missing runtime (pos & 7) == 0 guard:\n%s", writeAligned)
+	}
+	readAligned := funcBody(t, text, "public static int readAlignedBits(")
+	if !strings.Contains(readAligned, "if ((bitsRead & 7) == 0)") {
+		t.Errorf("readAlignedBits missing runtime (bitsRead & 7) == 0 guard:\n%s", readAligned)
+	}
+
+	slowtest.Gate(t, "javac")
+	runBulkAlignProbe(t, text)
+
+	// Direct guard verification when bulkBytes marks an unaligned [4]uint8 field:
+	bulk := unitBulkBytes(u)
+	for _, st := range u.Structs {
+		for _, f := range st.Fields {
+			if f.Name == "data" {
+				bulk[f] = true
+			}
+		}
+	}
+	g := &gen{unit: u, file: u.Files[0], home: true, bulkBytes: bulk}
+	g.emitFile()
+	forced := string(Canonical(g.assemble()))
+	runBulkAlignProbe(t, forced)
 }
