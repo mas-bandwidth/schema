@@ -2170,10 +2170,9 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size: tables-message-form-negative-control drives 49 sabotage rows one submake each, 124 s on the runner where the rule is 120; the generated-Go golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet control); and the Go conformance driver's message-surface control (conformance-negative-control-go-message) runs 117 s alone on hulk including a cold generated-Go tree and driver build, past the per-row rule, so it moved here on 2026-11-09 when the go-message group was split. The message form's four blades still run on the pull request, so what moves nightly is these passes and nothing else. The group stays a group even at one target, because it is the place a control lands the day it outgrows the rule. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size. This group runs tables-message-form-negative-control, schema-go-generated-golangci-lint-gate-negative-control, and schema-go-generated-golangci-lint-gate-negative-control-ratchet. tables-message-form-negative-control drives 49 sabotage rows one submake each and was 124 s on the runner where the rule is 120, so it stays nightly. The golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet). The three pull-request blades are message-form-count, message-form-emitter, and message-form-text. conformance-negative-control-go-message is not in this group: the 117 s figure included a cold generated-Go tree and driver build, and after those prerequisites exist make conformance-negative-control-go-message took 5.56 s and then 3.92 s on hetzner2, both walls including the repeated prerequisite steps the make still runs, so it is on the go-message pull-request row beside tables-go-message-form-negative-controls. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
-        "conformance-negative-control-go-message",
         "schema-go-generated-golangci-lint-gate-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control-ratchet"
       ],
@@ -2327,9 +2326,10 @@
     {
       "name": "go-message",
       "when": "pull-request",
-      "why": "the generated Go MESSAGE form's in-package controls of internal/codegen/gotable/messageform_negative_test.go (docs/SPEC-TABLES.md §3.3: batch count on write and read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer). Measured 23 s with a warm build cache on hulk (13 s through make, 8 s on vision). The conformance driver's message-surface control (conformance-negative-control-go-message, 117 s alone on hulk including a cold generated-Go tree and driver build) does not fit the ~75 s control budget at any group size, so it moved to the nightly tier.",
+      "why": "the generated Go MESSAGE form's in-package controls of internal/codegen/gotable/messageform_negative_test.go (docs/SPEC-TABLES.md §3.3: batch count on write and read, the no_vocabulary, batch_too_large and form-byte refusals, the strict build-version comparison, the unknown counter, the fixed-only verb check, the integrity trailer). Measured 23 s with a warm build cache on hulk (13 s through make, 8 s on vision). Beside that target, conformance-negative-control-go-message stays on this pull-request row. Its recipe is only `sh test/conformance/go/negative-control message`. A harness FAILED line is the control passing when the recipe exits 0. On hetzner2, after build/conformance-harness and build/conformance-go existed, make conformance-negative-control-go-message took 5.56 s and then 3.92 s; both walls include the repeated prerequisite steps the make still runs (phony cards-generate regenerates the cards tree, and build/conformance-go is rebuilt). The 117 s figure included a cold generated-Go tree and driver build. These walls beside the 23 s in-package control stay under ~75 s, so the target is not nightly.",
       "targets": [
-        "tables-go-message-form-negative-controls"
+        "tables-go-message-form-negative-controls",
+        "conformance-negative-control-go-message"
       ]
     },
     {

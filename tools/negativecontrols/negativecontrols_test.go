@@ -1021,10 +1021,11 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 // two minutes on runs 42556155793 and 42554833739 (green-fit-negctl-go-rust):
 // every one of the 63 targets from those rows stays in exactly one group,
 // no pull-request group in those families exceeds 8 targets or ~75 s of
-// measured control time, and the two controls whose single-target cost exceeds
-// ~75 s alone (conformance-negative-control-go-message at 117 s on hulk and
-// tables-rust-cook-map-negative-control at 116-124 s on vision) ride the
-// nightly tier with an explicit reason.
+// measured control time. tables-rust-cook-map-negative-control (116 s warm,
+// 124 s cold on vision) stays nightly. conformance-negative-control-go-message
+// stays on the go-message pull-request row: the 117 s figure included a cold
+// generated-Go tree and driver build, and the make wall after those
+// prerequisites exist is a few seconds.
 func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 	m, err := loadManifest(testRoot(t))
 	if err != nil {
@@ -1140,12 +1141,13 @@ func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.
 		}
 	}
 
-	for _, target := range []string{
-		"conformance-negative-control-go-message",
-		"tables-rust-cook-map-negative-control",
-	} {
-		if tierOf[target] != whenNightly {
-			t.Errorf("target %q is in tier %q; want %q because a single run exceeded ~75 s of control time", target, tierOf[target], whenNightly)
-		}
+	if tierOf["tables-rust-cook-map-negative-control"] != whenNightly {
+		t.Errorf("target %q is in tier %q; want %q because a single run exceeded ~75 s of control time", "tables-rust-cook-map-negative-control", tierOf["tables-rust-cook-map-negative-control"], whenNightly)
+	}
+	if tierOf["conformance-negative-control-go-message"] != whenPullRequest {
+		t.Errorf("target %q is in tier %q; want %q because its make wall after prerequisites exist is a few seconds", "conformance-negative-control-go-message", tierOf["conformance-negative-control-go-message"], whenPullRequest)
+	}
+	if got := groupOf["conformance-negative-control-go-message"]; len(got) != 1 || got[0] != "go-message" {
+		t.Errorf("target conformance-negative-control-go-message is in %v; want only go-message", got)
 	}
 }
