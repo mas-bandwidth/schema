@@ -758,12 +758,13 @@
     {
       "name": "cs-tables",
       "when": "pull-request",
-      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
+      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds). With them also the repeated-field-id wire control (make/cs.mk, landed on the new base without a plan entry, so TestEveryDefinedControlIsInThePlan was red at base 383c364d8): the walk's repeated-id refusals removed from the emitted artifact, required red on its own unit check, a few seconds.",
       "targets": [
         "tables-cs-pack-negative-control",
         "tables-cs-fixedform-arm-negative-control",
         "tables-cs-json-differential-negative-control",
-        "tables-cs-byte-order-negative-control"
+        "tables-cs-byte-order-negative-control",
+        "tables-cs-wire-fuzz-repeated-id-negative-control"
       ],
       "dotnet": "pin"
     },
