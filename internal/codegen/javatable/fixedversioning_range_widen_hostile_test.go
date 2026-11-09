@@ -55,7 +55,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				{key: "reads", schema: "VNEW_" + vec.Row + ".schema", older: []string{"VOLD_" + vec.Row + ".schema"}},
 			})
 			r := runProbe(t, classes, "Probe_reads", filepath.Join(corpus, vec.File))
-			if want.Clamped > 0 {
+			if want.Refused || want.Clamped > 0 {
 				// A value past the WRITER's range refuses the whole load
 				// under the strict read: nothing lands, nothing counts.
 				requireNamedRefusal(t, vec.File, r, "outOfRange")

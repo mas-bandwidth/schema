@@ -1769,3 +1769,16 @@ test-js: tables-js-helper-closure
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's js-fuzz
+# rows run the enumerated pass and JS_FUZZ_SMOKE_N seeded random mutants per
+# commit, while the full 100,000-mutant tables-js-wire-fuzz-plain and
+# tables-js-wire-fuzz-retain campaigns run in certify.yml's nightly tier.
+JS_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-js-wire-fuzz-plain-smoke tables-js-wire-fuzz-retain-smoke
+tables-js-wire-fuzz-plain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-plain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)
+
+tables-js-wire-fuzz-retain-smoke: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+	$(MAKE) tables-js-wire-fuzz-retain SEED=$(SEED) N=$(JS_FUZZ_SMOKE_N)
