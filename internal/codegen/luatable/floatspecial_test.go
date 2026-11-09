@@ -356,8 +356,10 @@ for _, c in ipairs(nonfinite) do
   end
 end
 
--- A RETAINED UNKNOWN FLOAT is tested like a known one (ruling 3); the plain
--- read skips the unknown field and reads on.
+-- A RETAINED UNKNOWN FLOAT is tested like a known one (ruling 3), and the
+-- plain read refuses one in a field it cannot name too: a non-finite float is
+-- decidable from the wire alone (docs/SPEC-TABLES.md §6.5), so the strict
+-- load's wire check refuses it wherever it rides.
 for _, k in ipairs({ { 10, "f32" }, { 11, "f64" } }) do
   for _, c in ipairs(nonfinite) do
     local w = inputs["retained_" .. k[1] .. "_" .. c.name]
@@ -370,7 +372,7 @@ for _, k in ipairs({ { 10, "f32" }, { 11, "f64" } }) do
       and #store.list == 0, r.reason)
     r = report()
     got = load.Load(T, "Holder", w, r)
-    check("plain-" .. k[2] .. tail .. "skips", got ~= nil and r.unknown == 1 and r.nonFiniteFloat == nil, r.reason)
+    check("plain-" .. k[2] .. tail .. "refuses", got == nil and r.reason == "non_finite_float", r.reason)
   end
 end
 `
@@ -573,24 +575,31 @@ func TestLuaPlainFloatSpecialValuesAgreeAcrossForms(t *testing.T) {
 // fsSabotage turns one read's raw-bits test off: the edit must apply exactly
 // once, and the probe must red exactly the rows whose id starts with prefix.
 type fsSabotage struct {
-	file, from, to, prefix string
+	file, from, to string
+	// prefixes are the row ids the sabotage must red, and wireOff also
+	// switches the strict load's wire check off, which holds every plain
+	// float too: the walk's own test is then the only one left on its rows.
+	prefixes []string
+	wireOff  bool
 }
 
 var fsSabotages = []fsSabotage{
-	{"load.lua", "if b & F32_EXP == F32_EXP then\n      r.at = r.at + 4", "if false then\n      r.at = r.at + 4", "var-f32:"},
-	{"load.lua", "if b & F64_EXP == F64_EXP then\n      r.at = r.at + 8", "if false then\n      r.at = r.at + 8", "var-f64:"},
-	{"message.lua", "if v & D.F32_EXP == D.F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f32:"},
-	{"message.lua", "if v & D.F64_EXP == D.F64_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", "msg-f64:"},
-	{"fixed.lua", `if string.unpack("<I4", buf, pos) & F32_EXP == F32_EXP then`, "if false then", "fixed-f32:"},
-	{"fixed.lua", `if string.unpack("<i8", buf, pos) & F64_EXP == F64_EXP then`, "if false then", "fixed-f64:"},
-	{"cook.lua", `bad = string.unpack("<I4", s.data, at + 1) & 0x7f800000 == 0x7f800000`, "bad = false", "cookcheck-f32:"},
-	{"cook.lua", `bad = string.unpack("<i8", s.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000`, "bad = false", "cookcheck-f64:"},
-	{"uncook.lua", `if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then`, "if false then", "uncook-f32:"},
-	{"uncook.lua", `if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then`, "if false then", "uncook-f64:"},
-	{"block.lua", "if b & 0x7f800000 == 0x7f800000 then return nil end", "if false then return nil end", "block-f32:"},
-	{"block.lua", "if b & 0x7ff0000000000000 == 0x7ff0000000000000 then return nil end", "if false then return nil end", "block-f64:"},
-	{"retain.lua", `kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP`, "kind == 10 and false", "retain-f32:"},
-	{"retain.lua", `or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP`, "or kind == 11 and false", "retain-f64:"},
+	{"load.lua", "if b & F32_EXP == F32_EXP then\n      r.at = r.at + 4", "if false then\n      r.at = r.at + 4", []string{"var-f32:", "plain-"}, true},
+	{"load.lua", "if b & F64_EXP == F64_EXP then\n      r.at = r.at + 8", "if false then\n      r.at = r.at + 8", []string{"var-f64:", "plain-"}, true},
+	{"load.lua", `if string.unpack("<I4", b, at + 1) & F32_EXP == F32_EXP then c.nonFinite = true end`, "", []string{"plain-f32:"}, false},
+	{"load.lua", `if string.unpack("<i8", b, at + 1) & F64_EXP == F64_EXP then c.nonFinite = true end`, "", []string{"plain-f64:"}, false},
+	{"message.lua", "if v & D.F32_EXP == D.F32_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", []string{"msg-f32:"}, false},
+	{"message.lua", "if v & D.F64_EXP == D.F64_EXP then return 0.0, false, true end", "if false then return 0.0, false, true end", []string{"msg-f64:"}, false},
+	{"fixed.lua", `if string.unpack("<I4", buf, pos) & F32_EXP == F32_EXP then`, "if false then", []string{"fixed-f32:"}, false},
+	{"fixed.lua", `if string.unpack("<i8", buf, pos) & F64_EXP == F64_EXP then`, "if false then", []string{"fixed-f64:"}, false},
+	{"cook.lua", `bad = string.unpack("<I4", s.data, at + 1) & 0x7f800000 == 0x7f800000`, "bad = false", []string{"cookcheck-f32:"}, false},
+	{"cook.lua", `bad = string.unpack("<i8", s.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000`, "bad = false", []string{"cookcheck-f64:"}, false},
+	{"uncook.lua", `if string.unpack("<I4", ctx.data, at + 1) & 0x7f800000 == 0x7f800000 then`, "if false then", []string{"uncook-f32:"}, false},
+	{"uncook.lua", `if string.unpack("<i8", ctx.data, at + 1) & 0x7ff0000000000000 == 0x7ff0000000000000 then`, "if false then", []string{"uncook-f64:"}, false},
+	{"block.lua", "if b & 0x7f800000 == 0x7f800000 then return nil end", "if false then return nil end", []string{"block-f32:"}, false},
+	{"block.lua", "if b & 0x7ff0000000000000 == 0x7ff0000000000000 then return nil end", "if false then return nil end", []string{"block-f64:"}, false},
+	{"retain.lua", `kind == 10 and string.unpack("<I4", b, start + 1) & D.F32_EXP == D.F32_EXP`, "kind == 10 and false", []string{"retain-f32:"}, false},
+	{"retain.lua", `or kind == 11 and string.unpack("<i8", b, start + 1) & D.F64_EXP == D.F64_EXP`, "or kind == 11 and false", []string{"retain-f64:"}, false},
 }
 
 // TestLuaFiniteFloatNegativeControl is the reversed witness of the finite
@@ -602,7 +611,7 @@ func TestLuaFiniteFloatNegativeControl(t *testing.T) {
 	u := fsLoadUnit(t)
 	clean := fsGenerate(t, u)
 	for _, s := range fsSabotages {
-		t.Run(s.prefix, func(t *testing.T) {
+		t.Run(strings.Join(s.prefixes, "+"), func(t *testing.T) {
 			t.Parallel()
 			src, ok := clean[s.file]
 			if !ok {
@@ -613,24 +622,27 @@ func TestLuaFiniteFloatNegativeControl(t *testing.T) {
 			}
 			files := maps.Clone(clean)
 			files[s.file] = []byte(strings.Replace(string(src), s.from, s.to, 1))
+			if s.wireOff {
+				withoutWireCheck(t, files)
+			}
 			_, checks := fsRun(t, u, files)
 			var red, want []string
 			for id, verdict := range checks {
 				if verdict != "PASS" {
 					red = append(red, id)
 				}
-				if strings.HasPrefix(id, s.prefix) {
+				if slices.ContainsFunc(s.prefixes, func(p string) bool { return strings.HasPrefix(id, p) }) {
 					want = append(want, id)
 				}
 			}
 			sort.Strings(red)
 			sort.Strings(want)
 			if len(want) == 0 {
-				t.Fatalf("no probe row has the prefix %q", s.prefix)
+				t.Fatalf("no probe row has the prefixes %q", s.prefixes)
 			}
 			if !slices.Equal(red, want) {
-				t.Fatalf("sabotaging %s's raw-bits test redded %d rows, want exactly the %d %s rows\n  red:  %v\n  want: %v",
-					s.file, len(red), len(want), s.prefix, red, want)
+				t.Fatalf("sabotaging %s's raw-bits test redded %d rows, want exactly the %d %v rows\n  red:  %v\n  want: %v",
+					s.file, len(red), len(want), s.prefixes, red, want)
 			}
 		})
 	}

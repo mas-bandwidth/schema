@@ -16,9 +16,12 @@ import (
 //	json-read    FromJson json/<name>.json, Save, the bytes   == the wire golden
 //	json-write   Load the wire golden, ToJson, the text       == json/<name>.json
 //
-// Load and Save are the tables layer's (runtime/table_load.moo, table_save.moo);
-// Load opens an integrity root's trailer and walks the opened bytes (loadOpened), as
-// R.LoadRetain does. This test is the text form's half of the pair.
+// Save and Load go through the one read and the canonical form save: a fixed
+// root's file is form 3 (runtime/table_fixed.moo), any other's form 1
+// (table_save.moo), and the read is table_refusal.moo's ReadStrict, which
+// answers the root's own form and refuses every other by name (§6.5), as the
+// conformance driver's ctx.read and ctx.write do. This test is the text form's
+// half of the pair.
 //
 // wireOwed is each unit whose wire half is not yet the value mapping's, with
 // the defect, owned by the tables layer: the test requires each to still
@@ -44,12 +47,19 @@ func TestMooJsonWireSurfaces(t *testing.T) {
 		var b strings.Builder
 		b.WriteString(probePrelude)
 		b.WriteString(`local Save: any = require("./table_save")
+local Fixed: any = require("./table_fixed")
+local Refusal: any = require("./table_refusal")
 local Load: any = require("./table_load")
 local function run(mod: any, root: string, text: buffer, wire: buffer)
 	local d = mod[root .. "Descriptor"]
 	local value = mod["New" .. root]()
 	local ok = mod[root .. "FromJson"](value, text, {})
-	local bytes, why = Save.save(d, value)
+	local bytes, why
+	if d.fixed then
+		bytes, why = Fixed.save(d, mod[root .. "Fixed"], { value })
+	else
+		bytes, why = Save.save(d, value)
+	end
 	if not ok then
 		hexs("read refused")
 	elseif bytes == nil then
@@ -57,13 +67,7 @@ local function run(mod: any, root: string, text: buffer, wire: buffer)
 	else
 		hexs(buffer.tostring(bytes))
 	end
-	-- the file's own framing comes off first, as the reference's decode
-	-- verifies and strips an integrity root's trailer before the walk (§2.14)
-	local body: buffer? = wire
-	if d.integrity ~= nil and d.integrity ~= "" then
-		body = Load.integrityOpen(wire)
-	end
-	local loaded = if body ~= nil then Load.loadOpened(root, body, Load.newReport()) else nil
+	local loaded = Refusal.ReadStrict(mod, root, wire, Load.newReport())
 	if loaded == nil then
 		hexs("load refused")
 		return

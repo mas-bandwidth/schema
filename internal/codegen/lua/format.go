@@ -373,10 +373,11 @@ func splitString(indent, prefix, lit, suffix string) []string {
 // quoted spells one string piece in StyLua's AutoPreferDouble style: double
 // quotes, unless the piece carries more double quotes than single quotes, when
 // it takes single quotes and its escaped double quotes lose the backslash. A
-// piece is only ever written as the emitter quoted it otherwise.
+// single-quoted piece is first brought back to the double-quoted spelling so
+// a split can re-decide each piece on its own quotes.
 func quoted(q, body string) string {
 	if q != `"` {
-		return q + body + q
+		body = doubleQuotedBody(body)
 	}
 	dq, sq := 0, 0
 	for i := 0; i < len(body); {
@@ -412,6 +413,37 @@ func quoted(q, body string) string {
 		i += n
 	}
 	b.WriteByte('\'')
+	return b.String()
+}
+
+// doubleQuotedBody rewrites a single-quoted literal's body as the body a
+// double-quoted literal of the same value would carry: its escaped single
+// quotes lose the backslash and its raw double quotes gain one. Other escapes
+// (a \xNN byte, \\ and the rest) mean the same in either quote.
+func doubleQuotedBody(body string) string {
+	var b strings.Builder
+	for i := 0; i < len(body); {
+		if body[i] == '\\' {
+			n := escapeLen(body[i:])
+			esc := body[i : i+n]
+			switch esc {
+			case `\'`:
+				b.WriteByte('\'')
+			case `\"`:
+				b.WriteString(`\"`)
+			default:
+				b.WriteString(esc)
+			}
+			i += n
+			continue
+		}
+		if body[i] == '"' {
+			b.WriteString(`\"`)
+		} else {
+			b.WriteByte(body[i])
+		}
+		i++
+	}
 	return b.String()
 }
 
