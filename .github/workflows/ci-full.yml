@@ -137,6 +137,9 @@ env:
   SERIALIZE_RS_TAG: v5.0.0
   SERIALIZE_CS_TAG: v2.1.1
   SERIALIZE_JS_TAG: v2.1.2
+  # Push and pull_request get 110s per step. schedule and workflow_dispatch
+  # keep the long budget. leg-tagged and negative-controls clear this.
+  PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
 
 jobs:
   # The compiler's own test suite, and the only job in this file that reads a
@@ -236,6 +239,18 @@ jobs:
     #   into old-2a/b/c and rest-1 into rest-1a/b/c. conformance-1's step
     #   was 95s (hetzner2-8) and conformance-2's was 63s (intel-4), both
     #   under 110s, so the old 116s conformance figure is not split again.
+    #
+    #   Run 42586327558 (workflow_dispatch of 01a516975, PGROUP_WALL off)
+    #   put those steps back over 110s as job walls: conformance-1 118s,
+    #   conformance-2 377s, elixir-old-2b 229s with `ok elixirtable`
+    #   89.873s. The overage is the corpus rebuild, not another -run.
+    #   On conformance-2, build/tables-generated-go was 08:45:48Z to
+    #   08:49:35Z (227s) and the slow gate after g++ was about 78s. On
+    #   old-2b, make tables-fixedform-corpus was 08:47:52Z to about
+    #   08:50:11Z beside that 89.873s test. The corpus and the Go tables
+    #   are cached below. A miss builds them in the steps under that
+    #   comment, each one a piece that run measured under 110s, and the
+    #   test step no longer rebuilds them. The -run groups stay as they are.
     #
     #   versioning-js on run 42567880192 (job 128998296625) was whole job
     #   118s, 05:40:19Z to 05:42:17Z. The go test was 6.056s. g++ of
@@ -546,25 +561,187 @@ jobs:
         if: matrix.group == 'slow-gate-rest'
         run: make slow-gate-coverage-rest
 
+      # THE FIXED-FORM CORPUS AND THE GO TABLES, CACHED.
+      # Run 42586327558: elixir-old-2b's step was 229s with `ok elixirtable`
+      # 89.873s, and the rest was `make tables-fixedform-corpus` (cpp
+      # generate ~35s, g++ of schema_test_fixedform_dump ~48s, the dump
+      # ~34s). conformance-2's step was 377s, of which
+      # build/tables-generated-go was 227s and the slow gate after g++
+      # about 78s. conformance-1's whole step was 118s, its go generate
+      # about 85s. A restored tree is not a make no-op: checkout sets
+      # source mtimes to now, so the stamp chain rebuilds. These steps
+      # skip make on a hit. A miss builds the same chain in the pieces
+      # that run measured, each under 110s. The Go recipe is one rule
+      # (make/go.mk, build/tables-generated-go/.stamp), so the miss copies
+      # that rule into four steps and touches the stamp only in the last.
+      # One writer per cache: elixir-old-2b saves the corpus, conformance-2
+      # saves the Go tables. A second save of the same key warns and does
+      # not redden the job; the other rows still build on a miss so this
+      # run's test can proceed. Exact key, no restore-keys: a stale corpus
+      # would be a green that read the wrong bytes.
+      - name: restore the fixed-form corpus
+        id: corpus
+        if: startsWith(matrix.group, 'versioning-elixir-') || matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/fixedform-corpus
+          key: fixedform-corpus-v1-${{ hashFiles('**/*.go', '**/*.schema', 'go.mod', 'go.sum', 'Makefile', 'make/**', 'test/tables/**', 'tables/**', 'examples-wide/**', 'testdata/conformance/**', 'internal/codegen/**') }}
+
+      - name: restore the generated Go tables
+        id: gotables
+        if: (matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/tables-generated-go
+          key: gotables-v1-${{ hashFiles('**/*.go', '**/*.schema', 'go.mod', 'go.sum', 'Makefile', 'make/**', 'test/tables/**', 'tables/**', 'examples-wide/**', 'testdata/conformance/**', 'internal/codegen/**') }}
+
+      - name: build bin/schema for the versioning corpus
+        if: ((startsWith(matrix.group, 'versioning-elixir-') || matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.corpus.outputs.cache-hit != 'true') || ((matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.gotables.outputs.cache-hit != 'true')
+        run: make bin/schema
+
+      - name: generate the C++ tables the corpus dump links
+        if: (startsWith(matrix.group, 'versioning-elixir-') || matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.corpus.outputs.cache-hit != 'true'
+        run: make build/tables-generated/.stamp build/tables-generated-fxw/.stamp
+
+      - name: link schema_test_fixedform_dump
+        if: (startsWith(matrix.group, 'versioning-elixir-') || matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.corpus.outputs.cache-hit != 'true'
+        run: make build/schema_test_fixedform_dump
+
+      - name: write the fixed-form corpus
+        if: (startsWith(matrix.group, 'versioning-elixir-') || matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.corpus.outputs.cache-hit != 'true'
+        run: make build/fixedform-corpus/.stamp
+
+      - name: generate the Go tables, first chunk
+        if: (matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.gotables.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p build/tables-generated-go
+          ./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
+          ./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
+          ./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
+          ./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
+          ./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
+
+      - name: generate the Go tables, second chunk
+        if: (matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.gotables.outputs.cache-hit != 'true'
+        run: |
+          go_table_module() {
+            printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../%s\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' "$2" "${SERIALIZE_GO:-../serialize.go}" > "build/tables-generated-go/$1/go.mod"
+          }
+          ./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+          go_table_module p2 tblp2
+          ./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
+          go_table_module w1 tblw1
+          ./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
+          go_table_module w2 tblw2
+          ./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
+          go_table_module g1 tblg1
+          ./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
+
+      - name: generate the Go tables, third chunk
+        if: (matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.gotables.outputs.cache-hit != 'true'
+        run: |
+          go_table_module() {
+            printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../%s\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' "$2" "${SERIALIZE_GO:-../serialize.go}" > "build/tables-generated-go/$1/go.mod"
+          }
+          ./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
+          ./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
+          ./bin/schema generate --lang go --out build/tables-generated-go/wide examples-wide
+          go_table_module wide widedemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
+
+      - name: generate the Go tables, fourth chunk, and stamp
+        if: (matrix.group == 'versioning-conformance-1' || matrix.group == 'versioning-conformance-2') && steps.gotables.outputs.cache-hit != 'true'
+        run: |
+          go_table_module() {
+            printf 'module %s\n\ngo 1.26\n\nrequire (\n\t// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n)\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => ../../../%s\n\n// the shared Go runtime is the default (docs/SPEC-TABLES.md §8.4)\nreplace github.com/mas-bandwidth/schema/v2 => ../../..\n' "$2" "${SERIALIZE_GO:-../serialize.go}" > "build/tables-generated-go/$1/go.mod"
+          }
+          ./bin/schema generate --lang go --out build/tables-generated-go/stream tables/stream
+          go_table_module stream streamdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
+          go_table_module blobs blobdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
+          go_table_module lists listdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
+          go_table_module widelist widelistdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+          go_table_module featurewitnesses featurewitnesses
+          ./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
+          go_table_module maps mapdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
+          go_table_module backend backenddemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
+          go_table_module vocab vocabdemo
+          ./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
+          go_table_module vocab9 vocab9demo
+          ./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
+          go_table_module rt1 tblrt1
+          go_table_module messages messagedemo
+          go_table_module examples tabledemo
+          go_table_module pointers graphdemo
+          go_table_module block blockdemo
+          go_table_module blockhome blockhomedemo
+          go_table_module v1 tblv1
+          go_table_module v2 tblv2
+          go_table_module p1 tblp1
+          go_table_module p3 tblp3
+          go_table_module scalars scalardemo
+          go_table_module scalars2 tblscalars2
+          go_table_module m1 tblm1
+          go_table_module m2 tblm2
+          go_table_module a1 tbla1
+          go_table_module a2 tbla2
+          go_table_module k1 tblk1
+          go_table_module k2 tblk2
+          go_table_module r1 tblr1
+          go_table_module r2 tblr2
+          touch build/tables-generated-go/.stamp
+
+      - name: save the fixed-form corpus
+        if: (matrix.group == 'versioning-elixir-old-2b' && steps.corpus.outputs.cache-hit != 'true')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/fixedform-corpus
+          key: fixedform-corpus-v1-${{ hashFiles('**/*.go', '**/*.schema', 'go.mod', 'go.sum', 'Makefile', 'make/**', 'test/tables/**', 'tables/**', 'examples-wide/**', 'testdata/conformance/**', 'internal/codegen/**') }}
+
+      - name: save the generated Go tables
+        if: (matrix.group == 'versioning-conformance-2' && steps.gotables.outputs.cache-hit != 'true')
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: build/tables-generated-go
+          key: gotables-v1-${{ hashFiles('**/*.go', '**/*.schema', 'go.mod', 'go.sum', 'Makefile', 'make/**', 'test/tables/**', 'tables/**', 'examples-wide/**', 'testdata/conformance/**', 'internal/codegen/**') }}
+
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
       # test/conformance/go/rows, which `go test ./...` never sees because they
-      # live in the test/conformance/go module. The gate self-provisions its
-      # build stamps and the C++ reference corpus.
-      # Split in two by row name (C/E/F vs P/R/W): the unsplit step ran
-      # 116 s alone. Each half builds the same stamps, then runs its half
-      # through the same proof script with its half of the required names
-      # (the two name lists are the make/go.mk conformance-go-rows list,
-      # partitioned, with no name in both or neither).
+      # live in the test/conformance/go module. The stamps and the corpus are
+      # the cache steps above. This step checks they arrived, checks the
+      # sibling the job already cloned, and runs one half of the proof.
+      # Split in two by row name (C/E/F vs P/R/W). The name lists are the
+      # make/go.mk conformance-go-rows list, partitioned, with no name in
+      # both or neither.
       - name: the Go conformance rows, C E and F rows
         if: matrix.group == 'versioning-conformance-1'
         run: |
-          make build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+          test -s build/fixedform-corpus/manifest.txt
+          test -f build/tables-generated-go/.stamp
+          make tables-go-sibling-runtime
           cd test/conformance/go && SLOWGATE_LOG_DIR="$GITHUB_WORKSPACE/build/slowgate" sh "$GITHUB_WORKSPACE/test/slowgate/proof" conformance-go-rows-1 'TestRowC12 TestRowC13 TestRowC14 TestRowC14WriterRefusesOutOfRange TestRowC7 TestRowC8 TestRowC8WriterRefusesOutOfRange TestRowCountedArraysValidData TestRowE5 TestRowF12 TestRowF8 TestRowF8NegativeControl TestRowF8RaggedTailByName TestRowFloat32ValuesNonFiniteRefused TestRowFloat32ValuesValidData' ./rows/ -run '^TestRow(C|Counted|E|F)' -count=1 -timeout 600s
 
       - name: the Go conformance rows, P R and W rows
         if: matrix.group == 'versioning-conformance-2'
         run: |
-          make build/tables-generated-go/.stamp build/fixedform-corpus/.stamp tables-go-sibling-runtime
+          test -s build/fixedform-corpus/manifest.txt
+          test -f build/tables-generated-go/.stamp
+          make tables-go-sibling-runtime
           cd test/conformance/go && SLOWGATE_LOG_DIR="$GITHUB_WORKSPACE/build/slowgate" sh "$GITHUB_WORKSPACE/test/slowgate/proof" conformance-go-rows-2 'TestRowP2 TestRowP3 TestRowR10 TestRowR14 TestRowR14LayoutRecordTooLargeByName TestRowR15 TestRowR17 TestRowR19 TestRowR19NegativeControl TestRowR20AddedFieldDefault TestRowR20DroppedFieldUnknown TestRowR20NarrowIntWidensExactly TestRowR20SameWidthBaseline TestRowR20ShortStringSlackZeros TestRowR20VocabularyIdentity TestRowR20 TestRowR22 TestRowR26 TestRowR26NegativeControl TestRowR27 TestRowR31 TestRowR6 TestRowR7 TestRowW12 TestRowW12NegativeControl TestRowW13 TestRowW2 TestRowW2WriterRefusesTheOldPayload TestRowW3 TestRowW4 TestRowW7' ./rows/ -run '^TestRow(P|R|W)' -count=1 -timeout 600s
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
@@ -667,8 +844,8 @@ jobs:
       # the three go tests over 110s were split in two. Run 42577704822
       # then measured 4f6d1606's rows. new-2b was 99.558s and rest-4 was
       # 94.880s, so they stay. old-2 (rows 14-26) was 117.751s and rest-1
-      # was 184.736s, so those two are split again below. Each row still
-      # builds the corpus. The recipe is make/elixir.mk's
+      # was 184.736s, so those two are split again below. The corpus is
+      # the cache above this step, not another rebuild. The recipe is make/elixir.mk's
       # tables-elixir-versioning, with -run in place of the single pattern.
       # SCHEMA_REQUIRE_CORPUS=1 still makes a missing corpus or a missing
       # Elixir a failure. ELIXIR and ERL_BIN are plain paths, as that recipe
@@ -682,77 +859,77 @@ jobs:
       - name: the Elixir leg, NEW-READS-OLD, version rows 1-7
         if: matrix.group == 'versioning-elixir-new-1a'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(array_bounded_grow|array_elem_widen|array_fixed_grow|bits_grow|bytes_grow|constant_grow|enum_append)$'
       - name: the Elixir leg, NEW-READS-OLD, version rows 8-13
         if: matrix.group == 'versioning-elixir-new-1b'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(enum_width|field_append|field_deprecate|field_undeprecate|fixed_I_grow|fixed_I_grow_element)$'
       - name: the Elixir leg, NEW-READS-OLD, version rows 14-19
         if: matrix.group == 'versioning-elixir-new-2a'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add)$'
       - name: the Elixir leg, NEW-READS-OLD, version rows 20-26
         if: matrix.group == 'versioning-elixir-new-2b'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(range_widen|rename_without_was|string_grow|uint_widen|union_append|union_arm_payload_widen|wstring_grow)$'
       - name: the Elixir leg, OLD-REFUSES-NEW, version rows 1-7
         if: matrix.group == 'versioning-elixir-old-1a'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(array_bounded_grow|array_elem_widen|array_fixed_grow|bits_grow|bytes_grow|constant_grow|enum_append)$'
       - name: the Elixir leg, OLD-REFUSES-NEW, version rows 8-13
         if: matrix.group == 'versioning-elixir-old-1b'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(enum_width|field_append|field_deprecate|field_undeprecate|fixed_I_grow|fixed_I_grow_element)$'
       - name: the Elixir leg, OLD-REFUSES-NEW, version rows 14-19
         if: matrix.group == 'versioning-elixir-old-2a'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add)$'
       - name: the Elixir leg, OLD-REFUSES-NEW, version rows 20-23
         if: matrix.group == 'versioning-elixir-old-2b'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(range_widen|rename_without_was|string_grow|uint_widen)$'
       - name: the Elixir leg, OLD-REFUSES-NEW, version rows 24-26
         if: matrix.group == 'versioning-elixir-old-2c'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(union_append|union_arm_payload_widen|wstring_grow)$'
       - name: the Elixir leg, other versioning tests, group 1a
         if: matrix.group == 'versioning-elixir-rest-1a'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningCfloatRangeWiden|TestFixedVersioningCfloatResRefine)$'
       - name: the Elixir leg, other versioning tests, group 1b
         if: matrix.group == 'versioning-elixir-rest-1b'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningCountClampEnds|TestFixedVersioningFloor)$'
       - name: the Elixir leg, other versioning tests, group 1c
         if: matrix.group == 'versioning-elixir-rest-1c'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningForgedOrdinalBothPlans)$'
       - name: the Elixir leg, other versioning tests, group 2
         if: matrix.group == 'versioning-elixir-rest-2'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningHash|TestFixedVersioningLineageMerge|TestFixedVersioningPlanTooLarge|TestFixedVersioningRangeWidenHostile|TestFixedVersioningReadsTheManifest)$'
       - name: the Elixir leg, other versioning tests, group 3
         if: matrix.group == 'versioning-elixir-rest-3'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningRefuseWritesNothing|TestFixedVersioningUnionArmText|TestFixedVersioningUnionTagBothPlans|TestFixedVersioningUnionUnselectedArm)$'
       - name: the Elixir leg, other versioning tests, group 4
         if: matrix.group == 'versioning-elixir-rest-4'
         run: |
-          make tables-fixedform-corpus
+          test -s build/fixedform-corpus/manifest.txt
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningUnknownCensus|TestFixedVersioningUnknownCensusManyRecords|TestFixedVersioningWriterBoundCount|TestFixedVersioningWriterBoundCountTwoRemotes)$'
 
       # THE SAME SUITE ON THE LUAU LEG (§5.7 step 6). Its probes are generated
@@ -855,6 +1032,8 @@ jobs:
     name: legs under their build tags
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1279,7 +1458,7 @@ jobs:
       # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
       # falls through to the toolchain this step installed.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -2423,6 +2602,8 @@ jobs:
     # top, so five minutes is generous and a row that reaches it is a row that
     # left the rule. A ceiling wide enough to hide that is not a timeout.
     timeout-minutes: 5
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -2509,7 +2690,7 @@ jobs:
         if: matrix.java != ''
 
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -2610,7 +2791,8 @@ jobs:
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            2>&1 | tee controls.log || status=1
+            >controls.log 2>&1 || status=1
+          cat controls.log
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
             grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
