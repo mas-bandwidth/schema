@@ -15,9 +15,9 @@
 ; asserts an answer the spec has retired does not.
 
 ; ---- fixed tables, C++ ----
-(:id "cpp/R17" :state :todo :note "2026-11-08 audit: the cited subtest asserts the retired normalisation (a bool or present byte that is not 0/1 reads as true and counts nothing). FIXED-FORM-ALGORITHM.md fix 2: that byte refuses wire_damaged. The C++ fixed runtime still normalises (d[i] = s[i] != 0).")
-(:id "cpp/C12" :state :todo :note "2026-11-08 audit: a bool byte other than 0/1 must refuse wire_damaged (FIXED-FORM-ALGORITHM.md fix 2); the C++ fixed runtime normalises it, and the cited subtest checks the emitted text for the normalisation.")
-(:id "cpp/C13" :state :todo :note "2026-11-08 audit: a present byte other than 0/1 must refuse wire_damaged (FIXED-FORM-ALGORITHM.md fix 2); the C++ fixed runtime normalises it, and the cited subtest checks the emitted text for the normalisation.")
+(:id "cpp/R17" :state :done :evidence ("internal/codegen/cpptable/fixed_normalization_strict_test.go: TestCppFixedNormalizationIsDamage, TestCppFixedNormalizationIsDamageNegativeControl"))
+(:id "cpp/C12" :state :done :evidence ("internal/codegen/cpptable/fixed_normalization_strict_test.go: TestCppFixedNormalizationIsDamage, TestCppFixedNormalizationIsDamageNegativeControl"))
+(:id "cpp/C13" :state :done :evidence ("internal/codegen/cpptable/fixed_normalization_strict_test.go: TestCppFixedNormalizationIsDamage, TestCppFixedNormalizationIsDamageNegativeControl"))
 (:id "cpp/W2" :state :todo :note "2026-11-08 audit: make tables-fixedform passes only by carrying KNOWN-RED optional/absent-payload-residue-is-copied (test/tables/versioning_lists.cpp): an absent optional's payload residue is still copied, so 'absent optional skips store' is not true in the runtime yet.")
 (:id "cpp/R11" :state :done :evidence ("internal/codegen/cpptable/fixedversioning_writer_bound_count_two_endpoints_test.go: TestFixedVersioningWriterBoundCountTwoRemotes") :note "2026-11-08 audit: holds; the old citation (fixedversioning_writer_bound_count_two_peers_test.go, TestFixedVersioningWriterBoundCountTwoPeers) no longer exists. The renamed test passes with SCHEMA_SLOW=1.")
 (:id "text-bytes-flags-defaults/cpp/generation" :state :done :evidence ("compiler/valuedefaults_test.go: TestTableValueDefaultsCarriers, TestFixedTableValueDefaultsEveryLeg") :note "2026-11-08 audit: holds on main; the old citation was a line link at 8ea5ed8e.")

@@ -70,10 +70,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t\t\tr.Report.Refuse(TableRefuseMissingRequired, missingReq)\n")
 		g.pf("\t\t\t\treturn false\n")
 		g.pf("\t\t\t}\n")
-		g.pf("\t\t\treturn true\n")
+		g.pf("\t\t\tif r.Offset != int64(len(r.Buffer)) { %s; return false }; return true\n", damaged)
 		g.pf("\t\t}\n")
 	} else {
-		g.pf("\t\tif ref == 0 { return true }\n")
+		g.pf("\t\tif ref == 0 { if r.Offset != int64(len(r.Buffer)) { %s; return false }; return true }\n", damaged)
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { %s; return false }\n", damaged)
 	// a repeated field id in one body is damage, checked as the body decodes
@@ -261,7 +261,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%selem, ok := sub.Body(); if !ok { %s }\n", j, stop)
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++;", j, f.KeyEnum)
 		if g.retain {
-			g.pf("if r.Retain!=nil{r.Report.RetainLost++};")
+			g.pf("if r.Retain!=nil{r.Report.RetainLost++};if !tableWireSkipFramed(&elem.tableRetainPlainReader,elemKind,false){return false};")
+		} else {
+			g.pf("if !tableWireSkipFramed(&elem,elemKind,false){return false};")
 		}
 		g.pf("continue }\n")
 		g.retainReadPath("elem", "r", "int(slot)-1")
@@ -355,9 +357,10 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind string, element ..
 		g.retainReadPath(arm, rdr, fmt.Sprint(ordinal+1))
 		g.emitReadArm(v, g.unionArmExpr(un, v, expr), arm, "armKind", j)
 	}
-	g.pf("%sdefault:r.Report.Unknown++\n", i)
 	if g.retain {
-		g.pf("if r.Retain!=nil{r.Report.RetainLost++}\n")
+		g.pf("%sdefault:r.Report.Unknown++;if r.Retain!=nil{r.Report.RetainLost++}\nif !tableWireSkipFramed(&%s.tableRetainPlainReader,armKind,true){return false}\n", i, arm)
+	} else {
+		g.pf("%sdefault:r.Report.Unknown++;if !tableWireSkipFramed(&%s,armKind,true){return false}\n", i, arm)
 	}
 	g.pf("%s}\n", i)
 	g.emitCarveReturn(rdr, arm, i)
