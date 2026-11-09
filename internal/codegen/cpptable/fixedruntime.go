@@ -202,6 +202,12 @@ struct TableFixedEntry
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
 //
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
+//
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
 // compiler ran at build time. THE SCHEMA COMPILER DOES THAT WALK NOW
@@ -549,7 +555,12 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
@@ -600,7 +611,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -1252,7 +1268,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's

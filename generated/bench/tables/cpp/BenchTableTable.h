@@ -3524,6 +3524,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3820,7 +3821,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -3952,6 +3953,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -3961,7 +3974,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -3970,7 +3984,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3995,10 +4009,15 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
     report->widened += widened;
@@ -4046,7 +4065,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -4139,6 +4163,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4697,7 +4722,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4898,15 +4929,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -14060,6 +14099,8 @@ inline int64_t TableEntityFixedLoadWalk( TableEntity * values, int64_t capacity,
         }
     }
     TableEntity defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -14078,7 +14119,7 @@ inline int64_t TableEntityFixedLoadWalk( TableEntity * values, int64_t capacity,
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableEntityFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableEntityFixedGuards, NULL );
         TableFixedClampKnownRanges( TableEntityFixedKnownRanges[lineage_at], TableEntityFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !TableEntityFixedClamp( values[k], report ) )
@@ -14412,6 +14453,8 @@ inline int64_t TableStatFixedLoadWalk( TableStat * values, int64_t capacity, con
         }
     }
     TableStat defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -14430,7 +14473,7 @@ inline int64_t TableStatFixedLoadWalk( TableStat * values, int64_t capacity, con
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableStatFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableStatFixedGuards, NULL );
         TableFixedClampKnownRanges( TableStatFixedKnownRanges[lineage_at], TableStatFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !TableStatFixedClamp( values[k], report ) )
@@ -15202,6 +15245,8 @@ inline int64_t TableMixedFixedLoadWalk( TableMixed * values, int64_t capacity, c
         }
     }
     TableMixed defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -15220,7 +15265,7 @@ inline int64_t TableMixedFixedLoadWalk( TableMixed * values, int64_t capacity, c
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableMixedFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TableMixedFixedGuards, NULL );
         if ( !TableMixedFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { TableMixedReset( values[j] ); }

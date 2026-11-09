@@ -14,6 +14,12 @@ package cpptable
 // wire, so the check discriminates on the flag and not on the writer never
 // having written a payload at all.
 //
+// The probe also carries a UNION-BEARING payload (Outer.opt ?Holder, Holder's
+// u U): the union's arm entries are guarded and ride in the plan's second half,
+// so an unguarded defaults copy that ran in the first half would be overwritten
+// by the arm's wire bytes. The absent read must still answer the declared
+// defaults, and the same payload present must land from the wire.
+//
 // The negative control plants the fault in the real artifact: it removes the
 // generated runtime's copy of the declared defaults under an absent present
 // byte, and requires the same probe to go red.
@@ -42,6 +48,37 @@ fixed table Chain
 {
     name string(16)
     link ?Leaf
+}
+
+type Inner
+{
+    value int32 = 7 | min = 0, max = 1000
+    tag   string(8)
+}
+
+type Other
+{
+    n int32 = 9
+}
+
+union U
+{
+    // a IS DECLARED LAST SO ITS DEFAULTS ARE THE UNION IMAGE'S LAST WORD: the
+    // Reset lays every arm in order over the same storage, and a.value = 7 is
+    // the declared default this probe looks for under an absent flag.
+    b Other
+    a Inner
+}
+
+type Holder
+{
+    u U
+}
+
+fixed table Outer
+{
+    name string(8)
+    opt  ?Holder
 }
 `
 
@@ -177,6 +214,144 @@ int main( void )
         {
             std::printf( "present: n=%lld present=%d value=%d tag_length=%d\n", (long long) n,
                          (int) back.link_present, (int) back.link.value, (int) back.link.tag_length );
+            return 1;
+        }
+    }
+
+    // THE UNION-BEARING PAYLOAD: an optional whose payload is a struct holding a
+    // union. The union's arm entries are GUARDED, so they ride in the plan's
+    // second half; the absent-defaults entry must run after them or the arm's
+    // wire bytes land on top of the defaults. Outer's body: name string(8) is
+    // 4 + 8 bytes, then the present byte, the union tag, and arm a's value,
+    // tag_length and buffer.
+    static const int32_t kOuterPresentAt = 12;
+    static const int32_t kOuterTagAt = 13;
+    static const int32_t kOuterValueAt = 14;
+    static const int32_t kOuterTagLengthAt = 18;
+    static const int32_t kOuterTagBufferAt = 22;
+
+    Outer o;
+    OuterReset( o );
+    std::strcpy( o.name, "outer" );
+    o.name_length = 5;
+    o.opt_present = false;
+    o.opt.u.SelectA();
+    o.opt.u.a.value = 0x5A5A5A5A;
+    o.opt.u.a.tag_length = 4;
+    std::strcpy( o.opt.u.a.tag, "rust" );
+
+    static uint8_t ofile[4096];
+    const int64_t oneed = OuterFixedMeasure( 1 );
+    if ( OuterFixedSave( &o, 1, ofile, (int64_t) sizeof( ofile ) ) != oneed )
+    {
+        std::printf( "outer: the absent record did not save whole\n" );
+        return 1;
+    }
+    uint8_t * obody = ofile + kTableFixedHeaderBytes + 4 + OuterFixedLayoutBytes + 8;
+    if ( obody[kOuterPresentAt] != 0 )
+    {
+        std::printf( "outer write: the absent present flag is %d, want 0\n", (int) obody[kOuterPresentAt] );
+        return 1;
+    }
+    for ( int32_t i = 0; i < 17; ++i )
+    {
+        if ( obody[kOuterTagAt + i] != 0 )
+        {
+            std::printf( "outer write: absent payload byte %d is %d, want the template's zero\n", (int) i, (int) obody[kOuterTagAt + i] );
+            return 1;
+        }
+    }
+
+    // THE CLEAN UNION PAYLOAD: the template's zeros under an absent flag read as
+    // the payload's declared defaults (Inner.value = 7, tag length 0).
+    {
+        Outer back;
+        OuterReset( back );
+        TableReport r;
+        static TableFixedEntry plan[256];
+        const int64_t n = OuterFixedLoad( &back, 1, ofile, oneed, plan, 256, NULL, &r );
+        if ( n != 1 || back.opt_present )
+        {
+            std::printf( "outer clean: n=%lld present=%d\n", (long long) n, (int) back.opt_present );
+            return 1;
+        }
+        if ( back.opt.u.type != UType::None || back.opt.u.a.value != 7 || back.opt.u.a.tag_length != 0 )
+        {
+            std::printf( "outer clean: an absent union payload did not read its declared defaults: type=%d value=%d tag_length=%d\n",
+                         (int) back.opt.u.type, (int) back.opt.u.a.value, (int) back.opt.u.a.tag_length );
+            return 1;
+        }
+        if ( r.damaged || r.refused )
+        {
+            std::printf( "outer clean: a clean absent read moved a counter\n" );
+            return 1;
+        }
+    }
+
+    // THE UNION RESIDUE: stain the arm's bytes under the absent flag. Selecting
+    // arm a must not let its guarded entries overwrite the defaults that the
+    // present-defaults entry lays after them.
+    obody[kOuterTagAt] = 2;
+    obody[kOuterValueAt + 0] = 100;
+    obody[kOuterValueAt + 1] = 0;
+    obody[kOuterValueAt + 2] = 0;
+    obody[kOuterValueAt + 3] = 0;
+    obody[kOuterTagLengthAt + 0] = 4;
+    obody[kOuterTagLengthAt + 1] = 0;
+    obody[kOuterTagLengthAt + 2] = 0;
+    obody[kOuterTagLengthAt + 3] = 0;
+    std::memcpy( obody + kOuterTagBufferAt, "rust", 4 );
+    {
+        Outer back;
+        OuterReset( back );
+        TableReport r;
+        static TableFixedEntry plan[256];
+        const int64_t n = OuterFixedLoad( &back, 1, ofile, oneed, plan, 256, NULL, &r );
+        if ( n != 1 || back.opt_present )
+        {
+            std::printf( "outer residue: n=%lld present=%d\n", (long long) n, (int) back.opt_present );
+            return 1;
+        }
+        if ( back.opt.u.type != UType::None || back.opt.u.a.value != 7 || back.opt.u.a.tag_length != 0 )
+        {
+            std::printf( "ABSENT UNION PAYLOAD RESIDUE: type=%d value=%d tag_length=%d, want the declared defaults None/7/0\n",
+                         (int) back.opt.u.type, (int) back.opt.u.a.value, (int) back.opt.u.a.tag_length );
+            return 1;
+        }
+        if ( r.damaged || r.refused )
+        {
+            std::printf( "outer residue: a forged union payload under an absent flag is not damage\n" );
+            return 1;
+        }
+    }
+
+    // THE DISCRIMINATING HALF: the same union payload PRESENT lands from the wire.
+    {
+        Outer p;
+        OuterReset( p );
+        std::strcpy( p.name, "present" );
+        p.name_length = 7;
+        p.opt_present = true;
+        p.opt.u.SelectA();
+        p.opt.u.a.value = 77;
+        p.opt.u.a.tag_length = 2;
+        std::strcpy( p.opt.u.a.tag, "hi" );
+        static uint8_t pfile[4096];
+        if ( OuterFixedSave( &p, 1, pfile, (int64_t) sizeof( pfile ) ) != oneed )
+        {
+            std::printf( "outer present: the record did not save whole\n" );
+            return 1;
+        }
+        Outer back;
+        OuterReset( back );
+        TableReport r;
+        static TableFixedEntry plan[256];
+        const int64_t n = OuterFixedLoad( &back, 1, pfile, oneed, plan, 256, NULL, &r );
+        if ( n != 1 || !back.opt_present || back.opt.u.type != UType::A || back.opt.u.a.value != 77 ||
+             back.opt.u.a.tag_length != 2 || std::memcmp( back.opt.u.a.tag, "hi", 2 ) != 0 )
+        {
+            std::printf( "outer present: n=%lld present=%d type=%d value=%d tag_length=%d\n", (long long) n,
+                         (int) back.opt_present, (int) back.opt.u.type, (int) back.opt.u.a.value, (int) back.opt.u.a.tag_length );
             return 1;
         }
     }

@@ -541,8 +541,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// destination in it to this compiler's own ABI. A bool field and a present\n")
 	g.pf("// flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
 	g.pf("// language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
-	g.pf("// FIRST, then the arms: the entries that are nearly all of a plan never\n")
-	g.pf("// test a guard at all.\n")
+	g.pf("// FIRST, then the arms, then any guardless present-defaults entry that must\n")
+	g.pf("// run after the guarded payload it replaces: the entries that are nearly\n")
+	g.pf("// all of a plan never test a guard at all.\n")
 	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
 	for _, e := range plan {
 		guard := "kTableFixedNoGuard"

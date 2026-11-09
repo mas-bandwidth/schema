@@ -1358,10 +1358,29 @@ func tableFixedGuardKey(links []TableFixedGuardLink) string {
 }
 
 func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded int) {
-	for pass := range 2 {
+	// THREE PASSES, NOT TWO. An UNGUARDED present-defaults entry must run after
+	// the guarded entries of the payload it overwrites, or an absent optional
+	// whose payload holds a union would read the wire's residue back over the
+	// defaults: the guarded arm entries live in the second half, and a plain
+	// unguarded entry in the first half runs before them. So unguarded
+	// present-defaults entries are deferred to a third pass, after both halves;
+	// a GUARDED one (an optional inside a union arm) stays in the guarded half,
+	// where the walk already lays it after its own payload's guarded leaves.
+	for pass := range 3 {
 		for _, e := range raw {
-			if (e.Guard != TableFixedNoGuard) != (pass == 1) {
-				continue
+			switch pass {
+			case 0:
+				if e.Guard != TableFixedNoGuard || e.Op == TableFixedOpPresentDefaults {
+					continue
+				}
+			case 1:
+				if e.Guard == TableFixedNoGuard {
+					continue
+				}
+			case 2:
+				if e.Op != TableFixedOpPresentDefaults || e.Guard != TableFixedNoGuard {
+					continue
+				}
 			}
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
