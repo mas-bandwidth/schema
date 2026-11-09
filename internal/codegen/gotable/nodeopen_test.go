@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestTableOpenHasNoWirePrepass is the red the card names: the open must not
@@ -137,6 +139,7 @@ func TestNodeTableInTheBodyWalk(t *testing.T) {
 // are the compiler's own table packages.
 func runGeneratedTables(t *testing.T, schema, testSource string) {
 	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit)")
 	u := unitFrom(t, schema)
 	files, err := Generate(u)
 	if err != nil {

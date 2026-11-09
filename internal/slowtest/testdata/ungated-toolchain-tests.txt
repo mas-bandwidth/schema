@@ -161,7 +161,6 @@ internal/codegen/jstable/retainroots_test.go
 internal/codegen/jstable/streamclamp_test.go
 internal/codegen/jstable/textdifferential_test.go
 internal/codegen/jstable/union_import_test.go
-internal/codegen/jstable/variableclass_test.go
 internal/codegen/jstable/view_test.go
 internal/codegen/jstable/widening_test.go
 internal/codegen/jstable/widescalarstext_test.go

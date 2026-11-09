@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -219,6 +220,7 @@ func TestMessageAnnounceIdMatchNegativeControl(t *testing.T) {
 // runs run. From must occur once, so a control cannot pass by patching nothing.
 func sabotageMessagePredicate(t *testing.T, from, to, run string) (string, bool) {
 	t.Helper()
+	slowtest.Gate(t, "the Go toolchain (it reruns the tablewire tests with an overlay)")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
