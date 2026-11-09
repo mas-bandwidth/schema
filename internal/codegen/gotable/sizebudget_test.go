@@ -49,7 +49,8 @@ const (
 	// prepass is left (strict-engine.w8)
 	// -1: a message body tests a repeated field id with slices.Contains (modernize-clean generated Go)
 	// +71: a duplicate key in a skipped JSON object refuses the whole read (SPEC-TABLES §16.2)
-	goOneTableLineBudget = 10059
+	// +3: tableWireSkipFramed checks unknown keyed-array slots and union arms (SPEC-TABLES §4, §6.5)
+	goOneTableLineBudget = 10062
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -80,7 +81,8 @@ const (
 	// prepass is left (strict-engine.w8)
 	// -50: a message body tests a repeated field id or keyed slot with slices.Contains and ranges over its count (modernize-clean generated Go)
 	// +71: a duplicate key in a skipped JSON object refuses the whole read (SPEC-TABLES §16.2)
-	goExamplesLineBudget = 59549
+	// +226: strict wire-fuzz checks for trailing body bytes, unknown framed slots/arms, and shared blobs (SPEC-TABLES §4, §6.5)
+	goExamplesLineBudget = 59775
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

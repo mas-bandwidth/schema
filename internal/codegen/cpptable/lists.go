@@ -818,13 +818,14 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	g.emitListFill(f, elemKind, ind, false)
 	g.pf("%s    }\n", ind)
 	g.pf("%s}\n", ind)
-	g.pf("%sr.offset = body_end; // excess bytes and slack skip via the length\n", ind)
+	g.pf("%sr.offset = body_end; // the cursor closes the L (§4)\n", ind)
 }
 
 // emitListFill emits the fill of one list's slots from the body's elements:
 // the count taken as the data's, the elements bounded by the body's L, a slot
 // whose element never landed given back. With `widened` each element decodes
 // at the kind the header carried, which the declared kind widens (§4).
+// Bytes left inside the L after those elements are damage (§2.9, §4).
 func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened bool) {
 	g.pf("%s        // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range\n", ind)
 	g.pf("%s        // cannot fire on it. A count above the int32 storage cap is the\n", ind)
@@ -842,12 +843,13 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	g.pf("%s        // cover is damage, flags malformed, and the load is discarded\n", ind)
 	g.pf("%s        // whole (§4)\n", ind)
 	g.pf("%s        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
+	g.pf("%s        bool elements_consumed = true;\n", ind)
 	if f.IsTextList() && f.TextTotal > 0 {
 		g.pf("%s        int64_t spent = 0;\n", ind)
 	}
 	g.pf("%s        for ( uint64_t i = 0; i < count; i++ )\n%s        {\n", ind, ind)
 	g.pf("%s            %s * slot = TableListFillNext( fill );\n", ind, g.listElementType(f))
-	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL ) { nodes.refused = true; return false; }\n%[1]s                r.report->damaged = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
+	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL ) { nodes.refused = true; return false; }\n%[1]s                r.report->damaged = true;\n%[1]s                elements_consumed = false;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
 	if widened {
@@ -859,7 +861,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)
-	g.pf("%[1]s            if ( !landed )\n%[1]s            {\n%[1]s                TableListFillDrop( fill );\n%[1]s                break;\n%[1]s            } // the element's own framing gave out before it decoded\n", ind)
+	g.pf("%[1]s            if ( !landed )\n%[1]s            {\n%[1]s                TableListFillDrop( fill );\n%[1]s                elements_consumed = false;\n%[1]s                break;\n%[1]s            } // the element's own framing gave out before it decoded\n", ind)
 	if f.IsTextList() && f.TextTotal > 0 {
 		if ir.TextListUnbounded(f) {
 			if ir.TextListOptional(f) {
@@ -874,10 +876,15 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 				g.pf("%s            if ( slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
 			}
 		}
-		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
+		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range; TableListFillDrop( fill ); elements_consumed = false; break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
+	g.pf("%s        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left\n", ind)
+	g.pf("%s        // inside the array frame after the count's elements are damage.\n", ind)
+	g.pf("%s        // A narrower element kind that does not fill the frame the writer\n", ind)
+	g.pf("%s        // sized is this case, and damage discards the load.\n", ind)
+	g.pf("%s        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }\n", ind)
 	if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
 		g.pf("%s        if ( nodes.refused ) { return false; }\n", ind)
 	}

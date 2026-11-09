@@ -25,10 +25,10 @@ private_driver() {
         sed 's/return utf8.decode(bytes, allowMalformed: false);/return utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
         ;;
       reader)
-        anchor='        tabledemo.rootConfigFromJson(text, r);'
+        anchor='        final v = tabledemo.rootConfigFromJson(text, r);'
         matches=$(grep -Fxc "$anchor" "$source" || true)
         [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
-        sed "s/tabledemo.rootConfigFromJson(text, r);/tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
+        sed "s/final v = tabledemo.rootConfigFromJson(text, r);/final v = tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
         ;;
       bom-preserve)
         # Restore the decoded leading mark solely for this private control.
