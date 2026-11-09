@@ -126,7 +126,7 @@ int main( void )
     memset( &report, 0, sizeof( report ) );
     n = root_fixed_load( &loaded, 1, file, need, plan, 64, NULL, &report );
     CHECK( n == -1 );
-    CHECK( report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE );
+    CHECK( report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED );
     CHECK( memcmp( &loaded, &fresh, sizeof( fresh ) ) == 0 );
     return 0;
 }

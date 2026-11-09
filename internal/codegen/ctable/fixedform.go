@@ -607,8 +607,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
 	g.pf("   destination in it to this compiler's own ABI. A bool field and a present\n")
-	g.pf("   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the\n")
-	g.pf("   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES\n")
+	g.pf("   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and\n")
+	g.pf("   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).\n")
+	g.pf("   UNGUARDED ENTRIES\n")
 	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
 	g.pf("   test a guard at all. */\n")
 	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
