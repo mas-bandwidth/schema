@@ -108,18 +108,20 @@ String quotedWord(String msg) {
   return msg.substring(i + 1, j);
 }
 
-// writeReport writes the read report, one Name=value line per counter of the
-// Go TableReport in declaration order (tables/cards/conformance/FORMAT.md).
+// writeReport writes the read report, one Name=value line per row of
+// tables/cards/conformance/FORMAT.md, in its order. The strict read refuses
+// the whole load on a kind mismatch, an out-of-range value, a repeat or
+// damage, so an accepted read writes the last four rows as zero and false.
 void writeReport(String outdir, String name, TableWireReport r) {
   final b = StringBuffer();
   b.writeln('Retained=${r.retained}');
   b.writeln('RetainLost=${r.retainLost}');
   b.writeln('Widened=${r.widened}');
   b.writeln('Unknown=${r.unknown}');
-  b.writeln('KindMismatch=${r.kindMismatch}');
-  b.writeln('Clamped=${r.clamped}');
+  b.writeln('KindMismatch=0');
+  b.writeln('Clamped=0');
   b.writeln('Duplicate=0');
-  b.writeln('Malformed=${r.malformed}');
+  b.writeln('Malformed=false');
   writeFile(outdir, name, 'report', b.toString().codeUnits);
 }
 

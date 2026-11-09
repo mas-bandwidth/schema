@@ -2394,7 +2394,7 @@ _FuzzRun _plainCodec<V, R>(
     final m = measure(wire);
     final value = load(wire, report);
     final dynamic r=report;
-    final loaded=!r.refused&&!r.refused;
+    final loaded=!(r.refused as bool);
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value)) : null);
   };
 }
@@ -2415,7 +2415,7 @@ _FuzzRun _retainCodec<V, R, T>(
     final m = measure(wire);
     final value = load(wire, retain, report);
     final dynamic r=report;
-    final loaded=!r.refused&&!r.refused;
+    final loaded=!(r.refused as bool);
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value, retain, report)) : null);
   };
 }

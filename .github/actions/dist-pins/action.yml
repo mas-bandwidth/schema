@@ -1,0 +1,58 @@
+name: dist pins
+description: >
+  Puts the named interpreter pins (any of lua, luau, goose, lobster) at the
+  dist/ paths their make files name. On a hosted runner it runs
+  `make dist-<pin>`, exactly as before. On a fleet runner the pin is built or
+  fetched by that same target ONCE per runner, after the target's own sha256
+  check has passed, and kept in a store beside the workspace keyed by that
+  sha256; every later job copies the stored tree into dist/. The workspace
+  stays clean (actions/checkout still removes dist/ every run): only the
+  verified, read-only toolchain persists, outside it, the way the Go build
+  cache and the runner's SDKs do. Measured 2026-11-08 (run 42492071587): the
+  four pins cost 29-65 s of every go-test job, a quarter to half of the
+  two-minute per-commit cap.
+inputs:
+  pins:
+    description: space-separated pins to install (lua luau goose lobster)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: the pins
+      shell: bash
+      env:
+        PINS: ${{ inputs.pins }}
+        PRINT_MK: ${{ github.action_path }}/print.mk
+      run: |
+        set -euo pipefail
+        var() { make -s -f Makefile -f "$PRINT_MK" "print-$1"; }
+        for pin in $PINS; do
+          case "$pin" in
+            lua)     sha=$(var LUA_SHA256);      dir="$PWD/dist/lua-$(var LUA_VERSION)" ;;
+            luau)    sha=$(var LUAU_ZIP_SHA);    dir=$(var LUAU_DIST) ;;
+            goose)   sha=$(var GOOSE_TGZ_SHA);   dir=$(var GOOSE_DIST) ;;
+            lobster) sha=$(var LOBSTER_ZIP_SHA); dir=$(var LOBSTER_DIST) ;;
+            *) echo "::error::dist-pins knows no pin '$pin' (lua luau goose lobster)"; exit 1 ;;
+          esac
+          if [ -z "$sha" ] || [ -z "$dir" ]; then
+            echo "::error::dist-pins: make names no sha256 or dist path for $pin"; exit 1
+          fi
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            make "dist-$pin"
+            continue
+          fi
+          # one store per runner (RUNNER_WORKSPACE is <runner>/_work/<repo>),
+          # so two jobs never write one entry at once
+          store="$(dirname "$RUNNER_WORKSPACE")/_schema-dist/$pin-$sha"
+          if [ ! -f "$store/.complete" ]; then
+            make "dist-$pin"
+            rm -rf "$store.tmp" && mkdir -p "$(dirname "$store")"
+            cp -a "$dir" "$store.tmp"
+            touch "$store.tmp/.complete"
+            rm -rf "$store" && mv "$store.tmp" "$store"
+            echo "dist-pins: $pin built by make dist-$pin and stored at $store"
+          fi
+          rm -rf "$dir" && mkdir -p "$(dirname "$dir")"
+          cp -a "$store" "$dir" && rm -f "$dir/.complete"
+          echo "dist-pins: $pin (sha256 $sha) at $dir from the runner store"
+        done

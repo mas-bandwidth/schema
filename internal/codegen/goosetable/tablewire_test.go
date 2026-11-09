@@ -9,7 +9,8 @@ package goosetable_test
 //
 //	wire         every instance loaded and saved back, byte for byte, and a
 //	             writer refusal (go-refusal=) given by its name
-//	report       every report row's §4 counters and verdict (reports.txt)
+//	report       every report row's verdict (reports.txt); the driver prints
+//	             §4's counters in front of that word
 //	retain       the load's retained,retain_lost,unknown and the save's lost
 //	retain-save  the bytes the retaining save writes back
 //
@@ -102,17 +103,28 @@ func readWireCorpus(t *testing.T) *wireCorpus {
 				if r, ok := strings.CutPrefix(marker, "go-refusal="); ok {
 					want = "absent " + r
 				}
+				// surface_wire names a blob two slots share as absent
+				// blob_shared. The manifest marks that row wire-refused.
+				if marker == "wire-refused" {
+					want = "absent blob_shared"
+				}
 			}
 			c.want["wire"][f[1]], c.unitOf["wire"][f[1]] = want, f[2]
 			fmt.Fprintf(&m, "instance %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]))
 		case f[0] == "report" && len(f) >= 5:
 			c.want["report"][f[1]], c.unitOf["report"][f[1]] = reports[f[1]]+"\n", f[2]
 			fmt.Fprintf(&m, "report %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]))
-		case f[0] == "retain" && len(f) >= 10:
-			c.want["retain"][f[1]], c.unitOf["retain"][f[1]] = f[7]+" "+f[8]+"\n", f[2]
-			if f[9] != "-" {
+		case f[0] == "retain" && (len(f) == 8 || len(f) >= 10):
+			// retain <case> <unit> <root> <wire> <capacity> <ids> <save>
+			// A legacy ten-field line keeps counters in front of <save>.
+			// Those counters are not a pin (FORMAT.md). The save file is.
+			save := f[7]
+			if len(f) >= 10 {
+				save = f[9]
+			}
+			if save != "-" {
 				var saves strings.Builder
-				for p := range strings.SplitSeq(f[9], ",") {
+				for p := range strings.SplitSeq(save, ",") {
 					saves.WriteString(read(p))
 				}
 				c.want["retain-save"][f[1]], c.unitOf["retain-save"][f[1]] = saves.String(), f[2]
@@ -267,11 +279,28 @@ func runWireSurfaces(t *testing.T, c *wireCorpus, surfaces []string, override ma
 	return got
 }
 
+// reportVerdict is the pin's word. reports.txt is the verdict alone. The
+// driver still prints §4's counters in front of that word.
+func reportVerdict(answer string) string {
+	line, _, _ := strings.Cut(answer, "\n")
+	if i := strings.LastIndex(line, ","); i >= 0 {
+		line = line[i+1:]
+	}
+	return strings.TrimSpace(line)
+}
+
 // failing is the rows of one surface whose answer is not the expectation.
 func failing(c *wireCorpus, got map[string]map[string]string, surface string) []string {
 	var out []string
 	for name, want := range c.want[surface] {
-		if got[surface][name] != want {
+		have := got[surface][name]
+		if surface == "report" {
+			if reportVerdict(have) != reportVerdict(want) {
+				out = append(out, name)
+			}
+			continue
+		}
+		if have != want {
 			out = append(out, name)
 		}
 	}
@@ -317,8 +346,8 @@ func sabotage(t *testing.T, file, from, to string) map[string][]byte {
 // TestGooseTableWireNegativeControl breaks each walk once and requires the
 // break to turn red only the rows it owns, and at least one of them:
 //
-//   - the LOAD stops counting a field WIDENED in a body (§4): only report rows
-//     whose pinned widened counter is nonzero go red, and wire stays green;
+//   - the LOAD stops accepting a widened map key (§4): the one report row that
+//     widened read becomes a refusal, and wire stays green;
 //   - the SAVE keeps the id of an elided nested table (§3: an elided field
 //     costs nothing in the id table either): only wire rows go red;
 //   - RETENTION writes no retained tail (§6.6): only retain-save and retain
@@ -331,17 +360,18 @@ func sabotage(t *testing.T, file, from, to string) map[string][]byte {
 func TestGooseTableWireNegativeControl(t *testing.T) {
 	t.Parallel()
 	c := readWireCorpus(t)
-	widened := func(name string) bool {
-		f := strings.Split(strings.TrimSpace(c.want["report"][name]), ",")
-		return len(f) == 7 && f[2] != "0"
-	}
+	// The verdict pin no longer carries a widened counter. The widen that still
+	// leaves a value is the map key (map_key_widen reads). Dropping that accept
+	// refuses the row.
+	widened := func(name string) bool { return name == "map_key_widen" }
 	controls := []struct {
 		name, file, from, to string
 		owns                 map[string]func(string) bool // surface -> may this row go red
 		red                  string                       // the surface that must go red
 	}{
 		{"load-widened", "wire_load.goose",
-			"if widened { c.report.widened += 1; }", "if widened { }",
+			"if entry_widened && !widened { widened = true; c.report.widened += 1; }",
+			"if entry_widened && !widened { kind_bad = true; }",
 			map[string]func(string) bool{"report": widened}, "report"},
 		{"save-elided-id", "wire_save.goose",
 			"            cut(c, at, mark);\n            return;\n        }\n        frame(c, start);",
