@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -60,26 +61,26 @@ var lobsterFixedRows = []string{
 	"record-measurement",
 }
 
-// The eight rows gated on the one-read cut (the fixed rows that carry a
-// numeric-evolution, reports, array-bounds, text, scalar-bounds, ordinals,
-// normalization or hostile-input clause) are left out of the fixed overlay.
-var lobsterFixedCutRows = []string{
-	"numeric-evolution",
-	"reports",
-	"array-bounds",
-	"text",
-	"scalar-bounds",
-	"ordinals",
-	"normalization",
-	"hostile-input",
+// The eight rows the shared proof suites do not reach, landed on the strict
+// read after the one-read cut (LOB-2). Each is held by its own top-level test
+// in fixed_evolution_rows_test.go, TestLobsterFixedRow<Row>, which carries
+// the row's negative controls inline, so its evidence names that test rather
+// than a proof-suite subtest.
+var lobsterFixedCutRows = map[string]string{
+	"numeric-evolution": "TestLobsterFixedRowNumericEvolution",
+	"reports":           "TestLobsterFixedRowReports",
+	"array-bounds":      "TestLobsterFixedRowArrayBounds",
+	"text":              "TestLobsterFixedRowText",
+	"scalar-bounds":     "TestLobsterFixedRowScalarBounds",
+	"ordinals":          "TestLobsterFixedRowOrdinals",
+	"normalization":     "TestLobsterFixedRowNormalization",
+	"hostile-input":     "TestLobsterFixedRowHostileInput",
 }
 
 var (
-	overlayIDRx       = regexp.MustCompile(`^\(:id\s+"([^"]+)"`)
-	overlayStateRx    = regexp.MustCompile(`:state\s+:([A-Za-z0-9_-]+)`)
-	overlayEvListRx   = regexp.MustCompile(`:evidence\s+\(([^)]*)\)`)
-	overlayEvidenceRx = regexp.MustCompile(`"([^"]+)"`)
-	goTestFuncRx      = regexp.MustCompile(`(?m)^func\s+(Test[A-Za-z0-9_]+)\s*\(`)
+	overlayIDRx    = regexp.MustCompile(`^\(:id\s+"([^"]+)"`)
+	overlayStateRx = regexp.MustCompile(`:state\s+:([A-Za-z0-9_-]+)`)
+	goTestFuncRx   = regexp.MustCompile(`(?m)^func\s+(Test[A-Za-z0-9_]+)\s*\(`)
 )
 
 func fixedOverlayPath(t *testing.T) (root, path string) {
@@ -101,9 +102,10 @@ func fixedOverlayPath(t *testing.T) (root, path string) {
 }
 
 // TestLobsterFixedOverlayNamesEveryRow parses docs/roadmap-evidence/lobster-fixed.sexp
-// and fails unless each of the 49 port/lobster/fixed/<row> ids appears exactly
-// once, no row of the eight cut-gated ones appears, and every :done row names a
-// test that exists in the package under that row's own subtest.
+// and fails unless each of the 57 port/lobster/fixed/<row> ids appears exactly
+// once, nothing else appears, and every :done row names a test that exists in
+// the package: a proof-suite row under that row's own subtest, one of the
+// eight strict-read rows by its own TestLobsterFixedRow<Row>.
 func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 	t.Parallel()
 
@@ -141,13 +143,17 @@ func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 			t.Errorf("%s: expected exactly one overlay row, got %d", id, counts[id])
 		}
 	}
-	for _, row := range lobsterFixedCutRows {
+	for row := range lobsterFixedCutRows {
 		id := "port/lobster/fixed/" + row
-		if counts[id] != 0 {
-			t.Errorf("%s: cut-gated row must not appear in the fixed overlay, got %d", id, counts[id])
+		if counts[id] != 1 {
+			t.Errorf("%s: expected exactly one overlay row, got %d", id, counts[id])
 		}
 	}
 	for id, count := range counts {
+		row := strings.TrimPrefix(id, "port/lobster/fixed/")
+		if _, cut := lobsterFixedCutRows[row]; !cut && !slices.Contains(lobsterFixedRows, row) {
+			t.Errorf("%s: not a lobster fixed row", id)
+		}
 		if count != 1 {
 			t.Errorf("%s: expected exactly one overlay row, got %d", id, count)
 		}
@@ -158,16 +164,15 @@ func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 			continue
 		}
 		row := strings.TrimPrefix(id, "port/lobster/fixed/")
-		list := overlayEvListRx.FindStringSubmatch(lines[id])
-		if len(list) < 2 || strings.TrimSpace(list[1]) == "" {
+		evidence := overlayEvidence(lines[id])
+		if len(evidence) == 0 {
 			t.Errorf("%s: :done row has no :evidence strings", id)
 			continue
 		}
-		evidence := overlayEvidenceRx.FindAllStringSubmatch(list[1], -1)
 		for _, ev := range evidence {
-			filePath, testsPart, ok := strings.Cut(ev[1], ": ")
+			filePath, testsPart, ok := strings.Cut(ev, ": ")
 			if !ok {
-				t.Errorf("%s: evidence %q is not '<file>: <TestName>'", id, ev[1])
+				t.Errorf("%s: evidence %q is not '<file>: <TestName>'", id, ev)
 				continue
 			}
 			src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(filePath)))
@@ -178,6 +183,16 @@ func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 			defined := map[string]bool{}
 			for _, mm := range goTestFuncRx.FindAllStringSubmatch(string(src), -1) {
 				defined[mm[1]] = true
+			}
+			if own, cut := lobsterFixedCutRows[row]; cut {
+				// "<file>: TestLobsterFixedRow<Row> (what it holds)"
+				name, _, _ := strings.Cut(testsPart, " (")
+				if name != own {
+					t.Errorf("%s: evidence %q does not name %s", id, ev, own)
+				} else if !defined[own] {
+					t.Errorf("%s: Go test %s not found in %s", id, own, filePath)
+				}
+				continue
 			}
 			for token := range strings.SplitSeq(testsPart, ",") {
 				name := strings.TrimSpace(token)
@@ -195,5 +210,28 @@ func TestLobsterFixedOverlayNamesEveryRow(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// overlayEvidence is the quoted strings of a row's :evidence list. It reads
+// the list string by string, so a ')' inside an evidence string (a
+// parenthetical describing what the test holds) does not end the list.
+func overlayEvidence(line string) []string {
+	_, rest, ok := strings.Cut(line, ":evidence (")
+	if !ok {
+		return nil
+	}
+	var out []string
+	for {
+		rest = strings.TrimLeft(rest, " \t")
+		if !strings.HasPrefix(rest, `"`) {
+			return out
+		}
+		end := strings.IndexByte(rest[1:], '"')
+		if end < 0 {
+			return out
+		}
+		out = append(out, rest[1:1+end])
+		rest = rest[2+end:]
 	}
 }
