@@ -831,6 +831,20 @@ tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 tables-cs-region-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-region" --seed $(SEED) --n $(N)
 
+# A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §6.5). The wire fuzzer
+# stopped on this rule before the wire-alone walk landed, and the region arm
+# reads through LoadMeasure, so the rule must hold in the walk before either
+# load decodes. These are the emitted artifact's unit checks (no interpreter):
+# the walk's root/nested body and its keyed body each refuse a reference their
+# own seen bitset already carries. The control takes the refusals out of that
+# same artifact and requires the check red.
+.PHONY: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+tables-cs-wire-fuzz-repeated-id:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldId$$'
+tables-cs-wire-fuzz-repeated-id-negative-control:
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpWireFuzzRepeatedFieldIdNegativeControl$$'
+test-cs: tables-cs-wire-fuzz-repeated-id tables-cs-wire-fuzz-repeated-id-negative-control
+
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
 
