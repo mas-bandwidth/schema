@@ -1,4 +1,4 @@
-package mootable_test
+package moo_test
 
 // THE FIXED FORM'S HOT-PATH EVIDENCE for the one-read cut of
 // runtime/table_fixed.moo (docs/plans/strict-only.md): a bool and a present
@@ -12,20 +12,31 @@ package mootable_test
 // runs only on a quiet fleet bench with SCHEMA_MOO_FIXED_BENCH=1 set:
 //
 //   SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-//     -tags schema_leg_moo ./internal/codegen/mootable/ \
+//     -tags schema_leg_moo ./bench/tables/moo/ \
 //     -run '^TestMooFixedHotPathBench$'
+//
+// The measurement lives in the moo runner directory (bench/tables/moo) so the
+// shape gate sees it as the sanctioned runner machinery it is, not a second
+// benchmark parked under the compiler internals. It keeps the card
+// moo-bench-fixed-hot-path's owed before/after numbers reproducible.
 
 import (
 	"crypto/sha256"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 const benchSchema = `package probe
@@ -50,6 +61,70 @@ fixed table Rec
 `
 
 const benchBefore = "5c18749305062aade552862f1d1745df172a923adeaf11810197839555bad290"
+
+// generatedUnit is one emitted unit and the directory it lives in.
+type generatedUnit struct {
+	dir   string
+	files map[string][]byte
+}
+
+// writeUnit writes an emitted unit into a fresh directory.
+func writeUnit(t *testing.T, files map[string][]byte) *generatedUnit {
+	t.Helper()
+	g := &generatedUnit{dir: t.TempDir(), files: files}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(g.dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return g
+}
+
+// unitFromSource loads one schema source as a unit.
+func unitFromSource(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{p})
+	if err != nil {
+		t.Fatalf("the unit does not load: %v", err)
+	}
+	return u
+}
+
+// fixedUnit generates a unit for moo with a handed lineage and writes it.
+func fixedUnit(t *testing.T, u *ir.Unit) *generatedUnit {
+	t.Helper()
+	files, err := moo.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := mootable.GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	return writeUnit(t, files)
+}
+
+// requireAll is the moo lines that load every table module (registering the
+// descriptors).
+func (g *generatedUnit) requireAll() string {
+	var mods []string
+	for name := range g.files {
+		if strings.HasSuffix(name, "Table.moo") {
+			mods = append(mods, strings.TrimSuffix(name, ".moo"))
+		}
+	}
+	sort.Strings(mods)
+	var b strings.Builder
+	for _, m := range mods {
+		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
+	}
+	return b.String()
+}
 
 // benchProgram loads (or saves) a batch of records `iters` times.
 func benchProgram(g *generatedUnit, op string, iters int) string {
@@ -113,7 +188,7 @@ func TestMooFixedHotPathBench(t *testing.T) {
 		t.Fatalf("the baseline is not the runtime before the cut: sha256=%s", got)
 	}
 	u := unitFromSource(t, benchSchema)
-	gb, ga := fixedUnit(t, u, nil), fixedUnit(t, u, nil)
+	gb, ga := fixedUnit(t, u), fixedUnit(t, u)
 	if err := os.WriteFile(filepath.Join(gb.dir, "table_fixed.moo"), before, 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -34,8 +34,12 @@ measured record is unchanged. This commit does not touch that line.
 
 ## Command
 
+The measurement now lives in the moo runner directory, `bench/tables/moo/`
+(the file and its baseline fixture moved there unchanged, so the card
+`moo-bench-fixed-hot-path`'s workload and numbers stay reproducible).
+
     env SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-      -tags schema_leg_moo ./internal/codegen/mootable/ \
+      -tags schema_leg_moo ./bench/tables/moo/ \
       -run '^TestMooFixedHotPathBench$'
 
 `GOFLAGS=-mod=readonly` and `MOO` set as above. The 1-minute load was read
@@ -80,7 +84,7 @@ not re-run vision.
 ## DONE-WHEN
 
     env SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-      -tags schema_leg_moo ./internal/codegen/mootable/ \
+      -tags schema_leg_moo ./bench/tables/moo/ \
       -run '^TestMooFixedHotPathBench$'
 
 PASS, exit 0, on hetzner2, on the code this receipt measures (20.253s and
