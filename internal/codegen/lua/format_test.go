@@ -54,6 +54,43 @@ func TestFormatWritesStyLuasShapes(t *testing.T) {
 	}
 }
 
+// TestByteStringUsesStyLuaQuotePreference pins ByteString to StyLua's
+// AutoPreferDouble choice: double quotes, unless the value carries more
+// double quotes than single quotes, when the literal takes single quotes and
+// only its single quotes are escaped. A unit test: no formatter process.
+func TestByteStringUsesStyLuaQuotePreference(t *testing.T) {
+	cases := []struct{ name, want string; in []byte }{
+		{"no quotes", `"abc"`, []byte("abc")},
+		{"one double", `'a"b'`, []byte(`a"b`)},
+		{"one single", `"a'b"`, []byte(`a'b`)},
+		{"a tie prefers double", `"a\"'b"`, []byte(`a"'b`)},
+		{"more singles keep double", `"a\"''b"`, []byte(`a"''b`)},
+		{"more doubles take single", `'a""\'b'`, []byte(`a""'b`)},
+		{"escapes stay escapes", `'\\"\x0a'`, []byte{'\\', '"', '\n'}},
+	}
+	for _, c := range cases {
+		if got := ByteString(c.in); got != c.want {
+			t.Errorf("%s: ByteString(%q) = %s, want %s", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+// TestQuotedReDecidesSingleQuotedPieces holds the split path's input: a
+// single-quoted body is read as the same value a double-quoted one would
+// carry, so each piece takes StyLua's quote for that piece's own quotes.
+func TestQuotedReDecidesSingleQuotedPieces(t *testing.T) {
+	cases := []struct{ body, want string }{
+		{`a"b`, `'a"b'`},
+		{`a\'b`, `"a'b"`},
+		{`a"\'b`, `"a\"'b"`},
+	}
+	for _, c := range cases {
+		if got := quoted("'", c.body); got != c.want {
+			t.Errorf("quoted(%q, %q) = %q, want %q", "'", c.body, got, c.want)
+		}
+	}
+}
+
 // TestFormatSplitsAStringWithoutChangingIt: a layout string longer than the
 // line becomes pieces hung under the assignment, every line within the limit,
 // no piece ending inside an escape, a piece with more double than single

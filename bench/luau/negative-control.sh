@@ -6,7 +6,9 @@
 #   packet-golden   bench_mixed.bin with one byte flipped: the packet leg's
 #                   gate refuses "variant 0 is not the wire golden" and exits 1
 #   table-golden    bench_table.bin with one byte flipped: the tables leg's
-#                   gate refuses the same way
+#                   gate refuses the same way. That leg reads the form-1 view
+#                   through the strict load (schema_load's one read), so the
+#                   golden flip is still refused by gate 1 before any clock.
 #   stray-line      the packet runner with a bare print planted: route.sh
 #                   refuses the untagged line and exits 1, although the
 #                   interpreter itself exits 0

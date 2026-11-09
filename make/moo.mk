@@ -49,13 +49,11 @@ toolchain-moo:
 test-moo: toolchain-moo
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/moo/...
 update-goldens-moo: ;
-generated/bench/tables/moo/.stamp: ;
 
 TEST_LEGS          += test-moo
 TOOLCHAIN_LEGS     += moo
 TOOLCHAIN_PINS_moo := MOO MOO_ANALYZE
 CONFORMANCE_LEGS   += $(call unless_skipped,moo,build/conformance-moo)
-BENCH_TABLES_LEGS  += generated/bench/tables/moo/.stamp
 GOLDENS_LEGS       += update-goldens-moo
 
 # J6: native moo owning card facade. The Go host supplies only CLI file IO;
