@@ -3906,64 +3906,73 @@ int surfaceJsonWrite(String outDir) {
 // counters, or refuses a malformed text. A missing codec is explicit.
 String? jsonHostileReport(String unit, String root, String text) {
   dynamic r;
-  String value;
+  late final String Function() encode;
   try {
     switch ('$unit $root') {
       case 'featurewitnesses Root':
         r = feature.TableTextReport();
-        value = feature.rootToJson(feature.rootFromJson(text, r));
+        final v = feature.rootFromJson(text, r);
+        encode = () => feature.rootToJson(v);
         break;
       case 'featurewitnesses ArrayRoot':
         r = feature.TableTextReport();
-        value = feature.arrayRootToJson(feature.arrayRootFromJson(text, r));
+        final v = feature.arrayRootFromJson(text, r);
+        encode = () => feature.arrayRootToJson(v);
         break;
       case 'tabledemo RootConfig':
         r = tabledemo.TableTextReport();
-        value = tabledemo.rootConfigToJson(tabledemo.rootConfigFromJson(text, r));
+        final v = tabledemo.rootConfigFromJson(text, r);
+        encode = () => tabledemo.rootConfigToJson(v);
         break;
       case 'tabledemo PackConfig':
         r = tabledemo.TableTextReport();
-        value = tabledemo.packConfigToJson(tabledemo.packConfigFromJson(text, r));
+        final v = tabledemo.packConfigFromJson(text, r);
+        encode = () => tabledemo.packConfigToJson(v);
         break;
       case 'blobdemo Catalog':
         r = blobdemo.TableTextReport();
-        value = blobdemo.catalogToJson(blobdemo.catalogFromJson(text, r));
+        final v = blobdemo.catalogFromJson(text, r);
+        encode = () => blobdemo.catalogToJson(v);
         break;
       case 'graphdemo Scene':
         r = graphdemo.TableTextReport();
-        value = graphdemo.sceneToJson(graphdemo.sceneFromJson(text, r));
+        final v = graphdemo.sceneFromJson(text, r);
+        encode = () => graphdemo.sceneToJson(v);
         break;
       case 'mapdemo Text':
         r = mapdemo.TableTextReport();
-        value = mapdemo.textToJson(mapdemo.textFromJson(text, r));
+        final v = mapdemo.textFromJson(text, r);
+        encode = () => mapdemo.textToJson(v);
         break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
-        value = listdemo.armyToJson(listdemo.armyFromJson(text, r));
+        final v = listdemo.armyFromJson(text, r);
+        encode = () => listdemo.armyToJson(v);
         break;
       case 'messagedemo ToolMessage':
         r = messagedemo.TableTextReport();
-        value = messagedemo.toolMessageToJson(messagedemo.toolMessageFromJson(text, r));
+        final v = messagedemo.toolMessageFromJson(text, r);
+        encode = () => messagedemo.toolMessageToJson(v);
         break;
       case 'scalars SimState':
         r = scalardemo.TableTextReport();
-        value = scalardemo.simStateToJson(scalardemo.simStateFromJson(text, r));
+        final v = scalardemo.simStateFromJson(text, r);
+        encode = () => scalardemo.simStateToJson(v);
         break;
       case 'streamdemo Feed':
         r = streamdemo.TableTextReport();
-        value = streamdemo.feedToJson(streamdemo.feedFromJson(text, r));
+        final v = streamdemo.feedFromJson(text, r);
+        encode = () => streamdemo.feedToJson(v);
         break;
       default:
         return null;
     }
   } on FormatException {
     return 'refused\n';
-  } on StateError {
-    return 'refused\n';
   }
   if (r.refused as bool) return 'refused\n';
   // the report line, then the §16 text of the value the read left
-  return '${r.unknown},${0},0,${0},${0},false,read\n$value';
+  return '${r.unknown},${0},0,${0},${0},false,read\n${encode()}';
 }
 
 int surfaceJsonHostile(String outDir) {
