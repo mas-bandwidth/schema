@@ -274,6 +274,7 @@ func shapeWire(payload []byte) []byte {
 func shapeCases() []struct {
 	retainCase
 	retained, stored, lost int64
+	loadRefusal            bool
 } {
 	field := func(ref, kind byte, payload ...byte) []byte { return append([]byte{ref, kind}, payload...) }
 	join := func(parts ...[]byte) []byte {
@@ -293,16 +294,17 @@ func shapeCases() []struct {
 	type sc = struct {
 		retainCase
 		retained, stored, lost int64
+		loadRefusal            bool
 	}
 	return []sc{
-		{retainCase{"repeated_child", shapeWire(join(child, field(1, 13, 1, 0))), -1, -1, 0}, 1, 0, 0},
-		{retainCase{"cleared_array", shapeWire(join(two, field(2, 14, 2, 13, 0))), -1, -1, 0}, 2, 0, 0},
-		{retainCase{"inert_array", shapeWire(join(two, field(2, 14, 0))), -1, -1, 0}, 2, 2, 0},
-		{retainCase{"keyed_slots", shapeWire(join(keyed(9, unknown), keyed(10, unknown), keyed(9, empty))), -1, -1, 0}, 2, 1, 0},
-		{retainCase{"switched_union", shapeWire(join(arm, field(4, 15, 8, 32, 0))), -1, -1, 0}, 1, 0, 0},
-		{retainCase{"duplicate_map_key", shapeWire(field(5, 14, body(join([]byte{13, 2}, body(entry(unknown)), body(entry(empty))))...)), -1, -1, 0}, 1, 0, 0},
+		{retainCase{"repeated_child", shapeWire(join(child, field(1, 13, 1, 0))), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"cleared_array", shapeWire(join(two, field(2, 14, 2, 13, 0))), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"inert_array", shapeWire(join(two, field(2, 14, 0))), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"keyed_slots", shapeWire(join(keyed(9, unknown), keyed(10, unknown), keyed(9, empty))), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"switched_union", shapeWire(join(arm, field(4, 15, 8, 32, 0))), -1, -1, 0}, 0, 0, 0, true},
+		{retainCase{"duplicate_map_key", shapeWire(field(5, 14, body(join([]byte{13, 2}, body(entry(unknown)), body(entry(empty))))...)), -1, -1, 0}, 0, 0, 0, true},
 		// the caller drops the second element: its retained record is lost
-		{retainCase{"shape_edit", shapeWire(two), -1, 1, 1}, 2, 2, 1},
+		{retainCase{"shape_edit", shapeWire(two), -1, 1, 1}, 2, 2, 1, false},
 	}
 }
 
@@ -316,9 +318,21 @@ func replacementAndShape(t *testing.T, override map[string][]byte) []string {
 		rc = append(rc, c.retainCase)
 	}
 	got := gooseRetainProbe(t, u, rc, override)
+	m := tabletext.NewModel(u)
 	var bad []string
 	for _, c := range cases {
 		g := got[c.name]
+		if c.loadRefusal {
+			store := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}
+			var r tabletext.Report
+			if ok, err := tablewire.DecodeRetain(m, m.New(m.Lookup("Root")), c.wire, store, &r); ok || !tablewire.ReadRefusal(err) {
+				t.Fatalf("%s: the reference accepted the wire: %v %v %+v", c.name, ok, err, r)
+			}
+			if !g.refused {
+				bad = append(bad, c.name+": the retaining load did not refuse")
+			}
+			continue
+		}
 		if g.refused {
 			bad = append(bad, c.name+": the retaining load refused")
 			continue
@@ -332,25 +346,11 @@ func replacementAndShape(t *testing.T, override map[string][]byte) []string {
 		if g.reloadUnknown != c.stored-c.lost {
 			bad = append(bad, fmt.Sprintf("%s: the saved bytes carry %d unknown fields, want %d", c.name, g.reloadUnknown, c.stored-c.lost))
 		}
-		if c.edit >= 0 {
-			continue // the reference has no caller edit to replay
-		}
-		ref, want := oracleRetain(t, u, c.wire, 1<<20)
-		if g.retained != int64(ref.Retained) || g.unknown != int64(ref.Unknown) {
-			bad = append(bad, fmt.Sprintf("%s: load unknown/retained %d/%d, the reference %d/%d", c.name, g.unknown, g.retained, ref.Unknown, ref.Retained))
-		}
-		if g.lost+g.saveLost != int64(ref.RetainLost) {
-			bad = append(bad, fmt.Sprintf("%s: load and save lost %d+%d, the reference %d", c.name, g.lost, g.saveLost, ref.RetainLost))
-		}
-		if !bytes.Equal(g.saved, want) {
-			bad = append(bad, fmt.Sprintf("%s: the retaining save differs from the reference's rewrite at byte %d", c.name, firstDifference(g.saved, want)))
-		}
 	}
 	return bad
 }
 
 func TestGooseRetainReplacementAndShapeChanges(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, b := range replacementAndShape(t, nil) {
 		t.Error(b)
@@ -360,11 +360,10 @@ func TestGooseRetainReplacementAndShapeChanges(t *testing.T) {
 // TestGooseRetainNegativeControl:
 //
 //   - the save writes no retained tail (§6.6): both gates must go red;
-//   - a shorter repeat of a counted array keeps the dropped elements'
-//     retained records: the replacement gate's cleared_array row must go red,
-//     and the rewrite gate stays green.
+//   - the wire-alone check no longer refuses a repeated field id in a body:
+//     the repeated-field rows in replacementAndShape go red while the rewrite
+//     gate stays green.
 func TestGooseRetainNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	t.Run("no-tail", func(t *testing.T) {
 		t.Parallel()
@@ -384,19 +383,14 @@ func TestGooseRetainNegativeControl(t *testing.T) {
 	})
 	t.Run("counted-repeat", func(t *testing.T) {
 		t.Parallel()
-		o := sabotage(t, "wire_load.goose", "                    if c.retaining { forget_rec(c, first + k); }\n", "")
+		o := sabotage(t, "wire_load.goose", "    if prev == scope { return false; }\n", "")
 		bad := replacementAndShape(t, o)
 		if len(bad) == 0 {
-			t.Fatal("the replacement gate stayed green with the dropped elements' records kept")
-		}
-		for _, b := range bad {
-			if !strings.HasPrefix(b, "cleared_array:") {
-				t.Errorf("a row the break does not own went red: %s", b)
-			}
+			t.Fatal("the replacement gate stayed green with repeated field ids allowed")
 		}
 		if rewrite := independentRewrite(t, o); len(rewrite) > 0 {
 			t.Errorf("the rewrite gate went red too: %s", rewrite[0])
 		}
-		t.Logf("replacement gate red on cleared_array only: %s", bad[0])
+		t.Logf("replacement gate red on repeated field ids: %s", bad[0])
 	})
 }

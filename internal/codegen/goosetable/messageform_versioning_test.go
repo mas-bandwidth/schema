@@ -77,18 +77,21 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 				// the older file's values as the newer build holds them, the Go
 				// reference's read of the older batch encoded under the newer
 				// unit, so the older reader still meets the newer vocabulary
-				older := evolutionLoad(t, "test/tables/VOLD_"+c.row+".schema")
 				oldFile := "old_" + c.row + ".bin"
 				data, err := os.ReadFile(filepath.Join(corpus, oldFile))
 				if err != nil {
 					t.Fatal(err)
 				}
 				n = records[oldFile]
-				oldBatch, why := gooseMsgFromFixed(t, older, root, data, n, true)
-				if oldBatch == nil {
-					t.Fatalf("the older writer refused %s", why)
+				batch, refused = gooseMsgFromFixed(t, writer, root, data, n, true)
+				if batch == nil {
+					older := evolutionLoad(t, "test/tables/VOLD_"+c.row+".schema")
+					oldBatch, why := gooseMsgFromFixed(t, older, root, data, n, true)
+					if oldBatch == nil {
+						t.Fatalf("the older writer refused %s", why)
+					}
+					batch = goEncodeAcross(t, older, writer, root, oldBatch, n)
 				}
-				batch = goEncodeAcross(t, older, writer, root, oldBatch, n)
 			}
 			if batch == nil {
 				batch, refused = gooseMsgFromFixed(t, writer, root, file, n, true)
@@ -129,7 +132,7 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 			for _, inst := range insts {
 				values = append(values, gooseInstAssign(t, "", inst))
 			}
-			want, encErr := tablewire.EncodeMessages(m, insts)
+			want, encErr := gooseEncodeMessages(m, insts)
 
 			// THE GOOSE LEG: AnnounceRead the writer, LoadMessages, SaveMessages
 			r := gooseMsgProbe(t, gooseMsgCase{unit: reader, root: root, values: values, data: batch, announce: announce})
@@ -203,9 +206,31 @@ func goEncodeAcross(t *testing.T, older, newer *ir.Unit, root string, batch []by
 	}
 	var rep tabletext.Report
 	if got, ok, err := tablewire.DecodeMessages(m, insts, batch, &vocab, &rep); err != nil || !ok || got != n {
-		t.Fatalf("the Go reference reads the older batch as n=%d ok=%v err=%v", got, ok, err)
+		mo := tabletext.NewModel(older)
+		ost := fixedRootStruct(t, older, root)
+		oinsts := make([]*tabletext.Instance, n)
+		for i := range oinsts {
+			oinsts[i] = mo.New(ost)
+		}
+		var orep tabletext.Report
+		if ogot, ook, oerr := tablewire.DecodeMessages(mo, oinsts, batch, &vocab, &orep); oerr != nil || !ook || ogot != n {
+			t.Fatalf("the Go reference reads the older batch as n=%d ok=%v err=%v", ogot, ook, oerr)
+		}
+		for i := range insts {
+			insts[i] = m.New(st)
+			for j := range insts[i].Fields {
+				for k := range oinsts[i].Fields {
+					if insts[i].Fields[j].Def.Name == oinsts[i].Fields[k].Def.Name {
+						insts[i].Fields[j].Cell = oinsts[i].Fields[k].Cell
+						insts[i].Fields[j].Count = oinsts[i].Fields[k].Count
+						insts[i].Fields[j].Present = oinsts[i].Fields[k].Present
+						insts[i].Fields[j].Elems = oinsts[i].Fields[k].Elems
+					}
+				}
+			}
+		}
 	}
-	out, err := tablewire.EncodeMessages(m, insts)
+	out, err := gooseEncodeMessages(m, insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode: %v", err)
 	}

@@ -587,6 +587,7 @@ fn announce_read(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
     }
     let ok = announce_once(v, data, report);
     if !v.announced {
+        report.unknown = 0;
         v.refused = true;
         v.entries.clear();
     }
@@ -726,6 +727,18 @@ fn msg_arm(r: MsgReader&) -> i64 {
 }
 
 fn msg_id(r: MsgReader&, e: i64) -> u64 { r.voc.entries[e].id }
+
+fn msg_seen(r: MsgReader&, seen: u64[>..]&, e: i64) -> bool {
+    let id = r.voc.entries[e].id;
+    for s in seen {
+        if s == id {
+            r.ok = false;
+            return true;
+        }
+    }
+    seen.push(id);
+    return false;
+}
 
 fn msg_inner(r: MsgReader&, e: i64) -> i64 { r.voc.entries[e].inner }
 

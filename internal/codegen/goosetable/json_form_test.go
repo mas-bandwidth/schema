@@ -166,7 +166,7 @@ func jsonProbe(t *testing.T, u *ir.Unit, files map[string][]byte, dir string, ro
 	}
 	b.WriteString("\n" + gooserun.HexProbe + "\n")
 	b.WriteString(`fn verdict(ok: bool, r: const schema_rt::JsonReport&) {
-    if ok && !r.damaged { print(r.unknown, ",", r.mismatch, ",", r.widened, ",", r.oor, ",", r.repeated, ",false,read"); } else { print("refused"); }
+    if ok && !r.damaged { print("read"); } else { print("refused"); }
 }
 
 `)
