@@ -15,7 +15,12 @@
 LUA_VERSION := 5.4.8
 LUA_TARBALL := lua-$(LUA_VERSION).tar.gz
 LUA_URL     := https://www.lua.org/ftp/$(LUA_TARBALL)
+# the mirror of the same tarball in this repository's `deps` prerelease, tried
+# only when LUA_URL is unreachable; both are held to LUA_SHA256 below
+LUA_FALLBACK_URL := https://github.com/mas-bandwidth/schema/releases/download/deps/$(LUA_TARBALL)
 LUA_SHA256  := 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
+# fail fast on an unreachable host instead of hanging the whole CI job
+LUA_CURL_MAX_TIME ?= 30
 LUA ?= $(CURDIR)/dist/lua-$(LUA_VERSION)/src/lua
 # the conformance driver and the Go tests (internal/codegen/lua/luarun) read
 # the pin from the environment
@@ -24,7 +29,16 @@ export LUA
 .PHONY: dist-lua
 dist-lua:
 	@mkdir -p dist
-	@if [ ! -f dist/$(LUA_TARBALL) ]; then curl -fsSL -o dist/$(LUA_TARBALL).part $(LUA_URL) && mv dist/$(LUA_TARBALL).part dist/$(LUA_TARBALL); fi
+	@if [ ! -f dist/$(LUA_TARBALL) ]; then \
+		if curl -fsSL --max-time $(LUA_CURL_MAX_TIME) -o dist/$(LUA_TARBALL).part $(LUA_URL); then \
+			mv dist/$(LUA_TARBALL).part dist/$(LUA_TARBALL); \
+		else \
+			echo "dist-lua: $(LUA_URL) unreachable; trying $(LUA_FALLBACK_URL)"; \
+			rm -f dist/$(LUA_TARBALL).part; \
+			curl -fsSL --max-time $(LUA_CURL_MAX_TIME) -o dist/$(LUA_TARBALL).part $(LUA_FALLBACK_URL) && \
+				mv dist/$(LUA_TARBALL).part dist/$(LUA_TARBALL); \
+		fi; \
+	fi
 	@got=$$(sha256sum dist/$(LUA_TARBALL) 2>/dev/null | cut -d" " -f1); \
 	if [ -z "$$got" ]; then got=$$(shasum -a 256 dist/$(LUA_TARBALL) | cut -d" " -f1); fi; \
 	if [ "$$got" != "$(LUA_SHA256)" ]; then \
