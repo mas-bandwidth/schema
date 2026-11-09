@@ -1,5 +1,5 @@
 // Native fuzzing over the WHOLE pipeline: parse -> check -> generate in all
-// five languages. The contract under test is simple and absolute: for ANY
+// sixteen languages. The contract under test is simple and absolute: for ANY
 // input bytes, the compiler either produces a unit or reports errors — it
 // never panics, and it never hangs. A crash on malformed input is a compiler
 // bug even when the input is nonsense, because "nonsense" is exactly what a
@@ -26,23 +26,35 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"bytes"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// backends is the full emitter set, shared by drive and the compile fuzz
-// (compile_test.go) so a sixth backend added here is fuzzed automatically.
-var backends = []struct {
+type backend struct {
 	name     string
 	generate func(*ir.Unit) (map[string][]byte, error)
-}{
+}
+
+// backends is the corpus-complete emitter set shared with property_test.go
+// and compile_test.go.
+var backends = []backend{
 	{"cpp", cpp.Generate},
 	{"csharp", csharp.Generate},
 	{"golang", golang.Generate},
@@ -54,7 +66,22 @@ var backends = []struct {
 	// malformed-output cases below are the bugs.
 	{"js", js.Generate},
 	{"dart", dart.Generate},
+	{"java", java.Generate},
+	{"elixir", elixir.Generate},
+	{"lua", lua.Generate},
+	{"luau", luau.Generate},
+	{"squirrel", squirrel.Generate},
+	{"moo", moo.Generate},
+	{"goose", goose.Generate},
+	{"lobster", lobster.Generate},
 }
+
+// fuzzBackends is the full 16-emitter set driven by FuzzPipeline and
+// FuzzPipelineTwoFiles, including python (which refuses declarations until P4
+// lands while emitting package skeletons on declaration-free units).
+var fuzzBackends = append(append([]backend(nil), backends...),
+	backend{"python", python.Generate},
+)
 
 // unitOf runs parse+check over the named sources. A parse or check failure is
 // a NORMAL outcome (most fuzz inputs are not valid schemas) and returns nil,
@@ -100,7 +127,7 @@ func drive(t *testing.T, srcs map[string]string) {
 	if unit == nil {
 		return
 	}
-	for _, b := range backends {
+	for _, b := range fuzzBackends {
 		out, err := b.generate(unit)
 		if err != nil {
 			// A reported error on a checked unit is tolerated (targets may
@@ -198,4 +225,44 @@ func FuzzPipelineTwoFiles(f *testing.F) {
 		// directions as the fuzzer swaps content between them.
 		drive(t, map[string]string{"A_one.schema": a, "Z_two.schema": b})
 	})
+}
+
+// TestFuzzPipelineAllSixteenEmitters verifies that fuzzBackends registers all
+// 16 emitters so FuzzPipeline and FuzzPipelineTwoFiles drive every target.
+func TestFuzzPipelineAllSixteenEmitters(t *testing.T) {
+	want := []string{
+		"cpp", "csharp", "golang", "rust", "c", "js", "dart",
+		"java", "elixir", "lua", "luau", "squirrel", "moo", "goose", "lobster", "python",
+	}
+	got := map[string]bool{}
+	for _, b := range fuzzBackends {
+		if b.generate == nil {
+			t.Fatalf("backend %q has nil generate func", b.name)
+		}
+		got[b.name] = true
+	}
+	for _, name := range want {
+		if !got[name] {
+			t.Errorf("fuzzBackends missing emitter %q (have %d of %d)", name, len(fuzzBackends), len(want))
+		}
+	}
+	u := unitOf(map[string]string{"A.schema": "package t\n"})
+	if u == nil {
+		t.Fatal("minimal unit did not check")
+	}
+	first, err := python.Generate(u)
+	if err != nil {
+		t.Fatalf("python.Generate on minimal unit: %v", err)
+	}
+	for i := 1; i < 12; i++ {
+		again, err := python.Generate(u)
+		if err != nil {
+			t.Fatalf("python.Generate pass %d: %v", i, err)
+		}
+		for name, wantBytes := range first {
+			if !bytes.Equal(wantBytes, again[name]) {
+				t.Fatalf("python.Generate pass %d: %s differs between runs", i, name)
+			}
+		}
+	}
 }
