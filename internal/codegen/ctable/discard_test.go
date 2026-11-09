@@ -215,7 +215,7 @@ var discardSabotages = []discardSabotage{
 		[]string{"value", "strict"}},
 	{"region read", [][2]string{{"if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink) || table_report_finish(report,1)) {", "if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink)) {"}},
 		[]string{"region", "region strict"}},
-	{"retaining read", [][2]string{{"retention)||report->refused){", "retention)){"}},
+	{"retaining read", [][2]string{{" memset(region,0,(size_t)total);\n table_retain_reset(retain,NULL,NULL);\n return NULL;\n } /* damage discards the whole load, the retention store too (§4) */", " return (const Graph *)(const void *)region;\n } /* SABOTAGED: the retaining read kept the damaged load */"}},
 		[]string{"retain"}},
 	{"builder read", [][2]string{{"if(!ok || table_report_finish(report,ok)) { report->refused=1; graph_reset(root); return 0; }", "if(!ok || table_report_finish(report,ok)) { report->refused=1; return 0; }"}},
 		[]string{"builder"}},
