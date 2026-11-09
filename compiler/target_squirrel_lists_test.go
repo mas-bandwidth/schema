@@ -7,8 +7,7 @@ package compiler
 import (
 	"encoding/hex"
 	"fmt"
-	"os"
-	"path/filepath"
+	"maps"
 	"strings"
 	"testing"
 
@@ -24,41 +23,34 @@ const squirrelListProbe = "package probe\n\ntable L\n{\n    repos []int32\n}\n"
 
 // squirrelListPrelude prints the value the oracle's bytes read back as, the
 // saved bytes, and the report; then saves a value built in Squirrel, prints
-// its bytes, loads them back and prints the value again.
-const squirrelListPrelude = `local inputs = dofile("inputs.nut", true);
+// its bytes, loads them back and prints the value again; every read is the
+// strict read (docs/SPEC-TABLES.md §6.5).
+const squirrelListPrelude = squirrelVerdict + `local inputs = dofile("inputs.nut", true);
 local schema = dofile("schema_module.nut", true);
 local T = schema.require(%q);
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
-local report = {
-  unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-  duplicate = 0, malformed = false, refused = false
-};
+local report = {};
 local member = T.Descriptors.L.fields[0].member;
 local values = function(v) {
+  if (v == null) return "null";
   local s = "";
   foreach (i, x in v[member]) s += (i > 0 ? "," : "") + x;
   return s;
 };
-local status = function() {
-  return format("%%d,%%d,%%d,%%d,%%d", report.unknown, report.kindMismatch,
-    report.widened, report.clamped, report.duplicate) + "," +
-    report.malformed.tostring() + "," + report.refused.tostring();
-};
-local read = L.loadTolerant(T, "L", inputs.want, report);
+local read = L.load(T, "L", inputs.want, report);
+print("loaded-report=" + ::verdict(read, report) + "\n");
 print("loaded=" + values(read) + "\n");
-print("loaded-report=" + status() + "\n");
 ::hexline(S.save(T, "L", read));
 
-report = { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-  duplicate = 0, malformed = false, refused = false };
+report = {};
 local fresh = T.Descriptors.L.make();
 fresh[member] = [10, -20, 30];
 local saved = S.save(T, "L", fresh);
 ::hexline(saved);
-local again = L.loadTolerant(T, "L", saved, report);
+local again = L.load(T, "L", saved, report);
+print("round-report=" + ::verdict(again, report) + "\n");
 print("round=" + values(again) + "\n");
-print("round-report=" + status() + "\n");
 `
 
 func TestSquirrelCarriesUnboundedArrays(t *testing.T) {
@@ -84,45 +76,65 @@ func TestSquirrelCarriesUnboundedArrays(t *testing.T) {
 	if err != nil {
 		t.Fatalf("squirrel refused the unbounded array the card lifts: %v", err)
 	}
-	dir := t.TempDir()
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	main := fmt.Sprintf(squirrelListPrelude, squirreltable.ModuleName(u))
-	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(main), 0o644); err != nil {
-		t.Fatal(err)
+
+	// check runs the probe over one set of emitted files and answers every
+	// way it differs from the Go oracle.
+	check := func(files map[string][]byte) []string {
+		dir := t.TempDir()
+		squirrelWriteFiles(t, dir, files, main)
+		out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"want": want})
+		rows := map[string]string{}
+		var hexes []string
+		for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
+			if k, v, ok := strings.Cut(line, "="); ok {
+				rows[k] = v
+				continue
+			}
+			hexes = append(hexes, line)
+		}
+		var bad []string
+		if got := rows["loaded"]; got != "10,-20,30" {
+			bad = append(bad, fmt.Sprintf("the oracle's bytes read back as %q, want %q", got, "10,-20,30"))
+		}
+		for _, key := range []string{"loaded-report", "round-report"} {
+			if got := rows[key]; got != "accepted" {
+				bad = append(bad, fmt.Sprintf("%s is %q, want the strict read to accept", key, got))
+			}
+		}
+		if got := rows["round"]; got != "10,-20,30" {
+			bad = append(bad, fmt.Sprintf("the Squirrel value saved and loaded back as %q, want %q", got, "10,-20,30"))
+		}
+		if len(hexes) != 2 {
+			return append(bad, fmt.Sprintf("the probe printed %d hex lines, want 2:\n%s", len(hexes), out))
+		}
+		oracle := hex.EncodeToString(want)
+		for i, line := range hexes {
+			if line != oracle {
+				bad = append(bad, fmt.Sprintf("probe saved bytes %d are %s, the Go oracle %s", i, line, oracle))
+			}
+		}
+		return bad
+	}
+	for _, e := range check(files) {
+		t.Error(e)
 	}
 
-	out := sqrun.Run(t, dir, "main.nut", map[string][]byte{"want": want})
-	rows := map[string]string{}
-	var hexes []string
-	for line := range strings.SplitSeq(strings.TrimRight(string(out), "\n"), "\n") {
-		if k, v, ok := strings.Cut(line, "="); ok {
-			rows[k] = v
-			continue
-		}
-		hexes = append(hexes, line)
+	// NEGATIVE CONTROL: the emitted descriptor's element kind moved off int32,
+	// so the array's elements are written at another kind; the probe must go
+	// red against the oracle's bytes.
+	const elemAnchor = `elem = { kind = 4, shape = "int"`
+	module := string(files["ProbeTables.nut"])
+	if n := strings.Count(module, elemAnchor); n != 1 {
+		t.Fatalf("the element's anchor %q is in the emitted module %d times, want 1", elemAnchor, n)
 	}
-	if got := rows["loaded"]; got != "10,-20,30" {
-		t.Errorf("the oracle's bytes read back as %q, want %q", got, "10,-20,30")
+	bladed := maps.Clone(files)
+	bladed["ProbeTables.nut"] = []byte(strings.Replace(module, elemAnchor, `elem = { kind = 5, shape = "int"`, 1))
+	if bad := check(bladed); len(bad) == 0 {
+		t.Error("negative control: with the element kind moved the probe still agrees with the oracle")
 	}
-	for _, key := range []string{"loaded-report", "round-report"} {
-		if got := rows[key]; got != "0,0,0,0,0,false,false" {
-			t.Errorf("%s is %q, want a silent read", key, got)
-		}
-	}
-	if got := rows["round"]; got != "10,-20,30" {
-		t.Errorf("the Squirrel value saved and loaded back as %q, want %q", got, "10,-20,30")
-	}
-	if len(hexes) != 2 {
-		t.Fatalf("the probe printed %d hex lines, want 2:\n%s", len(hexes), out)
-	}
-	oracle := hex.EncodeToString(want)
-	for i, line := range hexes {
-		if line != oracle {
-			t.Errorf("probe saved bytes %d are %s, the Go oracle %s", i, line, oracle)
-		}
-	}
+
+	// THE STRICT READ REFUSES what the root cannot hold, with its negative
+	// control (docs/SPEC-TABLES.md §6.5).
+	squirrelStrictRefusal(t, u, files, "L", "package probe\n\ntable L\n{\n    repos string(8)\n}\n", `{"repos":"x"}`)
 }
