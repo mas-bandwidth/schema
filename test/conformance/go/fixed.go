@@ -39,7 +39,6 @@ import (
 	"tblv2"
 	"vocab9demo"
 	"vocabdemo"
-	widedemo "widedemo"
 )
 
 // fixedPlanCapacity is the scratch a fixed read is handed for its plan; the
@@ -199,11 +198,5 @@ func init() {
 	})
 	bind("vocab9demo", "Wide19", func(c codec) codec {
 		return fixedForm(c, vocab9demo.Wide19FixedLoad, vocab9demo.Wide19FixedMeasure, vocab9demo.Wide19FixedSave)
-	})
-	bind("widedemo", "Caption", func(c codec) codec {
-		return fixedForm(c, widedemo.CaptionFixedLoad, widedemo.CaptionFixedMeasure, widedemo.CaptionFixedSave)
-	})
-	bind("widedemo", "Stamp", func(c codec) codec {
-		return fixedForm(c, widedemo.StampFixedLoad, widedemo.StampFixedMeasure, widedemo.StampFixedSave)
 	})
 }

@@ -77,8 +77,6 @@ static partial class Program
         BindFixed<Vocabdemo.Wide09, Vocabdemo.TableReport, Vocabdemo.TableFixedEntry>("vocabdemo", "Wide09", () => new Vocabdemo.TableReport(), Copy, Vocabdemo.Schema.Wide09FixedLoad, Vocabdemo.Schema.Wide09FixedMeasure, Vocabdemo.Schema.Wide09FixedSave);
         BindFixed<Vocab9demo.Wide00, Vocab9demo.TableReport, Vocab9demo.TableFixedEntry>("vocab9demo", "Wide00", () => new Vocab9demo.TableReport(), Copy, Vocab9demo.Schema.Wide00FixedLoad, Vocab9demo.Schema.Wide00FixedMeasure, Vocab9demo.Schema.Wide00FixedSave);
         BindFixed<Vocab9demo.Wide19, Vocab9demo.TableReport, Vocab9demo.TableFixedEntry>("vocab9demo", "Wide19", () => new Vocab9demo.TableReport(), Copy, Vocab9demo.Schema.Wide19FixedLoad, Vocab9demo.Schema.Wide19FixedMeasure, Vocab9demo.Schema.Wide19FixedSave);
-        BindFixed<Wide.Caption, Wide.TableReport, Wide.TableFixedEntry>("widedemo", "Caption", () => new Wide.TableReport(), Copy, Wide.Schema.CaptionFixedLoad, Wide.Schema.CaptionFixedMeasure, Wide.Schema.CaptionFixedSave);
-        BindFixed<Wide.Stamp, Wide.TableReport, Wide.TableFixedEntry>("widedemo", "Stamp", () => new Wide.TableReport(), Copy, Wide.Schema.StampFixedLoad, Wide.Schema.StampFixedMeasure, Wide.Schema.StampFixedSave);
         // WideBlob is declared fixed past the fixed-form ceiling, so it has
         // no file form at all: every file read of it refuses.
         {

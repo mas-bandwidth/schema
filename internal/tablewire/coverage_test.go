@@ -46,10 +46,6 @@ func TestTextHelpers(t *testing.T) {
 	if units[0] != 0x41 || units[1] != 0x42 {
 		t.Fatalf("wideUnits = %v", units)
 	}
-	back := wideBytes(units)
-	if string(back) != string([]byte{0x41, 0x00, 0x42, 0x00}) {
-		t.Fatalf("wideBytes = %v", back)
-	}
 	if !wideValid([]uint16{0x41, 0x42}) {
 		t.Fatal("plain units must be valid")
 	}

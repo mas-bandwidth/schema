@@ -273,18 +273,6 @@ static std::string man_fixed( long long raw, int frac )
     return b;
 }
 
-static std::string man_wtext( const char16_t * src, size_t n )
-{
-    std::string out = "u\"";
-    for ( size_t i = 0; i < n; ++i )
-    {
-        char b[16];
-        const unsigned u = (unsigned) src[i];
-        if ( u >= 0x20 && u < 0x7F && u != '"' && u != '\\' && u != ',' ) { out += (char) u; }
-        else { std::snprintf( b, sizeof( b ), "\\u%04X", u ); out += b; }
-    }
-    return out + "\"";
-}
 
 // A PAYLOAD UNDER AN ABSENT OPTIONAL IS NOT A VALUE (§5.9 #32). The writer
 // emits an optional's payload only where the flag says PRESENT; where it says

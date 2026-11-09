@@ -2082,29 +2082,31 @@ the same idea walks through for types.
 
 ### 4.12 Text is UTF-8: no wide strings
 
-**Retired (Glenn, 2026-10-31).** `wstring(N)` is retired, and table kind `33`
-is retired with it. Text in schema is `string(N)` (§4.7), and on the table wire
-`*string` and the unbounded `string` (SPEC-TABLES.md §2.5, §2.13.1), and every
-one of them is UTF-8.
-
-**The compiler refuses every spelling.** A unit that declares `wstring(N)` at
-a field, an element, an arm, a map key or value, `?wstring(N)`, `*wstring` or
-the bare word is refused by name:
-
-    wstring retired: kind 33 is retired (Glenn, 2026-10-31); <target> declares
-    <sites> — use string(N), UTF-8 (SPEC §4.7)
-
-The refusal names every wstring site in the unit, whatever the target.
-
-**Converting at the boundary.** Wide text cannot be stored portably across
-the targets — a `wchar_t` is sixteen bits on one host and thirty-two on
+**There is no wide text type.** Text in schema is `string(N)` (§4.7), and on
+the table wire `*string` and the unbounded `string` (SPEC-TABLES.md §2.5,
+§2.13.1), and every one of them is UTF-8. Wide text cannot be stored portably
+across the targets — a `wchar_t` is sixteen bits on one host and thirty-two on
 another, and half the targets hold no UTF-16 type at all — so the language
 carries one encoding and the conversion belongs to the program that holds
-the other one. A C++ program holding `std::u16string`, `std::wstring` or
-`char32_t` text converts it to UTF-8 before it stores the field and back
-after it reads it; serialize ships `serialize_utf.h` for exactly that
-conversion, outside the format. Java, C#, JavaScript and Dart strings are
-UTF-16 in memory and convert with the platform's UTF-8 encoder
+the other one. This is serialize's own rule: its format 2.0 has no `wstring`
+operation, and schema mirrors it.
+
+**`wstring` is a reserved word and names no type.** Every spelling of it —
+`wstring(N)` at a field, an element, an arm, a map key or value, `?wstring(N)`,
+`*wstring` and the bare word — is refused by the parser with one diagnostic
+that names the fix:
+
+    wstring is not a schema type: text is string, which is UTF-8 — declare
+    string(N) and convert wide text to UTF-8 at the application's boundary
+
+(`declare *string` for the pointer spelling). The field reads on as the
+`string` the message names, so the refusal is the unit's only diagnostic.
+
+**Converting at the boundary.** A C++ program holding `std::u16string`,
+`std::wstring` or `char32_t` text converts it to UTF-8 before it stores the
+field and back after it reads it; serialize ships `serialize_utf.h` for
+exactly that conversion, outside the format. Java, C#, JavaScript and Dart
+strings are UTF-16 in memory and convert with the platform's UTF-8 encoder
 (`StandardCharsets.UTF_8`, `Encoding.UTF8`, `TextEncoder`, `utf8.encode`).
 Go, Rust and Elixir strings are already UTF-8.
 

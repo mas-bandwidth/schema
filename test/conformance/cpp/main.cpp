@@ -31,7 +31,6 @@
 
 #include "TablesTable.h"
 #include "WideTable.h"
-#include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
 #include "FeaturesTable.h"
 #include "NestedTable.h"
 #include "KeyedTable.h"
@@ -371,11 +370,6 @@ static const Codec codecs[] = {
     CODEC( "vocabdemo", vocabdemo, Wide09 ),
     CODEC( "vocab9demo", vocab9demo, Wide00 ),
     CODEC( "vocab9demo", vocab9demo, Wide19 ),
-    // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): its own unit, because eight
-    // targets refuse wide text on either wire (SPEC.md §4.12) and answer
-    // ABSENT for these rows
-    CODEC( "widedemo", wide, Caption ),
-    CODEC( "widedemo", wide, Stamp ),
 };
 
 // ---------------------------------------------------------------------------
@@ -1827,13 +1821,6 @@ static bool damage_text( const std::string & unit, const std::string & root, voi
         tabledemo::ProfileConfig & v = *(tabledemo::ProfileConfig *) value;
         v.name[0] = 0x61; v.name[1] = (char) 0xff; v.name[2] = 0x62;
         v.name_length = 3;
-        return true;
-    }
-    if ( damage == "wide:label" && unit == "widedemo" && root == "Stamp" )
-    {
-        wide::Stamp & v = *(wide::Stamp *) value;
-        v.label[0] = 0x61; v.label[1] = 0xd800; v.label[2] = 0x62;
-        v.label_length = 3;
         return true;
     }
     fprintf( stderr, "driver: damage %s names no text field of %s.%s\n", damage.c_str(), unit.c_str(), root.c_str() );

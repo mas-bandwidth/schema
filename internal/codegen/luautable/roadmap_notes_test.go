@@ -35,8 +35,8 @@ var luauVTContractIndependentRows = map[string]bool{
 
 func checkLuauRoadmapNotesAndMake(roadmapText, luauMkText, luauSerializeMkText string) error {
 	matches := luauTaskLineRx.FindAllStringSubmatch(roadmapText, -1)
-	if len(matches) != 93 {
-		return fmt.Errorf("expected 93 port/luau/* task lines with unchanged :state :todo :evidence nil, got %d", len(matches))
+	if len(matches) != 91 {
+		return fmt.Errorf("expected 91 port/luau/* task lines with unchanged :state :todo :evidence nil, got %d", len(matches))
 	}
 
 	var packetCount, fixedCount, vtCount, portMetaCount int
@@ -85,7 +85,7 @@ func checkLuauRoadmapNotesAndMake(roadmapText, luauMkText, luauSerializeMkText s
 		}
 	}
 
-	if packetCount != 1 || fixedCount != 57 || vtCount != 32 || portMetaCount != 3 {
+	if packetCount != 1 || fixedCount != 56 || vtCount != 31 || portMetaCount != 3 {
 		return fmt.Errorf("unexpected task counts: packet=%d fixed=%d vt=%d meta=%d", packetCount, fixedCount, vtCount, portMetaCount)
 	}
 

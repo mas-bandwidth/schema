@@ -26,17 +26,6 @@ func wideUnits(b []byte) []uint16 {
 	return out
 }
 
-// wideBytes is the inverse: the units back onto the wire, two bytes each
-// little-endian, which is what the field's `L` frames.
-func wideBytes(units []uint16) []byte {
-	out := make([]byte, len(units)*2)
-	for i, u := range units {
-		out[i*2] = byte(u)
-		out[i*2+1] = byte(u >> 8)
-	}
-	return out
-}
-
 // wideValid is kind 33's content rule (docs/SPEC-TABLES.md §3, §4): SURROGATES
 // PAIRED and no zero code unit among the units, checked as the payload ARRIVES
 // and before the reader's own bound, on the rule kind 12 takes for UTF-8. It

@@ -2791,17 +2791,17 @@ check-enum-bound-negative-control: bin/schema
 .PHONY: check-wstring-refusal-negative-control
 check-wstring-refusal-negative-control:
 	@mkdir -p build/wstring-refusal-negative
-	@grep -q 'p.errf(t.Pos, WStringRefusal, "string(N)")' internal/parser/parser.go || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage anchor is gone from internal/parser/parser.go"; exit 1; }
-	@sed 's|p.errf(t.Pos, WStringRefusal, "string(N)")|_ = WStringRefusal // SABOTAGED: the bounded spelling is not refused|' \
-		internal/parser/parser.go > build/wstring-refusal-negative/parser.gotext
-	@printf '{"Replace":{"%s/internal/parser/parser.go":"%s/build/wstring-refusal-negative/parser.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
-	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./internal/check -run '^TestWStringIsRefusedByName$$' > build/wstring-refusal-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: TestWStringIsRefusedByName stayed green with the wstring(N) refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
+	@grep -q 'c.errf(f.Type.Pos, wstringRefusalMsg, fix)' internal/check/check.go || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage anchor is gone from internal/check/check.go"; exit 1; }
+	@sed 's|c.errf(f.Type.Pos, wstringRefusalMsg, fix)|_, _ = wstringRefusalMsg, fix // SABOTAGED: the wstring refusal is removed|' \
+		internal/check/check.go > build/wstring-refusal-negative/check.gotext
+	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/wstring-refusal-negative/check.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
+	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: TestWstringKind33Retired stayed green with the wstring refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
 	fi
 	@grep -q 'wstring' build/wstring-refusal-negative/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the test went red, but not on a wstring spelling"; cat build/wstring-refusal-negative/log; exit 1; }
-	@echo "negative control: without the parser's wstring(N) diagnostic, TestWStringIsRefusedByName goes red"
+	@echo "negative control: without the checker's wstring diagnostic, TestWstringKind33Retired goes red"
 
 # THE VARIANT-ORDER NEGATIVE CONTROL (SPEC §3.1, issue #462). An enum value
 # rides as its declaration ordinal and a flags variant as its bit position, so

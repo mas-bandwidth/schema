@@ -47,7 +47,6 @@ for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Feature
 	tblw2:test/tables/W2.schema \
 	vocab9demo:tables/vocab9 \
 	vocabdemo:tables/vocab \
-	widedemo:examples-wide \
 	widelist:tables/widelist; do
 	name=${unit%%:*}
 	path=${unit#*:}

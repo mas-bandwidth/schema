@@ -878,8 +878,6 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 		"packet-void-c-write-negative-control",
 		"packet-void-cpp-read-negative-control",
 		"packet-void-cpp-write-negative-control",
-		"packet-wide-c-negative-control",
-		"packet-wide-go-negative-control",
 		"projection-union-arm-order-negative-control",
 		"projection-variant-order-negative-control",
 		"projection-wire-law-negative-control",
@@ -957,14 +955,6 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 		"tables-wire-text-total-negative-control",
 		"tables-zero-cost-negative-control",
 		"toolchain-negative-control",
-		"wide-no-align-negative-control",
-		"wide-surrogate-negative-control",
-		"wide-table-byte-length-negative-control",
-		"wide-table-odd-length-negative-control",
-		"wide-table-surrogate-negative-control",
-		"wide-table-zero-unit-negative-control",
-		"wide-terminator-negative-control",
-		"wide-utf8-read-negative-control",
 	}
 
 	groupOf := map[string][]string{}

@@ -267,12 +267,6 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				func(inst *tabletext.Instance) { strictFindField(inst, "s").Cell.Str = []byte{0xff} },
 			},
 			{
-				"wstring-unpaired-surrogate",
-				`{"w": "a"}`,
-				"v.W = buffer.fromstring(string.char(0, 0xd8)); v.WLength = 1",
-				func(inst *tabletext.Instance) { strictFindField(inst, "w").Cell.Units = []uint16{0xd800} },
-			},
-			{
 				"string-holds-zero",
 				"{\"s\": \"a\\u0000b\"}",
 				"v.S = buffer.fromstring(\"a\" .. string.char(0) .. \"b\"); v.SLength = 3",

@@ -95,8 +95,7 @@ func TestUncoveredPaths(t *testing.T) {
 		}
 		text := `{
 			"names": { "zz": "last", "a": "first", "ab": "middle" },
-			"wide": { "10": "ten", "2": "two" },
-			"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
+					"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
 			"past": 7
 		}`
 		if !m.Read(inst, []byte(text), &r) || !r.Silent() {

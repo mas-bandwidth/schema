@@ -155,10 +155,6 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
-    static Report Copy(Wide.TableReport r)
-    {
-        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
-    }
     static Report Copy(Graphdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -391,12 +387,6 @@ static partial class Program
         Row<Graphdemo.ListNode, Graphdemo.TableReport>("graphdemo", "ListNode", () => new Graphdemo.TableReport(), Copy,
             Graphdemo.Schema.ListNodeLoad, Graphdemo.Schema.ListNodeMeasure, Graphdemo.Schema.ListNodeSave,
             Graphdemo.Schema.ListNodeFromJson, Graphdemo.Schema.ListNodeToJsonMeasure, Graphdemo.Schema.ListNodeToJson),
-        Row<Wide.Stamp, Wide.TableReport>("widedemo", "Stamp", () => new Wide.TableReport(), Copy,
-            Wide.Schema.StampLoad, Wide.Schema.StampMeasure, Wide.Schema.StampSave,
-            Wide.Schema.StampFromJson, Wide.Schema.StampToJsonMeasure, Wide.Schema.StampToJson),
-        Row<Wide.Caption, Wide.TableReport>("widedemo", "Caption", () => new Wide.TableReport(), Copy,
-            Wide.Schema.CaptionLoad, Wide.Schema.CaptionMeasure, Wide.Schema.CaptionSave,
-            Wide.Schema.CaptionFromJson, Wide.Schema.CaptionToJsonMeasure, Wide.Schema.CaptionToJson),
         Row<Scalardemo2.SimState, Scalardemo2.TableReport>("tblscalars2", "SimState", () => new Scalardemo2.TableReport(), Copy,
             Scalardemo2.Schema.SimStateLoad, Scalardemo2.Schema.SimStateMeasure, Scalardemo2.Schema.SimStateSave,
             Scalardemo2.Schema.SimStateFromJson, Scalardemo2.Schema.SimStateToJsonMeasure, Scalardemo2.Schema.SimStateToJson),
@@ -1742,40 +1732,6 @@ static partial class Program
             Codec c = Find("graphdemo", "Scene");
             c.CookMeasure = value => Graphdemo.Schema.SceneCookMeasure((Graphdemo.Scene)value);
             c.Cook = (value, bytes, big) => Graphdemo.Schema.SceneCook((Graphdemo.Scene)value, bytes, big ? Graphdemo.TableByteOrder.Big : Graphdemo.TableByteOrder.Little);
-        }
-        {
-            Codec c = Find("widedemo", "Stamp");
-            c.Announcement = Wide.Schema.Announce().ToArray();
-            c.CookMeasure = value => Wide.Schema.StampCookMeasure((Wide.Stamp)value);
-            c.Cook = (value, bytes, big) => Wide.Schema.StampCook((Wide.Stamp)value, bytes, big ? Wide.TableByteOrder.Big : Wide.TableByteOrder.Little);
-            var ownVocabulary = new Wide.TableVocabulary(); Wide.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Wide.TableReport());
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Wide.TableVocabulary(); var inner = new Wide.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Wide.Stamp[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Wide.Stamp(); }
-                if (!inner.Refused && !inner.Damaged) { Wide.Schema.StampLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Wide.Schema.StampMeasureMessages(new Wide.Stamp[] { (Wide.Stamp)value });
-            c.MessageSave = (value, bytes) => Wide.Schema.StampSaveMessages(new Wide.Stamp[] { (Wide.Stamp)value }, bytes);
-        }
-        {
-            Codec c = Find("widedemo", "Caption");
-            c.Announcement = Wide.Schema.Announce().ToArray();
-            c.CookMeasure = value => Wide.Schema.CaptionCookMeasure((Wide.Caption)value);
-            c.Cook = (value, bytes, big) => Wide.Schema.CaptionCook((Wide.Caption)value, bytes, big ? Wide.TableByteOrder.Big : Wide.TableByteOrder.Little);
-            var ownVocabulary = new Wide.TableVocabulary(); Wide.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Wide.TableReport());
-            c.MessageLoad = (announcement, bytes, report) =>
-            {
-                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Wide.TableVocabulary(); var inner = new Wide.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); }
-                var values = new Wide.Caption[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Wide.Caption(); }
-                if (!inner.Refused && !inner.Damaged) { Wide.Schema.CaptionLoadMessages(values, bytes, vocabulary, inner, out _); }
-                Fill(report, Copy(inner)); return values[0];
-            };
-            c.MessageMeasure = value => Wide.Schema.CaptionMeasureMessages(new Wide.Caption[] { (Wide.Caption)value });
-            c.MessageSave = (value, bytes) => Wide.Schema.CaptionSaveMessages(new Wide.Caption[] { (Wide.Caption)value }, bytes);
         }
         {
             Codec c = Find("tblscalars2", "SimState");
