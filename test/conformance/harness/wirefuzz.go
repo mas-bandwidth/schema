@@ -477,13 +477,20 @@ func (reply legReply) accepted() bool {
 	return reply.loaded && !reply.report.Refused && !reply.report.Malformed
 }
 
-// wireVerdict compares only acceptance and the complete accepted write-back.
-// The root and wire size remain parameters while callers migrate the transport.
+// wireVerdict compares the read verdict and the complete accepted write-back.
+// Under strict-only a refused load's report IS the refusal (docs/plans/strict-only.md):
+// the leg must name the refusal — malformed for damage, refused for a named
+// form — so a driver that drops the report does not pass merely by returning no
+// root. The root and wire size remain parameters while callers migrate the
+// transport.
 func wireVerdict(_ *wireRoot, reply legReply, ans oracleAnswer, _ int) string {
 	if accepted := reply.accepted(); accepted != ans.accepted {
 		return fmt.Sprintf("read acceptance differs: the leg says %t, the oracle says %t", accepted, ans.accepted)
 	}
 	if !ans.accepted {
+		if !reply.report.Refused && !reply.report.Malformed {
+			return "the oracle refuses the wire; the leg's report does not name the refusal"
+		}
 		return ""
 	}
 	if ans.encFail {
