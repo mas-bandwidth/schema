@@ -156,6 +156,28 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		}
 	}
 
+	// HIDING BOTH HALVES AT ONCE is the shape the finding names: the whole read
+	// leaves the compiler while every byte of it remains in the raw text. The
+	// definition check and the invocation check must each strip the hidden text
+	// rather than lean on the other to catch it.
+	both := []struct {
+		name string
+		wrap func(t *testing.T, src, needle string) string
+	}{
+		{"the C++ scan definition and invocation are commented out", commentTwinSpan},
+		{"the C++ scan definition and invocation are wrapped in #if 0", disableTwinSpan},
+	}
+	for _, fault := range both {
+		broken := fault.wrap(t, cppSrc, scanDef)
+		broken = fault.wrap(t, broken, scanCall)
+		if broken == cppSrc {
+			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
+		}
+		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+			t.Fatalf("a strict read hidden in a comment or #if 0 passed the twin gate: %s", fault.name)
+		}
+	}
+
 	cFaults := []struct{ name, from, to string }{
 		{
 			"the C count refusal loses its count",
