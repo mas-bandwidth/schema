@@ -920,11 +920,19 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-3",
+      "name": "cs-leg-blob-span",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it) and M19's builder map appending instead of inserting at its key. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "why": "the C# table leg's blob-span control (make/cs.mk cs_leg_sabotage): M17's span test made never to fire (a 100,000-byte blob is bump-allocated in a slab and the nodes after it overwrite it), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s).",
       "targets": [
-        "tables-cs-leg-blob-span-negative-control",
+        "tables-cs-leg-blob-span-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-map-order",
+      "when": "pull-request",
+      "why": "the C# table leg's map-order control (make/cs.mk cs_leg_sabotage): M19's builder map appending instead of inserting at its key, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from cs-leg-3 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (job wall 314 s, the make step 280 s).",
+      "targets": [
         "tables-cs-leg-map-order-negative-control"
       ],
       "dotnet": "pin"
