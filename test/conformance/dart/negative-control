@@ -126,13 +126,14 @@ for pair in \
     rt1:test/tables/RT1.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
-    "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null
+    "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart/$unit" "$input" >/dev/null &
 done
 for pair in scalars:tables/scalars scalars2:test/tables/Scalars2.schema; do
     unit=${pair%%:*}
     input=${pair#*:}
-    "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart-scalars/$unit" "$input" >/dev/null
+    "$out/schema" generate --lang dart --out "$out/build/tables-generated-dart-scalars/$unit" "$input" >/dev/null &
 done
+wait
 
 # the sabotage must have reached generated code, or the control is vacuous
 if ! grep -rqF "$marker" "$out/build/tables-generated-dart"; then
@@ -179,16 +180,17 @@ case "$mode" in
     framing) red=framing ;;
 esac
 grep -Eq "^$red +FAIL " "$out/log" || { cat "$out/log"; exit 1; }
-for surface in wire message report framing json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason; do
+for surface in wire message report framing retain retain-save json-read json-write json-hostile cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery; do
     [ "$surface" = "$red" ] && continue
-    # the refusal's NAME is a row of the same rule: block-reason holds the
-    # reason block_pitch must give, so it goes red beside the forgery battery
-    [ "$mode" = block ] && [ "$surface" = block-reason ] && continue
+    # surfaceCookWrite constructs its input values via fromJson, so the text
+    # reader's bool sabotage also turns cook-write rows red alongside json-read
+    [ "$mode" = walk ] && [ "$surface" = cook-write ] && continue
     grep -Eq "^$surface +pass " "$out/log" || { cat "$out/log"; echo "surface $surface did not stay green" >&2; exit 1; }
 done
 # every failing row is a row of the broken rule, and each is a wrong answer
 allowed="^  dart / $red[:/ ]"
-[ "$mode" = block ] && allowed='^  dart / (forgery|block-reason): block_pitch: '
+[ "$mode" = walk ] && allowed='^  dart / (json-read|cook-write)[:/ ]'
+[ "$mode" = block ] && allowed='^  dart / forgery: block_pitch: '
 if grep '^  dart / ' "$out/log" | grep -Ev "$allowed" >/dev/null; then
     cat "$out/log"; exit 1
 fi
