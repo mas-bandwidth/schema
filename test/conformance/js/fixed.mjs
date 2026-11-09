@@ -220,25 +220,6 @@ export function toFixed(t, vv, fx, where) {
 // hands the rest of the row is the VARIABLE value, so ToJson and FromJson stay
 // the unit's own; `variableLoad` keeps the variable form's read for the
 // framing vectors, which are form 1 bytes read at a fixed root.
-const unpairedSurrogateRe = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
-
-function hasUnpairedSurrogate(v, seen = new Set()) {
-  if (typeof v === "string") { return unpairedSurrogateRe.test(v); }
-  if (v === null || typeof v !== "object" || v instanceof Uint8Array || seen.has(v)) { return false; }
-  seen.add(v);
-  if (Array.isArray(v)) { return v.some((x) => hasUnpairedSurrogate(x, seen)); }
-  if (v instanceof Map) {
-    for (const [k, val] of v.entries()) {
-      if (hasUnpairedSurrogate(k, seen) || hasUnpairedSurrogate(val, seen)) { return true; }
-    }
-    return false;
-  }
-  for (const val of Object.values(v)) {
-    if (hasUnpairedSurrogate(val, seen)) { return true; }
-  }
-  return false;
-}
-
 function scalarWidth(k) {
   switch (k) {
     case 1: case 2: case 6: case 20: case 25: return 1;
@@ -320,13 +301,12 @@ function arrayFramesWhole(wire) {
   return checkBody(1, end);
 }
 
+// The generated writer is strict on its own: it refuses an unpaired surrogate
+// in a text field and judges a float32's text by ONE correctly-rounded
+// conversion at the field's width (docs/SPEC-TABLES.md §16.3, §16.14 W0), so
+// the driver holds the writer to the report alone.
 function strictVariableCodec(generated, variablePath, codec) {
-  const modPath = generated + "/" + variablePath;
-  const src = existsSync(modPath) ? readFileSync(modPath, "utf8") : "";
-  const sabotagedFloat = src.includes("Math.fround(back) === v) { return text; } // SABOTAGED");
-  const sabotagedSurrogate = src.includes("{ out += \"\\uFFFD\"; continue; } // SABOTAGED");
   const rawLoad = codec.load;
-  const rawToJson = codec.toJson;
   return {
     ...codec,
     load: (wire, r) => {
@@ -336,17 +316,6 @@ function strictVariableCodec(generated, variablePath, codec) {
         return null;
       }
       return v;
-    },
-    toJson: (v) => {
-      if (!sabotagedSurrogate && hasUnpairedSurrogate(v)) { return null; }
-      if (sabotagedFloat) { return rawToJson(v); }
-      const origFround = Math.fround;
-      Math.fround = (x) => Math.abs(x) === 7.038531e-26 ? Math.sign(x) * 7.038530691851209e-26 : origFround(x);
-      try {
-        return rawToJson(v);
-      } finally {
-        Math.fround = origFround;
-      }
     },
   };
 }
