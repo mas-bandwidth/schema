@@ -47,12 +47,12 @@ func init() {
 	sabotages["table-cs-finite-read"] = []edit{{
 		old: `if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw)) { NonFinite(f, report); return true; }
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
-            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+            if (f.RangeRaw != null) { raw = f.RangeRaw(raw, report); if (report.Refused) { return false; } }
         }
         if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }`,
 		new: `if ((kind == 10 || kind == 11) && NonFiniteBits(kind, raw) && report == null) { NonFinite(f, report); return true; } // SABOTAGED: the read lands a NaN
             if (kind == 10 && f.Kind == 11) { raw = WidenFloat((uint)raw); }
-            if (f.ClampRaw != null) { raw = f.ClampRaw(raw, report); }
+            if (f.RangeRaw != null) { raw = f.RangeRaw(raw, report); if (report.Refused) { return false; } }
         }
         if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)raw; }`,
 	}}
