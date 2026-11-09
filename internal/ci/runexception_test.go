@@ -17,6 +17,7 @@ import (
 // patterns ('^$', paired with -fuzz) name no literal test and are checked
 // only for their anchor.
 func TestRunExceptionsNameExistingTests(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 	files := makefileFiles(t, root)
 
