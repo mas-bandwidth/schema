@@ -25,7 +25,8 @@ func TestMooDamageDiscardNegativeControls(t *testing.T) {
 			t.Fatalf("control needs a refused damaged load: %+v", before)
 		}
 		// the walk's discard and the one read's: both return no value on damage
-		removeMooDiscard(t, g, "table_load.moo", "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n", "",
+		// (phase one, which refuses the damage before the decode, goes too)
+		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff, "\tif report.bodyDamaged then\n\t\treturn nil\n\tend\n", "",
 			"\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn nil\n\t\t\tend\n\t\t\tif k == \"missingRequired\"", "\t\t\t\trep.field = witness(root, b, k)\n\t\t\t\treturn v\n\t\t\tend\n\t\t\tif k == \"missingRequired\"")
 		after := mooRetain(t, g, "Node", wire, retainFull, -1)
 		if !after.malformed || !after.value {
