@@ -42,7 +42,7 @@ const cTimestampVariableProbe = `
 
         memset( &rr, 0, sizeof( rr ) );
         if ( !root_load( &back, wire, n, &rr ) ) { printf( "variable: load failed at case %d malformed=%d\n", k, (int) rr.refused ); return 1; }
-        if ( rr.refused || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "variable: counters at case %d m=%d x=%d km=%d w=%d\n", k, (int) rr.refused, (int) rr.refused, rr.kind_mismatch, rr.widened ); return 1; }
+        if ( rr.refused || rr.refuse_reason != SCHEMA_TABLE_REFUSE_OK || rr.widened != 0 ) { printf( "variable: counters at case %d x=%d rr=%d w=%d\n", k, (int) rr.refused, (int) rr.refuse_reason, rr.widened ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "variable: value moved at case %d at=%lld tag=%lld\n", k, (long long) back.at, (long long) back.tag ); return 1; }
 
         if ( nanos[ k ] != 0 )
@@ -106,7 +106,7 @@ const cTimestampFixedProbe = `
         root_reset( &back );
         memset( &rr, 0, sizeof( rr ) );
         if ( root_fixed_load( &back, 1, file, wrote, plan, 64, NULL, &rr ) != 1 ) { printf( "fixed: load refused at case %d reason=%d\n", k, (int) rr.reason ); return 1; }
-        if ( rr.refused || rr.refused || rr.kind_mismatch != 0 || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
+        if ( rr.refused || rr.refuse_reason != SCHEMA_TABLE_REFUSE_OK || rr.widened != 0 ) { printf( "fixed: counters at case %d\n", k ); return 1; }
         if ( back.at != nanos[ k ] || back.tag != k + 1 ) { printf( "fixed: value moved at case %d\n", k ); return 1; }
     }
 `

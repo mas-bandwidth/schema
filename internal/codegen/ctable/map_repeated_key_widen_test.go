@@ -66,12 +66,9 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         CHECK( region != NULL );
         root = pairs_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, (int64_t) sizeof( wire ), &rep );
-        CHECK( root != NULL );
-        CHECK( rep.refused == 0 );
-        CHECK( rep.unknown == 2 );
-        CHECK( rep.kind_mismatch == 1 );
-        CHECK( rep.widened == 1 );
-        CHECK( root->slots.count == 2 );
+        CHECK( root == NULL );
+        CHECK( rep.refused == 1 );
+        CHECK( rep.refuse_reason != SCHEMA_TABLE_REFUSE_OK );
         free( region );
     }
 
@@ -115,7 +112,6 @@ int main( void )
         int64_t rbytes;
         uint8_t * region;
         const Simple * root;
-        const int32_t * found;
 
         wire[pos++] = 1; /* form */
         wire[pos++] = 1; /* ref=1 (items) */
@@ -141,13 +137,8 @@ int main( void )
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
-        CHECK( root != NULL );
-        CHECK( rep.refused == 0 );
-        CHECK( rep.widened == 1 );
-        CHECK( rep.kind_mismatch == 1 );
-        CHECK( root->items.count == 1 );
-        found = simple_items_find( &root->items, 7u );
-        CHECK( found != NULL && *found == 42 );
+        CHECK( root == NULL );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
         free( region );
     }
 
@@ -181,11 +172,8 @@ int main( void )
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
-        CHECK( root != NULL );
-        CHECK( rep.refused == 0 );
-        CHECK( rep.widened == 1 );
-        CHECK( rep.kind_mismatch == 1 );
-        CHECK( root->items.count == 0 );
+        CHECK( root == NULL );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
         free( region );
     }
 
@@ -197,7 +185,6 @@ int main( void )
         int64_t rbytes;
         uint8_t * region;
         const Simple * root;
-        const int32_t * found;
 
         wire[pos++] = 1;
         wire[pos++] = 1; wire[pos++] = 14; wire[pos++] = 20;
@@ -220,13 +207,8 @@ int main( void )
         CHECK( rbytes > 0 );
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
-        CHECK( root != NULL );
-        CHECK( rep.refused == 0 );
-        CHECK( rep.widened == 0 );
-        CHECK( rep.kind_mismatch == 1 );
-        CHECK( root->items.count == 1 );
-        found = simple_items_find( &root->items, 9u );
-        CHECK( found != NULL && *found == 42 );
+        CHECK( root == NULL );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
         free( region );
     }
 
