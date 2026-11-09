@@ -219,7 +219,7 @@ func runVtCellsFilesProbe(t *testing.T, files map[string][]byte, body string) (s
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {
-		t.Skip("functional C probe requires cc on PATH")
+		t.Fatalf("functional C probe requires cc on PATH")
 	}
 	dir := t.TempDir()
 	var headers []string
@@ -432,7 +432,11 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 		t.Fatalf("ProbeTable.h missing target anchor %q", target)
 	}
 	allFiles["ProbeTable.h"] = []byte(strings.Replace(headerStr, target, replacement, 1))
-	if out, err := runVtCellsFilesProbe(t, allFiles, vtCellsProbeBody(clean, damaged, over)); err == nil {
-		t.Fatalf("functional negative control passed with sabotaged table_report_finish:\n%s", out)
+	out, err := runVtCellsFilesProbe(t, allFiles, vtCellsProbeBody(clean, damaged, over))
+	if err == nil {
+		t.Fatalf("functional negative control passed with the out-of-range guard turned off:\n%s", out)
+	}
+	if strings.Contains(err.Error(), "compile:") {
+		t.Fatalf("negative control did not run the probe (the planted header failed to compile): %v\n%s", err, out)
 	}
 }
