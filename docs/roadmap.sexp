@@ -6310,7 +6310,7 @@
   (:verification "basic-valid-data-verified" :remaining
    ("Separate audit rows retain hostile-input, evolution and cross-shape certification obligations; this receipt establishes the cited ordinary valid-data capability.")
    :id "utf16-values/cpp/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :done :evidence
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
    ("test/tables/versioning_numbers.cpp:476"
     "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
     "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")
@@ -6387,7 +6387,7 @@
   (:verification "source-and-assertion-survey" :remaining
    ("Execution receipt supplied by coordinator: FAST 34766728596 at e3e88a46 named fixed form + versioning job SUCCESS; active cited assertions mapped to actual make target. No tests rerun in this audit. Broader hostile-input certification remains separate.")
    :id "utf16-values/dart/valid-data" :type :task :title
-   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :done :evidence
+   "Bounded UTF-16 string fields: valid-data write/read acceptance" :state :todo :evidence
    ("test/dart-tables/fixedform.dart:351" "make/dart.mk:295" ".github/workflows/ci-fast.yml:563"
     "https://github.com/mas-bandwidth/schema/actions/runs/34766728596"
     "https://github.com/mas-bandwidth/schema/actions/runs/34767246900")

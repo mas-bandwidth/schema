@@ -216,15 +216,17 @@ func TestCExternalsCarryThePackage(t *testing.T) {
 // must not become a collision the day a table gains a pointer (§11) — so the
 // scan needs a corpus where every name is actually emitted.
 // cCensusRuntimeSrc declares every construct one of the C emitter's
-// CENSUS-GATED runtime blocks is reached from: a `float64` for the float rung,
-// and a `*bytes` and a `*string` for the byte buffer's views, reserved ids,
-// accessors and node type. Kind 33 is retired, so nothing declares wide text.
+// CENSUS-GATED runtime blocks is reached from: a `string(16)` for the text
+// rung (kind 33 is retired, so the carried text kind stands in for it), a
+// `float64` for the float rung, and a `*bytes` and a `*string` for the byte
+// buffer's views, reserved ids, accessors and node type.
 const cCensusRuntimeSrc = `package probe
 
 table CensusLeaf { v int32 }
 
 table Census
 {
+    title string(16)
     ratio float64
     data  *bytes
     text  *string
