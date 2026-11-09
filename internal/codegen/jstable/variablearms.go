@@ -531,7 +531,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
-    let last = null, landed = false, widened = false;
+    let last = null, landed = false, widened = false, kindBad = false;
     for (let i = 0; i < count; i++) {
       const elen = sub.leb();
       if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
@@ -539,7 +539,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       const scan = TableVariableMapKeyScan(fd, r.b, eat, eat + elen, table);
       if (scan.widened && !widened) { widened = true; report.widened++; }
-      if (scan.kindBad) { report.mismatch++; ents.length = 0; break; }
+      if (scan.kindBad) { kindBad = true; report.mismatch++; ents.length = 0; break; }
       if (!scan.ok) { report.damaged = true; break; }
       if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.oor++; continue; }
       let order = -1;
@@ -556,6 +556,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       last = scan.key;
       landed = true;
     }
+    if (!kindBad && sub.at !== sub.end) { report.damaged = true; }
     for (const e of ents) { m.set(e.key, e.value); }
     if (st !== null && st.maps !== undefined) { st.maps.push({ m, ents }); }
   } else {
@@ -587,15 +588,23 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     report.widened++;
   }
   const arr = v[fd.n];
+  let rode = null;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
+    if (rode === null) { rode = [key]; } else if (rode.includes(key)) { report.damaged = true; break; } else { rode.push(key); }
     const elen = sub.leb();
     if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
     if (slot === undefined) {
       report.unknown++;
       if (retain !== null) { report.retainLost++; }
+      if (ek === 13 || ek === 14 || ek === 16 || ek === 31) {
+        const hdr = new TableVariableWriter(); hdr.leb(elen); hdr.raw(r.b.subarray(sub.at, sub.at + elen));
+        if (!TableVariableCheckUnknown(hdr.b, 0, hdr.len, ek, table, st, report)) { report.damaged = true; }
+      } else if (!TableVariableCheckUnknown(r.b, sub.at, sub.at + elen, ek, table, st, report)) {
+        report.damaged = true;
+      }
       sub.at += elen;
       continue;
     }
@@ -604,6 +613,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       case "enum": {
         const x = TableVariableEnumRead(fd.e, er, table, report, retain);
         if (x !== undefined) { arr[slot] = x; }
+        if (er.at !== er.end) { report.damaged = true; }
         break;
       }
       case "tab": {
@@ -619,10 +629,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
       default: {
         const x = TableVariableScalar(er, fd.e, ek, report);
         if (x !== undefined) { arr[slot] = x; }
+        if (er.at !== er.end) { report.damaged = true; }
       }
     }
     sub.at += elen;
   }
+  if (sub.at !== sub.end) { report.damaged = true; }
   r.at = end;
   return true;
 }
@@ -650,6 +662,12 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   if (arm === undefined) {
     report.unknown++;
     if (retain !== null) { report.retainLost++; }
+    if (kind === 13 || kind === 14 || kind === 16 || kind === 31) {
+      const hdr = new TableVariableWriter(); hdr.leb(n); hdr.raw(r.b.subarray(sub.at, end));
+      if (!TableVariableCheckUnknown(hdr.b, 0, hdr.len, kind, table, st, report)) { report.damaged = true; }
+    } else if (!TableVariableCheckUnknown(r.b, sub.at, end, kind, table, st, report)) {
+      report.damaged = true;
+    }
   } else if (kind !== arm.k) {
     if (!arm.void && !arm.body && TableVariableWidens(kind, arm.k)) {
       // WIDENED AT AN ARM: decoded at its own width, and an L that is not that
