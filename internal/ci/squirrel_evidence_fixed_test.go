@@ -140,8 +140,8 @@ func validateSquirrelFixedOverlay(root, overlay string) error {
 	for _, c := range fixedproof.Cases() {
 		suiteRows[c.ID] = true
 	}
-	if len(suiteRows) != 49 {
-		return fmt.Errorf("fixed proof suite has %d rows, want 49", len(suiteRows))
+	if len(suiteRows) != 48 {
+		return fmt.Errorf("fixed proof suite has %d rows, want 48", len(suiteRows))
 	}
 	for _, cut := range squirrelFixedCutRows {
 		if suiteRows[cut] {

@@ -242,7 +242,7 @@ func skipPayload(c *cursor, kind uint8) bool {
 // kind 16 at EVERY element kind, because an enum-keyed array's body carries a
 // KEY REFERENCE per slot whatever the elements are. Every other payload is
 // copied verbatim, which is every scalar, every fixed-point and 128-bit kind,
-// and kinds 12, 31 and 33.
+// and kinds 12 and 31.
 //
 // KIND 17 IS WHAT THE WALK IS LOOKING FOR AS MUCH AS A REFERENCE IS: meeting
 // one anywhere in the payload drops the whole record, which is what keeps a
