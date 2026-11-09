@@ -1,6 +1,10 @@
 --!strict
 -- Generated Luau storage <-> the facade's owning values. Descriptors carry all
 -- field names, bounds and enum variants; no parallel wire schema lives here.
+-- Every read goes through a plain strict entry point (L.load, J.FromJson,
+-- R.LoadRetain; docs/SPEC-TABLES.md §6.5): the tolerant names are gone from
+-- the runtime, so damaged input is refused or counted in the caller's
+-- report, never silently recovered into a partial record.
 local T = require("./CardTable")
 local S = require("./schema_tables")
 local L = require("./schema_load")
