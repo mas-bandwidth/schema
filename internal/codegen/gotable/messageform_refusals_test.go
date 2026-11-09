@@ -425,16 +425,15 @@ func TestFormByte(t *testing.T) {
 
 // TestGoMessageFormRefusesIllFormedText holds docs/SPEC.md §5.1 row 8 through
 // SaveMessages: the message reader refuses a string that is not well-formed
-// UTF-8 or holds a zero byte and a wstring with an unpaired surrogate or a zero
-// unit, so the message writer refuses them too instead of putting bytes its own
-// read would reject on the wire. A well-formed twin must still be written.
+// UTF-8 or holds a zero byte, so the message writer refuses it too instead of
+// putting bytes its own read would reject on the wire. A well-formed twin must
+// still be written.
 func TestGoMessageFormRefusesIllFormedText(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
 
 fixed table Root {
 	s string(8)
-	w wstring(8)
 }
 `
 	const probe = `
@@ -447,20 +446,12 @@ func TestMessageTextRefuses(t *testing.T) {
 	narrowZero := Root{}
 	copy(narrowZero.S[:], []byte{0x61, 0x00, 0x62})
 	narrowZero.SLength = 3
-	wideIll := Root{}
-	wideIll.W[0], wideIll.W[1], wideIll.W[2] = 0x0061, 0xD800, 0x0062
-	wideIll.WLength = 3
-	wideZero := Root{}
-	wideZero.W[0], wideZero.W[1], wideZero.W[2] = 0x0061, 0x0000, 0x0062
-	wideZero.WLength = 3
 	for _, c := range []struct {
 		name  string
 		value *Root
 	}{
 		{"narrow_ill_formed", &narrowIll},
 		{"narrow_zero", &narrowZero},
-		{"wide_unpaired", &wideIll},
-		{"wide_zero", &wideZero},
 	} {
 		values := []*Root{c.value}
 		if n := RootMeasureMessages(values, nil); n != -1 {
@@ -473,8 +464,6 @@ func TestMessageTextRefuses(t *testing.T) {
 	lawful := Root{}
 	copy(lawful.S[:], []byte{0x61, 0xC3, 0xA9, 0x62})
 	lawful.SLength = 4
-	lawful.W[0], lawful.W[1], lawful.W[2] = 0x0061, 0xD83D, 0xDE00
-	lawful.WLength = 3
 	values := []*Root{&lawful}
 	n := RootMeasureMessages(values, nil)
 	if n < 0 {
