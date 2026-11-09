@@ -125,7 +125,7 @@ func TestDartTextRepeatedKeyInSkippedValueRefuses(t *testing.T) {
 			t.Errorf("%s: Dart answered %q, the Go engine %q, for %s", tc.name, got[i], want, tc.json)
 		}
 	}
-	// the rows themselves: three repeats refuse, two non-repeats read
+	// The five rows: three repeats refuse, two non-repeats read.
 	for i, want := range []string{"refused", "refused", "refused", "read 1 1", "read 1 1"} {
 		if got[i] != want {
 			t.Errorf("%s: answered %q, want %q", dartTextRepeatSkipCases[i].name, got[i], want)
