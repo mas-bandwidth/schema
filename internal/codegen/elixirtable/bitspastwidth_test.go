@@ -92,6 +92,16 @@ defmodule BitsProbe do
         check(false, label <> ": got " <> inspect(other))
     end
   end
+
+  def refused_json(text, label) do
+    case Bitspastwidth.Table.from_json("Root", text) do
+      {:error, :malformed, _report} ->
+        :ok
+
+      other ->
+        check(false, label <> ": got " <> inspect(other))
+    end
+  end
 end
 
 CASES
@@ -127,6 +137,10 @@ table Root
 	fmt.Fprintf(&cases, "BitsProbe.refused_retain(%s, %s)\n",
 		elixirBitsWire(bitsPastWidthWire(154)),
 		elixirString("bits(6) value 154 past its width refuses retaining"))
+
+	fmt.Fprintf(&cases, "BitsProbe.refused_json(%s, %s)\n",
+		elixirString("{\"mask\": 64}"),
+		elixirString("bits(6) value 64 past its width in JSON refuses"))
 
 	probe := strings.ReplaceAll(bitsPastWidthProbeSource, "CASES", cases.String())
 	return files, probe

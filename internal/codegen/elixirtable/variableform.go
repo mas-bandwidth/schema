@@ -3621,6 +3621,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       end
     catch
       {:missing_required, report} -> {:error, :missing_required, report}
+      {:out_of_range, _name} -> {:error, :malformed, empty_report()}
       :wire_damaged -> {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
