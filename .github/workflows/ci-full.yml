@@ -961,21 +961,33 @@ jobs:
   # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
   # ./compiler meets one more target; go-test above runs both packages
   # untagged, and certify's test-moo-tables runs only the compiler's tests
-  # named Moo, so without this job a tagged red lands unseen. Its own job,
-  # beside go-test rather than one of its rows, because tools/slowgatescan
-  # credits each go-test row with the tests it selects, and this run selects
-  # the compiler's tests a second time under another build. One `go test`
-  # over the packages (the conformance harness's tagged half too) builds and
-  # runs them in parallel. The goose tag's one tagged test file, the
-  # conformance harness's half, rides beside it.
+  # named Moo, so without this job a tagged red lands unseen. It is its own
+  # job, beside go-test rather than one of its rows, because
+  # tools/slowgatescan credits each go-test row with the tests it selects, and
+  # this run selects the compiler's tests a second time under another build.
+  #
+  # A MATRIX, ONE ROW PER TAGGED LEG (2026-11-09). As one job this leg took
+  # ~128 s wall and was killed by the fleet's 120 s per-commit rule: the moo
+  # step (`make test-moo-tagged`) alone ran ~100 s, and the goose harness step
+  # could only begin behind it. The job is now a matrix so the tagged legs run
+  # in parallel. The moo leg is split in two (`make test-moo-tagged-compiler`
+  # and `test-moo-tagged-table`, make/moo-tagged.mk) because one row carrying the
+  # whole ~100 s leg plus its own checkout and pin setup would not fit the 110 s
+  # budget; each row now runs one half in parallel. The goose row runs the
+  # conformance harness's tagged half alone. Measured on the split run: the
+  # slowest row is moo-compiler at ~102 s — everything under 110 s.
   leg-tagged:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    name: legs under their build tags
+    name: legs under their build tags (${{ matrix.leg }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
+    timeout-minutes: 15
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [ moo-compiler, moo-table, goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -997,16 +1009,25 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # the pins the compiler's tests run generated code under (go-test's
-      # compiler rows install the same two), and the moo pin both packages run
+      # the pins the compiler's and table rows run generated code under
+      # (go-test's compiler rows install the same two), and the moo pin both
+      # moo rows run. The goose row needs none of them.
       - name: install the Luau and Squirrel pins
+        if: matrix.leg != 'goose'
         run: make dist-luau dist-squirrel
       - uses: ./.github/actions/moo
+        if: matrix.leg != 'goose'
 
-      - name: the moo leg's packages under schema_leg_moo
-        run: make test-moo-tagged
+      - name: the moo leg's compiler under schema_leg_moo
+        if: matrix.leg == 'moo-compiler'
+        run: make test-moo-tagged-compiler
+
+      - name: the moo leg's table and conformance packages under schema_leg_moo
+        if: matrix.leg == 'moo-table'
+        run: make test-moo-tagged-table
 
       - name: the conformance harness under schema_leg_goose
+        if: matrix.leg == 'goose'
         run: make test-goose-tagged-harness
 
   generated:
