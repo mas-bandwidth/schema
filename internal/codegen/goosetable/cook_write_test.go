@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -524,7 +523,7 @@ func cookBounds(t *testing.T, override map[string][]byte) (string, bool) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(goosePath, "run", "main.goose")
+	cmd := gooserun.Command(t, goosePath, "run", "main.goose")
 	cmd.Dir = run
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
