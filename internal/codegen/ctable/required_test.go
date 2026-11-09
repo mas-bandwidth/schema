@@ -117,40 +117,24 @@ int main( void )
     assert( own > 0 );
     old_t_builder_shutdown( &ob );
 
-    /* Region load returns root with missing_required == 1. */
-    memset( &rep, 0, sizeof( rep ) );
-    const T * tol = t_load( region, sizeof( region ), old_wire, own, &rep );
-    assert( tol != NULL );
-    assert( tol->a == 7 && tol->c == 4 );
-    assert( rep.missing_required == 1 && rep.refused == 0 );
-
     /* Strict region load refuses with SCHEMA_TABLE_REFUSE_MISSING_REQUIRED. */
+    memset( &rep, 0, sizeof( rep ) );
     got = t_load( region, sizeof( region ), old_wire, own, &rep );
     assert( got == NULL );
     assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
 
-    /* Builder load_builder_tolerant and load_builder both return 0. */
+    /* Builder load_builder returns 0 and sets SCHEMA_TABLE_REFUSE_MISSING_REQUIRED. */
     TBuilder lb;
     assert( t_builder_init( &lb ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
     assert( t_load_builder( &lb, old_wire, own, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.refused == 0 );
+    assert( rep.refused == 1 && rep.missing_required == 1 );
     t_builder_shutdown( &lb );
 
-    assert( t_builder_init( &lb ) == 1 );
-    assert( t_load_builder( &lb, old_wire, own, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
-    t_builder_shutdown( &lb );
-
-    /* JSON missing b refuses in both tolerant and strict modes. */
+    /* JSON missing b refuses with SCHEMA_TABLE_REFUSE_MISSING_REQUIRED. */
     const char * bad_json = "{\"a\":7,\"c\":4}";
     assert( t_builder_init( &lb ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
-    assert( t_from_json( &lb, bad_json, (int64_t) strlen( bad_json ), &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.refused == 0 );
-    t_builder_shutdown( &lb );
-
-    assert( t_builder_init( &lb ) == 1 );
     assert( t_from_json( &lb, bad_json, (int64_t) strlen( bad_json ), &rep ) == 0 );
     assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
     t_builder_shutdown( &lb );
@@ -211,25 +195,16 @@ static void check_missing( const uint8_t * wire, int64_t wn )
     SCHEMA_C_ALIGN16 uint8_t region[1024];
     TableReport rep;
 
+    memset( &rep, 0, sizeof( rep ) );
     const Root * got = root_load( region, sizeof( region ), wire, wn, &rep );
     assert( got == NULL );
     assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
-
-    memset( &rep, 0, sizeof( rep ) );
-    const Root * tol = root_load( region, sizeof( region ), wire, wn, &rep );
-    assert( tol != NULL );
-    assert( rep.missing_required == 1 && rep.refused == 0 );
 
     RootBuilder b;
     assert( root_builder_init( &b ) == 1 );
     memset( &rep, 0, sizeof( rep ) );
     assert( root_load_builder( &b, wire, wn, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.refused == 0 );
-    root_builder_shutdown( &b );
-
-    assert( root_builder_init( &b ) == 1 );
-    assert( root_load_builder( &b, wire, wn, &rep ) == 0 );
-    assert( rep.missing_required == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_MISSING_REQUIRED );
+    assert( rep.refused == 1 && rep.missing_required == 1 );
     root_builder_shutdown( &b );
 }
 

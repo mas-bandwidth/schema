@@ -154,7 +154,7 @@ static void builder_rows( void )
     GraphBuilder b; TableReport r; Graph * root;
     if ( !graph_builder_init( &b ) ) { FAIL( "builder", "builder_init" ); return; }
     memset( &r, 0, sizeof( r ) );
-    if ( graph_load_builder( &b, graph_wire, (int64_t) sizeof( graph_wire ), &r ) ) { FAIL( "builder", "load_builder_tolerant answered 1 on damage" ); }
+    if ( graph_load_builder( &b, graph_wire, (int64_t) sizeof( graph_wire ), &r ) ) { FAIL( "builder", "load_builder answered 1 on damage" ); }
     else if ( !r.refused ) { FAIL( "builder", "the report does not say malformed" ); }
     else if ( ( root = graph_builder_root( &b ) ) != NULL && !graph_is_reset( root ) )
     { printf( "builder: a=%d b=%d\n", (int) root->a, (int) root->b ); FAIL( "builder", "the builder's root kept what the damaged load decoded" ); }

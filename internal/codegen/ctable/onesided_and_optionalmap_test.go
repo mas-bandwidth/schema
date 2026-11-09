@@ -31,11 +31,12 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
     const TableTypeInfo * info = fixed_one_sided_table_type();
     const TableTypeInfo * vinfo = var_one_sided_table_type();
-    FixedOneSided v, upper, lower, w, loaded;
+    FixedOneSided defaults, v, edge, upper, lower, w, loaded;
     uint8_t fixed_buf[256];
     int64_t fn;
-    TableReport report, r2, r3, r4;
+    TableReport report, re, r2, r3, r4;
     const char * text = "{\"a\":-5,\"b\":20,\"c\":-100}";
+    const char * at = "{\"a\":0,\"b\":9,\"c\":-3}";
     const char * high = "{\"c\":200}";
     const char * low = "{\"b\":-1}";
 
@@ -46,22 +47,26 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     CHECK(vinfo->fields[1].has_range == 1 && vinfo->fields[1].range_min == 0.0 && vinfo->fields[1].range_max == 9.0);
     CHECK(vinfo->fields[2].has_range == 1 && vinfo->fields[2].range_min == -3.0 && vinfo->fields[2].range_max == 127.0);
 
+    fixed_one_sided_reset(&defaults);
     memset(&report, 0, sizeof(report));
-    CHECK(fixed_one_sided_from_json(&v, text, (int64_t)strlen(text), &report));
-    CHECK(v.a == 0);
-    CHECK(v.b == 9);
-    CHECK(v.c == -3);
-    CHECK(report.clamped >= 3);
+    CHECK(!fixed_one_sided_from_json(&v, text, (int64_t)strlen(text), &report));
+    CHECK(v.a == defaults.a && v.b == defaults.b && v.c == defaults.c);
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
+
+    memset(&re, 0, sizeof(re));
+    CHECK(fixed_one_sided_from_json(&edge, at, (int64_t)strlen(at), &re));
+    CHECK(edge.a == 0 && edge.b == 9 && edge.c == -3);
+    CHECK(!re.refused && re.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
 
     memset(&r3, 0, sizeof(r3));
-    CHECK(fixed_one_sided_from_json(&upper, high, (int64_t)strlen(high), &r3));
-    CHECK(upper.c == 127);
-    CHECK(r3.clamped == 1);
+    CHECK(!fixed_one_sided_from_json(&upper, high, (int64_t)strlen(high), &r3));
+    CHECK(upper.c == defaults.c);
+    CHECK(r3.refused && r3.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
 
     memset(&r4, 0, sizeof(r4));
-    CHECK(fixed_one_sided_from_json(&lower, low, (int64_t)strlen(low), &r4));
-    CHECK(lower.b == 0);
-    CHECK(r4.clamped == 1);
+    CHECK(!fixed_one_sided_from_json(&lower, low, (int64_t)strlen(low), &r4));
+    CHECK(lower.b == defaults.b);
+    CHECK(r4.refused && r4.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
 
     fixed_one_sided_reset(&w);
     w.a = -12345;
@@ -70,11 +75,9 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     fn = fixed_one_sided_fixed_save(&w, 1, fixed_buf, (int64_t)sizeof(fixed_buf));
     CHECK(fn > 0);
     memset(&r2, 0, sizeof(r2));
-    CHECK(fixed_one_sided_fixed_load(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) == 1);
-    CHECK(loaded.a == 0);
-    CHECK(loaded.b == 9);
-    CHECK(loaded.c == -3);
-    CHECK(r2.clamped >= 3 && !r2.refused);
+    CHECK(fixed_one_sided_fixed_load(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) < 0);
+    CHECK(loaded.a == defaults.a && loaded.b == defaults.b && loaded.c == defaults.c);
+    CHECK(r2.refused && r2.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
     #undef CHECK
 `)
 	if err != nil {
@@ -105,7 +108,7 @@ const cMapJsonNullProbe = `#include "ProbeTable.h"
 
 static int reset_case( const char * text, int repeated )
 {
-    const char * fresh = "{\"id\":1}";
+    const char * fresh = repeated ? "{}" : "{\"id\":1}";
     MBuilder b, fb;
     const M * v;
     const M * f;
@@ -114,25 +117,27 @@ static int reset_case( const char * text, int repeated )
     SCHEMA_C_ALIGN16 static uint8_t wire[1<<16];
     SCHEMA_C_ALIGN16 static uint8_t fresh_wire[1<<16];
     int64_t n, fn;
+    int accepted;
 
     CHECK(m_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    if ( !m_from_json(&b, text, (int64_t)strlen(text), &report) )
+    accepted = m_from_json(&b, text, (int64_t)strlen(text), &report);
+    if ( accepted == repeated )
     {
-        fprintf( stderr, "tags: from_json refused\n" );
+        fprintf( stderr, "tags: from_json %s, want %s\n", accepted ? "accepted" : "refused", repeated ? "refused" : "accepted" );
         m_builder_shutdown(&b);
         return 1;
     }
-    if ( report.refused || report.refused || report.kind_mismatch != 0 || report.unknown != 0 )
+    if ( repeated && report.refuse_reason == SCHEMA_TABLE_REFUSE_OK )
     {
-        fprintf( stderr, "tags: from_json report malformed=%d refused=%d kind_mismatch=%d unknown=%d\n",
-                 (int)report.refused, (int)report.refused, (int)report.kind_mismatch, (int)report.unknown );
+        fprintf( stderr, "tags: the repeated key's refusal names no reason\n" );
         m_builder_shutdown(&b);
         return 1;
     }
-    if ( report.duplicate != ( repeated ? 1 : 0 ) )
+    if ( !repeated && ( report.refused || report.refuse_reason != SCHEMA_TABLE_REFUSE_OK || report.unknown != 0 ) )
     {
-        fprintf( stderr, "tags: duplicate %d\n", (int)report.duplicate );
+        fprintf( stderr, "tags: from_json report refused=%d reason=%d unknown=%d\n",
+                 (int)report.refused, (int)report.refuse_reason, (int)report.unknown );
         m_builder_shutdown(&b);
         return 1;
     }
@@ -162,7 +167,7 @@ static int reset_case( const char * text, int repeated )
     CHECK( m_from_json(&fb, fresh, (int64_t)strlen(fresh), &fresh_report) );
     f = m_builder_root(&fb);
     CHECK(f != NULL);
-    if ( v->tags_present != f->tags_present || v->tail != f->tail )
+    if ( v->tags_present != f->tags_present || v->tail != f->tail || v->id != f->id )
     {
         fprintf( stderr, "tags: the bytes after the map slot moved\n" );
         m_builder_shutdown(&fb);
@@ -297,7 +302,7 @@ func TestCMapOptionalValues(t *testing.T) {
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
     { const char * s = "{\"lookup\":{\"a\":null,\"b\":7}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(!report.refused && report.kind_mismatch == 0);
+    CHECK(!report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
     CHECK(root_builder_lock(&b));
     v = (const Root *)(const void *)b.region;
     e = root_lookup_find(&v->lookup, "a");
@@ -311,41 +316,28 @@ func TestCMapOptionalValues(t *testing.T) {
     CHECK(strstr(json_buf, "\"b\": 7") != NULL);
     root_builder_shutdown(&b);
 
-    /* 2. Non-null wrong-shape value sets value_present = 1 with default value 0 */
+    /* 2. Non-null wrong-shape value refuses the whole load */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":\"bad\"}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(report.kind_mismatch == 1);
-    CHECK(root_builder_lock(&b));
-    v = (const Root *)(const void *)b.region;
-    e = root_lookup_find(&v->lookup, "a");
-    CHECK(e != NULL && e->value_present == 1 && e->value == 0);
-    jn = root_to_json(v, json_buf, (int64_t)sizeof(json_buf));
-    CHECK(jn > 0);
-    json_buf[jn] = 0;
-    CHECK(strstr(json_buf, "\"a\": 0") != NULL);
+    { const char * s = "{\"lookup\":{\"a\":\"bad\"}}"; CHECK(!root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_KIND_MISMATCH);
+    CHECK(root_builder_root(&b)->lookup.count == 0);
     root_builder_shutdown(&b);
 
-    /* 3. Duplicate key where second occurrence has wrong shape -> present default 0 */
+    /* 3. Duplicate key where second occurrence has wrong shape refuses the whole load */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":5,\"a\":\"bad\"}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(report.duplicate == 1 && report.kind_mismatch == 1);
-    CHECK(root_builder_lock(&b));
-    v = (const Root *)(const void *)b.region;
-    e = root_lookup_find(&v->lookup, "a");
-    CHECK(e != NULL && e->value_present == 1 && e->value == 0);
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":\"bad\"}}"; CHECK(!root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.refused && report.refuse_reason != SCHEMA_TABLE_REFUSE_OK);
+    CHECK(root_builder_root(&b)->lookup.count == 0);
     root_builder_shutdown(&b);
 
-    /* 4. Duplicate key where second occurrence is null -> absent default 0 */
+    /* 4. Duplicate key where second occurrence is null refuses the whole load */
     CHECK(root_builder_init(&b));
     memset(&report, 0, sizeof(report));
-    { const char * s = "{\"lookup\":{\"a\":5,\"a\":null}}"; CHECK(root_from_json(&b, s, (int64_t)strlen(s), &report)); }
-    CHECK(report.duplicate == 1 && report.kind_mismatch == 0);
-    CHECK(root_builder_lock(&b));
-    v = (const Root *)(const void *)b.region;
-    e = root_lookup_find(&v->lookup, "a");
-    CHECK(e != NULL && e->value_present == 0 && e->value == 0);
+    { const char * s = "{\"lookup\":{\"a\":5,\"a\":null}}"; CHECK(!root_from_json(&b, s, (int64_t)strlen(s), &report)); }
+    CHECK(report.refused && report.refuse_reason != SCHEMA_TABLE_REFUSE_OK);
+    CHECK(root_builder_root(&b)->lookup.count == 0);
     root_builder_shutdown(&b);
 
     /* 5. map[K]?Child JSON -> wire -> load -> JSON round-trip */
