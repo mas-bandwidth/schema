@@ -1166,3 +1166,38 @@ func TestSelfNegatingGuardNamesBothGuards(t *testing.T) {
 		})
 	}
 }
+
+// A map's entry table is generated, so it has no declaration of its own: a
+// size diagnostic owned by an entry is placed at the table that declares the
+// map, however deeply the maps nest.
+func TestMapEntrySizeDiagnosticCarriesTablePosition(t *testing.T) {
+	const big = "package t\ntype L { v uint64 }\ntype I { a [2147483647]L }\n"
+	for _, tc := range []struct {
+		name, src string
+		want      []string
+	}{
+		{
+			name: "a map whose value passes the cap",
+			src:  big + "table T { m map[uint8][2147483647]I }\n",
+			want: []string{"Bad.schema:4:", "TMEntry", "past the cap"},
+		},
+		{
+			name: "a map of maps whose inner value passes the cap",
+			src:  big + "table T { m map[uint8]map[uint8][2147483647]I }\n",
+			want: []string{"Bad.schema:4:", "TMEntryValueEntry", "past the cap"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := runUnit(t, map[string]string{"Bad.schema": tc.src})
+			if len(errs) != 1 {
+				t.Fatalf("want 1 diagnostic, got %d: %v", len(errs), errs)
+			}
+			got := errs[0].Error()
+			for _, want := range tc.want {
+				if !strings.Contains(got, want) {
+					t.Errorf("the diagnostic does not carry %q: %s", want, got)
+				}
+			}
+		})
+	}
+}
