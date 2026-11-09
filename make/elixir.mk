@@ -261,16 +261,17 @@ test-elixir: tables-elixir-emit-format-negative-control
 # rows its rule owns: a control that reds more has found a second defect, and
 # one that reds fewer has not found its own.
 #   dup: an enum-keyed array's repeated slot name stops counting `duplicate`
-#        (dup-key-rejected-keyed, keyed-duplicate-mixed, keyed-duplicate-slot);
+#        (keyed-duplicate-mixed, keyed-duplicate-none, keyed-duplicate-slot,
+#        keyed-duplicate-unknown; dup-key-rejected-keyed stays refused under
+#        this sabotage, so it is not counted among its rows);
 #   f32: a float32 field or element past the largest float32's rounding
 #        midpoint is stored instead of a kind mismatch (num-float32-midpoint
 #        by integer token, num-float32-overflow by decimal token).
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
-ELIXIR_HOSTILE_DUP_SED := -e 's|if Map.has_key?(acc, name),$$|if false and Map.has_key?(acc, name),|'
-ELIXIR_HOSTILE_DUP_ROWS := dup-key-rejected-keyed keyed-duplicate-mixed keyed-duplicate-slot
+ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|'
+ELIXIR_HOSTILE_DUP_ROWS := keyed-duplicate-mixed keyed-duplicate-none keyed-duplicate-slot keyed-duplicate-unknown
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
-ELIXIR_HOSTILE_F32_SED := -e 's|abs(raw) >= 340_282_356_779_733_661_637_539_395_458_142_568_448|abs(raw) >= 3_402_823_567_797_336_616_375_393_954_581_425_684_480|' \
-	-e 's|if abs(raw) >= 3.4028235677973366e38, do: :error|if abs(raw) >= 3.4028235677973366e48, do: :error|'
+ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(0x7F7FFFFF)|'
 ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 
 # $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
@@ -289,7 +290,7 @@ endef
 .PHONY: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-hostile-f32-negative-control
 tables-elixir-json-hostile-dup-negative-control: build/conformance-harness
 	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP),ELIXIR_HOSTILE_DUP_SED,$(ELIXIR_HOSTILE_DUP_ROWS),an uncounted repeated enum-keyed slot)
-	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its three rows"
+	@echo "elixir json-hostile dup negative control: an uncounted repeated slot reds exactly its four rows"
 
 tables-elixir-json-hostile-f32-negative-control: build/conformance-harness
 	$(call ELIXIR_HOSTILE_CONTROL,$(CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32),ELIXIR_HOSTILE_F32_SED,$(ELIXIR_HOSTILE_F32_ROWS),a float32 stored past its rounding midpoint)
@@ -1758,7 +1759,7 @@ tables-elixir-discard:
 
 tables-elixir-discard-negative-control:
 	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
-	@sed -e 's|            if Map.get(report, :malformed) do|            if false do # NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|{:cont, \[\], throw(:wire_damaged)}|{:cont, [], report}|g' \
 		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
 	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
@@ -1832,43 +1833,37 @@ tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness buil
 
 test-elixir: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
 
-# WHAT A READ REACHES (docs/SPEC-TABLES.md §4), Elixir side: damage ends the
-# body it is met in and the enclosing body reads on, so a non-finite float
-# after damage in a nested body is reached and refuses the read. The pinned
-# `reach_` vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt) ride every
-# wire-fuzz run. Their control compiles tabledemo from a COPY of the emitter
-# whose nested-body read ends the WHOLE read at damage, which is the answer
-# the Elixir leg gave before this rule, over a copy of the corpus ebin, and
-# replays three vectors: each must go red on the oracle's refusal. Nothing
-# tracked is written to.
+# WHAT A READ REACHES (docs/SPEC-TABLES.md §4), Elixir side — RETIRED.
+# The rule this control watched is gone from the code: since the whole-load
+# discard landed (elixirtable: make the one read refuse the whole load),
+# damage in a nested body throws :wire_damaged and discards the load, so a
+# non-finite float after that damage is never reached as a non-finite
+# refusal. Measured on this head: Tabledemo.Table.variable_load answers
+# {:error, :malformed, wire_damaged} for all three vectors below, and
+# Tabledemo.Table.load answers :previous_form for their form-1 wires under
+# the now-fixed ProfileConfig. The harness's wireVerdict also compares only
+# read acceptance now, and its `the oracle refuses a non-finite float`
+# verdict no longer exists, so no sabotage of the emitter can turn these
+# replays red for the reason the control named. The discard rule that
+# superseded reach keeps its own control (tables-elixir-discard-negative-
+# control). This target therefore only checks that the three vectors still
+# refuse on the plain build; a green replay that turned red, or a vector
+# that started landing, is the signal to write a new control for whatever
+# rule replaced this one. Reason also written in make/negative-controls.json.
 ELIXIR_REACH_NC := build/elixir-reach-nc
 ELIXIR_REACH_NC_VECTORS := reach_nested_damage_then_nan reach_deep_damage_then_nan reach_element_damage_then_element_nan
 
 .PHONY: tables-elixir-reach-negative-control
 tables-elixir-reach-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
-	@rm -rf $(ELIXIR_REACH_NC) && mkdir -p $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen
-	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_REACH_NC)/ebin/
-	@sed -e '/defp read_element(desc, sub, nodes, ids) do/,/^  end$$/ s@{:cont, %{}, %{report | malformed: true}}@throw(:wire_damaged)@' \
-		internal/codegen/elixirtable/variableform.go > $(ELIXIR_REACH_NC)/variableform.go.txt
-	@test "$$(grep -c 'throw(:wire_damaged)' $(ELIXIR_REACH_NC)/variableform.go.txt)" -gt \
-		"$$(grep -c 'throw(:wire_damaged)' internal/codegen/elixirtable/variableform.go)" || \
-		{ echo "NEGATIVE CONTROL: the Elixir reach sabotage patched nothing"; exit 1; }
-	@root="$$(dirname "$$(go env GOMOD)")"; \
-		printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_REACH_NC)/variableform.go.txt"}}\n' \
-		"$$root" "$(CURDIR)" > $(ELIXIR_REACH_NC)/overlay.json
-	@go build -overlay $(ELIXIR_REACH_NC)/overlay.json -o $(ELIXIR_REACH_NC)/schema ./cmd/schema
-	@$(ELIXIR_REACH_NC)/schema generate --lang elixir --out $(ELIXIR_REACH_NC)/gen tables/examples > /dev/null
-	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen/Table.ex > /dev/null 2>&1
+	@rm -rf $(ELIXIR_REACH_NC) && mkdir -p $(ELIXIR_REACH_NC)
 	@for v in $(ELIXIR_REACH_NC_VECTORS); do \
-		if ELIXIR_TABLES_EBIN=$(CURDIR)/$(ELIXIR_REACH_NC)/ebin ./build/conformance-harness wire-fuzz \
+		ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin ./build/conformance-harness wire-fuzz \
 				--driver 'test/conformance/elixir/driver wire-fuzz' \
 				--replay testdata/wire/tables/fuzz-vectors/$$v.bin --unit tabledemo --root ProfileConfig \
-				--failed $(ELIXIR_REACH_NC)/$$v.failed.bin > $(ELIXIR_REACH_NC)/$$v.log 2>&1; then \
-			echo "NEGATIVE CONTROL FAILED: a read that stops at nested damage left $$v green"; exit 1; fi; \
-		grep -q 'the oracle refuses a non-finite float' $(ELIXIR_REACH_NC)/$$v.log || \
-			{ cat $(ELIXIR_REACH_NC)/$$v.log; echo "NEGATIVE CONTROL FAILED: $$v went red, but not on the refusal"; exit 1; }; \
+				> $(ELIXIR_REACH_NC)/$$v.log 2>&1 || \
+			{ cat $(ELIXIR_REACH_NC)/$$v.log; echo "RETIRED CONTROL FAILED: $$v no longer refuses on the plain build"; exit 1; }; \
 	done
-	@echo "negative control: an Elixir read that stops at nested damage turns $(words $(ELIXIR_REACH_NC_VECTORS)) reach_ vectors RED"
+	@echo "elixir reach negative control RETIRED: the whole-load discard superseded the reach rule (see make/negative-controls.json); the $(words $(ELIXIR_REACH_NC_VECTORS)) reach_ vectors still refuse on the plain build"
 
 test-elixir: tables-elixir-reach-negative-control
 
