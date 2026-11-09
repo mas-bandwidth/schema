@@ -31,6 +31,16 @@ static partial class Program
             FillReason(report, inner);
             return n == 1 ? (object)value : null;
         };
+        // The wire fuzzer drives every root through PartialLoad, so a fixed
+        // root's form-3 read must answer there too: its one read is the fixed
+        // plan, not the variable form's, and its completion is that read's n,
+        // not "this endpoint has no LoadMeasure".
+        c.PartialLoad = (bytes, report) =>
+        {
+            object value = c.Load(bytes, report);
+            regionLoaded = value != null;
+            return value;
+        };
         c.Measure = v => measure(1);
         c.Save = (v, buffer) => save((TValue)v, buffer);
     }
@@ -75,6 +85,7 @@ static partial class Program
             Codec c = Find("tabledemo", "WideBlob");
             c.VariableLoad = c.Load;
             c.Load = (bytes, report) => { report.Refused = true; return null; };
+            c.PartialLoad = (bytes, report) => { object value = c.Load(bytes, report); regionLoaded = value != null; return value; };
             c.Measure = v => -1;
             c.Save = (v, buffer) => -1;
         }

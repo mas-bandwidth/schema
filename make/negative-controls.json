@@ -952,7 +952,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, one off an optional's present byte, and \u00a75's own \u2014 the wrong name on a file outside the lineage \u2014 for thirteen controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost. The card driver's three controls (render, upgrade, taskhash) and the fixed roadmap's layout-hash-collision control (the held layout's byte comparison dropped through go test -overlay, so the second layout under a held hash must red) ride here too: 6 s over 4 controls on the author's machine. The wire fuzzer's I15 control (tables-js-wire-fuzz-negative-control: the generated reader's enum reference range check removed in a copy of the generated tree, the enumerated pass alone) adds 2 s on the author's machine; it reds at mutant 2378. The soak's I9 control (tables-js-soak-negative-control: eight short-lived objects planted per iteration in the measured loop, the count must red while the drift stays green) adds about 1 s on the bench.",
+      "why": "the JavaScript port's card and conformance controls and its five packet families: the three card driver controls (render, upgrade, taskhash), the conformance walk and text-boundary controls, and the packet arm-default oracle's two JS legs with the three newer packet families. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the lighter controls, and the table gates moved to js-tables-1 and js-tables-2. Each control is one js run off the warm generated tree, a few seconds.",
       "targets": [
         "cards-js-conformance-hash-negative-control",
         "cards-js-conformance-negative-control",
@@ -963,7 +963,15 @@
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
         "packet-utf8-js-negative-control",
-        "packet-wide-js-negative-control",
+        "packet-wide-js-negative-control"
+      ],
+      "node": "26"
+    },
+    {
+      "name": "js-tables-1",
+      "when": "pull-request",
+      "why": "the JavaScript port's table gates' controls, half: the accessor and slot agreement, the allocation gate, the block-lead, the fixed form's three (form, optional, roadmap), the fuzz oracle, the JSON walk and the message form. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-2 split the table gates so each row stays inside the rule.",
+      "targets": [
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
         "tables-js-block-lead-negative-control",
@@ -973,7 +981,15 @@
         "tables-js-fuzz-negative-control",
         "tables-js-json-walk-negative-control",
         "tables-js-message-form-negative-control",
-        "tables-js-runtime-home-negative-control",
+        "tables-js-runtime-home-negative-control"
+      ],
+      "node": "26"
+    },
+    {
+      "name": "js-tables-2",
+      "when": "pull-request",
+      "why": "the JavaScript port's table gates' controls, the other half: the soak, the slot, the fixed-form slack, the union-arm text, the versioning, the wire fuzzer, the clean gate, the text differential and the finite-float rule. Split out of the `js` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and js-tables-1 split the table gates so each row stays inside the rule.",
+      "targets": [
         "tables-js-soak-negative-control",
         "tables-js-slot-negative-control",
         "tables-js-fixed-slack-negative-control",
@@ -999,7 +1015,7 @@
       "name": "js-proof",
       "when": "pull-request",
       "node": "26",
-      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; plus the conformance leg with its per-case absent writers silenced. A group of its own so the js group's job keeps its measured time. 4 s to 10 s per control on hulk, about 70 s for the twelve, with bin/schema and the generated tree already built. The cook of maps and lists' four controls (docs/PORTING.md M19: the carve laying a map's entries in the Map's own order, an array laid unaligned, the extent begun at the floor of eight, the node aligned to its record alone, each a tools/sabotage copy of internal/codegen/jstable/cookwrite.go through go test -overlay, required red on map_full's sort line, map_full's bytes and widelist_wide's bytes) ride here too: about 3 s each on intel.",
+      "why": "the JavaScript leg's 3.0.0 proof controls (docs/PORTING.md M5, M6, M11, M12, M14, M18, M21, I4, I6, I7, I12, J3): each copies one internal/codegen/jstable source through tools/sabotage, reaches it by a Go overlay, and requires the gate the register cell names red on that property's own line; with the conformance leg and its per-case absent writers moved to js-proof-2. Split out of the `js-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the eight lighter registered-cell controls, and js-proof-2 carries the conformance leg and the rest. 4 s to 10 s per control on hulk, with bin/schema and the generated tree already built.",
       "targets": [
         "tables-js-keyed-shift-negative-control",
         "tables-js-variable-class-identity-negative-control",
@@ -1008,7 +1024,15 @@
         "tables-js-float-bits-negative-control",
         "tables-js-names-negative-control",
         "tables-js-block-pitch-negative-control",
-        "tables-js-byte-order-negative-control",
+        "tables-js-byte-order-negative-control"
+      ]
+    },
+    {
+      "name": "js-proof-2",
+      "when": "pull-request",
+      "node": "26",
+      "why": "the JavaScript leg's remaining 3.0.0 proof controls (docs/PORTING.md I7, I12, J3): the order-word and byte-order checks, the usage gate, the release tier and the conformance leg with its per-case absent writers silenced, with the cook of maps and lists' four controls (docs/PORTING.md M19: the carve laying a map's entries in the Map's own order, an array laid unaligned, the extent begun at the floor of eight, the node aligned to its record alone, each a tools/sabotage copy of internal/codegen/jstable/cookwrite.go through go test -overlay, required red on map_full's sort line, map_full's bytes and widelist_wide's bytes). Split out of the `js-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each control is about 3 s to 10 s on hulk/intel.",
+      "targets": [
         "tables-js-order-word-negative-control",
         "tables-js-usage-negative-control",
         "tables-js-release-negative-control",
@@ -1050,14 +1074,22 @@
     {
       "name": "dart-conformance",
       "when": "pull-request",
-      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",
+      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11): walk negates the generated text reader's bool arm and requires dart / json-read red alone, text-boundary checks the text reader's boundary handling, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, framing drops the id-table cap and requires the framing surface red, and share breaks the shared-node identity and requires the shared rows red. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps five of the ten, and dart-conformance-2 carries the other five.",
       "dart": "3.13.2",
       "targets": [
         "conformance-negative-control-dart-walk",
         "conformance-negative-control-dart-text-boundary",
         "conformance-negative-control-dart-zero",
         "conformance-negative-control-dart-framing",
-        "conformance-negative-control-dart-share",
+        "conformance-negative-control-dart-share"
+      ]
+    },
+    {
+      "name": "dart-conformance-2",
+      "when": "pull-request",
+      "why": "the Dart leg's remaining emitter-side conformance controls (docs/PORTING.md I11, I12, I15): absent runs the conformance driver with its per-case absent writers silenced, block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is built the same way, about 15 s each on a local host.",
+      "dart": "3.13.2",
+      "targets": [
         "conformance-negative-control-dart-absent",
         "conformance-negative-control-dart-block",
         "tables-dart-wire-fuzz-negative-control",
@@ -1068,7 +1100,7 @@
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: fifteen controls, the fixed form's among them and the accessor/descriptor agreement gate's two (each a go build and a regeneration of the block and pointers corpora, a few seconds apiece). Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built, and the versioning gate's control adds about ten seconds for one column over every row of \u00a75.7. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
+      "why": "the Dart port's card controls, its four packet families, and the first four table gates: the allocation gate's two, the soak and the fixed form. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); the table gates moved to dart-tables-1 and dart-tables-2 so each row stays inside the rule. Each control is a few seconds off the warm generated tree.",
       "targets": [
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
@@ -1081,7 +1113,15 @@
         "tables-dart-alloc-negative-control",
         "tables-dart-alloc-runtime-negative-control",
         "tables-dart-soak-negative-control",
-        "tables-dart-fixed-form-negative-control",
+        "tables-dart-fixed-form-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-1",
+      "when": "pull-request",
+      "why": "the Dart port's table gates' controls, half: the versioning, the fuzz oracle, the keyed, the order, the fuzz-lead, the names, the runtime home, the standalone, the accessor/descriptor agreement and the slot. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-2 split the table gates so each row stays inside the rule. The versioning gate's control adds about ten seconds for one column over every row of \u00a75.7.",
+      "targets": [
         "tables-dart-versioning-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-keyed-negative-control",
@@ -1093,7 +1133,15 @@
         "tables-dart-accessor-negative-control",
         "tables-dart-slot-negative-control",
         "tables-dart-float-jit-negative-control",
-        "tables-dart-float-jit-sdk-negative-control",
+        "tables-dart-float-jit-sdk-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2",
+      "when": "pull-request",
+      "why": "the Dart port's table gates' controls, the other half: the float-jit boxing, the text differential, the finite-float rule, the cook writer, the clean gate, the retain, the identity, the map sort, the cook map, the byte order, the discard and the cycle. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-1 split the table gates so each row stays inside the rule. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
+      "targets": [
         "tables-dart-float-jit-boxing-negative-control",
         "tables-dart-text-differential-negative-control",
         "tables-dart-finite-float-negative-control",
@@ -1110,15 +1158,23 @@
       "dart": "3.13.2"
     },
     {
-      "name": "java",
+      "name": "java-cards",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: twenty controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md \u00a73.4), which writes one text length a byte too high and must red the C++ reference's byte match, the ninth the VERSIONING gate's (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it, the tenth the ALLOCATION gate's (docs/PORTING.md I14), which re-pins the JDK to a feature version it is not and must refuse to certify off the pin, the eleventh the RUNTIME-HOME gate's (docs/PORTING.md J2), which puts the file-order rule back and must move the byte-access runtime to the earlier-sorting file, the twelfth and thirteenth the ACCESSOR/DESCRIPTOR-AGREEMENT gate's (docs/PORTING.md J1), which move a scalar accessor four bytes and a pointer slot eight and must each turn the agreement gate red naming the row and field, and the fourteenth the BASE-ALIGNMENT gate's (docs/PORTING.md I5), which drops the residue check and must red at lead 1 naming the image, the fifteenth the KEYED ACCESSOR's (docs/SPEC-TABLES.md \u00a72.4, docs/PORTING.md M5), which drops the upper and then the lower bound of the accessor's one unsigned compare and must red TestKeyedArrayIndexingJava on that end and only that end; the sixteenth ALLOCATION gate's localizing control (docs/PORTING.md I1) plants one allocation per row in the block walk and must red that row by name while the cook walk stays green (about 9 s: it runs every row), and the seventeenth the SOAK's (docs/PORTING.md I9), which plants a matched allocation pair per iteration for the measured loop over the blob, list and pointer corpora and must turn the per-iteration allocation COUNT red while the drift line stays green. The eighteenth is the FORMAT gate's (docs/JAVA-DIALECT.md, #547): with google-java-format pointed at nothing, tables-java-clean must FAIL naming the tool under SCHEMA_REQUIRE_CORPUS=1 and SKIP naming that variable without it; it needs no formatter. The nineteenth is the same gate's DRIFT control: the emitter writes one line of TableBytes.java a space deeper (tools/sabotage/table_java_format_drift.go) and tables-java-clean must go red naming that file; it needs the pinned google-java-format 1.37.0 on the runner, as tables-java-clean itself does under test-java. The twentieth is the TEXT-WALK control's (docs/PORTING.md I11, #517): it drops the field-key match in the Java `fromJson` (tools/sabotage/table_java_text_walk.go) and must red `java / json-read` while `json-write` and `wire` stay green. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of \u00a75.7 beside it, about twenty seconds on the author's machine. The card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface) ride here too: 6 s over 3 controls on the author's machine. THE GROUP IS SPLIT FOUR WAYS (2026-10-22): run serially in one row the twenty-five controls took 265 s of control time on ubuntu-latest (run 39667539599) and passed the five-minute job ceiling on the next run (39778538132, cancelled in the versioning control), far past the 120 s per-row rule; so this row keeps the card facade, the conformance-harness and the packet controls, and java-tables, java-tables-more and java-versioning carry the rest, each under the rule. The packet FINITE-FLOAT control (SPEC.md \u00a74.3) rides here too: it drops the Java reader's non_finite_float check at both widths (tools/sabotage/packet_finite_java.go) and must red exactly the twenty-four read vectors of test/java/FiniteMain.java while its write contracts and bit-exact round trips stay green; one schema build and one small javac, a few seconds.",
+      "why": "the Java card facade's three controls (render, upgrade, taskhash, each required to red exactly its own surface on the 43-case corpus) and the conformance-harness's two (block and walk). Split out of the `java` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the card facade and the conformance-harness, and java-packet carries the packet controls. 6 s over 3 controls on the author's machine for the cards.",
       "targets": [
         "cards-java-conformance-negative-control",
         "cards-java-conformance-upgrade-negative-control",
         "cards-java-conformance-hash-negative-control",
         "conformance-negative-control-java-block",
-        "conformance-negative-control-java-walk",
+        "conformance-negative-control-java-walk"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-packet",
+      "when": "pull-request",
+      "why": "the Java port's four packet families, with the packet FINITE-FLOAT control (SPEC.md \u00a74.3): arm defaults, defaults, UTF-8, wide and finite-float, each one schema build and one small javac off the generated tree, a few seconds. Split out of the `java` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-cards carries the card facade and the conformance-harness.",
+      "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
         "packet-finite-java-negative-control",
@@ -1161,8 +1217,8 @@
     },
     {
       "name": "java-versioning",
-      "when": "pull-request",
-      "why": "the Java fixed-form VERSIONING control alone (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of \u00a75.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21.",
+      "when": "nightly",
+      "why": "the Java fixed-form VERSIONING control alone (\u00a75.3 of docs/FIXED-FORM-ALGORITHM.md), split from the java row (see its why): it rebuilds through an overlay, dumps the reference and runs a submake over both columns of every row of \u00a75.7. Measured 68 s of control time on ubuntu-latest inside the java row on 2026-10-21, and the row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); it is one control, so it cannot be split further on the pull request, and it moves to the nightly tier.",
       "targets": [
         "tables-java-versioning-negative-control"
       ],
@@ -1189,11 +1245,19 @@
     {
       "name": "java-wire-fuzz",
       "when": "pull-request",
-      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm\u2019s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind\u2019s count inside the map\u2019s own L and requires the plain arm to go red on listdemo.Army. Its own group so the fuzz time never crowds the java rows. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
+      "why": "the Java leg of the tolerant wire\u2019s differential fuzzer (docs/PORTING.md I15) and its control: the control first runs the gate (every enumerated pass and pinned vector, 159,457 mutants, about 18 s on the studio), then compiles a scratch copy of the generated units whose LEB128 reader accepts a non-minimal spelling and requires the same differential to go red on the read report. The retention arm\u2019s control compiles a scratch copy whose retaining save tests a declared default against zero and requires the retaining replay of the pinned vector retain_declared_default to go red. The map-count control compiles a scratch copy whose map reader reads a foreign element kind\u2019s count inside the map\u2019s own L and requires the plain arm to go red on listdemo.Army. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps the fuzz gate and its two companions, and java-wire-fuzz-2 carries the four pin replays. Measured about 45 s of control time on the studio on 2026-10-29, the javac of the conformance classpath included.",
       "targets": [
         "tables-java-wire-fuzz-negative-control",
         "tables-java-retain-fuzz-negative-control",
-        "tables-java-map-count-negative-control",
+        "tables-java-map-count-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-wire-fuzz-2",
+      "when": "pull-request",
+      "why": "the Java leg of the tolerant wire fuzzer's four pin replays (docs/PORTING.md I15): keyed-count, retain-node, node-index and map-key-damage, each a scratch copy of the generated units with one rule sabotaged and one pinned vector replayed. Split out of the `java-wire-fuzz` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is a small javac and one harness run.",
+      "targets": [
         "tables-java-keyed-count-negative-control",
         "tables-java-retain-node-negative-control",
         "tables-java-node-index-negative-control",
@@ -1204,16 +1268,24 @@
     {
       "name": "java-proof",
       "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse), the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), and a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer). The framing control (docs/LAYERS/1-framing.md, F6, T8) recompiles the tblr1 unit without the id table\u2019s 4096-entry cap and the pointers unit without its cycle check, and requires framing red on frame_entries_4097 and the three cycle rows; then the pointers unit with a closed node taken for an open one, and requires framing red on node_diamond_chain; two small javacs and two framing-only harness runs. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
+      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse). Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps three of the five compiler rebuilds (the layout contract and the two order checks) and the generated-fresh control, and java-proof-2 carries the usage, release, absent and framing controls. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
       "targets": [
         "tables-java-layout-contract-negative-control",
         "tables-java-order-negative-control",
         "tables-java-order-le-negative-control",
+        "tables-java-generated-fresh-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-proof-2",
+      "when": "pull-request",
+      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md I12, J3, I4, F6, T8): the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer), and the framing control that recompiles the tblr1 unit without the id table\u2019s 4096-entry cap and the pointers unit without its cycle check, requiring framing red on frame_entries_4097 and the three cycle rows, then the pointers unit with a closed node taken for an open one, red on node_diamond_chain. Split out of the `java-proof` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-proof carries the other three compiler rebuilds.",
+      "targets": [
         "tables-java-usage-negative-control",
         "tables-java-release-negative-control",
         "conformance-java-absent-negative-control",
-        "conformance-negative-control-java-framing",
-        "tables-java-generated-fresh-negative-control"
+        "conformance-negative-control-java-framing"
       ],
       "java": "21"
     },
@@ -1475,6 +1547,15 @@
       "golangci": "2.12.2"
     },
     {
+      "name": "dart-strict",
+      "when": "pull-request",
+      "why": "the Dart leg's strict-read controls (STRICT 100), in a group of their own so they never push the dart row toward the per-commit cap. The forged-ordinal control lands a forged ordinal as None in the Dart fixed runtime through go test -overlay and requires TestFixedVersioningForgedOrdinalBothPlans red on the compiled plan: about 10 s on the studio once the fixed-form corpus is built.",
+      "targets": [
+        "tables-dart-forged-ordinal-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
       "name": "dart-nightly",
       "when": "nightly",
       "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
@@ -1555,7 +1636,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4). Three leaves were retired on 2026-11-09 (green-negctl-go-containers): counted-tail and counted-work watched the per-field tail reset that the strict read removed when a repeated field id became damage (docs/SPEC-TABLES.md \u00a74, \u00a714), and arm-framing watched the arm reader's framing check that ran before the reference resolved; the wire measure now refuses damaged arm framing before any body read resolves a reference, so that emitter line is gone. Their positive gates stay in place (compiler's TestRepeatedArrayTailDefaults and gotable's TestPointerArmLengthBeforeResolution).",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md \u00a73.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-accessor-negative-control",

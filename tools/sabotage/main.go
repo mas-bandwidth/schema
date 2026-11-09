@@ -27,7 +27,10 @@ type edit struct{ old, new string }
 // rule it removes, so a reader of a red control knows what was taken away.
 var sabotages = map[string][]edit{
 	"go-measure-wire-damage":      {{old: "reason:=TableRefuseWireDamaged;if verdict==TableOpenRefused", new: "reason:=TableRefuseTruncated /* SABOTAGED: borrow an accelerator clause */;if verdict==TableOpenRefused"}},
+	"go-counted-tail-work":        {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%sReset(&%s[i])}\\n\", i, f.Type.Name, expr)", new: "g.pf(\"%s_ = previous;for i:=decoded;i<%d;i++{/* SABOTAGED: reset unused capacity */%sReset(&%s[i])}\\n\", i, bound, f.Type.Name, expr)"}},
+	"go-arm-reference-framing":    {{old: "if f.Type.Pointer || enumRef(f) != nil {", new: "if false { // SABOTAGED: resolve before validating an arm reference length"}},
 	"go-message-measure-reserved": {{old: "e,ok:=v.Entry(ref);if !ok||!tableMessageSkip(r,v,indexBits,e,depth){return false}", new: "e,ok:=v.Entry(ref);if !ok||e.Id>=0xfffffffffffffffd||!tableMessageSkip(r,v,indexBits,e,depth){return false} /* SABOTAGED */"}},
+	"go-counted-tail-reset":       {{old: "g.pf(\"%sfor i:=decoded;i<previous;i++{%s[i].Type=%sTypeNone}\\n\", i, expr, f.Type.Name)", new: "g.pf(\"%s_ = previous // SABOTAGED: retain union tails\\n\", i)"}},
 
 	"go-measure-cycle-reason":      {{old: "n.reason=TableRefuseDataCycle;return false", new: "n.reason=TableRefuseInvalidValue;return false /* SABOTAGED */"}},
 	"go-measure-count-reason":      {{old: "if count>math.MaxInt32{return TableRefuseCountOverExtentCap}", new: "if count>math.MaxInt32{return TableRefuseCountOverLength} /* SABOTAGED */"}},
@@ -40,8 +43,8 @@ var sabotages = map[string][]edit{
 	"reference-flags-widen":        {{old: "// decides widening, including flags elements (SPEC-TABLES §4).\n\treturn widenable(tableScalarKind(f))", new: "// decides widening, including flags elements (SPEC-TABLES §4).\n\tif f.Type.Ref != nil { return false } // SABOTAGED\n\treturn widenable(tableScalarKind(f))"}},
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
-	"go-builder-union-refusal":     {{old: "if _,_,_,reason:=tableRegionMeasureReason(wire,root,nodeType,blobs,false);reason!=TableRefuseOk {report.Refuse(reason,\"\");return false}", new: "if _,_,_,reason:=tableRegionMeasureReason(wire,root,nodeType,blobs,false);reason!=TableRefuseOk {_ = reason /* SABOTAGED: inspect payload length before propagating refusal */;return false}"}},
-	"map-builder-count-oracle":     {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
+	"go-builder-union-refusal":     {{old: "g.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "{ s := strings.ReplaceAll(g.body.String(), \"reason!=TableRefuseOk {report.Refuse(reason,\\\"\\\");return false}\", \"reason!=TableRefuseOk {_ = reason;return false}\"); g.body.Reset(); g.body.WriteString(s) } // SABOTAGED: inspect payload length before propagating refusal\n\t\tg.pf(\"%sif !%sLoadBody(&%s,&%s) { return false }\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)"}},
+	"map-builder-count-oracle":     {{old: "err := decodeWalk(m, inst, data, report, rt, readOrder{})", new: "err := decodeWalk(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
 		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
