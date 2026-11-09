@@ -298,7 +298,18 @@ func TestGolden(t *testing.T) {
 	}
 	var want @ROOT@
 	var fileReport TableReport
-	if !@ROOT@Load(&want, fileWire, &fileReport) {
+	if len(fileWire) > 0 && fileWire[0] == 3 {
+		// The corpus's positive file form for a fixed root is form 3, which
+		// <T>Load does not read (it is the variable form's entry point). Read
+		// it through the fixed entry point, as the C++ reference's own message
+		// probe does, so the batch still compares against the file's value.
+		plan := make([]TableFixedEntry, 4096)
+		fixed := []@ROOT@{want}
+		if @ROOT@FixedLoad(fixed, fileWire, plan, &fileReport) != 1 {
+			t.Fatalf("@ROOT@FixedLoad: %+v", fileReport)
+		}
+		want = fixed[0]
+	} else if !@ROOT@Load(&want, fileWire, &fileReport) {
 		t.Fatalf("@ROOT@Load: %+v", fileReport)
 	}
 	storage := make([]@ROOT@, 256)
