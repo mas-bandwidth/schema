@@ -40,7 +40,7 @@
 // returns false WITHOUT latching; stream failures latch on the runtime's
 // sticky stream.error. The write side carries the generated fold-guard set
 // of the Go/C# targets — the guards ride in BOTH runtime modes, keeping
-// write-refusal behavior mode-independent for folded paths. Where JS storage
+// json-write-refusal behavior mode-independent for folded paths. Where JS storage
 // is untyped where the siblings' is typed, the Number-domain guards also
 // refuse non-integers (Number.isInteger), the fold's translation of the
 // runtime's own checked-write refusal; BigInt-domain paths reinterpret

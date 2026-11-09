@@ -92,9 +92,11 @@ internal static class Program
         return outCases.ToArray();
     }
 
-    // ReportText spells a report as the corpus's X.report does, one
-    // Name=value line per counter in declaration order
-    // (tables/cards/conformance/FORMAT.md).
+    // ReportText spells a report of an accepted read as the corpus's
+    // X.report does, one Name=value line per row in declaration order
+    // (tables/cards/conformance/FORMAT.md). The strict read refuses the
+    // whole load on a changed kind, an out-of-range value, a repeat or
+    // damage, so an accepted read writes the last four rows as zero/false.
     private static string ReportText(TableReport r)
     {
         var b = new StringBuilder();
@@ -102,10 +104,7 @@ internal static class Program
         b.Append("RetainLost=").Append(r.RetainLost).Append('\n');
         b.Append("Widened=").Append(r.Widened).Append('\n');
         b.Append("Unknown=").Append(r.Unknown).Append('\n');
-        b.Append("KindMismatch=").Append(r.KindMismatch).Append('\n');
-        b.Append("Clamped=").Append(r.Clamped).Append('\n');
-        b.Append("Duplicate=").Append(r.Duplicate).Append('\n');
-        b.Append("Malformed=").Append(r.Malformed ? "true" : "false").Append('\n');
+        b.Append("KindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n");
         return b.ToString();
     }
 

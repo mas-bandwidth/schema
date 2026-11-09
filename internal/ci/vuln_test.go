@@ -19,6 +19,7 @@ import (
 // rides an `overriding recipe` warning while the recipe the author wrote is
 // never run.
 func TestVulnRecipeRunsThePinnedScannerSingular(t *testing.T) {
+	t.Parallel()
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("vuln recipe check requires make: %v", err)
 	}

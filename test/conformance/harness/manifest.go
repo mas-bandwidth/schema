@@ -8,6 +8,8 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -227,6 +229,66 @@ const VariableMessageRefusal = "variable table: the message form is fixed tables
 // than a message-form golden.
 func (m Message) Refused() bool { return m.MessageWire == "-" }
 
+// AnnounceGrown is one MESSAGE row read again over its connection's
+// announcement with the announcement's id table grown to Entries entries
+// (docs/SPEC-TABLES.md §3.3: the announcement is a form 1 file, so §3's id
+// table rules are its rules; §3, THE DISTINCTNESS CHECK IS BOUNDED WORK: a
+// table of more than 4096 entries is malformed, and so is one that names an id
+// twice). The added ids are named by nothing in the body, so an announcement
+// the read accepts announces the vocabulary the connection's own does, and the
+// row owes its message golden. Malformed is the other answer: the read refuses
+// the announcement as damage, the connection carries no vocabulary, and the
+// leg answers the row absent as a refusal.
+type AnnounceGrown struct {
+	Name    string
+	Message string // the message row read again
+	Entries int
+	Repeat  bool // the last entry repeats the first
+	Refused bool
+	File    string // filled in by the harness once materialised
+}
+
+// AnnouncementMalformed is the diagnostic reason for a message row whose
+// connection's announcement was refused as damage (docs/SPEC-TABLES.md §3.3).
+const AnnouncementMalformed = "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"
+
+// GrowIdTable returns the form 1 file with its id table padded to n entries,
+// each added id one the table does not already carry and below the three
+// reserved ids at the top of the range (splitmix64 of a counter, so the bytes
+// are a pure function of the file and n). With repeat, the last entry is set
+// to the first, which makes the table name one id twice.
+func GrowIdTable(file []byte, n int, repeat bool) ([]byte, error) {
+	if len(file) < 9 {
+		return nil, fmt.Errorf("a form 1 file of %d bytes carries no id table", len(file))
+	}
+	k := int(binary.LittleEndian.Uint64(file[len(file)-8:]))
+	if k < 1 || k > n || 8*(k+1) > len(file)-1 {
+		return nil, fmt.Errorf("an id table of %d entries cannot be grown to %d in a file of %d bytes", k, n, len(file))
+	}
+	have := map[uint64]bool{}
+	for i := range k {
+		have[binary.LittleEndian.Uint64(file[len(file)-8-8*(k-i):])] = true
+	}
+	out := bytes.Clone(file[:len(file)-8])
+	for x := uint64(1); k < n; x++ {
+		z := x * 0x9E3779B97F4A7C15
+		z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
+		z = (z ^ (z >> 27)) * 0x94D049BB133111EB
+		z ^= z >> 31
+		if have[z] || z >= 0xFFFFFFFFFFFFFFFD {
+			continue
+		}
+		have[z] = true
+		out = binary.LittleEndian.AppendUint64(out, z)
+		k++
+	}
+	if repeat {
+		first := len(out) - 8*n
+		copy(out[len(out)-8:], out[first:first+8])
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(n)), nil
+}
+
 // RetainCase is one retaining round trip (docs/SPEC-TABLES.md §6.6): a wire
 // carrying fields its reader's schema does not declare, read into a retain
 // store at the capacity Short and Ids name and written back out.
@@ -253,8 +315,10 @@ type Manifest struct {
 	Instances   []Instance
 	Connections []Connection
 	Messages    []Message
+	Grown       []AnnounceGrown
 	Reports     []ReportCase
 	Framings    []FramingCase
+	Rewrites    []RewriteCase
 	Hostiles    []Hostile
 	Retains     []RetainCase
 	Cooks       []Cook
@@ -457,6 +521,32 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				Name: f[1], Connection: f[2], Unit: conn.Unit,
 				Root: f[3], FileWire: f[4], MessageWire: f[5],
 			})
+		case "announce-grown":
+			// announce-grown <name> <message> <entries> <distinct|repeat> <message|malformed|read|refused>
+			if len(f) != 6 {
+				return nil, fmt.Errorf("%s: announce-grown takes name, message row, entries, distinct or repeat, and the answer", where)
+			}
+			g := AnnounceGrown{Name: f[1], Message: f[2]}
+			n, nerr := strconv.Atoi(f[3])
+			if nerr != nil || n < 1 {
+				return nil, fmt.Errorf("%s: %q is not an entry count", where, f[3])
+			}
+			g.Entries = n
+			switch f[4] {
+			case "distinct":
+			case "repeat":
+				g.Repeat = true
+			default:
+				return nil, fmt.Errorf("%s: %q is not distinct or repeat", where, f[4])
+			}
+			switch f[5] {
+			case "message", "read":
+			case "malformed", "refused":
+				g.Refused = true
+			default:
+				return nil, fmt.Errorf("%s: %q is not an answer; it is message or malformed", where, f[5])
+			}
+			m.Grown = append(m.Grown, g)
 		case "retain":
 			// retain <case> <unit> <root> <wire> <capacity> <ids> <save|->
 			if len(f) != 8 && len(f) != 10 {
@@ -507,6 +597,18 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				Value: ReportValue(jsonDir, f[1]),
 				Save:  SaveWire(jsonDir, f[1]),
 			})
+		case "rewrite":
+			// rewrite <case> <unit> <root> <wire>: an input every leg reads and
+			// writes back, held to the canonical bytes (docs/SPEC-TABLES.md §22)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: rewrite takes case, unit, root, wire", where)
+			}
+			for _, rw := range m.Rewrites {
+				if rw.Name == f[1] {
+					return nil, fmt.Errorf("%s: rewrite %s is named twice", where, f[1])
+				}
+			}
+			m.Rewrites = append(m.Rewrites, RewriteCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Canonical: RewriteCanonical(jsonDir, f[1])})
 		case "framing":
 			// framing <case> <unit> <root> <wire> <read|refused> <value|->
 			if len(f) != 7 {
@@ -631,6 +733,18 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 	if err := scan.Err(); err != nil {
 		return nil, err
 	}
+	for _, g := range m.Grown {
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return nil, fmt.Errorf("%s: announce-grown %s: %w", path, g.Name, err)
+		}
+		if msg.Refused() {
+			return nil, fmt.Errorf("%s: announce-grown %s: %s is a named refusal row and has no message form", path, g.Name, g.Message)
+		}
+		if _, err := m.LookupConnection(msg.Connection); err != nil {
+			return nil, fmt.Errorf("%s: announce-grown %s: %w", path, g.Name, err)
+		}
+	}
 	for _, cw := range m.CookWrites {
 		if _, err := m.LookupInstance(cw.Instance); err != nil {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
@@ -689,6 +803,15 @@ func (m *Manifest) LookupInstance(name string) (Instance, error) {
 		}
 	}
 	return Instance{}, fmt.Errorf("manifest names no instance %q", name)
+}
+
+func (m *Manifest) LookupMessage(name string) (Message, error) {
+	for _, msg := range m.Messages {
+		if msg.Name == name {
+			return msg, nil
+		}
+	}
+	return Message{}, fmt.Errorf("the manifest names no message %q", name)
 }
 
 func (m *Manifest) LookupConnection(key string) (Connection, error) {

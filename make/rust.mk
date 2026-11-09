@@ -769,7 +769,7 @@ tables-rust-number-walk-negative-control:
 		{ echo "NEGATIVE CONTROL: the grouped-walk sabotage did not apply exactly once"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-number-walk-control/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-number-walk-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 900s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 900s \
 			-overlay=build/rust-number-walk-control/overlay.json \
 			-run 'TestMapsAndUnionArmsOnTheTableWireRust$$' ./internal/codegen/rusttable/ > build/rust-number-walk-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the variable wire stayed green under the grouped numbering walk"; \
@@ -796,7 +796,7 @@ test-rust: tables-rust-number-walk-negative-control
 # target never passes on a SKIP.
 .PHONY: tables-rust-variable-fixed-class
 tables-rust-variable-fixed-class:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedClassOnTableWireRust|TestAcceleratorsEmitted' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedClassOnTableWireRust|TestAcceleratorsEmitted' -v
 	@echo 'tables Rust variable fixed class: a fixed table carries the form-1 codec, its defaults and its renames, byte for byte against the oracle'
 
 test-rust: tables-rust-variable-fixed-class
@@ -810,7 +810,7 @@ test-rust: tables-rust-variable-fixed-class
 # turns the rustc skip into a failure, so the target never passes on a SKIP.
 .PHONY: tables-rust-cook-write
 tables-rust-cook-write:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteCarriesTheExtent' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestCookWriteRust|TestCookWriteCarriesTheExtent' -v
 	@echo 'tables Rust cook write: the storage value cooks to the bytes schema cook writes, in both byte orders'
 
 test-rust: tables-rust-cook-write
@@ -829,7 +829,7 @@ tables-rust-cook-write-negative-control:
 		{ echo "NEGATIVE CONTROL: the finite-float sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/cookwrite.go":"%s/build/rust-cook-write-control/cookwrite.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-cook-write-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
 			-overlay=build/rust-cook-write-control/overlay.json \
 			-run 'TestCookWriteRust$$' ./internal/codegen/rusttable/ > build/rust-cook-write-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook write stayed green with its finite-float refusal turned off"; \
@@ -848,7 +848,7 @@ tables-rust-cook-write-negative-control:
 # never passes on a SKIP.
 .PHONY: tables-rust-message-batch
 tables-rust-message-batch:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestMessageFormBatchRust|TestMessageFormAnnounceRust' -v
 	@echo 'tables Rust message batch: the message form reads and writes the reference bytes'
 
 test-rust: tables-rust-message-batch
@@ -866,9 +866,9 @@ test-rust: tables-rust-message-batch
 # failure, so neither target passes on a SKIP.
 .PHONY: tables-rust-finite-float tables-rust-finite-float-negative-control
 tables-rust-finite-float:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloat$$' -v
 tables-rust-finite-float-negative-control:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloatNegativeControl$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestRustFiniteFloatNegativeControl$$' -v
 
 test-rust: tables-rust-finite-float
 
@@ -882,9 +882,9 @@ test-rust: tables-rust-finite-float
 # SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure.
 .PHONY: tables-rust-keyed tables-rust-keyed-negative-control
 tables-rust-keyed:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRust$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRust$$' -v
 tables-rust-keyed-negative-control:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRustNegativeControl$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestKeyedAccessorRustNegativeControl$$' -v
 
 test-rust: tables-rust-keyed tables-rust-keyed-negative-control
 
@@ -895,9 +895,9 @@ test-rust: tables-rust-keyed tables-rust-keyed-negative-control
 # in the emitted Rust, and each must red exactly its own clause.
 .PHONY: tables-rust-map-sort tables-rust-map-sort-negative-control
 tables-rust-map-sort:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRust$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRust$$' -v
 tables-rust-map-sort-negative-control:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRustNegativeControl$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestMapWriterSortsRustNegativeControl$$' -v
 
 test-rust: tables-rust-map-sort tables-rust-map-sort-negative-control
 
@@ -999,7 +999,7 @@ build/conformance-rust-all: bin/schema test/conformance/rust/src/wire_fuzz_all.r
 	PATH="$(RUSTUP_BIN):$$PATH" sh test/conformance/rust/wire-fuzz-all-build $@
 
 tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run TestRetainsAndWidensOnEveryRootRust -v
 	@set -e; for arm in '' '--retain'; do \
 		./build/conformance-harness wire-fuzz --driver 'build/conformance-rust-all' $$arm --seed $(SEED) --n $(N) \
 			> build/rust-wire-fuzz-all.log 2>&1 || { cat build/rust-wire-fuzz-all.log; exit 1; }; \
@@ -1052,7 +1052,7 @@ test-rust: tables-rust-fuzz
 # into a failure, so the target never passes on a SKIP.
 .PHONY: tables-rust-usage
 tables-rust-usage:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestUsageRust$$'
 	@echo "tables Rust usage: docs/USAGE.md's Rust example compiles and runs"
 
 # I12's control: two edited copies of docs/USAGE.md through the gate's
@@ -1085,7 +1085,7 @@ test-rust: tables-rust-usage tables-rust-usage-negative-control
 # the field offset asserts out of the emitter through go test -overlay.
 .PHONY: tables-rust-cook-layout tables-rust-cook-layout-negative-control
 tables-rust-cook-layout:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestCookLayoutIsAssertedAtCompileTime$$'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestCookLayoutIsAssertedAtCompileTime$$'
 tables-rust-cook-layout-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-cook-layout-control internal/codegen/rusttable/cook.go \
 		's|const _: () = assert!(core::mem::size_of::<%sRow>()|// SABOTAGED (core::mem::size_of::<%sRow>()|; s|const _: () = assert!(core::mem::offset_of!(%sRow, %s)|// SABOTAGED (core::mem::offset_of!(%sRow, %s)|' \
@@ -1101,7 +1101,7 @@ tables-rust-cook-layout-negative-control:
 # control makes the cook's scalar put (table_cook_put) ignore the target order.
 .PHONY: tables-rust-byte-order tables-rust-byte-order-negative-control
 tables-rust-byte-order:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestBlockBuildAndCookWriteRust$$'
 tables-rust-byte-order-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-byte-order-control internal/codegen/rusttable/cook.go \
 		's|let shift = if order == 2 { width as usize - 1 - i } else { i };|let shift = i; // SABOTAGED: the target order ignored|' \
@@ -1116,7 +1116,7 @@ tables-rust-byte-order-negative-control:
 # of the block's, and each must red exactly its own half.
 .PHONY: tables-rust-order-word tables-rust-order-word-negative-control
 tables-rust-order-word:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestRustOtherOrderWordIsRefused$$'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 300s -run '^TestRustOtherOrderWordIsRefused$$'
 tables-rust-order-word-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-order-word-cook-control internal/codegen/rusttable/cook.go \
 		's|        if table_cook_read64(bytes.add(16)) != TABLE_COOK_BYTE_ORDER {$$|        if false { // SABOTAGED: the order word unread|' \
@@ -1132,7 +1132,7 @@ tables-rust-order-word-negative-control:
 # shared node with, and the gate must red on the text comparison.
 .PHONY: tables-rust-node-label tables-rust-node-label-negative-control
 tables-rust-node-label:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestVariableClassBeyondCardConstructsRust$$'
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestVariableClassBeyondCardConstructsRust$$'
 tables-rust-node-label-negative-control:
 	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-node-label-control internal/codegen/rusttable/variabletext.go \
 		'/w.out.push_str/s|&node|&nod|' \
@@ -1157,12 +1157,12 @@ test-rust: tables-rust-clippy-negative-control tables-rust-release-negative-cont
 .PHONY: tables-rust-json-differential tables-rust-json-differential-negative-control
 tables-rust-json-differential:
 	@mkdir -p build
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRust$$' -v 2>&1 | tee build/rust-json-differential.log
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRust$$' -v 2>&1 | tee build/rust-json-differential.log
 	@grep -q -- '--- PASS: TestTextDifferentialRust ' build/rust-json-differential.log || { echo 'tables-rust-json-differential: TestTextDifferentialRust did not pass'; exit 1; }
 	@echo 'tables Rust text differential: 200 random float instances at each of two seeds, variable and fixed-class roots, agree with the Go engine byte for byte, both directions'
 tables-rust-json-differential-negative-control:
 	@mkdir -p build
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRustNegativeControl$$' -v 2>&1 | tee build/rust-json-differential-control.log
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestTextDifferentialRustNegativeControl$$' -v 2>&1 | tee build/rust-json-differential-control.log
 	@grep -q -- '--- PASS: TestTextDifferentialRustNegativeControl' build/rust-json-differential-control.log || { echo 'tables-rust-json-differential-negative-control: the control did not pass'; exit 1; }
 	@echo 'tables Rust text differential negative control: a six-digit float32 writer is red on the text comparison'
 
@@ -1219,7 +1219,7 @@ tables-rust-retain-negative-control:
 		{ echo "NEGATIVE CONTROL: the retention sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/build/rust-retain-control/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-retain-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
 			-overlay=build/rust-retain-control/overlay.json \
 			-run TestRetainsAndWidensOnEveryRootRust ./internal/codegen/rusttable/ > build/rust-retain-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with Rust retention turned off"; \
@@ -1249,7 +1249,7 @@ tables-rust-json-hostile-negative-control:
 		{ echo "NEGATIVE CONTROL: the json-hostile sabotage did not apply twice"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variabletext.go":"%s/build/rust-json-hostile-control/variabletext.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-json-hostile-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 300s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 300s \
 			-overlay=build/rust-json-hostile-control/overlay.json \
 			-run TestJsonHostileTextRefusalsRust ./internal/codegen/rusttable/ > build/rust-json-hostile-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
@@ -1281,7 +1281,7 @@ tables-rust-guard-negative-control:
 		{ echo "NEGATIVE CONTROL: the guard sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variableguard.go":"%s/build/rust-guard-control/variableguard.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/rust-guard-control/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s \
 			-overlay=build/rust-guard-control/overlay.json \
 			-run TestGuardAndOptionalEdgesRust ./internal/codegen/rusttable/ > build/rust-guard-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the G1 suite stayed green with the Rust guard gate turned off"; \
@@ -1697,7 +1697,7 @@ test-rust: conformance-rust-framing conformance-negative-control-rust-framing
 RUST_DISCARD_NC := build/rust-discard-nc
 .PHONY: tables-rust-discard tables-rust-discard-negative-control tables-rust-fixed-discard-negative-control
 tables-rust-discard:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout=0 -run '^(TestDamageDiscardsTheWholeLoadRust|TestFixedLoadDamageDefaultsAndReportReuseRust)$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout=0 -run '^(TestDamageDiscardsTheWholeLoadRust|TestFixedLoadDamageDefaultsAndReportReuseRust)$$' -v
 
 tables-rust-discard-negative-control:
 	@rm -rf $(RUST_DISCARD_NC)/variable && mkdir -p $(RUST_DISCARD_NC)/variable
@@ -1707,7 +1707,7 @@ tables-rust-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Rust discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/variablecodec.go":"%s/$(RUST_DISCARD_NC)/variable/variablecodec.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/variable/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/variable/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/variable/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Rust discard is gone and the gate stayed green"; \
 		cat $(RUST_DISCARD_NC)/variable/log; exit 1; \
@@ -1726,7 +1726,7 @@ tables-rust-fixed-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_DISCARD_NC)/fixed/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(RUST_DISCARD_NC)/fixed/overlay.json
-	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_DISCARD_NC)/fixed/overlay.json \
 			-run '^TestDamageDiscardsTheWholeLoadRust$$' ./internal/codegen/rusttable > $(RUST_DISCARD_NC)/fixed/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the Rust fixed discard is gone and the gate stayed green"; \
 		cat $(RUST_DISCARD_NC)/fixed/log; exit 1; \
@@ -1741,10 +1741,39 @@ test-rust: tables-rust-discard
 
 .PHONY: tables-rust-json-bom
 tables-rust-json-bom:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 0 -run '^TestJsonLeadingBOMBoundaryRust$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 0 -run '^TestJsonLeadingBOMBoundaryRust$$' -v
 
 test-rust: tables-rust-json-bom
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-rust/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE WRITER'S RANGE REFUSES (STRICT 100; docs/FIXED-FORM-ALGORITHM.md §4.5).
+# TestFixedVersioningRangeWidenHostile reads the three forged writer's-range
+# vectors and requires an out_of_range refusal of the whole batch. The control
+# takes the fixed load's `held` refusal out through go test -overlay, so a
+# value past the WRITER's range lands; the test must go red on exactly that.
+# The overlay key is $$PWD, not $(CURDIR): go names package files by the
+# logical working directory, so under a symlinked workdir (e.g. /tmp ->
+# /private/tmp) a $(CURDIR) key never matches and the sabotage silently
+# reaches no test binary, leaving the gate green.
+RUST_RANGE_NC := build/rust-range-widen-nc
+.PHONY: tables-rust-range-widen-negative-control
+tables-rust-range-widen-negative-control: tables-fixedform-corpus
+	@rm -rf $(RUST_RANGE_NC) && mkdir -p $(RUST_RANGE_NC)
+	@sed -e 's|g.pf("        if report.held != 0 {\\n")|g.pf("        if false \&\& report.held != 0 { // NEGATIVE CONTROL\\n")|' \
+		internal/codegen/rusttable/fixedform.go > $(RUST_RANGE_NC)/fixedform.go.txt
+	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_RANGE_NC)/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust writer's-range sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_RANGE_NC)/fixedform.go.txt"}}\n' \
+		"$$PWD" "$$PWD" > $(RUST_RANGE_NC)/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_RANGE_NC)/overlay.json \
+			-run '^TestFixedVersioningRangeWidenHostile$$' ./internal/codegen/rusttable > $(RUST_RANGE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the writer's-range refusal is gone and the gate stayed green"; \
+		cat $(RUST_RANGE_NC)/log; exit 1; \
+	fi
+	@grep -q "a value past the WRITER's range was read, not refused" $(RUST_RANGE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_RANGE_NC)/log; exit 1; }
+	@echo "negative control: a Rust fixed read that lands a value past the writer's range turns TestFixedVersioningRangeWidenHostile RED"

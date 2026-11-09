@@ -260,7 +260,7 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "cook-differential":
-		ok, err := cookDifferential(os.Stdout, m, *manifest, *driver, *work)
+		ok, err := cookDifferential(os.Stdout, m, *driver, *work)
 		if err != nil {
 			fatalf("%v", err)
 		}
