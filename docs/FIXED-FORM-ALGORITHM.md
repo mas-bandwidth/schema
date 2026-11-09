@@ -206,6 +206,10 @@ the edit is a kind change the baseline refuses (§5.1), never every byte after i
 
 ### 3.1 The write
 
+**This is form `3`'s part of the cross-form write algorithm, docs/SPEC-TABLES.md §22**, which pins every byte a
+writer of any form decides: here, the zero header bytes, the zero slack and the live-extent stores below
+(SPEC-TABLES §22.6).
+
 ```
 WRITE( values, out ):
     header: form byte, seven zero bytes, the hash, the layout length, the layout

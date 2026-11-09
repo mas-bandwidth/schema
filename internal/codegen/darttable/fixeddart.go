@@ -332,9 +332,17 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 	}
 	name, endian := fixedGetter(t)
 	if t.Kind == ir.TBool {
-		// A BOOL LANDS AS `byte != 0` (docs/SPEC-TABLES.md §3.4): an endpoint that
-		// wrote 2 wrote true, and this reader says so rather than refusing.
-		g.call(ind, lhs+" = ", "view.getUint8", []string{at}, " != 0;")
+		// A BOOL BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged (docs/SPEC-TABLES.md
+		// §4, §6.5; docs/FIXED-FORM-ALGORITHM.md §4.5): no writer emits one, and
+		// 0x02 is neither stored verbatim nor normalized to true. The load
+		// discards the whole batch on report.refused, so nothing lands.
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final b = ", "view.getUint8", []string{at}, ";")
+		g.pf("%s  if (b > 1) {\n", ind)
+		g.pf("%s    report.refused = TableFixedRefusal.damaged;\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s = b != 0;\n", ind, lhs)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if endian {
@@ -853,9 +861,11 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("/// caller handed in — filled, never returned, as the packet reader is.\n")
 	g.pf("///\n")
-	g.pf("/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps\n")
-	g.pf("/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and\n")
-	g.pf("/// an enum ordinal past the last variant land None and count. They are\n")
+	g.pf("/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past\n")
+	g.pf("/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),\n")
+	g.pf("/// a union tag past the last arm and an enum ordinal past the last variant\n")
+	g.pf("/// refuse the same way, and a bool or present byte other than 0 or 1\n")
+	g.pf("/// refuses wire_damaged. They are\n")
 	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
 	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED\n")
 	g.pf("/// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.\n")
@@ -874,7 +884,15 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	name := dartName(f.Name)
 	if f.Type.Optional {
-		g.call(ind, val+"."+name+"Present = ", "view.getUint8", []string{fixedOff(base, at)}, " != 0;")
+		// A PRESENT BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged, on the same
+		// rule as a bool byte (docs/SPEC-TABLES.md §4, §6.5).
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final p = ", "view.getUint8", []string{fixedOff(base, at)}, ";")
+		g.pf("%s  if (p > 1) {\n", ind)
+		g.pf("%s    report.refused = TableFixedRefusal.damaged;\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s.%sPresent = p != 0;\n", ind, val, name)
+		g.pf("%s}\n", ind)
 		at += fixedPresentBytes
 	}
 	g.emitDecodeValue(f, base, at, val+"."+name, ind)
