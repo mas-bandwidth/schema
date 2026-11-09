@@ -11,10 +11,14 @@
 #   report  table_load.moo damages the load at every unknown field it meets,
 #           so a wire a newer writer wrote is refused whole: the surfaces that
 #           read such wires answer `refused` where the oracle reads (`moo /
-#           report`, `moo / framing`, `moo / retain` and `moo / retain-save`)
+#           framing`, `moo / retain` and `moo / retain-save`)
 #           and nothing else; `wire`, `json-read` and `cook-write` green (no
 #           instance wire carries an unknown field). Local counters are not an
 #           oracle, so a sabotage that moved only a counter would be harmless.
+#           Since the single-read corpus migration no `report` row reaches
+#           the variable walk's unknown-field skip (measured: under this
+#           sabotage `report` stays 128/128), so `report` is not on this
+#           control's list.
 #   framing table_load.moo drops the id table's 4096-entry bound
 #           (docs/LAYERS/1-framing.md F6): `moo / framing` red on
 #           frame_entries_4097 and nothing else; `wire` and `report` green.
@@ -85,7 +89,7 @@ if [ ! -f "$out/stage/list/manifest.moo" ]; then
 fi
 red=$(grep -oE '^ *moo / [a-z-]+' "$out/log" | sed 's/^ *moo \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="framing report retain retain-save " ; green="wire json-read cook-write" ;;
+report) want="framing retain retain-save " ; green="wire json-read cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 esac
