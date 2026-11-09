@@ -5,11 +5,11 @@
 -- Measures ONE thing: the representative fixed table written and read on the
 -- TOLERANT WIRE (docs/SPEC-TABLES.md §3) through the port's form-1 codec — the
 -- one runtime walk over the generated descriptors (schema_load's load, the
--- strict read, and schema_save's save) — over the committed 64-record variant corpus. It is a
--- port of bench/tables/cpp/table_main.cpp's bench_table driver and keeps its
--- contract: the golden gate runs before the clock, 1 warmup + 7 measured runs
--- (one under --round K), median beside min/max/spread, rows `write` and
--- `round_trip`, and READ derived on stderr only (§2.9).
+-- strict read, and schema_save's save) — over the committed 64-record variant
+-- corpus. It is a port of bench/tables/cpp/table_main.cpp's bench_table driver
+-- and keeps its contract: the golden gate runs before the clock, 1 warmup + 7
+-- measured runs (one under --round K), median beside min/max/spread, rows
+-- `write` and `round_trip`, and READ derived on stderr only (§2.9).
 --
 -- THIS FILE IS SHAPE-BLIND. It names the generated root ONCE, as the string the
 -- runtime walk is asked to load at; no field, no pinned value, no wire size.
@@ -60,6 +60,24 @@ local opts = Harness.options(...)
 -- the root the walk loads at: the generated type, named once (shape-blind)
 local root = "TableMixed"
 
+-- The corpus is the form-1 wire of a table DECLARED fixed (bench/tables/README.md,
+-- "The corpus"). The plain read routes a declared-fixed root to form 3 and names
+-- a form-1 file previous_form, so this leg publishes the descriptor's form-1 view
+-- under a second name: the same descriptor with the fixed class off. The deep
+-- copy is build metadata made once before the clock, and it names no field.
+local form1Root = root .. "Form1"
+
+local function form1Descriptor(value: any): any
+	if type(value) ~= "table" then
+		return value
+	end
+	local copy: any = {}
+	for key, field in value do
+		copy[key] = form1Descriptor(field)
+	end
+	return copy
+end
+
 local function runTable()
 	local row = "bench_table"
 	local golden = Harness.load(inputs.golden, row)
@@ -72,7 +90,11 @@ local function runTable()
 		return
 	end
 	local record = v.record
-	local descriptor = Tables.lookup(root)
+	local descriptor = form1Descriptor(Tables.lookup(root))
+	descriptor.name = form1Root
+	descriptor.fixed = false
+	Tables.table(descriptor)
+	descriptor = Tables.lookup(form1Root)
 	local report: any = {}
 
 	-- loadOne is the codec's one read of variant k (1-based), the strict read
@@ -80,7 +102,7 @@ local function runTable()
 	-- (nil) otherwise, as the C++ leg's Load && !damaged
 	local function loadOne(k: number): any
 		resetReport(report)
-		return Load.load(root, v.bufs[k], report)
+		return Load.load(form1Root, v.bufs[k], report)
 	end
 
 	-- saveOne is the codec's save: the buffer it wrote, or nil on a refusal
