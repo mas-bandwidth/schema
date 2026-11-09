@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -40,6 +41,11 @@ func pinOneCook(t *testing.T, elixirBin, root string, unit *ir.Unit, rootName, w
 	names := writeModuleDir(t, dir, files)
 	mod := ir.GoExportName(unit.Package) + ".Table"
 	wire := filepath.Join(root, "testdata", "wire", "tables", wireName)
+	if strings.Contains(wireName, "/") {
+		// a wire name with a path is rooted at the repository: a fixed
+		// root's form-3 corpus, not the form-1 corpus above
+		wire = filepath.Join(root, wireName)
+	}
 	little := filepath.Join(root, "testdata", "conformance", "tables", "cook-write", cookName+".cook")
 	big := filepath.Join(root, "testdata", "conformance", "tables", "cook-write", cookName+"-be.cook")
 	littleOut := filepath.Join(dir, "little.cook")
@@ -141,8 +147,8 @@ func pinCookWrite(t *testing.T, elixirBin, root string) {
 		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_empty.bin", "blob_empty"},
 		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_small.bin", "blob_small"},
 		{"blobdemo", []string{"tables/blobs/Assets.schema"}, "Catalog", "blob_shared.bin", "blob_shared"},
-		{"tblp1", []string{"test/tables/P1.schema"}, "Chain", "chain_value.bin", "chain_value"},
-		{"tblp3", []string{"test/tables/P3.schema"}, "Chain", "chain_optional.bin", "chain_optional"},
+		{"tblp1", []string{"test/tables/P1.schema"}, "Chain", "testdata/conformance/tables/wire/chain_value.bin", "chain_value"},
+		{"tblp3", []string{"test/tables/P3.schema"}, "Chain", "testdata/conformance/tables/wire/chain_optional.bin", "chain_optional"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -43,7 +43,7 @@ func TestMessageQuantizedDecodeIsFinite(t *testing.T) {
 
 	// the batch the audit recorded: one body whose x carries the top step
 	var report tabletext.Report
-	n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Edge"))}, []byte{0x02, 0x00, 0xa9, 0x0a}, &v, &report)
+	n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Edge"))}, []byte{0x02, 0x00, 0xab, 0x02}, &v, &report)
 	if ok || n != 0 {
 		t.Errorf("the top step delivered %d bodies", n)
 	}
@@ -53,7 +53,7 @@ func TestMessageQuantizedDecodeIsFinite(t *testing.T) {
 	// reader's own [0, 1000], so the read refuses out_of_range (§4)
 	inst := m.New(m.Lookup("Edge"))
 	report = tabletext.Report{}
-	n, ok, err = tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, []byte{0x02, 0x00, 0xa1, 0x0a}, &v, &report)
+	n, ok, err = tablewire.DecodeMessages(m, []*tabletext.Instance{inst}, []byte{0x02, 0x00, 0xa9, 0x00}, &v, &report)
 	if ok || n != 0 || tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange {
 		t.Fatalf("the step below the top answered %d %v %v %+v", n, ok, err, report)
 	}
