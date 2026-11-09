@@ -615,7 +615,7 @@ defmodule Driver do
       end
     end
 
-    for [name, unit, root, wire | _] <- rows(rows, "json-write-refusal") do
+    for [name, unit, root, wire | rest] <- rows(rows, "json-write-refusal") do
       mod = table_module(unit)
 
       case mod do
@@ -625,6 +625,8 @@ defmodule Driver do
         _ ->
           case mod.load(root, File.read!(wire)) do
             {:ok, value, _report} ->
+              value = damage_text(value, List.first(rest))
+
               case mod.to_json(root, value) do
                 {:ok, text} -> write(outdir, name <> ".json", text)
                 _ -> write(outdir, name <> ".json", "refused\n")
@@ -963,6 +965,17 @@ defmodule Driver do
     end
   end
 
+  # The json-write-refusal damage, planted in the loaded value in code: a
+  # narrow field's ill-formed UTF-8 (61 FF 62) and a wide field's unpaired
+  # surrogate (0061 D800 0062, spelled in its CESU-8 bytes, the one binary
+  # form the value surface can hold of it).
+  defp damage_text(value, "narrow:" <> field), do: Map.put(value, field, <<0x61, 0xFF, 0x62>>)
+
+  defp damage_text(value, "wide:" <> field),
+    do: Map.put(value, field, <<0x61, 0xED, 0xA0, 0x80, 0x62>>)
+
+  defp damage_text(value, _damage), do: value
+
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
@@ -971,7 +984,14 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set. Any other named refusal
   # (missing_required, count_over_extent_cap, non_finite_float) is refused.
   defp report_line(mod, root, wire) do
-    case mod.load(root, File.read!(wire)) do
+    loaded =
+      if function_exported?(mod, :strict_load, 2) do
+        mod.strict_load(root, File.read!(wire))
+      else
+        mod.load(root, File.read!(wire))
+      end
+
+    case loaded do
       {:ok, value, _report} ->
         {"read\n", value}
 
