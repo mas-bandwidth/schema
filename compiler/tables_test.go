@@ -473,6 +473,7 @@ func tableHeader(t *testing.T, src string) string {
 // words "template" and "variable", which the refusal's own text carries.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
 	header := strings.ReplaceAll(tableHeader(t, tableSrc), "TableRefuseReason", "")
+	header = strings.ReplaceAll(header, "TableRefuseMissingRequired", "")
 	header = withoutRetainRefusal(t, header)
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
