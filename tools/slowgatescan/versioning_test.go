@@ -28,9 +28,11 @@ var versioningWant = map[string]string{
 // is not one make invocation on them. Run 42567880192 measured that target's
 // go test at 146.548s. Five rows were not enough: run 42572560186 measured
 // new-1 at 214.857s, new-2 at 235.705s, old-1 at 128.737s and the other
-// TestFixedVersioning tests at 434.068s. old-2 was 6.858s and stays one row.
-// TestCIFullVersioningRowsPerLeg checks the split covers the make recipe's
-// -run and drops no versionRows name.
+// TestFixedVersioning tests at 434.068s. That old-2 was 6.858s and stayed
+// one row. Run 42577704822 then measured 4f6d1606: old-2 (rows 14-26) at
+// 117.751s and rest-1 at 184.736s, so those two are split again. new-2b
+// (99.558s) and rest-4 (94.880s) stay. TestCIFullVersioningRowsPerLeg
+// checks the split covers the make recipe's -run and drops no versionRows name.
 var elixirRows = []string{
 	"versioning-elixir-new-1a",
 	"versioning-elixir-new-1b",
@@ -38,8 +40,12 @@ var elixirRows = []string{
 	"versioning-elixir-new-2b",
 	"versioning-elixir-old-1a",
 	"versioning-elixir-old-1b",
-	"versioning-elixir-old-2",
-	"versioning-elixir-rest-1",
+	"versioning-elixir-old-2a",
+	"versioning-elixir-old-2b",
+	"versioning-elixir-old-2c",
+	"versioning-elixir-rest-1a",
+	"versioning-elixir-rest-1b",
+	"versioning-elixir-rest-1c",
 	"versioning-elixir-rest-2",
 	"versioning-elixir-rest-3",
 	"versioning-elixir-rest-4",
@@ -333,7 +339,9 @@ func elixirPartitionFindings(job string, rows, tests []string, makeRun string) [
 		"versioning-elixir-new-2b": "TestFixedVersioningNewReadsOld",
 		"versioning-elixir-old-1a": "TestFixedVersioningOldRefusesNew",
 		"versioning-elixir-old-1b": "TestFixedVersioningOldRefusesNew",
-		"versioning-elixir-old-2":  "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-old-2a": "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-old-2b": "TestFixedVersioningOldRefusesNew",
+		"versioning-elixir-old-2c": "TestFixedVersioningOldRefusesNew",
 	}
 	named := map[string]int{}
 	for row, parent := range parents {

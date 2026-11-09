@@ -222,9 +222,20 @@ jobs:
     #   go test line, not the job wall: new-1 214.857s (job 384s, g++ 37s,
     #   vision-32), new-2 235.705s (job 436s, g++ 33s, vision-2), old-1
     #   128.737s (job 247s, g++ 28s, hulk-10), old-2 6.858s (job 30s, g++
-    #   6s, amd-2-4), rest 434.068s (job 600s, g++ 23s, hulk-11). old-2
-    #   stays one row. The three go tests over 110s are halved again, and
-    #   the rest tests are four -run groups. Each row still builds the corpus.
+    #   6s, amd-2-4), rest 434.068s (job 600s, g++ 23s, hulk-11). That
+    #   old-2 stayed one row. The three go tests over 110s were halved, and
+    #   the rest tests became four -run groups. Each row still builds the corpus.
+    #
+    #   Run 42577704822 (workflow_dispatch of 4f6d1606, PGROUP_WALL off)
+    #   measured the go test line, not the vision step wall. new-2b was
+    #   99.558s (step 182s, vision-21) and rest-4 was 94.880s (step 211s,
+    #   vision-24): both under 110s, so they stay. The step walls there are
+    #   the same g++ variance as versioning-js. old-2, which 4f6d1606 had
+    #   made rows 14-26, was 117.751s (step 248s, vision-11). rest-1 was
+    #   184.736s (step 316s, vision-26). Those two are split again: old-2
+    #   into old-2a/b/c and rest-1 into rest-1a/b/c. conformance-1's step
+    #   was 95s (hetzner2-8) and conformance-2's was 63s (intel-4), both
+    #   under 110s, so the old 116s conformance figure is not split again.
     #
     #   versioning-js on run 42567880192 (job 128998296625) was whole job
     #   118s, 05:40:19Z to 05:42:17Z. The go test was 6.056s. g++ of
@@ -250,7 +261,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-1, versioning-conformance-2, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir-new-1a, versioning-elixir-new-1b, versioning-elixir-new-2a, versioning-elixir-new-2b, versioning-elixir-old-1a, versioning-elixir-old-1b, versioning-elixir-old-2, versioning-elixir-rest-1, versioning-elixir-rest-2, versioning-elixir-rest-3, versioning-elixir-rest-4, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-1, versioning-conformance-2, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir-new-1a, versioning-elixir-new-1b, versioning-elixir-new-2a, versioning-elixir-new-2b, versioning-elixir-old-1a, versioning-elixir-old-1b, versioning-elixir-old-2a, versioning-elixir-old-2b, versioning-elixir-old-2c, versioning-elixir-rest-1a, versioning-elixir-rest-1b, versioning-elixir-rest-1c, versioning-elixir-rest-2, versioning-elixir-rest-3, versioning-elixir-rest-4, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -652,17 +663,19 @@ jobs:
       # single versioning-elixir job was 173s: corpus compile 6s, go test
       # 146.548s. Five rows on 8fd77d97 were measured on run 42572560186.
       # `ok elixirtable` was new-1 214.857s, new-2 235.705s, old-1 128.737s,
-      # old-2 6.858s, rest 434.068s. old-2 (job 30s, amd-2-4, g++ 6s) stays.
-      # The three go tests over 110s are split in two, and the other
-      # TestFixedVersioning tests are four anchored -run groups. Each row
-      # still builds the corpus. The recipe is make/elixir.mk's
+      # old-2 6.858s, rest 434.068s. That 6.858s old-2 stayed one row, and
+      # the three go tests over 110s were split in two. Run 42577704822
+      # then measured 4f6d1606's rows. new-2b was 99.558s and rest-4 was
+      # 94.880s, so they stay. old-2 (rows 14-26) was 117.751s and rest-1
+      # was 184.736s, so those two are split again below. Each row still
+      # builds the corpus. The recipe is make/elixir.mk's
       # tables-elixir-versioning, with -run in place of the single pattern.
       # SCHEMA_REQUIRE_CORPUS=1 still makes a missing corpus or a missing
       # Elixir a failure. ELIXIR and ERL_BIN are plain paths, as that recipe
       # passes them. setup-beam stays the hosted fallback; a fleet runner
       # already has the toolchain on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: (matrix.group == 'versioning-elixir-new-1a' || matrix.group == 'versioning-elixir-new-1b' || matrix.group == 'versioning-elixir-new-2a' || matrix.group == 'versioning-elixir-new-2b' || matrix.group == 'versioning-elixir-old-1a' || matrix.group == 'versioning-elixir-old-1b' || matrix.group == 'versioning-elixir-old-2' || matrix.group == 'versioning-elixir-rest-1' || matrix.group == 'versioning-elixir-rest-2' || matrix.group == 'versioning-elixir-rest-3' || matrix.group == 'versioning-elixir-rest-4') && runner.environment == 'github-hosted'
+        if: (matrix.group == 'versioning-elixir-new-1a' || matrix.group == 'versioning-elixir-new-1b' || matrix.group == 'versioning-elixir-new-2a' || matrix.group == 'versioning-elixir-new-2b' || matrix.group == 'versioning-elixir-old-1a' || matrix.group == 'versioning-elixir-old-1b' || matrix.group == 'versioning-elixir-old-2a' || matrix.group == 'versioning-elixir-old-2b' || matrix.group == 'versioning-elixir-old-2c' || matrix.group == 'versioning-elixir-rest-1a' || matrix.group == 'versioning-elixir-rest-1b' || matrix.group == 'versioning-elixir-rest-1c' || matrix.group == 'versioning-elixir-rest-2' || matrix.group == 'versioning-elixir-rest-3' || matrix.group == 'versioning-elixir-rest-4') && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
@@ -696,16 +709,36 @@ jobs:
         run: |
           make tables-fixedform-corpus
           SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(enum_width|field_append|field_deprecate|field_undeprecate|fixed_I_grow|fixed_I_grow_element)$'
-      - name: the Elixir leg, OLD-REFUSES-NEW, version rows 14-26
-        if: matrix.group == 'versioning-elixir-old-2'
+      - name: the Elixir leg, OLD-REFUSES-NEW, version rows 14-19
+        if: matrix.group == 'versioning-elixir-old-2a'
         run: |
           make tables-fixedform-corpus
-          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add|range_widen|rename_without_was|string_grow|uint_widen|union_append|union_arm_payload_widen|wstring_grow)$'
-      - name: the Elixir leg, other versioning tests, group 1
-        if: matrix.group == 'versioning-elixir-rest-1'
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add)$'
+      - name: the Elixir leg, OLD-REFUSES-NEW, version rows 20-23
+        if: matrix.group == 'versioning-elixir-old-2b'
         run: |
           make tables-fixedform-corpus
-          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningCfloatRangeWiden|TestFixedVersioningCfloatResRefine|TestFixedVersioningCountClampEnds|TestFixedVersioningFloor|TestFixedVersioningForgedOrdinalBothPlans)$'
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(range_widen|rename_without_was|string_grow|uint_widen)$'
+      - name: the Elixir leg, OLD-REFUSES-NEW, version rows 24-26
+        if: matrix.group == 'versioning-elixir-old-2c'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(union_append|union_arm_payload_widen|wstring_grow)$'
+      - name: the Elixir leg, other versioning tests, group 1a
+        if: matrix.group == 'versioning-elixir-rest-1a'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningCfloatRangeWiden|TestFixedVersioningCfloatResRefine)$'
+      - name: the Elixir leg, other versioning tests, group 1b
+        if: matrix.group == 'versioning-elixir-rest-1b'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningCountClampEnds|TestFixedVersioningFloor)$'
+      - name: the Elixir leg, other versioning tests, group 1c
+        if: matrix.group == 'versioning-elixir-rest-1c'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run '^(TestFixedVersioningForgedOrdinalBothPlans)$'
       - name: the Elixir leg, other versioning tests, group 2
         if: matrix.group == 'versioning-elixir-rest-2'
         run: |
