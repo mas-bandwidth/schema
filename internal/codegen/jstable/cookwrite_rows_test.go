@@ -18,6 +18,13 @@ type cookWriteManifestRow struct {
 	wireFile string
 	little   string
 	big      string
+	// input and share are the row's recipe (test/conformance/harness
+	// cookinput.go): the value is built from the input text when input is
+	// set, and share names one blob from two fields, source:alias. A blob two
+	// slots name reaches the cook only this way: the wire that spells one is
+	// refused by the one strict read (docs/SPEC-TABLES.md §2.5, §6.5).
+	input string
+	share string
 }
 
 func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []cookWriteManifestRow) {
@@ -60,21 +67,36 @@ func readCookWriteManifest(t *testing.T, repo string) (map[string][]string, []co
 				wireFile: filepath.Join(repo, strings.Replace(fields[4], "testdata/conformance/tables/wire/", "testdata/wire/tables/", 1)),
 			}
 		case "cook-write":
-			if len(fields) != 4 {
+			// cook-write <instance> <little> <big> [input=<json>] [share=<source>:<alias>]
+			if len(fields) < 4 || len(fields) > 6 {
 				t.Fatalf("malformed cook-write line: %q", line)
 			}
 			inst, ok := instances[fields[1]]
 			if !ok {
 				t.Fatalf("cook-write %q names unknown instance", fields[1])
 			}
-			rows = append(rows, cookWriteManifestRow{
+			row := cookWriteManifestRow{
 				instance: fields[1],
 				unitKey:  inst.unitKey,
 				root:     inst.root,
 				wireFile: inst.wireFile,
 				little:   filepath.Join(repo, fields[2]),
 				big:      filepath.Join(repo, fields[3]),
-			})
+			}
+			for _, option := range fields[4:] {
+				switch {
+				case strings.HasPrefix(option, "input=") && row.input == "":
+					row.input = filepath.Join(repo, strings.TrimPrefix(option, "input="))
+				case strings.HasPrefix(option, "share=") && row.share == "":
+					row.share = strings.TrimPrefix(option, "share=")
+				default:
+					t.Fatalf("malformed cook-write option %q: %q", option, line)
+				}
+			}
+			if row.share != "" && row.input == "" {
+				t.Fatalf("cook-write %q shares a blob with no input=: %q", fields[1], line)
+			}
+			rows = append(rows, row)
 		}
 	}
 	return units, rows
@@ -138,8 +160,9 @@ func TestCookWriteAnswersEveryCookWriteRowJavaScript(t *testing.T) {
 	}
 	script.WriteString("const cases = [\n")
 	for _, row := range rows {
-		fmt.Fprintf(&script, "  { name: %q, mod: u%d, root: %q, wire: %q },\n",
-			row.instance, unitIdx[row.unitKey], row.root, filepath.ToSlash(row.wireFile))
+		source, alias, _ := strings.Cut(row.share, ":")
+		fmt.Fprintf(&script, "  { name: %q, mod: u%d, root: %q, wire: %q, input: %q, source: %q, alias: %q },\n",
+			row.instance, unitIdx[row.unitKey], row.root, filepath.ToSlash(row.wireFile), filepath.ToSlash(row.input), source, alias)
 	}
 	script.WriteString(`];
 for (const c of cases) {
@@ -150,11 +173,27 @@ for (const c of cases) {
     console.log(c.name + " MISSING");
     continue;
   }
-  const wire = new Uint8Array(fs.readFileSync(c.wire));
-  const inst = load(wire);
+  let inst;
+  if (c.input !== "") {
+    const fromJson = c.mod[c.root + "FromJson"];
+    if (typeof fromJson !== "function") {
+      console.log(c.name + " MISSING");
+      continue;
+    }
+    inst = fromJson(fs.readFileSync(c.input, "utf8"), new c.mod.TableVariableReport());
+  } else {
+    inst = load(new Uint8Array(fs.readFileSync(c.wire)));
+  }
   if (inst === null) {
     console.log(c.name + " LOAD_FAILED");
     continue;
+  }
+  if (c.source !== "") {
+    if (inst[c.source] === null || inst[c.source] === undefined || inst[c.alias] === null || inst[c.alias] === undefined) {
+      console.log(c.name + " SHARE_FAILED");
+      continue;
+    }
+    inst[c.alias] = inst[c.source];
   }
   const n = measure(inst);
   if (!(n > 0)) {

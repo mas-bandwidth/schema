@@ -18,7 +18,7 @@ import (
 // I6; docs/SPEC-TABLES.md §11; internal/tablenames/squirrel.go).
 //
 // WHAT A SQUIRREL NAME CAN COLLIDE WITH. Every runtime file is its own module
-// table (`schema_table_load.nut`'s `_M.loadTolerant`), reached through the
+// table (`schema_table_load.nut`'s `_M.load`), reached through the
 // loader by name, so no schema declaration lands on a runtime export. The
 // unit's table module is ONE exports table that holds both what the emitter
 // writes per declaration (the class `_M.<Name>`, its `<Name>Descriptor`,

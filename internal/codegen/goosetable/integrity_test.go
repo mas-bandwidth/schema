@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -132,7 +131,7 @@ func gooseBuild(t *testing.T, files map[string][]byte, main string) string {
 		t.Fatal(why)
 	}
 	exe := strings.TrimSuffix(main, ".goose")
-	build := exec.Command(goose, "build", "-O2", main, "-o", exe)
+	build := gooserun.Command(t, goose, "build", "-O2", main, "-o", exe)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("goose build -O2 %s: %v\n%s", main, err, out)
@@ -143,7 +142,7 @@ func gooseBuild(t *testing.T, files map[string][]byte, main string) string {
 // runIn runs exe in its own directory with stdin, answering stdout.
 func runIn(t *testing.T, exe string, stdin []byte, args ...string) []byte {
 	t.Helper()
-	cmd := exec.Command(exe, args...)
+	cmd := gooserun.Command(t, exe, args...)
 	cmd.Dir = filepath.Dir(exe)
 	cmd.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer

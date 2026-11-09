@@ -49,11 +49,11 @@ for extra = 1, stride do
 	local r: any = {}
 	local out = F.read(T.PointDescriptor, fixed, ragged, r)
 	if extra < stride then
-		check(out == nil and r.reason == "truncated" and r.malformed == true,
-			"extra=" .. extra .. ": a ragged tail owes truncated with malformed: " .. tostring(r.reason) .. " " .. tostring(r.malformed))
-		check(r.clamped == 0 and r.unknown == 0 and r.widened == 0, "extra=" .. extra .. ": a malformed read moved a counter")
+		check(out == nil and r.reason == "truncated",
+			"extra=" .. extra .. ": a ragged tail owes truncated: " .. tostring(r.reason))
+		check(r.unknown == 0 and r.widened == 0, "extra=" .. extra .. ": a refused read moved a counter")
 	else
-		check(out == nil and r.reason == "no_layout" and r.malformed == false,
+		check(out == nil and r.reason == "no_layout",
 			"extra == recordBytes is a whole record whose hash names no layout: " .. tostring(r.reason))
 	end
 end

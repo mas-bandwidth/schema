@@ -49,7 +49,9 @@ build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-con
 # holds both and says what each one requires.
 #
 # conformance-negative-control-moo       the load report's unknown counter
-#                                        (report and retain red, wire green)
+#                                        (framing, retain and retain-save red,
+#                                        wire green; report stays green since
+#                                        the single-read corpus migration)
 # conformance-negative-control-moo-walk  the text walk's field-key index
 #                                        (I11: json-read and json-hostile red,
 #                                        json-write and wire green)

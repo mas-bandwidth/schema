@@ -314,7 +314,10 @@ func TestLuaCountCapRefusalNegativeControls(t *testing.T) {
 		want map[string]bool
 	}{
 		{"refusal", func(files map[string][]byte) {
+			// the strict load's wire check refuses a count past the cap
+			// too (§6.5), so it is switched off with the walk's refusal
 			editLoad(t, files, "      refuse_count(ctx)\n", "", 2)
+			withoutWireCheck(t, files)
 		}, reads(caps, "tolerant", "load", "strict", "retain")},
 		{"widened", func(files map[string][]byte) {
 			editLoad(t, files, "if not (fd.list and above(count, 0x7fffffff) and not crossed) then report.widened = report.widened + 1 end", "report.widened = report.widened + 1", 1)

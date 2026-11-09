@@ -6462,6 +6462,18 @@ namespace Wide
                             if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
                             continue;
                         }
+                        // A WRITER FIELD WHOSE KIND MOVED OFF EVERY LADDER IS AN
+                        // UNLAWFUL LINEAGE ENTRY (§5.1, §5.4, §5.9 #30): the build
+                        // lays no plan for it, and a file under its hash refuses
+                        // layout_malformed. It is NOT counted and read past — a
+                        // half-plan would land this reader's default for a value the
+                        // writer did send, and one read is the whole value or a
+                        // refusal, never a partial record.
+                        if (census.KindChanged != 0)
+                        {
+                            lane.Why = "layout_malformed";
+                            break;
+                        }
                         lane.Entries = buffer;
                         lane.Count = made;
                         lane.Split = split;

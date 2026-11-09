@@ -182,7 +182,7 @@ func checkSquirrelEvidenceCitation(root, id, ev string) error {
 	}
 	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(filePath)))
 	if err != nil {
-		return fmt.Errorf("%s: read cited file %s: %v", id, filePath, err)
+		return fmt.Errorf("%s: read cited file %s: %w", id, filePath, err)
 	}
 	defined := map[string]bool{}
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {

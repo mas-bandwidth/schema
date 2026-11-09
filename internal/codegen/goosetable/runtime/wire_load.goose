@@ -1734,127 +1734,9 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     var r = body;
     let ok = body_at(c, r, root, c.root_val, false, false);
     if c.report.count_refused { return false; }
-    // A CYCLIC WIRE IS DAMAGE (§3.1): the graph the load stored is checked
-    // once every index has resolved
-    if c.good && !c.report.body_damaged && !acyclic(c) { c.report.body_damaged = true; }
+    // A CYCLIC WIRE IS DAMAGE (§3.1): the wire-alone check (wire_check) judged
+    // the pointer graph over every slot, known or not, before this decode
     return ok;
-}
-
-// ---- THE CYCLE CHECK (docs/SPEC-TABLES.md §3.1, A CYCLIC WIRE IS DAMAGE) ----
-//
-// The vertices are the root (wire index 1) and every record the load placed
-// (wire index k + 2); the edges are every non-null table pointer slot a
-// vertex's by-value closure stores, a slot under a false guard included,
-// because a guard decides what a write elides and never what a read places. A
-// byte buffer is no vertex. Kahn's algorithm: one walk counts each vertex's
-// in-degree, then vertices of in-degree zero are released one at a time, and
-// the graph is acyclic exactly when every vertex is released. Each vertex is
-// walked twice and nothing recurses over the pointer graph; the recursion
-// that remains is by-value nesting, whose depth the schema fixes (§2).
-
-// CycleWalk is the check's state, by wire index: each vertex's unreleased
-// in-degree, and the vertices ready to release. release: the walk decrements
-// in-degrees rather than counting them.
-struct CycleWalk { deg: i64[>..<]&, ready: i64[>..<]&, release: bool }
-
-fn cycle_vertex_at(c: LoadCtx&, v: i64) -> bool {
-    if v == 1 { return true; }
-    if v < 2 || v - 2 >= c.node_n { return false; }
-    let n = c.nodes[v - 2];
-    return n.tab >= 0 && n.blob == 0 && n.val >= 0;
-}
-
-// cycle_edge counts or releases the edge a pointer slot stores.
-fn cycle_edge(c: LoadCtx&, w: CycleWalk&, s: i64) {
-    if s < 0 || c.vals[s].state != ValPresent { return; }
-    let t = c.vals[s].bits.lo as! i64;
-    if !cycle_vertex_at(c, t) { return; }
-    if !w.release {
-        w.deg[t] += 1;
-        return;
-    }
-    w.deg[t] -= 1;
-    if w.deg[t] == 0 { w.ready.push(t); }
-}
-
-// cycle_record walks one record's by-value closure for its pointer edges.
-recursive fn cycle_record(c: LoadCtx&, w: CycleWalk&, tab: i64, rec: i64) {
-    if tab < 0 || rec < 0 || !c.vals[rec].made { return; }
-    let first = c.vals[rec].first;
-    for d, i in c.unit.tables[tab].fields {
-        if i >= c.vals[rec].count { return; }
-        cycle_value(c, w, first + i, d);
-    }
-}
-
-// cycle_value walks one stored value of descriptor d: a table pointer is an
-// edge, and a record, a map's entries, a union's set arm and an array's live
-// elements are descended.
-recursive fn cycle_value(c: LoadCtx&, w: CycleWalk&, s: i64, d: const FieldDesc&) {
-    if s < 0 { return; }
-    if d.shape == ShapePtr { cycle_edge(c, w, s); return; }
-    if d.shape == ShapeTab {
-        if c.vals[s].made { cycle_record(c, w, c.vals[s].tab, s); }
-        return;
-    }
-    if d.shape == ShapeUnion {
-        let tag = c.vals[s].bits.lo as! i64;
-        if c.vals[s].state != ValPresent || tag == 0 { return; }
-        let u = union_index(c, d.ref);
-        if u < 0 || tag > c.unit.unions[u].arms.len { return; }
-        cycle_value(c, w, c.vals[s].first, c.unit.unions[u].arms[tag - 1]);
-        return;
-    }
-    if !c.vals[s].made { return; }
-    if d.shape == ShapeMap {
-        for k in c.vals[s].len {
-            let e = c.vals[s].first + k;
-            if c.vals[e].made { cycle_record(c, w, c.vals[e].tab, e); }
-        }
-        return;
-    }
-    if d.shape == ShapeArr {
-        let e = d.elem;
-        guard e else { return; }
-        if e.shape != ShapePtr && e.shape != ShapeUnion && e.shape != ShapeTab { return; }
-        let live = if d.array == ArrayCounted || d.array == ArrayList { c.vals[s].len } else { c.vals[s].count };
-        for k in live { cycle_value(c, w, c.vals[s].first + k, e); }
-    }
-}
-
-fn cycle_walk_vertex(c: LoadCtx&, w: CycleWalk&, v: i64) {
-    if v == 1 {
-        cycle_record(c, w, c.root_tab, c.root_val);
-        return;
-    }
-    cycle_record(c, w, c.nodes[v - 2].tab, c.nodes[v - 2].val);
-}
-
-// acyclic is the check: false when the stored graph holds a cycle.
-fn acyclic(c: LoadCtx&) -> bool {
-    let n = c.node_n + 2;
-    var deg: i64[>..<] = [];
-    var ready: i64[>..<] = [];
-    for _ in n { deg.push(0); }
-    var w = CycleWalk { deg: deg, ready: ready, release: false };
-    var vertices: i64 = 0;
-    for v in n {
-        if !cycle_vertex_at(c, v) { continue; }
-        vertices += 1;
-        cycle_walk_vertex(c, w, v);
-    }
-    w.release = true;
-    for v in n {
-        if cycle_vertex_at(c, v) && w.deg[v] == 0 { w.ready.push(v); }
-    }
-    var released: i64 = 0;
-    while w.ready.len > 0 {
-        let v = w.ready[w.ready.len - 1];
-        w.ready.resize(w.ready.len - 1);
-        released += 1;
-        cycle_walk_vertex(c, w, v);
-    }
-    return released == vertices;
 }
 
 // IdTableBound is the id table's maximum entry count (docs/SPEC-TABLES.md
@@ -1914,6 +1796,407 @@ fn ids_distinct(file: const u8[:], first: i64, n: i64) -> bool {
     return true;
 }
 
+// ---- THE WIRE-ALONE CHECK (docs/SPEC-TABLES.md §6.5, "TWO KINDS OF CONDITION") ----
+//
+// A port of internal/tablewire/wirecheck.go (checkFile): every condition
+// decidable from the wire alone, applied to EVERY byte of a form-1 file before
+// any value is decoded, in fields and records this reader declares and in
+// those it does not. Skipped is not unread (§4): an unknown field is walked by
+// the same rules as a known one, so damage inside it refuses the load.
+//
+// The walk takes no declaration. It checks the framing (lengths, counts,
+// terminators, headers inside their own L, the id table's references,
+// canonical LEB128, a kind no reader can skip, kind 32 with a nonzero L), a
+// bool byte other than 0 or 1, ill-formed text, a non-finite float, a
+// repeated field id or keyed slot in one body, bytes left inside an arm, an
+// array's, a keyed array's or a map's L, the node table's framing, a reserved
+// id out of place, a count past the int32 storage cap and the binary nesting
+// bound. It collects every kind 17 payload in wire order and then judges the
+// pointer graph: an index past the node table, a cycle, a record no pointer
+// reaches, and one blob record named from two slots (§6.5, "THE GRAPH,
+// DEFINED ONCE"). tla/ReadOrder.tla models the split (WireDamage,
+// Unreachable, Cycle and BlobShared are SpecRefuses' wire-alone disjuncts);
+// tla/Framing.tla's header-inside-its-own-L and no-read-on rules are the
+// array, keyed and map checks.
+
+// WireMaxDepth is the binary nesting bound (ir.TableBinaryMaxDepth, §4).
+let WireMaxDepth: i64 = 128;
+
+// WireCheck is the walk's state. fail is 0 or the first LoadRefuse* code the
+// walk met; non_finite is noted apart (§3.3), as the Go walk does, and refuses
+// the read like every other condition. ONE FIELD ID PER BODY: stamp holds, by
+// id-table reference, the scope (a body or a keyed body) that last named it;
+// a scope that names a reference already stamped with its own number is a
+// repeat. undo holds (reference, previous stamp) pairs so a scope that closes
+// gives its parent back the stamps a nested scope overwrote: O(1) per field,
+// whatever the nesting.
+struct WireCheck {
+    data: const u8[:],
+    ids_at: i64,
+    ids_n: i64,
+    announcement: bool,
+    fail: i64,
+    non_finite: bool,
+    depth: i64,
+    serial: i64,
+    stamp: i64[>..<]&,
+    undo: i64[>..<]&,
+    edges: u64[>..<]&,     // every kind 17 payload, in wire order
+    table_off: i64,        // the root body's node-table payload, when present
+    table_end: i64,
+    table_present: bool,
+}
+
+fn wc_damage(w: WireCheck&) -> bool {
+    if w.fail == 0 { w.fail = LoadRefuseWireDamaged; }
+    return false;
+}
+
+fn wc_refuse(w: WireCheck&, code: i64) -> bool {
+    if w.fail == 0 { w.fail = code; }
+    return false;
+}
+
+fn wc_id(w: WireCheck&, ref: u64) -> u64 {
+    return le_at(w.data, w.ids_at + ((ref - 1) as! i64) * 8, 8);
+}
+
+// wc_open is a new scope's number and the undo mark that closes it.
+fn wc_open(w: WireCheck&) -> i64, i64 {
+    w.serial += 1;
+    return w.serial, w.undo.len;
+}
+
+// wc_name stamps reference `ref` with `scope`: false when the scope named it already.
+fn wc_name(w: WireCheck&, ref: u64, scope: i64) -> bool {
+    let k = (ref - 1) as! i64;
+    let prev = w.stamp[k];
+    if prev == scope { return false; }
+    w.undo.push(k);
+    w.undo.push(prev);
+    w.stamp[k] = scope;
+    return true;
+}
+
+fn wc_close(w: WireCheck&, mark: i64) {
+    while w.undo.len > mark {
+        let prev = w.undo[w.undo.len - 1];
+        let k = w.undo[w.undo.len - 2];
+        w.stamp[k] = prev;
+        w.undo.resize(w.undo.len - 2);
+    }
+}
+
+fn wc_fixed_width(kind: u8) -> bool {
+    return (kind >= 1 && kind <= 11) || (kind >= 18 && kind <= 29) || kind == 36;
+}
+
+fn wc_structural(kind: u8) -> bool {
+    return kind == KindTable || kind == KindArray || kind == 15 || kind == 16;
+}
+
+// wc_scalar checks a fixed-width value's bytes: a bool is 0 or 1, and a float
+// is finite (§3.3).
+fn wc_scalar(w: WireCheck&, at: i64, kind: u8) -> bool {
+    if kind == 1 {
+        if w.data[at] > 1 { return wc_damage(w); }
+    } else if kind == 10 {
+        if (le_at(w.data, at, 4) & 0x7F800000) == 0x7F800000 { w.non_finite = true; }
+    } else if kind == 11 {
+        if (le_at(w.data, at, 8) & 0x7FF0000000000000) == 0x7FF0000000000000 { w.non_finite = true; }
+    }
+    return true;
+}
+
+// wc_header reads an array, keyed or map content's element kind and count.
+// THE HEADER LIES INSIDE ITS OWN L (§4): content shorter than the two bytes a
+// header needs, or a count that runs past it, is damage; a count past the
+// int32 storage cap is §2.9's refusal. It answers the element kind, the count
+// and the offset after the header, or ok false.
+fn wc_header(w: WireCheck&, at: i64, end: i64) -> u8, u64, i64, bool {
+    if end - at < 2 { wc_damage(w); return 0, 0, 0, false; }
+    let count, next, ok = leb_at(w.data, at + 1, end);
+    if !ok { wc_damage(w); return 0, 0, 0, false; }
+    if count > 0x7FFFFFFF { wc_refuse(w, LoadRefuseCountOverExtentCap); return 0, 0, 0, false; }
+    return w.data[at], count, next, true;
+}
+
+recursive fn wc_array(w: WireCheck&, at: i64, end: i64) -> bool {
+    let ek, count, first, ok = wc_header(w, at, end);
+    if !ok { return false; }
+    var off = first;
+    var i: u64 = 0;
+    while i < count {
+        off = wc_payload(w, off, end, ek);
+        if off < 0 { return false; }
+        i += 1;
+    }
+    if off != end { return wc_damage(w); }
+    return true;
+}
+
+recursive fn wc_keyed(w: WireCheck&, at: i64, end: i64) -> bool {
+    let ek, count, first, ok = wc_header(w, at, end);
+    if !ok { return false; }
+    let scope, mark = wc_open(w);
+    var off = first;
+    var i: u64 = 0;
+    while i < count {
+        let key, after_key, good = leb_at(w.data, off, end);
+        if !good || key == 0 || key > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_name(w, key, scope) { wc_close(w, mark); return wc_damage(w); }
+        let n, after, framed = leb_at(w.data, after_key, end);
+        if !framed || n > (end - after) as! u64 { wc_close(w, mark); return wc_damage(w); }
+        off = after + (n as! i64);
+        if !wc_content(w, after, off, ek) { wc_close(w, mark); return false; }
+        i += 1;
+    }
+    wc_close(w, mark);
+    if off != end { return wc_damage(w); }
+    return true;
+}
+
+// wc_union walks a union payload in place: the arm reference, and for a set
+// arm its kind byte, its L and the content the L frames. A STRUCTURAL ARM IS
+// A LEVEL (§4). It answers the offset after the payload, or -1.
+recursive fn wc_union(w: WireCheck&, at: i64, end: i64) -> i64 {
+    let ref, next, ok = leb_at(w.data, at, end);
+    if !ok { wc_damage(w); return -1; }
+    if ref == 0 { return next; }
+    if ref > w.ids_n as! u64 || next >= end { wc_damage(w); return -1; }
+    let kind = w.data[next];
+    let n, after, framed = leb_at(w.data, next + 1, end);
+    if !framed || n > (end - after) as! u64 { wc_damage(w); return -1; }
+    let stop = after + (n as! i64);
+    let structural = wc_structural(kind);
+    if structural {
+        if w.depth >= WireMaxDepth { wc_damage(w); return -1; }
+        w.depth += 1;
+    }
+    let good = wc_content(w, after, stop, kind);
+    if structural { w.depth -= 1; }
+    return if good { stop } else { -1 };
+}
+
+// wc_payload walks one SELF-FRAMED payload of `kind` at `at`: what follows a
+// field's kind byte, and an array element. It answers the new offset, or -1.
+recursive fn wc_payload(w: WireCheck&, at: i64, end: i64, kind: u8) -> i64 {
+    if wc_fixed_width(kind) {
+        let width = kind_width(kind);
+        if width > end - at { wc_damage(w); return -1; }
+        if !wc_scalar(w, at, kind) { return -1; }
+        return at + width;
+    }
+    if kind == KindPointer {
+        let index, next, ok = leb_at(w.data, at, end);
+        if !ok { wc_damage(w); return -1; }
+        w.edges.push(index);
+        return next;
+    }
+    if kind == 30 {
+        let ref, next, ok = leb_at(w.data, at, end);
+        if !ok || ref > w.ids_n as! u64 { wc_damage(w); return -1; }
+        return next;
+    }
+    if kind == 15 { return wc_union(w, at, end); }
+    if kind == KindString || kind == 33 || kind == 31 || kind == KindNoPayload
+        || kind == KindTable || kind == KindArray || kind == 16 {
+        let n, next, ok = leb_at(w.data, at, end);
+        if !ok || n > (end - next) as! u64 { wc_damage(w); return -1; }
+        let stop = next + (n as! i64);
+        if !wc_content(w, next, stop, kind) { return -1; }
+        return stop;
+    }
+    wc_damage(w); // a kind no reader can skip
+    return -1;
+}
+
+// wc_content walks a payload already framed by a length, and requires it to be
+// consumed exactly: a field's L, an arm's L, a keyed slot's L.
+recursive fn wc_content(w: WireCheck&, at: i64, end: i64, kind: u8) -> bool {
+    if wc_fixed_width(kind) {
+        if end - at != kind_width(kind) { return wc_damage(w); }
+        return wc_scalar(w, at, kind);
+    }
+    if kind == KindString {
+        if !text_valid(w.data, at, end - at) { return wc_damage(w); }
+        return true;
+    }
+    if kind == 33 {
+        if ((end - at) & 1) != 0 || !wide_valid(w.data, at, (end - at) / 2) { return wc_damage(w); }
+        return true;
+    }
+    if kind == 31 { return true; } // opaque: the one kind whose meaning a reader may not know (§3)
+    if kind == KindNoPayload {
+        if end != at { return wc_damage(w); }
+        return true;
+    }
+    if kind == KindTable || kind == KindArray || kind == 16 {
+        // THE BINARY NESTING BOUND (§4): a framed body is one level deeper
+        // than the payload holding it
+        if w.depth >= WireMaxDepth { return wc_damage(w); }
+        w.depth += 1;
+        var good = false;
+        if kind == KindTable { good = wc_body(w, at, end, false); }
+        else if kind == KindArray { good = wc_array(w, at, end); }
+        else { good = wc_keyed(w, at, end); }
+        w.depth -= 1;
+        return good;
+    }
+    if kind == KindPointer || kind == 30 || kind == 15 {
+        let stop = wc_payload(w, at, end, kind);
+        if stop < 0 { return false; }
+        if stop != end { return wc_damage(w); } // bytes left inside an arm after its payload
+        return true;
+    }
+    return wc_damage(w);
+}
+
+// wc_body walks one table body that must end with its terminator as its LAST
+// byte. `root` admits the node table's reserved id, whose kind 12 payload is
+// kept as the node table instead of being read as text, and, in an
+// announcement, the two reserved announcement ids.
+recursive fn wc_body(w: WireCheck&, at: i64, end: i64, root: bool) -> bool {
+    let scope, mark = wc_open(w);
+    var off = at;
+    loop {
+        let ref, next, ok = leb_at(w.data, off, end);
+        if !ok { wc_close(w, mark); return wc_damage(w); }
+        off = next;
+        if ref == 0 {
+            wc_close(w, mark);
+            if off != end { return wc_damage(w); } // bytes after a body's terminator inside its L
+            return true;
+        }
+        if ref > w.ids_n as! u64 { wc_close(w, mark); return wc_damage(w); }
+        if !wc_name(w, ref, scope) { wc_close(w, mark); return wc_damage(w); } // the same field id twice in one body
+        if off >= end { wc_close(w, mark); return wc_damage(w); }
+        let kind = w.data[off];
+        off += 1;
+        let id = wc_id(w, ref);
+        if id == BuildVersionWireId || id == VocabularyWireId {
+            if !root || !w.announcement { wc_close(w, mark); return wc_damage(w); }
+        } else if id == NodeWireId {
+            if !root || kind != KindString || w.table_present { wc_close(w, mark); return wc_damage(w); }
+            let n, after, framed = leb_at(w.data, off, end);
+            if !framed || n > (end - after) as! u64 { wc_close(w, mark); return wc_damage(w); }
+            w.table_present = true;
+            w.table_off = after;
+            w.table_end = after + (n as! i64);
+            off = w.table_end;
+            continue;
+        }
+        off = wc_payload(w, off, end, kind);
+        if off < 0 { wc_close(w, mark); return false; }
+    }
+}
+
+// wc_graph judges the pointer graph over `first` (each node's first edge in
+// w.edges, with one more entry closing the last node) and `blob` (whether a
+// node is a blob record). Node 0 is the root, node k is record k (wire index
+// k + 1). Every pointer names null, the root or a record; a walk from the
+// root that meets a node whose descent is still open is a cycle; a record the
+// walk never enters is unreachable; and a blob record named from two slots,
+// anywhere in the input, is blob_shared.
+fn wc_graph(w: WireCheck&, first: const i64[:], blob: const bool[:]) -> bool {
+    let n = blob.len;
+    var names: i64[>..<] = [];
+    for _ in n { names.push(0); }
+    for e in w.edges {
+        if e == 0 { continue; }
+        if e - 1 >= n as! u64 { return wc_damage(w); } // a pointer index past the node table
+        names[(e - 1) as! i64] += 1;
+    }
+    for k in n {
+        if blob[k] && names[k] > 1 { return wc_refuse(w, LoadRefuseBlobShared); }
+    }
+    // 0 unvisited, 1 open, 2 closed; the stack holds (node, next edge)
+    var mark: u8[>..<] = [];
+    for _ in n { mark.push(0); }
+    var stack: i64[>..<] = [];
+    stack.push(0);
+    stack.push(first[0]);
+    mark[0] = 1;
+    while stack.len > 0 {
+        let node = stack[stack.len - 2];
+        let next = stack[stack.len - 1];
+        if next == first[node + 1] {
+            mark[node] = 2;
+            stack.resize(stack.len - 2);
+            continue;
+        }
+        stack[stack.len - 1] = next + 1;
+        let e = w.edges[next];
+        if e == 0 { continue; }
+        let t = (e - 1) as! i64;
+        if mark[t] == 1 { return wc_damage(w); } // a cycle
+        if mark[t] == 2 { continue; }
+        mark[t] = 1;
+        stack.push(t);
+        stack.push(first[t]);
+    }
+    for k in 1..n {
+        if mark[k] == 0 { return wc_damage(w); } // a node record no pointer reaches
+    }
+    return true;
+}
+
+// wire_check runs every wire-alone condition over a form-1 file's root body
+// data[at, end) and its id table (ids_n entries at ids_at). It answers 0 or
+// the first refusal's LoadRefuse* code, and whether a float the wire carries
+// is not finite.
+fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, announcement: bool) -> i64, bool {
+    var stamp: i64[>..<] = [];
+    for _ in ids_n { stamp.push(0); }
+    var undo: i64[>..<] = [];
+    var edges: u64[>..<] = [];
+    var w = WireCheck { data: data, ids_at: ids_at, ids_n: ids_n, announcement: announcement, fail: 0,
+                        non_finite: false, depth: 0, serial: 0, stamp: stamp, undo: undo, edges: edges,
+                        table_off: 0, table_end: 0, table_present: false };
+    if !wc_body(w, at, end, true) { return w.fail, w.non_finite; }
+    var first: i64[>..<] = [];
+    var blob: bool[>..<] = [];
+    first.push(0);
+    blob.push(false);
+    if w.table_present {
+        // THE NODE TABLE, READ WHOLE (§3.1): its count, then records of a
+        // type reference and an L, consumed exactly and as many as declared
+        let declared, after, ok = leb_at(data, w.table_off, w.table_end);
+        if !ok { wc_damage(w); return w.fail, w.non_finite; }
+        var off = after;
+        var found: u64 = 0;
+        while off < w.table_end {
+            let ref, next, good = leb_at(data, off, w.table_end);
+            if !good || ref == 0 || ref > ids_n as! u64 { wc_damage(w); return w.fail, w.non_finite; }
+            let len, body, framed = leb_at(data, next, w.table_end);
+            if !framed || len > (w.table_end - body) as! u64 { wc_damage(w); return w.fail, w.non_finite; }
+            let stop = body + (len as! i64);
+            first.push(w.edges.len);
+            let type_id = wc_id(w, ref);
+            if type_id == StringTypeId || type_id == BytesTypeId {
+                // A BLOB RECORD IS ITS BYTES (§2.5, §3.1): the reserved type
+                // ids are known to every reader, so the content rule of a text
+                // blob and the size cap are wire-alone conditions
+                if len > 0xFFFFFFFF { wc_damage(w); return w.fail, w.non_finite; }
+                if type_id == StringTypeId && !text_valid(data, body, stop - body) {
+                    wc_damage(w);
+                    return w.fail, w.non_finite;
+                }
+                blob.push(true);
+            } else {
+                if !wc_body(w, body, stop, false) { return w.fail, w.non_finite; }
+                blob.push(false);
+            }
+            off = stop;
+            found += 1;
+        }
+        if off != w.table_end || found != declared { wc_damage(w); return w.fail, w.non_finite; }
+    }
+    first.push(w.edges.len);
+    wc_graph(w, first, blob);
+    return w.fail, w.non_finite;
+}
+
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
@@ -1957,6 +2240,14 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     let body = Rd { off: 1, end: first };
     let end, terminated = body_extent(c, body);
     if terminated && end != first { report.body_damaged = true; report.damaged = true; return -1; }
+    // THE WIRE-ALONE CHECK (§6.5) over every byte of the file, known fields
+    // and unknown ones, before any value is decoded: a refusal here lands
+    // nothing, and a non-finite float anywhere refuses the read (§3.3)
+    let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);
+    if wfail == LoadRefuseWireDamaged { report.body_damaged = true; report.damaged = true; report.reason = wfail; report.refused = true; return -1; }
+    if wfail == LoadRefuseCountOverExtentCap { report.count_refused = true; report.refused = true; report.reason = wfail; return -1; }
+    if wfail != 0 { report.refused = true; report.blob_shared += 1; report.reason = wfail; return -1; }
+    if wnon { report.non_finite = true; report.reason = LoadRefuseNonFiniteFloat; return -1; }
     c.root_tab = t;
     c.root_val = fresh_record(c, t);
     c.vals[c.root_val].state = ValPresent;
@@ -1974,7 +2265,22 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // other verdict, and the caller discards the partial value
     if report.non_finite { report.reason = LoadRefuseNonFiniteFloat; return -1; }
     // §4: damage in any body invalidates the whole plain or retaining load.
-    if report.body_damaged { return -1; }
+    // The driver's verdict is report.refused, so a malformed body refuses
+    // here, the same reason load_error names, rather than returning a read.
+    if report.body_damaged {
+        report.refused = true;
+        report.reason = LoadRefuseMalformed;
+        return -1;
+    }
+    // THE STRICT READ REFUSES AT THE END OF THE LOAD (docs/SPEC-TABLES.md
+    // §6.5; docs/plans/strict-only.md layer 4): a map key that repeats or
+    // descends is damage (§2.8), and any other condition the walk met — a
+    // value out of range, a kind this reader cannot land, a blob named twice,
+    // a walk that stopped — refuses the whole read by load_error's one reason.
+    // Only unknown, widened and retained fields leave a value.
+    if report.repeated > 0 { report.body_damaged = true; report.damaged = true; report.reason = LoadRefuseWireDamaged; return -1; }
+    let refusal = load_error(report, c.root_val);
+    if refusal != LoadRefuseOk { report.refused = true; report.reason = refusal; return -1; }
     return c.root_val;
 }
 

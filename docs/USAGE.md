@@ -1781,7 +1781,8 @@ opposite shape. Its vocabulary is close to its field count, and the table costs
 48 bytes of a 106-byte message.
 
 **Form byte `2` moves the table one level up, to the connection, and bitpacks
-what is left.** A peer announces its unit's whole vocabulary once, as an
+what is left.** A peer announces its unit's message-closure vocabulary — the
+fixed tables and what they reach by value, and nothing else — once, as an
 ordinary file, and every batch after it is a form byte, a body count, and the
 bodies as one continuous bit stream: references at the width the vocabulary
 needs, values at the widths your declarations state, no kind byte and no length

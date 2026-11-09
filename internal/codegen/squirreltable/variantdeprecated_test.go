@@ -97,7 +97,8 @@ local W = S.require("schema_table_save");
 local J = S.require("schema_table_json");
 local function show(x) { return x == null ? "<null>" : ("" + x); }
 local function counters(r) {
-  return r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," +
+  // the message read's report carries no mismatch or oor: each refuses
+  return r.unknown + "," + (("mismatch" in r) ? r.mismatch : 0) + "," + r.widened + "," + (("oor" in r) ? r.oor : 0) + "," +
     (("repeated" in r) ? r.repeated : 0) + "," + (r.bodyDamaged ? "true" : "false");
 }
 local r = { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };

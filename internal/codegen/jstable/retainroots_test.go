@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -14,10 +13,11 @@ import (
 // TestRetainsUnknownOnEveryRootJavaScript is the retain-unknown core of this
 // leg (docs/SPEC-TABLES.md §6.6): every `retain` row of the conformance
 // manifest is one focused round trip through the generated retaining Load and
-// Save, and each answers the Go reference's own `retained,retain_lost,unknown`
-// counters and save-side loss. The round-trip row is also held to the pinned
-// Go save byte for byte, so a record that moved to another body cannot pass on
-// counters alone. The rows together carry the construct families the RT pair
+// Save: the load reads, the save writes, and every row that pins a save is held
+// to the Go reference's bytes, byte for byte. The retain counters are
+// per-language diagnostics and are not compared (strict-only, layer 3: read,
+// then write; docs/rulings.json refusal-verdict-only). The rows together carry
+// the construct families the RT pair
 // was written for: nested tables, an array of tables, an enum-keyed array, a
 // union's arm body, a map entry's value, a list element, and the exclusion
 // classes (node index, unknown enum variant, unknown union arm, unknown keyed
@@ -59,29 +59,21 @@ if (input.capacity === "short") {
 }
 const root = NodeLoadRetain(wire, store, report);
 if (root === null || report.damaged) { throw new Error("retained load refused: " + JSON.stringify(report)); }
-const retained = report.retained, lost = report.retainLost, unknown = report.unknown;
 const size = NodeMeasureRetain(root, store);
 if (size < 0) { throw new Error("retaining measure refused"); }
 const out = NodeSaveRetain(root, store, report);
 if (out === null) { throw new Error("retaining save refused: " + JSON.stringify(report)); }
-const saveLost = report.retainLost - lost;
-const second = new TableVariableReport();
-const again = NodeSaveRetain(root, store, second);
-if (again === null || again.length !== out.length || second.retainLost !== saveLost) {
-  throw new Error("save is not repeatable");
-}
+if (size !== out.length) { throw new Error("measure " + size + " is not the save's " + out.length + " bytes"); }
+const again = NodeSaveRetain(root, store, new TableVariableReport());
+if (again === null || again.length !== out.length) { throw new Error("save is not repeatable"); }
 for (let i = 0; i < out.length; i++) { if (again[i] !== out[i]) { throw new Error("save is not repeatable"); } }
-process.stdout.write(JSON.stringify({
-  counters: retained + "," + lost + "," + unknown,
-  saveLost: saveLost,
-  hex: Buffer.from(out).toString("hex"),
-}));
+process.stdout.write(JSON.stringify({ hex: Buffer.from(out).toString("hex") }));
 `
 	if err := os.WriteFile(probe, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	inputPath := filepath.Join(dir, "input.json")
-	run := func(t *testing.T, wire []byte, capacity, ids string) (string, int, []byte) {
+	run := func(t *testing.T, wire []byte, capacity, ids string) []byte {
 		t.Helper()
 		payload, err := json.Marshal(map[string]any{
 			"wire": hex.EncodeToString(wire), "capacity": capacity, "ids": ids,
@@ -99,9 +91,7 @@ process.stdout.write(JSON.stringify({
 			t.Fatalf("node retain probe failed: %v\n%s", err, out)
 		}
 		var answer struct {
-			Counters string `json:"counters"`
-			SaveLost int    `json:"saveLost"`
-			Hex      string `json:"hex"`
+			Hex string `json:"hex"`
 		}
 		if err := json.Unmarshal(out, &answer); err != nil {
 			t.Fatalf("decode node answer %q: %v", out, err)
@@ -110,7 +100,7 @@ process.stdout.write(JSON.stringify({
 		if err != nil {
 			t.Fatalf("decode saved hex: %v", err)
 		}
-		return answer.Counters, answer.SaveLost, saved
+		return saved
 	}
 
 	manifest, err := os.ReadFile(filepath.Join(repo, "testdata/conformance/tables/MANIFEST.txt"))
@@ -127,9 +117,9 @@ process.stdout.write(JSON.stringify({
 		if f[0] != "retain" {
 			continue
 		}
-		// retain <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <saves>
-		if len(f) != 10 {
-			t.Fatalf("%s: retain row has %d fields", f[1], len(f))
+		// retain <case> <unit> <root> <wire> <capacity> <ids> <saves|->
+		if len(f) != 8 {
+			t.Fatalf("%s: retain row has %d fields, want 8", f[1], len(f))
 		}
 		if f[2] != "tblrt1" || f[3] != "Node" {
 			continue
@@ -140,22 +130,12 @@ process.stdout.write(JSON.stringify({
 			if err != nil {
 				t.Fatal(err)
 			}
-			gotCounters, gotSaveLost, got := run(t, wire, f[5], f[6])
-			if gotCounters != f[7] {
-				t.Fatalf("counters: JS=%s, Go oracle=%s", gotCounters, f[7])
-			}
-			wantSaveLost, err := strconv.Atoi(f[8])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if gotSaveLost != wantSaveLost {
-				t.Fatalf("save retain_lost: JS=%d, Go oracle=%d", gotSaveLost, wantSaveLost)
-			}
-			if f[9] == "-" {
+			got := run(t, wire, f[5], f[6])
+			if f[7] == "-" {
 				return
 			}
 			var want []byte
-			for path := range strings.SplitSeq(f[9], ",") {
+			for path := range strings.SplitSeq(f[7], ",") {
 				pinned, err := os.ReadFile(filepath.Join(repo, path))
 				if err != nil {
 					t.Fatal(err)

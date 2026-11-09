@@ -113,7 +113,7 @@ func dropLuaFixed49Row(overlay, id string) string {
 func validateLuaFixed49Overlay(root, overlay string) error {
 	suiteSrc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(luaFixed49SuiteFile)))
 	if err != nil {
-		return fmt.Errorf("read %s: %v", luaFixed49SuiteFile, err)
+		return fmt.Errorf("read %s: %w", luaFixed49SuiteFile, err)
 	}
 	defined := map[string]bool{}
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(suiteSrc), -1) {

@@ -264,9 +264,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		}
 		encode = func() ([]byte, error) { return tablewire.EncodeMessages(r.model, batch) }
 	}
-	if !r.variable && !r.message && !r.builder {
-		// Region decode on fixed or variable checks framing first.
-	}
+	// Region decode on fixed or variable checks framing first.
 	if r.variable && !r.message && !r.builder {
 		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
 			ans.report = Counts{Refused: true}

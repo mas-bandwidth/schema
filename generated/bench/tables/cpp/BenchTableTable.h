@@ -7006,7 +7006,11 @@ inline bool TableEntityLoadMessageBody( TableBitReader & r, const TableVocabular
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -7950,7 +7954,11 @@ inline bool TableStatLoadMessageBody( TableBitReader & r, const TableVocabulary 
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -10283,7 +10291,11 @@ inline bool TableMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -11855,7 +11867,11 @@ inline bool TableHitEventLoadMessageBody( TableBitReader & r, const TableVocabul
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -12415,7 +12431,11 @@ inline bool TableChatEventLoadMessageBody( TableBitReader & r, const TableVocabu
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -12911,7 +12931,11 @@ inline bool TablePickupEventLoadMessageBody( TableBitReader & r, const TableVoca
     {
         uint64_t ref = 0;
         if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
         if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS

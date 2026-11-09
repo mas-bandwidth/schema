@@ -151,14 +151,14 @@ printf 'dart %s/%s/conformance-dart\n' "$root" "$out" > "$out/drivers.txt"
 if [ "$mode" = wire ]; then
     # the differential, not the matrix: seed 1, no random pass, the enumerated
     # mutants alone, which are the same at every seed
-    if build/conformance-harness wire-fuzz --builder --finite-owed tables-finite/dart --driver "$out/conformance-dart wire-fuzz" --seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
+    if build/conformance-harness wire-fuzz --builder --driver "$out/conformance-dart wire-fuzz" --seed 1 --n 0 --failed "$out/failed.bin" > "$out/log" 2>&1; then
         cat "$out/log"
         echo "NEGATIVE CONTROL FAILED: $mode ($sabotage) left the dart wire fuzzer green" >&2
         exit 1
     fi
-    grep -Fq 'harness: FAILED' "$out/log" && grep -Fq 'the report differs' "$out/log" || { cat "$out/log"; echo "the wire fuzzer went red for some other reason" >&2; exit 1; }
+    grep -Fq 'harness: FAILED' "$out/log" && grep -Eq 'the report differs|read acceptance differs' "$out/log" || { cat "$out/log"; echo "the wire fuzzer went red for some other reason" >&2; exit 1; }
     if grep -Eq 'leg died|did not answer' "$out/log"; then cat "$out/log"; exit 1; fi
-    grep -F 'the report differs' "$out/log" | head -1
+    grep -E 'the report differs|read acceptance differs' "$out/log" | head -1
     echo "Dart wire negative control: the emitter sabotage ($sabotage) is detected by the wire fuzzer's report comparison"
     exit 0
 fi

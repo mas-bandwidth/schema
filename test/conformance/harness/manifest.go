@@ -361,14 +361,18 @@ func parseSevenFieldReport(text string) (u, k, w, c, d int, m bool, verdict stri
 }
 
 // ReadManifest parses path and fills each Instance's JSON path under jsonDir.
-func ReadManifest(path, jsonDir string) (*Manifest, error) {
+func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil && err == nil {
+			m, err = nil, cerr
+		}
+	}()
 
-	m := &Manifest{}
+	m = &Manifest{}
 	lineNo := 0
 	scan := bufio.NewScanner(file)
 	for scan.Scan() {
