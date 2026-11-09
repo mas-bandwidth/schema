@@ -716,11 +716,11 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("#ifndef %s\n#define %s\n", guard, guard)
 	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s:\n            :None: ref = 0;\n            return true;\n", e.Name)
+	g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
 	for i, v := range e.Variants {
 		// The switch chooses the variant at runtime, but each arm names one
 		// constant ID and can use that ID's known ordinal like a field header.
-		g.pf("        case %[1]s:\n            :%[2]s: ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+		g.pf("        case %[1]s::%[2]s:\n            ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
@@ -731,9 +731,9 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		// and the overload is what lets one codec serve both families.
 		g.pf("inline bool TableEnumRef( TableRetainIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
 		g.pf("    switch ( value )\n    {\n")
-		g.pf("        case %[1]s:\n            :None: ref = 0;\n            return true;\n", e.Name)
+		g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
 		for i, v := range e.Variants {
-			g.pf("        case %[1]s:\n            :%[2]s: ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
+			g.pf("        case %[1]s::%[2]s:\n            ref = %[3]s;\n            return true;\n", e.Name, v, g.wireRef(ir.TableWireId(e.VariantWireName(i))))
 		}
 		g.pf("        default: return false;\n")
 		g.pf("    }\n}\n")
@@ -750,17 +750,17 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	// (docs/SPEC-TABLES.md §3.3)
 	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s:\n            :None: slot = 0;\n            return true;\n", e.Name)
+	g.pf("        case %[1]s::None:\n            slot = 0;\n            return true;\n", e.Name)
 	for _, v := range e.Variants {
-		g.pf("        case %[1]s:\n            :%[2]s: slot = %[3]d;\n            return true;\n", e.Name, v, g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(v)}.Key()])
+		g.pf("        case %[1]s::%[2]s:\n            slot = %[3]d;\n            return true;\n", e.Name, v, g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(v)}.Key()])
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
 	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
-	g.pf("        case %[1]s:\n            :None: id = 0;\n            return true;\n", e.Name)
+	g.pf("        case %[1]s::None:\n            id = 0;\n            return true;\n", e.Name)
 	for i, v := range e.Variants {
-		g.pf("        case %[1]s:\n            :%[2]s: id = 0x%016[3]xull;\n            return true;\n", e.Name, v, ir.TableWireId(e.VariantWireName(i)))
+		g.pf("        case %[1]s::%[2]s:\n            id = 0x%016[3]xull;\n            return true;\n", e.Name, v, ir.TableWireId(e.VariantWireName(i)))
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
