@@ -117,6 +117,33 @@ func stripWidenArms(src string) string {
 const matchedWidthWireTest = `package probe
 import "testing"
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func finish(w *TableWriter) []byte {
 	w.Put8(0)
 	w.Trailer()
@@ -136,7 +163,7 @@ func TestMatchedWidthRoundTrip(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
+	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 }
@@ -155,7 +182,7 @@ func TestWidenArmReadsWireWidth(t *testing.T) {
 	got := finish(&w)
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, got, &report) || report.Widened != 2 || report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || loaded.A != 9 || loaded.B != 7 {
+	if !rootForm1(&loaded, got, &report) || report.Widened != 2 || report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || loaded.A != 9 || loaded.B != 7 {
 		t.Fatalf("widen: a=%d b=%d report=%+v", loaded.A, loaded.B, report)
 	}
 }
@@ -171,7 +198,7 @@ func TestMatchedWidthMismatchRefuses(t *testing.T) {
 	got := finish(&w)
 	var loaded Root
 	var report TableReport
-	if RootLoad(&loaded, got, &report) || !report.Refused() || report.Widened != 0 || loaded.B != 0 {
+	if rootForm1(&loaded, got, &report) || !report.Refused() || report.Widened != 0 || loaded.B != 0 {
 		t.Fatalf("mismatch: b=%d report=%+v", loaded.B, report)
 	}
 }

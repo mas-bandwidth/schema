@@ -339,9 +339,10 @@ func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
 	}
 }
 
-// GunnerSettings also carries the FIXED form (form 3): GunnerSettingsFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// GunnerSettings is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// GunnerSettingsFixedLoad reads form 3.
 // GunnerSettingsLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -353,6 +354,11 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		GunnerSettingsReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -996,9 +1002,10 @@ func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
 	}
 }
 
-// ShipEntry also carries the FIXED form (form 3): ShipEntryFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// ShipEntry is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// ShipEntryFixedLoad reads form 3.
 // ShipEntryLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -1010,6 +1017,11 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		ShipEntryReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1823,9 +1835,10 @@ func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
 	}
 }
 
-// GlobalSettings also carries the FIXED form (form 3): GlobalSettingsFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// GlobalSettings is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// GlobalSettingsFixedLoad reads form 3.
 // GlobalSettingsLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -1837,6 +1850,11 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		GlobalSettingsReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -3153,9 +3171,10 @@ func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
 	}
 }
 
-// PackConfig also carries the FIXED form (form 3): PackConfigFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// PackConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// PackConfigFixedLoad reads form 3.
 // PackConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -3167,6 +3186,11 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		PackConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

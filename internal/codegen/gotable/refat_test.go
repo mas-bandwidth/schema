@@ -88,6 +88,33 @@ func TestEnumWriterUsesRefAt(t *testing.T) {
 const refAtWireTest = `package probe
 import ("bytes"; "encoding/binary"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestRefAtFirstUseAndElision(t *testing.T) {
 	var value, loaded Root
 	value.N = 9
@@ -102,7 +129,7 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.N != 9 || loaded.ChildrenCount != 2 || loaded.Children[0].X != 0 || loaded.Children[1].X != 3 {
+	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.N != 9 || loaded.ChildrenCount != 2 || loaded.Children[0].X != 0 || loaded.Children[1].X != 3 {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 
@@ -159,6 +186,33 @@ func trailerIds(wire []byte) []uint64 {
 const refAtSharedIdTest = `package probe
 import ("encoding/binary"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestSharedIdRoundTrip(t *testing.T) {
 	var value, loaded Root
 	value.Banks[0].Alpha = 7
@@ -172,7 +226,7 @@ func TestSharedIdRoundTrip(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || loaded.Banks[0].Alpha != 7 || loaded.N != 1 {
+	if !rootForm1(&loaded, wire, &report) || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || loaded.Banks[0].Alpha != 7 || loaded.N != 1 {
 		t.Fatalf("alpha field gone: n=%d loaded.alpha=%d report=%+v", n, loaded.Banks[0].Alpha, report)
 	}
 	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])

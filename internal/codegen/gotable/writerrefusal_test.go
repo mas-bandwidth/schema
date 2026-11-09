@@ -184,6 +184,33 @@ fixed table Host {
 `, `package probe
 import ("testing")
 
+
+func hostForm1(value *Host, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if HostLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !HostLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		HostReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func good() Host {
 	var v Host
 	HostReset(&v)
@@ -218,7 +245,7 @@ func TestFixedWriterRefuses(t *testing.T) {
 		vn := HostSave(&v, vb)
 		var vgot Host
 		var vr TableReport
-		if vn <= 0 || !HostLoad(&vgot, vb[:vn], &vr) || vr != (TableReport{}) || string(vgot.Name[:vgot.NameLength]) != name {
+		if vn <= 0 || !hostForm1(&vgot, vb[:vn], &vr) || vr != (TableReport{}) || string(vgot.Name[:vgot.NameLength]) != name {
 			t.Fatalf("lawful form-1 %q did not reload clean: %d %+v %+v", name, vn, vgot, vr)
 		}
 	}

@@ -50,6 +50,42 @@ const highJSON = %q
 const lowPinned = %q
 const highPinned = %q
 
+
+func loadoutForm1(value *LoadoutConfig, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if LoadoutConfigLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !LoadoutConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		LoadoutConfigReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+
+func loadoutForm1Strict(wire []byte) (*LoadoutConfig, error) {
+	value := &LoadoutConfig{}
+	var report TableReport
+	if !loadoutForm1(value, wire, &report) {
+		return nil, report.Err()
+	}
+	return value, nil
+}
 func refSortBuild(t *testing.T, text string) []byte {
 	t.Helper()
 	var v LoadoutConfig
@@ -106,10 +142,10 @@ func TestGoWireEnumVariantRefSort(t *testing.T) {
 			}
 			// The unmutated sample reads clean and re-encodes byte for byte.
 			var clean TableReport
-			if !LoadoutConfigLoad(new(LoadoutConfig), base, &clean) || clean != (TableReport{}) {
+			if !loadoutForm1(new(LoadoutConfig), base, &clean) || clean != (TableReport{}) {
 				t.Fatalf("clean tolerant read: %%+v", clean)
 			}
-			cleanValue, err := LoadoutConfigReadStrict(base)
+			cleanValue, err := loadoutForm1Strict(base)
 			if err != nil || cleanValue == nil {
 				t.Fatalf("clean strict read: %%v", err)
 			}
@@ -130,13 +166,13 @@ func TestGoWireEnumVariantRefSort(t *testing.T) {
 				t.Fatalf("crasher bytes %%s do not match the pinned literal hex", got)
 			}
 			var silent TableReport
-			if !LoadoutConfigLoad(new(LoadoutConfig), none, &silent) {
+			if !loadoutForm1(new(LoadoutConfig), none, &silent) {
 				t.Fatalf("None reference: read stopped, %%+v", silent)
 			}
 			if silent != (TableReport{}) {
 				t.Fatalf("None reference: report %%+v, want the silent class", silent)
 			}
-			noneValue, err := LoadoutConfigReadStrict(none)
+			noneValue, err := loadoutForm1Strict(none)
 			if err != nil || noneValue == nil {
 				t.Fatalf("None reference strict read: %%v", err)
 			}
@@ -166,13 +202,13 @@ func TestGoWireEnumVariantRefSort(t *testing.T) {
 			other := bytes.Clone(base)
 			other[3] = 0x03
 			var unknown TableReport
-			if !LoadoutConfigLoad(new(LoadoutConfig), other, &unknown) {
+			if !loadoutForm1(new(LoadoutConfig), other, &unknown) {
 				t.Fatalf("entry-3 reference: read stopped, %%+v", unknown)
 			}
 			if unknown.Unknown != 1 || unknown != (TableReport{Unknown: 1}) {
 				t.Fatalf("entry-3 reference report %%+v, want exactly one unknown", unknown)
 			}
-			otherValue, err := LoadoutConfigReadStrict(other)
+			otherValue, err := loadoutForm1Strict(other)
 			if err != nil || otherValue == nil {
 				t.Fatalf("entry-3 reference strict read: %%v", err)
 			}
@@ -184,10 +220,10 @@ func TestGoWireEnumVariantRefSort(t *testing.T) {
 			over := bytes.Clone(base)
 			over[3] = refSortEntryCount(over) + 1
 			var overReport TableReport
-			if LoadoutConfigLoad(new(LoadoutConfig), over, &overReport) {
+			if loadoutForm1(new(LoadoutConfig), over, &overReport) {
 				t.Fatalf("reference past the table opened: %%+v", overReport)
 			}
-			if overValue, err := LoadoutConfigReadStrict(over); overValue != nil || !errors.Is(err, TableRefuseWireDamaged) {
+			if overValue, err := loadoutForm1Strict(over); overValue != nil || !errors.Is(err, TableRefuseWireDamaged) {
 				t.Fatalf("reference past the table: value %%v err %%v, want wire_damaged", overValue, err)
 			}
 		})

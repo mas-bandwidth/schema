@@ -79,6 +79,33 @@ fixed table Root {
 }
 `, `package probe
 import("testing";"encoding/binary";"hash/fnv";"bytes")
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestDefaults(t *testing.T) {
  var v Root; RootReset(&v)
  if string(v.Title[:v.TitleLength]) != "default" || string(v.Tag[:v.TagLength]) != "ab" || v.Caps != 3 || string(v.Badge.Title[:v.Badge.TitleLength]) != "fresh" { t.Fatalf("defaults: %+v",v) }
@@ -87,11 +114,11 @@ func TestDefaults(t *testing.T) {
  v.Grades[1]=GradeGold
  b:=make([]byte,RootMeasure(&v));if RootSave(&v,b)!=int64(len(b)){t.Fatal("save")}
  var got Root;var r TableReport
- if !RootLoad(&got,b,&r)||r!=(TableReport{})||!got.ValuesPresent||got.ValuesCount!=0||!got.GradesPresent||got.Grades[1]!=GradeGold||got.TitleLength!=0||got.TagLength!=0{t.Fatalf("load: %+v %+v",got,r)}
+ if !rootForm1(&got,b,&r)||r!=(TableReport{})||!got.ValuesPresent||got.ValuesCount!=0||!got.GradesPresent||got.Grades[1]!=GradeGold||got.TitleLength!=0||got.TagLength!=0{t.Fatalf("load: %+v %+v",got,r)}
  h:=fnv.New64a();h.Write([]byte("OldGold"));needle:=binary.LittleEndian.AppendUint64(nil,h.Sum64());if !bytes.Contains(b,needle){t.Fatal("renamed variant lost its id")}
  text:=[]byte("{\"values\":[],\"grades\":[\"Gold\",\"None\"]}")
  r=TableReport{};if !RootFromJSON(&got,text,&r)||r!=(TableReport{})||!got.ValuesPresent||!got.GradesPresent {t.Fatalf("optional text: %+v %+v",got,r)}
- if n:=testing.AllocsPerRun(20,func(){RootMeasure(&v);RootSave(&v,b);RootLoad(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
+ if n:=testing.AllocsPerRun(20,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
 }
 `)
 }
@@ -127,6 +154,33 @@ fixed table Root {
 }
 `, `package probe
 import("testing";"bytes";"encoding/binary";"hash/fnv")
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestArms(t *testing.T) {
  texts:=[]string{
  "{\"value\":{\"tally\":32}}",
@@ -147,11 +201,11 @@ func TestArms(t *testing.T) {
   if !RootFromJSON(&v,[]byte(text),&r)||r!=(TableReport{}) {t.Fatalf("json %s: %+v",text,r)}
   n:=RootMeasure(&v);if n<0 {t.Fatalf("measure %s",text)}
   b:=make([]byte,n);if RootSave(&v,b)!=n {t.Fatalf("save %s",text)}
-  if !RootLoad(&got,b,&r)||r!=(TableReport{}) {t.Fatalf("load %s: %+v",text,r)}
+  if !rootForm1(&got,b,&r)||r!=(TableReport{}) {t.Fatalf("load %s: %+v",text,r)}
   a,c:=make([]byte,4096),make([]byte,4096)
   na,nc:=RootToJSON(&v,a),RootToJSON(&got,c)
   if na<0||nc!=na||!bytes.Equal(a[:na],c[:nc]) {t.Fatalf("roundtrip %s:\n%s\n%s",text,a[:max(na,0)],c[:max(nc,0)])}
-  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);RootLoad(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
+  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
  }
 }
 // The element resets after its arm reference, before its kind and L. A
@@ -161,7 +215,7 @@ func TestRepeatedUnionElement(t *testing.T) {
  for _,name:=range []string{"pinned","n"} {h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())}
  wire=binary.LittleEndian.AppendUint64(wire,2)
  var v Root;var r TableReport
- if RootLoad(&v,wire,&r)||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||v.Pinned[0].Type!=InnerTypeNone {t.Fatalf("stale element: damage must discard the whole load: %+v %+v",v.Pinned,r)}
+ if rootForm1(&v,wire,&r)||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||v.Pinned[0].Type!=InnerTypeNone {t.Fatalf("stale element: damage must discard the whole load: %+v %+v",v.Pinned,r)}
 }
 `)
 }
@@ -226,14 +280,41 @@ func TestWideValues(t *testing.T) {
  }
  `, `package probe
  import("testing";"bytes")
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
  func TestWide(t *testing.T) {
   var v,got Root;var r TableReport
   text:=[]byte("{\"n\":-170141183460469231731687303715884105728,\"u\":340282366920938463463374607431768211455,\"q\":-0.25,\"w\":-0.5,\"many\":[18446744073709551616]}")
   if !RootFromJSON(&v,text,&r)||r!=(TableReport{}) {t.Fatalf("json %+v",r)}
-  n:=RootMeasure(&v);b:=make([]byte,n);if RootSave(&v,b)!=n||!RootLoad(&got,b,&r)||got!=v||r!=(TableReport{}) {t.Fatalf("roundtrip %+v %+v %+v",v,got,r)}
+  n:=RootMeasure(&v);b:=make([]byte,n);if RootSave(&v,b)!=n||!rootForm1(&got,b,&r)||got!=v||r!=(TableReport{}) {t.Fatalf("roundtrip %+v %+v %+v",v,got,r)}
   a,c:=make([]byte,2048),make([]byte,2048);na,nc:=RootToJSON(&v,a),RootToJSON(&got,c);if na<0||nc!=na||!bytes.Equal(a[:na],c[:nc]) {t.Fatal("text mismatch")}
   for _,want:=range [][]byte{[]byte("-170141183460469231731687303715884105728"),[]byte("340282366920938463463374607431768211455"),[]byte("-0.25"),[]byte("-0.5"),[]byte("18446744073709551616")} {if !bytes.Contains(a[:na],want){t.Fatalf("lost precision: %s",a[:na])}}
-  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);RootLoad(&got,b,&r);RootToJSON(&v,a);RootFromJSON(&got,text,&r)});n!=0 {t.Fatalf("allocations %v",n)}
+  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r);RootToJSON(&v,a);RootFromJSON(&got,text,&r)});n!=0 {t.Fatalf("allocations %v",n)}
  }
  `)
 }

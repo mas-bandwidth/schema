@@ -56,6 +56,7 @@ table Var
 const fsProbe = `package probe
 
 import (
+	"encoding/base64"
 	"bytes"
 	"errors"
 	"math"
@@ -88,6 +89,71 @@ type fsBits struct {
 	xn                       int32
 }
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+
+func rootForm1Strict(wire []byte) (*Root, error) {
+	value := &Root{}
+	var report TableReport
+	if !rootForm1(value, wire, &report) {
+		return nil, report.Err()
+	}
+	return value, nil
+}
+
+func rootForm1Text(text string, report *TableReport) (*Root, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v Root
+	var read TableReport
+	ok := rootForm1(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
 func (c fsCase) want(arm bool) fsBits {
 	w := fsBits{a: c.b32, b: c.b64, x0: c.b64, x1: c.b64, x2: c.b64, y0: c.b64, y1: c.b64, xn: 3}
 	if arm {
@@ -275,12 +341,12 @@ func TestRoot(t *testing.T) {
 		}
 		var got Root
 		var rep TableReport
-		if !RootLoad(&got, wire, &rep) {
+		if !rootForm1(&got, wire, &rep) {
 			t.Fatalf("root %s: load %+v", c.name, rep)
 		}
 		landed(t, "root wire", c, rootBits(&got), want)
 		clean(t, "root wire", c, &rep)
-		strict, err := RootReadStrict(wire)
+		strict, err := rootForm1Strict(wire)
 		if err != nil {
 			t.Fatalf("root %s: strict read %v", c.name, err)
 		}
@@ -289,7 +355,7 @@ func TestRoot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("root %s: SaveText %v", c.name, err)
 		}
-		if _, err := RootLoadText(text, nil); err != nil {
+		if _, err := rootForm1Text(text, nil); err != nil {
 			t.Fatalf("root %s: LoadText %v", c.name, err)
 		}
 		// Every writer writes what a read accepted, and the text lands the
@@ -423,8 +489,8 @@ func TestFlippedPayload(t *testing.T) {
 			vwire = flipped(t, vwire, from, to)
 			var got Root
 			var rep TableReport
-			ok := RootLoad(&got, wire, &rep)
-			_, strictErr := RootReadStrict(wire)
+			ok := rootForm1(&got, wire, &rep)
+			_, strictErr := rootForm1Strict(wire)
 			vstrict, vErr := VarReadStrict(vwire)
 			var b VarBuilder
 			b.Init()
@@ -462,7 +528,7 @@ func TestFlippedPayload(t *testing.T) {
 	RootSave(&r, wire)
 	var got Root
 	var rep TableReport
-	ok := RootLoad(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
+	ok := rootForm1(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
 	refused(t, "union arm", ok, &rep, "Shape.r")
 }
 
@@ -507,7 +573,7 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	clean(t, "text by hand", fsCases[1], &rep)
 	wire := make([]byte, RootMeasure(&got))
 	RootSave(&got, wire)
-	s, err := RootReadStrict(wire)
+	s, err := rootForm1Strict(wire)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,6 +751,42 @@ import (
 	"testing"
 )
 
+
+func keyedForm1(value *Keyed, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if KeyedLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !KeyedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		KeyedReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+
+func keyedForm1Strict(wire []byte) (*Keyed, error) {
+	value := &Keyed{}
+	var report TableReport
+	if !keyedForm1(value, wire, &report) {
+		return nil, report.Err()
+	}
+	return value, nil
+}
 func TestKeyed(t *testing.T) {
 	var empty Keyed
 	KeyedReset(&empty)
@@ -720,10 +822,10 @@ func TestKeyed(t *testing.T) {
 			}
 			var got Keyed
 			var rep TableReport
-			if KeyedLoad(&got, wire, &rep) || rep.Err() != TableRefuseNonFiniteFloat || math.Float64bits(got.Ks[1]) != 0 {
+			if keyedForm1(&got, wire, &rep) || rep.Err() != TableRefuseNonFiniteFloat || math.Float64bits(got.Ks[1]) != 0 {
 				t.Errorf("keyed %s: the read %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
 			}
-			if _, err := KeyedReadStrict(wire); !errors.Is(err, TableRefuseNonFiniteFloat) {
+			if _, err := keyedForm1Strict(wire); !errors.Is(err, TableRefuseNonFiniteFloat) {
 				t.Errorf("keyed %s: strict %v", c.name, err)
 			}
 			continue
@@ -735,10 +837,10 @@ func TestKeyed(t *testing.T) {
 		}
 		var got Keyed
 		var rep TableReport
-		if !KeyedLoad(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
+		if !keyedForm1(&got, wire, &rep) || math.Float64bits(got.Ks[1]) != c.b64 || math.Float64bits(got.Ks[0]) != 0 {
 			t.Errorf("keyed %s: landed %#x %#x %+v", c.name, math.Float64bits(got.Ks[0]), math.Float64bits(got.Ks[1]), rep)
 		}
-		if _, err := KeyedReadStrict(wire); err != nil {
+		if _, err := keyedForm1Strict(wire); err != nil {
 			t.Errorf("keyed %s: strict %v", c.name, err)
 		}
 	}
@@ -776,6 +878,33 @@ import (
 	"testing"
 )
 
+
+func negForm1(value *Neg, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if NegLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !NegLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		NegReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestNegativeZeroDefault(t *testing.T) {
 	var r Neg
 	NegReset(&r)
@@ -820,7 +949,7 @@ func TestNegativeZeroDefault(t *testing.T) {
 		}
 		var got Neg
 		var rep TableReport
-		if !NegLoad(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 || math.Float64bits(got.B) != c.b64 || rep.Err() != nil {
+		if !negForm1(&got, wire, &rep) || math.Float32bits(got.A) != c.b32 || math.Float64bits(got.B) != c.b64 || rep.Err() != nil {
 			t.Errorf("fixed %s: landed %#x %#x %+v", c.name, math.Float32bits(got.A), math.Float64bits(got.B), rep)
 		}
 		var vv NegV

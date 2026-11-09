@@ -167,14 +167,14 @@ func TestStrict(t *testing.T) {
  want = binary.LittleEndian.AppendUint64(want, uint64(len(ids)))
  var loaded Root
  var report TableReport
- if !RootLoad(&loaded, want, &report) || report != (TableReport{}) || loaded != value {
+ if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded != value {
   t.Fatalf("whole value must read: %+v", report)
  }
  // a body left over after a clean open is damage: the verdict is TableOpenDamaged
  var d Root
  report = TableReport{}
  wire := []byte{1,0,0,0,0,0,0,0,0,0,0}
- if RootLoad(&d, wire, &report) || report.Verdict != TableOpenDamaged || report.Refusal.Error() != "wire_damaged" {
+ if rootForm1(&d, wire, &report) || report.Verdict != TableOpenDamaged || report.Refusal.Error() != "wire_damaged" {
   t.Fatalf("damage must refuse with the TableOpenDamaged verdict: %+v", report)
  }
  // a fixed-form file is not this variable entry point's file
@@ -184,6 +184,27 @@ func TestStrict(t *testing.T) {
  }
 }
 func hash(s string) uint64 { h := fnv.New64a(); h.Write([]byte(s)); return h.Sum64() }
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	if len(data) > 0 && data[0] == 1 {
+		var gate TableReport
+		if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+			if report != nil { *report = gate }
+			return false
+		}
+	}
+	out := report
+	if out == nil { out = &TableReport{} } else { *out = TableReport{} }
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		if verdict == TableOpenOk { out.Verdict = TableOpenDamaged }
+		tableRefused(out)
+		RootReset(value)
+		if report != nil { *report = *out }
+		return false
+	}
+	return true
+}
 `
 		out, err := vtCellsRun(t, schema.String(), src, nil)
 		if err != nil {
@@ -241,13 +262,33 @@ fixed table Root { value Value
 `
 		src := `package probe
 import("testing";"encoding/binary";"hash/fnv")
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	if len(data) > 0 && data[0] == 1 {
+		var gate TableReport
+		if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+			if report != nil { *report = gate }
+			return false
+		}
+	}
+	out := report
+	if out == nil { out = &TableReport{} } else { *out = TableReport{} }
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		if verdict == TableOpenOk { out.Verdict = TableOpenDamaged }
+		tableRefused(out)
+		RootReset(value)
+		if report != nil { *report = *out }
+		return false
+	}
+	return true
+}
 func TestStrict(t *testing.T) {
  wire:=[]byte{1,1,14,9,15,1,2,4,4,7,0,0,0,1,14,5,15,1,2,4,127,0}
  for _,name:=range []string{"pinned","n"} {h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())}
  wire=binary.LittleEndian.AppendUint64(wire,2)
  var v Root
  var r TableReport
- if RootLoad(&v,wire,&r)||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||v.Pinned[0].Type!=InnerTypeNone {
+ if rootForm1(&v,wire,&r)||!(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||v.Pinned[0].Type!=InnerTypeNone {
   t.Fatalf("a repeated union must refuse and reset the element: %+v %+v",v.Pinned,r)
  }
  // the same union written once reads whole
@@ -257,7 +298,7 @@ func TestStrict(t *testing.T) {
   t.Fatalf("json: %+v", r)
  }
  n:=RootMeasure(&good); b:=make([]byte,n)
- if RootSave(&good,b)!=n || !RootLoad(&good,b,&r) || r.Err()!=nil {
+ if RootSave(&good,b)!=n || !rootForm1(&good,b,&r) || r.Err()!=nil {
   t.Fatalf("single union reads whole: %+v", r)
  }
 }
@@ -369,6 +410,7 @@ func TestVerdict(t *testing.T) {
 `
 		out, err := vtCellsRun(t, schema, src, func(files map[string][]byte) {
 			vtCellsSabotage(t, files, "verdict stamping",
+				[2]string{"len(data) > 0 && data[0] == 1", "false"},
 				[2]string{"read.Verdict = TableOpenDamaged", "read.Verdict = TableOpenOk"})
 		})
 		vtCellsRequireRed(t, "the TableOpenDamaged verdict stamping out", out, err, "verdict:")
@@ -413,6 +455,26 @@ fixed table Root { value Value
 `
 		src := `package probe
 import("testing";"encoding/binary";"hash/fnv")
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	if len(data) > 0 && data[0] == 1 {
+		var gate TableReport
+		if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+			if report != nil { *report = gate }
+			return false
+		}
+	}
+	out := report
+	if out == nil { out = &TableReport{} } else { *out = TableReport{} }
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		if verdict == TableOpenOk { out.Verdict = TableOpenDamaged }
+		tableRefused(out)
+		RootReset(value)
+		if report != nil { *report = *out }
+		return false
+	}
+	return true
+}
 func TestUnion(t *testing.T) {
  wire:=[]byte{1,1,14,9,15,1,2,4,4,7,0,0,0,1,14,5,15,1,2,4,127,0}
  for _,name:=range []string{"pinned","n"} {h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())}
@@ -426,6 +488,7 @@ func TestUnion(t *testing.T) {
 `
 		out, err := vtCellsRun(t, schema, src, func(files map[string][]byte) {
 			vtCellsSabotage(t, files, "repeated union reset",
+				[2]string{"len(data) > 0 && data[0] == 1", "false"},
 				[2]string{"RootReset(value)", "if false { RootReset(value) }"})
 		})
 		vtCellsRequireRed(t, "the repeated union reset out", out, err, "a repeated union must refuse and reset the element")

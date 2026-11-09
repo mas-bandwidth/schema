@@ -76,6 +76,33 @@ func TestHeaderAndPut128Shape(t *testing.T) {
 const headerWireTest = `package probe
 import ("bytes"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestHeaderMatchesPutLebPut8(t *testing.T) {
 	kinds := []uint8{1, 4, 14, 32}
 	refs := []uint64{0, 1, 127, 128, 255, 16384}
@@ -150,7 +177,7 @@ func TestHeaderSaveRoundTrip(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.B != 2 || loaded.C != 3 || loaded.Child.N != 5 || loaded.Choice.Leaf.N != 9 || loaded.Wide.Lo != 7 || loaded.Wide.Hi != 11 || loaded.PayloadLength != 4 || !bytes.Equal(loaded.Payload[:4], []byte("abcd")) {
+	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.B != 2 || loaded.C != 3 || loaded.Child.N != 5 || loaded.Choice.Leaf.N != 9 || loaded.Wide.Lo != 7 || loaded.Wide.Hi != 11 || loaded.PayloadLength != 4 || !bytes.Equal(loaded.Payload[:4], []byte("abcd")) {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 	if RootSave(&value, make([]byte, n-1)) != -1 {

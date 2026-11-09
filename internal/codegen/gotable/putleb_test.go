@@ -33,6 +33,33 @@ func TestPutLebAssemblesOnce(t *testing.T) {
 const putLebWireTest = `package probe
 import ("bytes"; "encoding/binary"; "hash/fnv"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestPutLebBytesAndOverflow(t *testing.T) {
 	h := fnv.New64a()
 	h.Write([]byte("payload"))
@@ -64,7 +91,7 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, want, got)
 		}
 		var report TableReport
-		if !RootLoad(&loaded, want, &report) || report != (TableReport{}) || loaded.PayloadLength != n || !bytes.Equal(loaded.Payload[:n], value.Payload[:n]) {
+		if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded.PayloadLength != n || !bytes.Equal(loaded.Payload[:n], value.Payload[:n]) {
 			t.Fatalf("length %d load differs: %+v", n, report)
 		}
 		if RootSave(&value, make([]byte, len(want)-1)) != -1 || RootSave(&value, nil) != -1 {

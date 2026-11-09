@@ -62,6 +62,33 @@ func TestGoTableOpenDistinctnessVerdict(t *testing.T) {
 const openDistinctnessVerdictTest = `package probe
 import ("encoding/binary"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func loadIds(ids []uint64) (ok bool, report TableReport) {
 	buf := []byte{1, 0}
 	for _, id := range ids {
@@ -69,7 +96,7 @@ func loadIds(ids []uint64) (ok bool, report TableReport) {
 	}
 	buf = binary.LittleEndian.AppendUint64(buf, uint64(len(ids)))
 	var value Root
-	ok = RootLoad(&value, buf, &report)
+	ok = rootForm1(&value, buf, &report)
 	return
 }
 

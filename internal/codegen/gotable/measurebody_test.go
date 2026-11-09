@@ -116,6 +116,33 @@ import (
 	"testing"
 )
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func trailerIds(t *testing.T, wire []byte) []uint64 {
 	t.Helper()
 	if len(wire) < 8 {
@@ -224,7 +251,7 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	}
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.Child.N != 5 || loaded.NoteLength != 2 {
+	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.Child.N != 5 || loaded.NoteLength != 2 {
 		t.Fatalf("round trip %+v %+v", loaded, report)
 	}
 
@@ -285,6 +312,33 @@ import (
 	"testing"
 )
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func trailerIds(t *testing.T, wire []byte) []uint64 {
 	t.Helper()
 	if len(wire) < 8 {
@@ -317,7 +371,7 @@ func roundTrip(t *testing.T, v *Root) []byte {
 	}
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) {
+	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) {
 		t.Fatalf("load %+v", report)
 	}
 	if loaded.Choice.Type != v.Choice.Type || loaded.Choice.Hit.N != v.Choice.Hit.N ||

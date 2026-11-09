@@ -54,11 +54,12 @@ fixed table Point {
 	// DECLARED fixed, because #823's keyword is the SELECTION POINT: the form
 	// follows the declaration and nothing is derived in either direction (§2.2,
 	// [ir.TableFixedRoots]), so the surface above exists for a `fixed table`
-	// and for nothing else. The keyword selects the FORM a writer emits; it
-	// does not move the form-1 refusal out of FixedLoad and into <T>Load, which
-	// stays the variable form's entry point and still reads form 1 — the pair is
-	// held next door by TestFixedFormForm1RefusalLivesInFixedLoad, and the
-	// variable half by TestForm1OfVariableTableStillLoads.
+	// and for nothing else. The keyword selects the FORM a writer emits. A
+	// fixed-class root's file is form 3: <T>Load, the variable form's entry
+	// point, refuses a form-1 file as previous_form before it decodes, and
+	// <T>FixedLoad reads form 3. The pair is held next door by
+	// TestFixedFormForm1RefusalLivesInFixedLoad, and the variable half by
+	// TestForm1OfVariableTableStillLoads.
 	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
@@ -94,15 +95,11 @@ fixed table Point {
 	}
 }
 
-// TestFixedFormForm1RefusalLivesInFixedLoad is the other half of the surface
-// above, and it is #823's `fixed table` keyword that makes it worth pinning:
-// the keyword decides what a WRITER emits (form 3, always) and which ENTRY
-// POINT names a form-1 file `previous_form` — <T>FixedLoad — and it does NOT
-// turn <T>Load, the variable form's own entry point, into a refusal. The
-// shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
-// fixed root and the C++ reference reads it there, so a Go <T>Load that
-// refused would be the one leg disagreeing with the reference
-// (docs/SPEC-TABLES.md §3.4, §15). The schema says the keyword and the fixture
+// TestFixedFormForm1RefusalLivesInFixedLoad pins the fixed-class root's file
+// (docs/SPEC-TABLES.md §3.4): form 3 is the file, and a form-1 file is
+// previous_form at both entry points. <T>Load, the variable form's entry
+// point, refuses it before anything decodes, and <T>FixedLoad names it
+// previous_form and reads form 3. The schema says the keyword and the fixture
 // walks the real parser: there is no second way to say the class here.
 func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
 	files := generate(t, `package probe
@@ -121,11 +118,8 @@ fixed table Point {
 	if load == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	if !strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
-	}
-	if strings.Contains(load, "previous_form") {
-		t.Error("PointLoad, the form-1 entry point, refuses form 1")
+	if !strings.Contains(load, "data[0] == 1") || !strings.Contains(load, "TableRefusePreviousForm") {
+		t.Error("PointLoad of a DECLARED fixed table must refuse a form-1 file as previous_form before it decodes")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if !strings.Contains(fixedLoad, "TableRefusePreviousForm.Error()") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
@@ -767,9 +761,10 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	}
 }
 
-// TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: the two
-// entry points of a DECLARED fixed table, each over the other's form byte —
-// Load reads the form-1 file back, FixedLoad names it `previous_form`.
+// TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: a
+// DECLARED fixed table's Load refuses a form-1 file as previous_form, and
+// FixedLoad names that same file previous_form. The value is readable through
+// FixedLoad of the form-3 file.
 func TestForm1OfFixedTableReadsAndFixedLoadRefuses(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Point {
@@ -794,18 +789,25 @@ func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	}
 	var got Point
 	var r TableReport
-	if !PointLoad(&got, form1, &r) {
-		t.Fatalf("form-1 Load of a DECLARED fixed table refused: %+v", r)
+	if PointLoad(&got, form1, &r) || r.Reason != "previous_form" {
+		t.Fatalf("form-1 Load of a DECLARED fixed table: want previous_form, got %+v value %+v", r, got)
 	}
-	if r.Reason != "" || r.Verdict != TableOpenOk || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("form-1 Load of a DECLARED fixed table is not a clean read: %+v", r)
+	if got.X == 4242 && got.Y == -7 {
+		t.Fatalf("form-1 Load of a DECLARED fixed table decoded the record: %+v", got)
 	}
-	if got.X != 4242 || got.Y != -7 {
-		t.Fatalf("form-1 Load of a DECLARED fixed table lost the record: %+v", got)
+	need3 := PointFixedMeasure(1)
+	form3 := make([]byte, need3)
+	if n := PointFixedSave([]Point{one}, form3); n != need3 || form3[0] != 3 {
+		t.Fatalf("form-3 save %d", n)
+	}
+	batch3 := make([]Point, 1)
+	plan := make([]TableFixedEntry, 64)
+	r = TableReport{}
+	if n := PointFixedLoad(batch3, form3, plan, &r); n != 1 || r != (TableReport{}) || batch3[0] != one {
+		t.Fatalf("FixedLoad(form3): n=%d %+v %+v", n, r, batch3[0])
 	}
 	batch := make([]Point, 1)
 	r = TableReport{}
-	plan := make([]TableFixedEntry, 64)
 	n := PointFixedLoad(batch, form1, plan, &r)
 	if n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
 		t.Fatalf("FixedLoad(form1): n=%d %+v", n, r)

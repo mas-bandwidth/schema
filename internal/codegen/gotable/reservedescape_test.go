@@ -71,7 +71,63 @@ fixed table func {
 `
 
 const reservedRoundTripTest = `package probe
-import ("bytes"; "encoding/json"; "testing")
+import("bytes"; "encoding/json"; "testing";"encoding/base64")
+
+func func_Form1(value *func_, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if func_Load(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !func_LoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		func_Reset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+
+func func_Form1Text(text string, report *TableReport) (*func_, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v func_
+	var read TableReport
+	ok := func_Form1(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
 func fill(v *func_) {
  func_Reset(v)
  v.Select = -7
@@ -101,12 +157,12 @@ func TestReservedRoundTrip(t *testing.T) {
  if func_Save(&v, wire) != n { t.Fatal("save") }
  var got func_
  var r TableReport
- if !func_Load(&got, wire, &r) || r.Err() != nil { t.Fatalf("load %+v", r) }
+ if !func_Form1(&got, wire, &r) || r.Err() != nil { t.Fatalf("load %+v", r) }
  same(t, "binary", &v, &got)
  // base64
  text, err := func_SaveText(&v)
  if err != nil { t.Fatalf("SaveText %v", err) }
- back, err := func_LoadText(text, nil)
+ back, err := func_Form1Text(text, nil)
  if err != nil { t.Fatalf("LoadText %v", err) }
  same(t, "base64", &v, back)
  // JSON, whose keys and variant names are the schema's
