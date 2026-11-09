@@ -1758,7 +1758,7 @@ endef
 # time instead of the sum.
 
 define tables_run_arm
-	@set -eu; \
+	set -eu; \
 	tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' > "$$tmp/cmds"; \
@@ -1771,6 +1771,14 @@ define tables_run_arm
 		if [ -z "$$out" ]; then \
 			echo "ZERO-COST GATE FAILED: a generate line names no --out: $$line"; \
 			exit 1; \
+		fi; \
+		base=$${out##*/}; \
+		case "$$base" in \
+			block|blockhome|messages|examples) kind=heavy ;; \
+			*) kind=rest ;; \
+		esac; \
+		if [ -n "$(3)" ] && [ "$(3)" != "$$kind" ]; then \
+			continue; \
 		fi; \
 		key=$$(printf '%s' "$$out" | cksum | awk '{print $$1}'); \
 		printf '%s\n' "$$line" >> "$$tmp/b.$$key"; \
@@ -1795,6 +1803,23 @@ define tables_run_arm
 	for p in $$pids; do wait "$$p" || fail=1; done; \
 	if [ "$$fail" != 0 ]; then \
 		echo "ZERO-COST GATE FAILED: $(2) generate failed"; \
+		exit 1; \
+	fi
+endef
+
+# The two arms write different trees. Run 42571846331 measured the C row at
+# 153s (job), 140s of log: the arms ran one after the other, and that sum
+# was the row. Overlap them. $(1) blockful env, $(3) blockless env,
+# $(2) label, $(4) heavy|rest|empty.
+define tables_run_both_arms
+	@set +e; \
+	( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
+	( $(call tables_run_arm,$(3),$(2) blockless,$(4)) ) & p2=$$!; \
+	e1=0; e2=0; \
+	wait $$p1 || e1=$$?; \
+	wait $$p2 || e2=$$?; \
+	if [ "$$e1" != 0 ] || [ "$$e2" != 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) $(4) arm failed"; \
 		exit 1; \
 	fi
 endef
@@ -1824,7 +1849,7 @@ define tables_zero_cost_nl
 
 endef
 
-.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
+.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest
 
 tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKFUL = $(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
 tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKLESS = $(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
@@ -1854,15 +1879,36 @@ tables-block-zero-cost-cs: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cs)
 	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
 
-tables-block-zero-cost-c: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
-tables-block-zero-cost-c: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
-tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
+tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+tables-block-zero-cost-c-heavy tables-block-zero-cost-c-rest: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+
+# Run 42571846331: the single C row was 153s (job) / 140s (log). The two
+# arms ran one after the other. block, blockhome, messages and examples
+# (RenderFrame, PartFrame, ToolMessage, WideBlob) are the heavy row, and
+# the arms of a row run together. The rest row keeps the floor of 60 from
+# the 132 files that run compared; the heavy row's floor is its own files.
+tables-block-zero-cost-c-heavy: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
+	@rm -rf $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
+	@mkdir -p $(BLOCKFUL_ROOT)/c/block $(BLOCKFUL_ROOT)/c/blockhome $(BLOCKFUL_ROOT)/c/messages $(BLOCKFUL_ROOT)/c/examples
+	@mkdir -p $(BLOCKLESS_ROOT)/c/block $(BLOCKLESS_ROOT)/c/blockhome $(BLOCKLESS_ROOT)/c/messages $(BLOCKLESS_ROOT)/c/examples
+	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,heavy)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
+	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',2)
+
+tables-block-zero-cost-c-rest: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
-	@$(call tables_run_arm,ZERO_COST_C_BLOCKFUL,c blockful)
-	@$(call tables_run_arm,ZERO_COST_C_BLOCKLESS,c blockless)
+	@$(call tables_run_both_arms,ZERO_COST_C_BLOCKFUL,c,ZERO_COST_C_BLOCKLESS,rest)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
 	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+
+# Serial on purpose: the rest row deletes the whole C tree, so it must not
+# overlap the heavy row in one workspace.
+tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
+	@$(MAKE) tables-block-zero-cost-c-heavy
+	@$(MAKE) tables-block-zero-cost-c-rest
+	@echo "block zero-cost gate: c Table sources byte-identical with the block form removed"
 
 tables-block-zero-cost: tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
 	@echo "block zero-cost gate: cpp, cs and c Table sources byte-identical with the block form removed"
