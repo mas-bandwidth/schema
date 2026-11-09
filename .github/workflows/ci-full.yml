@@ -1706,6 +1706,16 @@ jobs:
       # SHA and no tool runs `@latest`, and every csproj's TargetFramework
       # matches the one .NET SDK pin. It is a Go test, so `go test ./...` and
       # `make test` carry it too; this step is where the verdict is named.
+      #
+      # THIS STEP RUNS internal/ci'S FAST HALF ONLY. The package also holds
+      # functional tests that build or run toolchains, which skip at
+      # internal/slowtest.Gate without SCHEMA_SLOW=1 and would blow this
+      # per-commit job's two-minute rule: the -run pattern gate
+      # (TestEveryRunPatternMatchesATest) measured 116 s alone (2026-11-09),
+      # and the resource-bounds and hostile-corpus runners are interpreter-bound.
+      # They all ride ci-full.yml's unit-rest row, which sets SCHEMA_SLOW=1 and
+      # runs on the merge and nightly triggers, so nothing is checked less than
+      # before — it moved down this lane, not out of it.
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
       - name: golangci-lint
