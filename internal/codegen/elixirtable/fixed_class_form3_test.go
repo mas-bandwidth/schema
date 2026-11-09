@@ -95,6 +95,9 @@ func fixedClassFormThreeHolds(files map[string][]byte) error {
 	if !ok {
 		return fmt.Errorf("Point save is not form 3: no fixed-root save clause")
 	}
+	if !strings.Contains(save, `fixed_class_from_table("Point", value)`) {
+		return fmt.Errorf("Point save does not convert the Table API map to the fixed record")
+	}
 	if !strings.Contains(save, "point_fixed_save([value])") {
 		return fmt.Errorf("Point save is not form 3: it does not call point_fixed_save")
 	}
@@ -115,16 +118,22 @@ func fixedClassFormThreeHolds(files map[string][]byte) error {
 	if !strings.Contains(load, "point_fixed_load(data)") {
 		return fmt.Errorf("Point load is not form 3: it does not call point_fixed_load")
 	}
-	if !strings.Contains(load, "{:ok, [value], report} -> {:ok, value, report}") {
-		return fmt.Errorf("Point load does not return the one record, the whole value")
+	if !strings.Contains(load, "{:ok, [value], report} ->") ||
+		!strings.Contains(load, `{:ok, fixed_class_to_table("Point", value), fixed_class_report(report)}`) {
+		return fmt.Errorf("Point load does not return the one record as the Table API value and report")
+	}
+	if !strings.Contains(src, "defp fixed_class_to_table(table, value)") ||
+		!strings.Contains(src, "defp fixed_class_from_table(table, value)") ||
+		!strings.Contains(src, "defp fixed_class_report(report)") {
+		return fmt.Errorf("the fixed record and report are not converted to the Table API shape")
 	}
 	if strings.Contains(load, "hd(") || strings.Contains(load, "{:ok, values") {
 		return fmt.Errorf("Point load can return part of the batch")
 	}
-	if !strings.Contains(load, "{:ok, [], report} -> {:error, :truncated, report}") {
+	if !strings.Contains(load, "{:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}") {
 		return fmt.Errorf("an empty fixed batch is not a refusal")
 	}
-	if !strings.Contains(load, "{:ok, _values, report} -> {:error, :batch_too_large, report}") {
+	if !strings.Contains(load, "{:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}") {
 		return fmt.Errorf("a multi-record fixed batch is not a refusal")
 	}
 	return nil
