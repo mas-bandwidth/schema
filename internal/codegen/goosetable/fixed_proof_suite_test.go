@@ -1229,8 +1229,16 @@ func buildAndRunCppFixedOracle(t *testing.T, id string, u *ir.Unit, root string,
 		t.Fatalf("%s: no Table.h generated", id)
 	}
 
-	serDir := resolveSerializeInclude(outDir)
-	probeSrc := fmt.Sprintf(`#include <cstdio>
+	probeSrc := cppFixedOracleSource(root, count, cppSetup, tableHeader)
+	cppBytes, verifyFn, err := compileAndRunCppFixedOracleFiles(t, id, outDir, probeSrc)
+	if err != nil {
+		t.Fatalf("%s: %v", id, err)
+	}
+	return cppBytes, verifyFn
+}
+
+func cppFixedOracleSource(root string, count int, cppSetup, tableHeader string) string {
+	return fmt.Sprintf(`#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include "%[4]s"
@@ -1265,9 +1273,9 @@ int main( int argc, char ** argv )
     for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( back[i] );
     memset( &r, 0, sizeof( r ) );
     const int64_t n = %[1]sFixedLoad( back, %[2]d, buffer, saved, plan, 4096, NULL, &r );
-    if ( n != %[2]d || r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused ) {
-        printf( "cpp self-load failed: n=%%lld reason=%%d c=%%d u=%%d km=%%d w=%%d m=%%d x=%%d\n",
-            (long long) n, (int) r.reason, r.clamped, r.unknown, r.kind_mismatch, r.widened, (int) r.malformed, (int) r.refused );
+    if ( n != %[2]d || r.unknown || r.widened || r.damaged || r.refused ) {
+        printf( "cpp self-load failed: n=%%lld reason=%%d u=%%d w=%%d d=%%d x=%%d\n",
+            (long long) n, (int) r.reason, r.unknown, r.widened, (int) r.damaged, (int) r.refused );
         return 1;
     }
 
@@ -1288,9 +1296,9 @@ int main( int argc, char ** argv )
         for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( from_cand[i] );
         memset( &r, 0, sizeof( r ) );
         const int64_t cn = %[1]sFixedLoad( from_cand, %[2]d, cand_buf, clen, plan, 4096, NULL, &r );
-        if ( cn != %[2]d || r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused ) {
-            printf( "cpp load of candidate failed: cn=%%lld reason=%%d c=%%d u=%%d km=%%d w=%%d m=%%d x=%%d\n",
-                (long long) cn, (int) r.reason, r.clamped, r.unknown, r.kind_mismatch, r.widened, (int) r.malformed, (int) r.refused );
+        if ( cn != %[2]d || r.unknown || r.widened || r.damaged || r.refused ) {
+            printf( "cpp load of candidate failed: cn=%%lld reason=%%d u=%%d w=%%d d=%%d x=%%d\n",
+                (long long) cn, (int) r.reason, r.unknown, r.widened, (int) r.damaged, (int) r.refused );
             return 4;
         }
         const int64_t re_saved = %[1]sFixedSave( from_cand, %[2]d, re_buf, need );
@@ -1307,11 +1315,15 @@ int main( int argc, char ** argv )
     return 1;
 }
 `, root, count, cppSetup, tableHeader)
+}
 
+func compileAndRunCppFixedOracleFiles(t *testing.T, id, outDir, probeSrc string) ([]byte, func([]byte) error, error) {
+	t.Helper()
+	serDir := resolveSerializeInclude(outDir)
 	probeCpp := filepath.Join(outDir, "probe.cpp")
 	probeBin := filepath.Join(outDir, "probe")
 	if err := os.WriteFile(probeCpp, []byte(probeSrc), 0o600); err != nil {
-		t.Fatalf("%s: write probe.cpp: %v", id, err)
+		return nil, nil, fmt.Errorf("write probe.cpp: %w", err)
 	}
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
@@ -1319,16 +1331,16 @@ int main( int argc, char ** argv )
 	}
 	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serDir, probeCpp, "-o", probeBin}
 	if out, err := gooserun.Command(t, cxx, args...).CombinedOutput(); err != nil {
-		t.Fatalf("%s: compile C++ reference oracle failed: %v\n%s", id, err, out)
+		return nil, nil, fmt.Errorf("compile C++ reference oracle failed: %w\n%s", err, out)
 	}
 
 	cppBinPath := filepath.Join(outDir, "cpp.bin")
 	if out, err := gooserun.Command(t, probeBin, "save", cppBinPath).CombinedOutput(); err != nil {
-		t.Fatalf("%s: run C++ reference oracle save failed: %v\n%s", id, err, out)
+		return nil, nil, fmt.Errorf("run C++ reference oracle save failed: %w\n%s", err, out)
 	}
 	cppBytes, err := os.ReadFile(cppBinPath)
 	if err != nil {
-		t.Fatalf("%s: read cpp.bin: %v", id, err)
+		return nil, nil, fmt.Errorf("read cpp.bin: %w", err)
 	}
 
 	verifyFn := func(cand []byte) error {
@@ -1342,7 +1354,7 @@ int main( int argc, char ** argv )
 		}
 		return nil
 	}
-	return cppBytes, verifyFn
+	return cppBytes, verifyFn, nil
 }
 
 // withGooseCrossCheck appends a cross-check tail to a Goose main() body that:

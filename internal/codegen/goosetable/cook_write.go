@@ -278,8 +278,8 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
 				w.pl(ind, "if %sPresent { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", src, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
 			case f.Array == ir.ArrayCounted:
-				arr, idx, _ := strings.Cut(src, "[")
-				idx = strings.TrimSuffix(idx, "]")
+				lb := strings.LastIndexByte(src, '[')
+				arr, idx := src[:lb], strings.TrimSuffix(src[lb+1:], "]")
 				d, ed, ev := w.fresh("df"), w.fresh("ed"), w.fresh("ev")
 				w.pl(ind, "if %s < %sCount as! i64 { if !%sCookPut(%s, b, at + %s, big) { return false; } } else { var %s = %s { .. }; let %s: u8[1] = [0]; let %s: %s::LoadVal[1] = [%s::LoadVal { .. }]; %sCookFromLoaded(%s, %s[0..0], %s[0..0], -1); if !%sCookPut(%s, b, at + %s, big) { return false; } }", idx, arr, r.Name, src, at, d, rTyp, ed, ev, rt, rt, r.Name, d, ed, ev, r.Name, d, at)
 			default:
