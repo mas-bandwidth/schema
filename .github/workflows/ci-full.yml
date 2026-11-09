@@ -841,6 +841,20 @@ jobs:
   # paragraph above still names the real remedy: that closing `go test ./...`
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
+  # SHARDED BY PIN FAMILY FOR THE 2-MINUTE FLEET RULE. On main, the single
+  # `pins` job was killed at the 120s per-commit fleet cap (133s wall: 24s on
+  # `make dist-lua` plus Luau/Goose/Lobster installs, then 85s capped / 302s
+  # uncapped nightly in `make -j conformance-pin update-goldens`, exit 137).
+  # Those four language-toolchain installs and `update-goldens`'s closing
+  # `go test ./...` existed only for that duplicate `go test ./...`, which
+  # `go-test` already runs across its matrix rows. The pin writers themselves
+  # now fan out across five parallel rows (`pins-source`, `pins-wire-packet`,
+  # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
+  # generating and compiling only the units its writer touches in parallel and
+  # diffing `testdata/` against HEAD in ~10-25s wall. Nothing is dropped from
+  # per-commit; `make conformance-pin update-goldens` remains the local
+  # single-command entry point, and `nightly-conformance.yml` also runs the
+  # full C++ reference corpus check nightly.
   pins:
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
@@ -850,33 +864,42 @@ jobs:
     # skipped before it can reach the fleet runners.
     #
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
-    # runners, never GitHub-hosted). On a hosted two-core runner the re-pin
-    # reached the 15-minute timeout; the timeout is not raised to fit that
-    # runner. The setup steps below run only on a hosted fallback.
+    # runners, never GitHub-hosted). The setup steps below run only on a
+    # hosted fallback.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # on a hetzner runner sharing its host with a second job the re-pin
-    # runs 12-15 minutes, so the bound is 25
-    timeout-minutes: 25
+    name: pins (${{ matrix.row }})
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: source
+            target: pins-source
+          - row: wire-packet
+            target: pins-wire-packet
+          - row: wire-tables
+            target: pins-wire-tables
+          - row: wire-tables-forms
+            target: pins-wire-tables-forms
+          - row: conformance
+            target: pins-conformance
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
+      - name: Check out the C++ serialize runtime (pinned release)
+        if: matrix.row != 'source'
         run: |
           set -euo pipefail
           cd ..
           # A self-hosted runner's workspace PARENT persists between runs: the
-          # previous run's clones are removed and re-cloned at the pinned tag
+          # previous run's clone is removed and re-cloned at the pinned tag
           # every time, never reused (as go-test does).
-          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          rm -rf serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
-          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -902,39 +925,13 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # update-goldens ends in `go test ./...`, which runs the Lua packages
-      # under the pinned interpreter (make/lua.mk's dist-lua)
-      - name: install the Lua pin
-        run: make dist-lua
-
-      # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
-      # run generated Luau under the pinned interpreter and fail, never skip,
-      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
-      - name: install the Luau pin
-        run: make dist-luau
-
-      # update-goldens ends in `go test ./...`, which runs the Goose packages
-      # under the pinned compiler (make/goose.mk's dist-goose)
-      - name: install the Goose pin
-        run: make dist-goose
-      # and the Lobster packages under the pinned compiler (make/lobster.mk's
-      # dist-lobster).
-      - name: install the Lobster pin
-        run: |
-          set -euo pipefail
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          fi
-          make dist-lobster
-
-      - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+      - name: rewrite pin family (${{ matrix.row }}) under testdata/ from the reference
+        run: make -j"$(nproc)" "${{ matrix.target }}"
 
       - name: the pins are current
         run: |
           git diff --exit-code -- testdata/ || {
-            echo "::error::a pin under testdata/ is stale: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
+            echo "::error::a pin under testdata/ is stale in row ${{ matrix.row }}: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
             exit 1
           }
           untracked=$(git status --porcelain testdata/)

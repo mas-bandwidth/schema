@@ -4,11 +4,12 @@ using System.Runtime.InteropServices;
 static partial class Program
 {
     static bool? regionLoaded;
+    static bool regionMode;
     static unsafe void RegisterRegions()
     {
         {
             Codec c=Find("widelist","Wide");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Widelistdemo.Schema.WideLoadMeasure(bytes);
                 if(need<0)
@@ -34,7 +35,7 @@ static partial class Program
         }
         {
             Codec c=Find("featurewitnesses","Root");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Featurewitnesses.Schema.RootLoadMeasure(bytes);
                 if(need<0)
@@ -60,7 +61,7 @@ static partial class Program
         }
         {
             Codec c=Find("featurewitnesses","ArrayRoot");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Featurewitnesses.Schema.ArrayRootLoadMeasure(bytes);
                 if(need<0)
@@ -86,7 +87,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Unbounded");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.UnboundedLoadMeasure(bytes);
                 if(need<0)
@@ -112,7 +113,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Ints");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.IntsLoadMeasure(bytes);
                 if(need<0)
@@ -138,7 +139,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Floats");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.FloatsLoadMeasure(bytes);
                 if(need<0)
@@ -164,7 +165,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Bytes");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.BytesLoadMeasure(bytes);
                 if(need<0)
@@ -190,7 +191,7 @@ static partial class Program
         }
         {
             Codec c=Find("blobdemo","Catalog");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Blobdemo.Schema.CatalogLoadMeasure(bytes);
                 if(need<0)
@@ -216,7 +217,7 @@ static partial class Program
         }
         {
             Codec c=Find("graphdemo","Album");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Graphdemo.Schema.AlbumLoadMeasure(bytes);
                 if(need<0)
@@ -242,7 +243,7 @@ static partial class Program
         }
         {
             Codec c=Find("graphdemo","Depot");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Graphdemo.Schema.DepotLoadMeasure(bytes);
                 if(need<0)
@@ -268,7 +269,7 @@ static partial class Program
         }
         {
             Codec c=Find("graphdemo","Scene");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Graphdemo.Schema.SceneLoadMeasure(bytes);
                 if(need<0)
@@ -294,7 +295,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Album");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.AlbumLoadMeasure(bytes);
                 if(need<0)
@@ -320,7 +321,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Army");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.ArmyLoadMeasure(bytes);
                 if(need<0)
@@ -346,7 +347,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Mixed");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.MixedLoadMeasure(bytes);
                 if(need<0)
@@ -372,7 +373,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Save");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.SaveLoadMeasure(bytes);
                 if(need<0)
@@ -398,7 +399,7 @@ static partial class Program
         }
         {
             Codec c=Find("listdemo","Sheet");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Listdemo.Schema.SheetLoadMeasure(bytes);
                 if(need<0)
@@ -424,7 +425,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Cells");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.CellsLoadMeasure(bytes);
                 if(need<0)
@@ -450,7 +451,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Chunks");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.ChunksLoadMeasure(bytes);
                 if(need<0)
@@ -476,7 +477,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Crews");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.CrewsLoadMeasure(bytes);
                 if(need<0)
@@ -502,7 +503,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Depth");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.DepthLoadMeasure(bytes);
                 if(need<0)
@@ -528,7 +529,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Docs");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.DocsLoadMeasure(bytes);
                 if(need<0)
@@ -554,7 +555,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","EdgeRow");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.EdgeRowLoadMeasure(bytes);
                 if(need<0)
@@ -580,7 +581,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Fleet");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.FleetLoadMeasure(bytes);
                 if(need<0)
@@ -606,7 +607,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Pairs");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.PairsLoadMeasure(bytes);
                 if(need<0)
@@ -632,7 +633,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Row");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.RowLoadMeasure(bytes);
                 if(need<0)
@@ -658,7 +659,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Runs");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.RunsLoadMeasure(bytes);
                 if(need<0)
@@ -684,7 +685,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Slots");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.SlotsLoadMeasure(bytes);
                 if(need<0)
@@ -710,7 +711,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Spans");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.SpansLoadMeasure(bytes);
                 if(need<0)
@@ -736,7 +737,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Text");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.TextLoadMeasure(bytes);
                 if(need<0)
@@ -762,7 +763,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","Trails");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.TrailsLoadMeasure(bytes);
                 if(need<0)
@@ -788,7 +789,7 @@ static partial class Program
         }
         {
             Codec c=Find("mapdemo","WideRow");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Mapdemo.Schema.WideRowLoadMeasure(bytes);
                 if(need<0)
@@ -814,7 +815,7 @@ static partial class Program
         }
         {
             Codec c=Find("streamdemo","Feed");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Streamdemo.Schema.FeedLoadMeasure(bytes);
                 if(need<0)
@@ -840,7 +841,7 @@ static partial class Program
         }
         {
             Codec c=Find("tblg1","Guarded");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Tblg1.Schema.GuardedLoadMeasure(bytes);
                 if(need<0)
@@ -866,7 +867,7 @@ static partial class Program
         }
         {
             Codec c=Find("tblp2","Chain");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Tblp2.Schema.ChainLoadMeasure(bytes);
                 if(need<0)
@@ -892,7 +893,7 @@ static partial class Program
         }
         {
             Codec c=Find("tblw1","Fleet");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Tblw1.Schema.FleetLoadMeasure(bytes);
                 if(need<0)
@@ -918,7 +919,7 @@ static partial class Program
         }
         {
             Codec c=Find("tblw2","Fleet");
-            c.PartialLoad=(bytes,report)=>
+            c.Region = true; c.PartialLoad=(bytes,report)=>
             {
                 long need=Tblw2.Schema.FleetLoadMeasure(bytes);
                 if(need<0)

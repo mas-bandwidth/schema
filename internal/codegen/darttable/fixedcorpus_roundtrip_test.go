@@ -160,7 +160,6 @@ func fixedCorpusRoundTrip(t *testing.T, corpus, file string, records int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := c.expect(t, corpus, data)
 	lower := lowerFirst(versionRoot(t, versionSchema(t, c.reader)).Name)
 	if c.refuses {
 		// STRICT VERDICT: a value past its bound refuses the whole read
@@ -181,6 +180,9 @@ func fixedCorpusRoundTrip(t *testing.T, corpus, file string, records int) {
 		}
 		return
 	}
+	// A ROW THAT READS has a rewrite the standard rules; a refusing row has
+	// none, so the rewrite is built only here.
+	want := c.expect(t, corpus, data)
 	body := fmt.Sprintf(`  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
   check(n == %[1]d, 'load returned $n, want %[1]d: ${why(report)}');
@@ -356,70 +358,16 @@ func fixedCorpusForgedAim(t *testing.T, corpus, file string) (int, uint32) {
 
 // The shared writer's-range vectors (internal/fixedvector.WriterRange): an
 // OLD writer's bytes with one ranged cell forged past that writer's range,
-// inside the NEW reader's. It clamps to the WRITER's range and counts once;
-// the manifest's `expect=` says what lands, and the rewrite is in the
-// reader's own layout.
+// inside the NEW reader's. Under the one read the reader refuses the whole
+// batch as out_of_range (the manifest carries no `expect=`), so the contract
+// has no rewrite to build.
 func init() {
 	for _, vec := range fixedvector.WriterRange {
 		fixedCorpusContracts[vec.File] = fixedCorpusContract{
 			reader: "VNEW_" + vec.Row, older: []string{"VOLD_" + vec.Row}, refuses: true,
-			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged value, scalar or fixed-array element, clamps to the writer's range for its lineage entry, compared in its own type)",
-			expect: func(t *testing.T, corpus string, old []byte) []byte {
-				return fixedCorpusWriterRangeHostile(t, corpus, vec, old)
-			},
+			cite: "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged value past the writer's range for its lineage entry refuses out_of_range)",
 		}
 	}
-}
-
-// fixedCorpusWriterRangeHostile is the rewrite of a writer's-range vector:
-// the OLD file restamped with the NEW reader's layout and hash (the header's
-// hash, the layout bytes, each record's hash), and the forged cell set to
-// what the manifest's `expect=` says lands. The clamp count the contract row
-// asserts is checked against `expect=` here too.
-func fixedCorpusWriterRangeHostile(t *testing.T, corpus string, vec fixedvector.Vector, old []byte) []byte {
-	t.Helper()
-	want, err := fixedvector.Read(corpus, vec.File)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want.Clamped != 1 {
-		t.Fatalf("the contract row counts 1 clamp and the manifest's expect= %d", want.Clamped)
-	}
-	landed, err := want.Int(want.ForgedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st := versionRoot(t, versionSchema(t, "VNEW_"+vec.Row))
-	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
-	hash := ir.TableFixedLayoutHash(layout, st)
-	head := int(ir.TableFixedHeaderBytes)
-	if len(old) < head+4 || int(binary.LittleEndian.Uint32(old[head:])) != len(layout) {
-		t.Fatalf("%s: the old layout is not the new one's length %d", vec.File, len(layout))
-	}
-	out := slices.Clone(old)
-	binary.LittleEndian.PutUint64(out[8:], hash)
-	copy(out[head+4:], layout)
-	record := 8 + int(fixedTypeBytes(st))
-	first := head + 4 + len(layout)
-	if (len(out)-first)%record != 0 {
-		t.Fatalf("%s: %d record bytes are not whole %d-byte records", vec.File, len(out)-first, record)
-	}
-	for at := first; at < len(out); at += record {
-		binary.LittleEndian.PutUint64(out[at:], hash)
-	}
-	field := strings.TrimPrefix(want.ForgedPath, "r0.")
-	field, _, _ = strings.Cut(field, "[")
-	width := ir.TableFixedStorageBytes(fixedCorpusField(t, "VNEW_"+vec.Row, field).Type)
-	at := int(want.ForgedAt)
-	switch width {
-	case 4:
-		binary.LittleEndian.PutUint32(out[at:], uint32(landed))
-	case 8:
-		binary.LittleEndian.PutUint64(out[at:], uint64(landed))
-	default:
-		t.Fatalf("%s: the forged %s is %d bytes wide", vec.File, field, width)
-	}
-	return out
 }
 
 // fixedCorpusNewWithAim is the reference's NEW-generation file — the reader's

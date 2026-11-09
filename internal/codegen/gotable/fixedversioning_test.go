@@ -275,8 +275,8 @@ func TestWriterBoundCount(t *testing.T) {
 	if back[0].ValsCount != 0 || back[0].Lead != 0 || back[0].Trail != 0 {
 		t.Fatalf("writer_bound_count: a refusal writes no destination byte: %%+v", back[0])
 	}
-	if r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("writer_bound_count: REFUSE moves no counter: %%+v", r)
+	if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
+		t.Fatalf("writer_bound_count: REFUSE moves no counter and is not damage: %%+v", r)
 	}
 }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"), table)
