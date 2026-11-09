@@ -88,13 +88,13 @@ public final class TablesWireFuzz {
 
     // form 1, the ordinary run: Load and Save with retention off.
     //
-    // A FIXED root always loads (test/conformance/README.md): its read fills a
-    // value from whatever decoded before the damage and reports, so the byte is
-    // 1, the measure is -1, and the value is saved whatever the report says. The
-    // class is declared (§2.2) and the emitter names it: a `fixed table` carries
-    // <Root>Fixed, or <Root>Block where its record is past the fixed form's
-    // ceiling (§3.4), and a variable table carries neither (§2.7 derives the
-    // block form for the fixed class alone).
+    // A VARIABLE root loads into a region sized by LoadMeasure; a refusal there
+    // means no load (§6.5). A FIXED-CLASS root rides form 3 (§3.4), read by its
+    // generated <Root>Fixed reader: the strict read is one read — the whole
+    // value or a refusal — always loading or refusing, with measure -1 and the
+    // write-back the fixed form. A `fixed table` carries <Root>Fixed, and a
+    // variable table carries none (§2.7 derives the block form for the fixed
+    // class alone).
     private static final class FileCodec extends Codec {
         final boolean fixed;
         final Class<?> reportType;
@@ -105,6 +105,17 @@ public final class TablesWireFuzz {
         final Method readFields;
         final Method loadMeasure;
         final Method save;
+        // THE FIXED-ROOT PATH (form 3, §3.4): the generated <Root>Fixed reader,
+        // the same one the conformance driver's FixedCodec uses. A fixed root's
+        // file holds one record; the read is handed room for one, and the
+        // write-back is the fixed form.
+        final Class<?> tableFixed;
+        final Class<?> fixedReportType;
+        final Class<?> fixedValueType;
+        final Method fixedLoad;
+        final Method fixedMeasure;
+        final Method fixedSave;
+        final Method fixedImage;
 
         FileCodec(String pkg, String root) throws ReflectiveOperationException {
             Class<?> codec = Class.forName(pkg + "." + root + "Variable");
@@ -113,30 +124,66 @@ public final class TablesWireFuzz {
             reportType = Class.forName(pkg + ".TableVariable$Report");
             nodeTableType = Class.forName(pkg + ".TableVariable$NodeTable");
             Class<?> reader = Class.forName(pkg + ".TableVariable$Reader");
-            fixed = carried(pkg + "." + root + "Fixed") || carried(pkg + "." + root + "Block");
+            fixed = carried(pkg + "." + root + "Fixed");
             load = codec.getMethod("load", byte[].class, reportType);
             open = variable.getMethod("open", byte[].class, reportType);
             readFields = codec.getMethod("readFields", reader, valueType, nodeTableType, reportType);
             loadMeasure = codec.getMethod("loadMeasure", byte[].class);
             save = codec.getMethod("save", valueType);
+            if (fixed) {
+                Class<?> fixedCodec = Class.forName(pkg + "." + root + "Fixed");
+                tableFixed = Class.forName(pkg + ".TableFixed");
+                fixedValueType = Class.forName(pkg + "." + root + "Fixed$Value");
+                fixedReportType = Class.forName(pkg + ".TableFixed$Report");
+                Class<?> valueArray = java.lang.reflect.Array.newInstance(fixedValueType, 0).getClass();
+                Class<?> entryArray = java.lang.reflect.Array.newInstance(Class.forName(pkg + ".TableFixed$Entry"), 0).getClass();
+                fixedLoad = fixedCodec.getMethod("load", valueArray, int.class, byte[].class, entryArray, short[].class, byte[].class, fixedReportType);
+                fixedMeasure = fixedCodec.getMethod("measure", int.class);
+                fixedSave = fixedCodec.getMethod("save", valueArray, int.class, byte[].class);
+                fixedImage = fixedCodec.getMethod("image");
+            } else {
+                tableFixed = null;
+                fixedReportType = null;
+                fixedValueType = null;
+                fixedLoad = null;
+                fixedMeasure = null;
+                fixedSave = null;
+                fixedImage = null;
+            }
         }
 
         @Override
         Reply run(byte[] wire) throws ReflectiveOperationException {
             Reply r = new Reply();
-            Object report = reportType.getConstructor().newInstance();
-            Object v;
+            Object report;
             if (fixed) {
-                v = valueType.getConstructor().newInstance();
-                Object reader = open.invoke(null, wire, report);
-                if (reader != null) {
-                    readFields.invoke(null, reader, v, null, report);
+                report = fixedReportType.getConstructor().newInstance();
+                Object values = java.lang.reflect.Array.newInstance(fixedValueType, 1);
+                java.lang.reflect.Array.set(values, 0, fixedValueType.getConstructor().newInstance());
+                Object plan = tableFixed.getMethod("plan", int.class).invoke(null, 1 << 14);
+                Object image = fixedImage.invoke(null);
+                int read = (int) fixedLoad.invoke(null, values, 1, wire, plan, new short[1 << 14], image, report);
+                fill(r, report, fixedReportType);
+                // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not
+                // carry moves no counter and reports nothing, so a load that came
+                // back -1 without naming a refusal is damage for the whole wire.
+                if (read < 0 && !r.refused) {
+                    r.damaged = true;
                 }
+                r.loaded = true;
                 r.measure = -1;
-            } else {
-                r.measure = (long) loadMeasure.invoke(null, (Object) wire);
-                v = load.invoke(null, wire, report);
+                if (read > 0) {
+                    int size = (int) fixedMeasure.invoke(null, read);
+                    byte[] buf = new byte[size];
+                    int wrote = (int) fixedSave.invoke(null, values, read, buf);
+                    r.saved = wrote == size ? buf : null;
+                }
+                return r;
             }
+            report = reportType.getConstructor().newInstance();
+            Object v;
+            r.measure = (long) loadMeasure.invoke(null, (Object) wire);
+            v = load.invoke(null, wire, report);
             fill(r, report, reportType);
             r.loaded = v != null;
             if (v != null) {
