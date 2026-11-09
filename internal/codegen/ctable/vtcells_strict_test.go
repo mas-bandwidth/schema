@@ -334,9 +334,19 @@ func TestCVariableCellsStrict(t *testing.T) {
 		}
 	}
 
+	// The fixed-form generator red (vt/c/generator-panic): R2.schema's
+	// payload-free pong arm has a nil field (fixedCollectTypes used to panic)
+	// and A2.schema's direct string arm used to emit table_fixed_put0.
+	r2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "R2.schema"))
+	a2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "A2.schema"))
+	if strings.Contains(string(r2Files["ProbeTable.h"]), "table_fixed_put0") || strings.Contains(string(a2Files["ProbeTable.h"]), "table_fixed_put0") {
+		t.Fatal("fixed-form header emits table_fixed_put0")
+	}
+
 	// 4. Functional test (requires the C compiler): compile and run the
 	// generated C variable-table strict read against clean, damaged,
 	// out-of-range, truncated, duplicate-key, and lone-surrogate inputs.
+	// The same gate runs the fixed-form probes for the generator red.
 	slowtest.Gate(t, "functional test: the C compiler (cc)")
 	reader := unitFrom(t, vtCellsStrictSchema)
 	rm := tabletext.NewModel(reader)
@@ -360,6 +370,14 @@ func TestCVariableCellsStrict(t *testing.T) {
 	maps.Copy(allFiles, files)
 	if out, err := runVtCellsFilesProbe(t, allFiles, vtCellsProbeBody(clean, damaged, over)); err != nil {
 		t.Fatalf("functional C strict-read probe failed: %v\n%s", err, out)
+	}
+
+	// vt/c/generator-panic: R2.schema nil-arm and A2.schema direct string arm.
+	if out, err := runFixedHeaderProbe(t, r2Files, vtGeneratorPongProbe); err != nil {
+		t.Fatalf("generator-panic clean pong probe failed: %v\n%s", err, out)
+	}
+	if out, err := runFixedHeaderProbe(t, a2Files, vtGeneratorStringProbe); err != nil {
+		t.Fatalf("generator-panic clean string probe failed: %v\n%s", err, out)
 	}
 }
 
@@ -439,4 +457,207 @@ func TestCVariableCellsStrictNegativeControl(t *testing.T) {
 	if strings.Contains(err.Error(), "compile:") {
 		t.Fatalf("negative control did not run the probe (the planted header failed to compile): %v\n%s", err, out)
 	}
+
+	// Generator-red plants, in copies of the generated headers. A compile
+	// error is not the failure: the probe must run and disagree.
+	r2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "R2.schema"))
+	r2Header := string(r2Files["ProbeTable.h"])
+	r2Planted, ok := plantPongWritesBoost(r2Header)
+	if !ok {
+		t.Fatal("pong plant did not find the empty fixed-form pong case and the boost store")
+	}
+	r2Files["ProbeTable.h"] = []byte(r2Planted)
+	out, err = runFixedHeaderProbe(t, r2Files, vtGeneratorPongProbe)
+	if err == nil {
+		t.Fatalf("generator-panic pong plant passed; the probe did not go red:\n%s", out)
+	}
+	if strings.Contains(err.Error(), "compile:") {
+		t.Fatalf("pong plant did not run the probe (the planted header failed to compile): %v\n%s", err, out)
+	}
+
+	a2Files := vtFixedArtifact(t, filepath.Join("..", "..", "..", "test", "tables", "A2.schema"))
+	a2Header := string(a2Files["ProbeTable.h"])
+	a2Planted, ok := plantDirectStringCopiesNothing(a2Header)
+	if !ok {
+		t.Fatal("string plant did not find the direct arm memcpy")
+	}
+	a2Files["ProbeTable.h"] = []byte(a2Planted)
+	out, err = runFixedHeaderProbe(t, a2Files, vtGeneratorStringProbe)
+	if err == nil {
+		t.Fatalf("generator-panic string plant passed; the probe did not go red:\n%s", out)
+	}
+	if strings.Contains(err.Error(), "compile:") {
+		t.Fatalf("string plant did not run the probe (the planted header failed to compile): %v\n%s", err, out)
+	}
+}
+
+// vtGeneratorPongProbe is the clean fixed-form probe for R2.schema. The
+// payload-free pong arm must not write the boost residue that shares its
+// storage, and the neighbours (grade, buff) must survive the round trip.
+const vtGeneratorPongProbe = `
+    static uint8_t buf_a[1 << 16];
+    static uint8_t buf_b[1 << 16];
+    static TableFixedEntry plan[4096];
+    Cfg v;
+    Cfg back;
+    TableReport r;
+    int64_t n_a;
+    int64_t n_b;
+
+    memset( &v, 0, sizeof( v ) );
+    v.grade = GRADE_GOLD;
+    v.effect.type = EFFECT_TYPE_PONG;
+    v.buff.mult = 3.5f;
+    n_a = cfg_fixed_save( &v, 1, buf_a, (int64_t) sizeof( buf_a ) );
+    if ( n_a < 0 ) { fprintf( stderr, "pong save failed\n" ); return 1; }
+
+    memset( &v, 0, sizeof( v ) );
+    v.grade = GRADE_GOLD;
+    v.effect.type = EFFECT_TYPE_PONG;
+    v.effect.as.boost.power = 123456;
+    v.buff.mult = 3.5f;
+    n_b = cfg_fixed_save( &v, 1, buf_b, (int64_t) sizeof( buf_b ) );
+    if ( n_b < 0 ) { fprintf( stderr, "pong residue save failed\n" ); return 1; }
+    if ( n_a != n_b || memcmp( buf_a, buf_b, (size_t) n_a ) != 0 )
+    { fprintf( stderr, "pong arm wrote boost residue\n" ); return 1; }
+
+    memset( &back, 0x5A, sizeof( back ) );
+    memset( &r, 0, sizeof( r ) );
+    if ( cfg_fixed_load( &back, 1, buf_a, n_a, plan, 4096, NULL, &r ) != 1 )
+    { fprintf( stderr, "pong load refused\n" ); return 1; }
+    if ( back.effect.type != EFFECT_TYPE_PONG || back.grade != GRADE_GOLD || back.buff.mult != 3.5f )
+    { fprintf( stderr, "pong neighbours moved type=%d grade=%d\n", (int) back.effect.type, (int) back.grade ); return 1; }
+`
+
+// vtGeneratorStringProbe is the clean fixed-form probe for A2.schema's direct
+// string arm: the bytes and the neighbours both come back. A zero-width store
+// that still compiles fails this probe.
+const vtGeneratorStringProbe = `
+    static uint8_t buf[1 << 16];
+    static TableFixedEntry plan[4096];
+    Root v;
+    Root back;
+    TableReport r;
+    int64_t n;
+    static const char want[] = "12345678";
+
+    memset( &v, 0, sizeof( v ) );
+    v.id = 7;
+    v.value.type = VALUE_TYPE_C;
+    memcpy( v.value.as.c.value, want, 8 );
+    v.value.as.c.value_length = 8;
+    v.tail = 0xA1B2C3D4u;
+    n = root_fixed_save( &v, 1, buf, (int64_t) sizeof( buf ) );
+    if ( n < 0 ) { fprintf( stderr, "direct string save failed\n" ); return 1; }
+    memset( &back, 0x5A, sizeof( back ) );
+    memset( &r, 0, sizeof( r ) );
+    if ( root_fixed_load( &back, 1, buf, n, plan, 4096, NULL, &r ) != 1 )
+    { fprintf( stderr, "direct string load refused\n" ); return 1; }
+    if ( back.value.type != VALUE_TYPE_C || back.value.as.c.value_length != 8 || memcmp( back.value.as.c.value, want, 8 ) != 0 )
+    { fprintf( stderr, "direct string arm did not round-trip\n" ); return 1; }
+    if ( back.id != 7 || back.tail != 0xA1B2C3D4u )
+    { fprintf( stderr, "direct string arm moved a neighbour\n" ); return 1; }
+`
+
+func vtFixedArtifact(t *testing.T, schemaPath string) map[string][]byte {
+	t.Helper()
+	data, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := unitFrom(t, string(data))
+	var files map[string][]byte
+	var genErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("fixed-form generator panicked on %s: %v", schemaPath, r)
+			}
+		}()
+		packet, err := cgen.Generate(u)
+		if err != nil {
+			genErr = err
+			return
+		}
+		lineage, err := GenerateLineage(u, nil)
+		if err != nil {
+			genErr = err
+			return
+		}
+		maps.Copy(packet, lineage)
+		files = packet
+	}()
+	if genErr != nil {
+		t.Fatalf("generate %s: %v", schemaPath, genErr)
+	}
+	if files == nil || files["ProbeTable.h"] == nil {
+		t.Fatalf("generate %s: no ProbeTable.h", schemaPath)
+	}
+	return files
+}
+
+func plantPongWritesBoost(header string) (string, bool) {
+	const empty = "        case EFFECT_TYPE_PONG:\n        {\n            break;\n        }"
+	if strings.Count(header, empty) != 1 {
+		return "", false
+	}
+	const marker = "schema_tblr2_boost_fixed_write_body_( b +"
+	i := strings.Index(header, marker)
+	if i < 0 {
+		return "", false
+	}
+	lineStart := strings.LastIndex(header[:i], "\n") + 1
+	relEnd := strings.Index(header[i:], "\n")
+	if relEnd < 0 {
+		return "", false
+	}
+	call := strings.TrimSpace(header[lineStart : i+relEnd])
+	if strings.HasPrefix(call, "static ") || !strings.Contains(call, "&value->effect.as.boost") {
+		return "", false
+	}
+	planted := "        case EFFECT_TYPE_PONG:\n        {\n            " + call + "\n            break;\n        }"
+	return strings.Replace(header, empty, planted, 1), true
+}
+
+func plantDirectStringCopiesNothing(header string) (string, bool) {
+	const real = "memcpy( b + 9, value->value.as.c.value, (size_t) ( value->value.as.c.value_length ) );"
+	const fault = "memcpy( b + 9, value->value.as.c.value, (size_t) 0 );"
+	if strings.Count(header, real) != 1 {
+		return "", false
+	}
+	return strings.Replace(header, real, fault, 1), true
+}
+
+func runFixedHeaderProbe(t *testing.T, files map[string][]byte, body string) (string, error) {
+	t.Helper()
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		t.Fatalf("functional C probe requires cc on PATH")
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	src := "#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n#include \"ProbeTable.h\"\nint main( void )\n{\n" + body + "\n    return 0;\n}\n"
+	mainC := filepath.Join(dir, "probe.c")
+	if err := os.WriteFile(mainC, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "probe")
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-O1"}
+	args = append(args, gccFortifySilence(cc)...)
+	args = append(args, "-I", dir, mainC, "-lm", "-o", bin)
+	if out, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
+		return string(out), fmt.Errorf("compile: %w", err)
+	}
+	ctx, cancel := slowtest.ProbeContext(t)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
