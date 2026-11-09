@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x67281dd57e4ffeb8)
-const _ = uint64(0x67281dd57e4ffeb8 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xa8cd4fb39c1113e9)
+const _ = uint64(0xa8cd4fb39c1113e9 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -238,6 +238,12 @@ func tableFixedGet32(a0 []byte) uint32 { return goruntime.TableFixedGet32(a0) }
 func tableFixedGet64(a0 []byte) uint64 { return goruntime.TableFixedGet64(a0) }
 
 func tableFixedCopyRun(a0, a1 []byte, a2 uint32) { goruntime.TableFixedCopyRun(a0, a1, a2) }
+
+func tableFixedPutNative(a0 []byte, a1 uint64, a2 uint32) { goruntime.TableFixedPutNative(a0, a1, a2) }
+
+func tableFixedCopyNative(a0, a1 []byte, a2, a3 uint32) {
+	goruntime.TableFixedCopyNative(a0, a1, a2, a3)
+}
 
 func tableFixedRun(a0 []TableFixedEntry, a1 int32, a2, a3 []byte, a4 *TableReport) string {
 	return goruntime.TableFixedRun(a0, a1, a2, a3, a4)
@@ -3755,6 +3761,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		return false
 	}
 	if _, _, _, reason := tableRegionMeasureReason(wire, root, nodeType, blobs, false); reason != TableRefuseOk {
+		if reason == TableRefuseCountOverLength {
+			reason = TableRefuseWireDamaged
+		}
 		report.Refuse(reason, "")
 		return false
 	}
