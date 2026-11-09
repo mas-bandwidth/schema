@@ -964,8 +964,6 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
     end
   end
 
-  defp edit(nil, _mutate), do: {:error, "cards: nil record"}
-
   # validate_strings applies the shared element policy: well-formed UTF-8
   # without NUL and within the declared string bound (docs/SPEC-TABLES.md §6.1;
   # tables/cards/edit.go: validateStrings).

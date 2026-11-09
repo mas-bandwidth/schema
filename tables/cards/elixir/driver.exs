@@ -97,9 +97,6 @@ defmodule Cards.Driver do
 
       {:error, reason, _report} ->
         refuse(outdir, name, refusal_class(reason))
-
-      {:error, reason} ->
-        refuse(outdir, name, refusal_class(reason))
     end
   end
 
