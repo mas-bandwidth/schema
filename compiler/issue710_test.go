@@ -192,10 +192,10 @@ func TestIssue710TableRecovery(t *testing.T) {
 		}
 	}
 	checks := []string{
-		`Text v; TableReport r={0}; if(text_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 11;`,
-		`Rows v; TableReport r={0}; if(rows_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 12;`,
-		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 13; ok=mapping_load_builder_tolerant(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.malformed) return 14;`,
-		`Keyed v; TableReport r={0}; if(keyed_load_tolerant(&v,wire,sizeof(wire),&r) || !r.malformed) return 15;`,
+		`Text v; TableReport r={0}; if(text_load(&v,wire,sizeof(wire),&r) || !r.refused) return 11;`,
+		`Rows v; TableReport r={0}; if(rows_load(&v,wire,sizeof(wire),&r) || !r.refused) return 12;`,
+		`MappingBuilder b; TableReport r={0}; int ok; if(!mapping_builder_init(&b))return 13; ok=mapping_load_builder(&b,wire,sizeof(wire),&r); mapping_builder_shutdown(&b); if(ok || !r.refused) return 14;`,
+		`Keyed v; TableReport r={0}; if(keyed_load(&v,wire,sizeof(wire),&r) || !r.refused) return 15;`,
 	}
 	var csrc strings.Builder
 	csrc.WriteString("#include \"ProbeTable.h\"\nint main(void){\n")
@@ -402,7 +402,7 @@ func TestIssue710ListRefusal(t *testing.T) {
 		for _, b := range wire {
 			fmt.Fprintf(&csrc, "%d,", b)
 		}
-		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder_tolerant(&b,wire,sizeof(wire),&r) || r.malformed || r.unknown || r.kind_mismatch || %s_builder_root(&b)->past) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
+		fmt.Fprintf(&csrc, "};%sBuilder b;TableReport r={0};int reason=0;if(!%s_builder_init(&b))return 1;if(%s_load_builder(&b,wire,sizeof(wire),&r) || !r.refused || r.unknown || r.refuse_reason!=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP || %s_builder_root(&b)->past) return 2;if(%s_load_measure_ex(wire,sizeof(wire),NULL,&reason)!=-1 || reason!=11)return 3;%s_builder_shutdown(&b); }\n", tc.root, tc.fn, tc.fn, tc.fn, tc.fn, tc.fn)
 	}
 	csrc.WriteString("return 0;}\n")
 	issue710CompileRun(t, cdir, "cc", ".c", csrc.String())
