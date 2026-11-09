@@ -2556,6 +2556,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		switch declKind {
 		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool, wireKindUnion:
 		default:
+			g.pf("%s\t\tfinal _widenedBefore = r.report.widened;\n", ind)
 			g.pf("%s\t\tif (elemKind != %d) r.report.widened++;\n", ind, declKind)
 		}
 		// The body spans from after the header to its own end; a header that
@@ -2598,6 +2599,12 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.emitLoadScalarListElem(f, "v."+name, "arr", ind)
 		}
 		g.pf("%s\t\t}\n", ind)
+		switch declKind {
+		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool, wireKindUnion:
+		default:
+			g.pf("%s\t\tif (r.report.refused) { r.report.widened = _widenedBefore; }\n", ind)
+		}
+		g.pf("%s\t\tif (arr.pos != arr.limit) { r.report.refuse('wire_damaged'); }\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
