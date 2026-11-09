@@ -351,7 +351,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 			g.pf("    if ( !table_cook_ref( region, %s + %d, (const void *) %sAt( ctx, %s ), order ) ) { return false; } // %s\n", base, value.Offset, t, name, f.Name)
 		} else {
 			g.pf("    for ( int32_t i%s = 0; i%s < %d; i%s++ ) // %s: an array of pointers, every slot\n    {\n", sfx, sfx, f.ArrayBound, sfx, f.Name)
-			g.pf("        if ( !table_cook_ref( region, %s + %d + i%s * 8, (const void *) %sAt( ctx, %s[ i%s ] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
+			g.pf("        if ( !table_cook_ref( region, %[1]s + %[2]d + i%[3]s * 8, (const void *) %[4]sAt( ctx, %[5]s[i%[6]s] ), order ) ) { return false; }\n", base, value.Offset, sfx, t, name, sfx)
 			g.pf("    }\n")
 			if f.Array == ir.ArrayCounted {
 				g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_count, 4, order );\n", base, pieces[1].Offset, name)
@@ -371,12 +371,12 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 		g.pf("    table_cook_put( %s + %d, (uint64_t) (uint32_t) %s_length, 4, order );\n", base, pieces[1].Offset, name)
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed, f.Array == ir.ArrayCounted:
 		stride := cookElementBytes(g.unit, f)
-		element := fmt.Sprintf("%s[ i%s ]", name, sfx)
+		element := fmt.Sprintf("%s[i%s]", name, sfx)
 		if f.KeyEnum != "" {
 			if st != nil && st.IsTable {
 				// a TABLE body's keyed array is TableKeyed<T, E>, whose storage
 				// is its one member; a `type` body's is the plain array (§2.4)
-				element = fmt.Sprintf("%s.slots[ i%s ]", name, sfx)
+				element = fmt.Sprintf("%s.slots[i%s]", name, sfx)
 			}
 			g.pf("    // [%s]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)\n", f.KeyEnum)
 		}
@@ -539,7 +539,7 @@ func (g *tableGen) emitCookWriteRoot(st *ir.Struct) {
 	g.pf("    table_cook_put( raw + 40, %d, 8, order ); // the region's alignment\n", align)
 	g.pf("    // the two RESERVED words are zero, and the memset already wrote them\n")
 	g.pf("    // the DATA part: the region, which for a fixed root is the record at its base\n")
-	g.pf("    if ( !%sCookBody( raw + %d, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)\n", n, dataOffset)
+	g.pf("    if ( !%[1]sCookBody( raw + %[2]d, value, order ) )\n    {\n        memset( raw, 0, (size_t) need );\n        return false;\n    } // a NaN or an infinity writes no cook (§3.3)\n", n, dataOffset)
 	g.pf("    // the ATTRIBUTION part: the node directory (§6.3), written beside the data\n")
 	g.pf("    // for `schema cook-check` — one entry, the root at offset zero, and its type\n")
 	g.pf("    // id is the fnv1a64 of the table's name (§3.1)\n")
@@ -622,7 +622,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 				g.pf("%sbreak;\n", ind)
 				continue
 			}
-			g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)
+			g.pf("            case 0x%016[1]xull:\n                size = %[2]d;\n                node_align = %[3]d;\n                break; // %[4]s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)
 		}
 		for _, b := range blobs {
 			// a byte buffer's node is its header and its bytes, at eight (§7.2)
@@ -630,7 +630,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 			if b.terminated {
 				extra = 1
 			}
-			g.pf("            case %s: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %d; node_align = 8; break; // *%s\n", b.constant, extra, b.word)
+			g.pf("            case %[1]s:\n                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %[2]d;\n                node_align = 8;\n                break; // *%[3]s\n", b.constant, extra, b.word)
 		}
 		g.pf("            default: return false;\n")
 		g.pf("        }\n")
@@ -719,13 +719,13 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	}
 	for _, t := range reachable {
 		if g.anyExtent {
-			g.pf("                    case 0x%016xull: ok = %sCookNode( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookNode( ctx, region, at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			continue
 		}
 		if g.isVar(t.Name) {
-			g.pf("                    case 0x%016xull: ok = %sCookBody( ctx, region, at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( ctx, region, at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		} else {
-			g.pf("                    case 0x%016xull: ok = %sCookBody( at, *(const %s *) node, order ); break; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			g.pf("                    case 0x%016[1]xull:\n                        ok = %[2]sCookBody( at, *(const %[3]s *) node, order );\n                        break; // %[4]s\n", ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 		}
 	}
 	for _, b := range blobs {
@@ -738,7 +738,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		g.pf("                        break;\n                    }\n")
 	}
 	if nodeLoop {
-		g.pf("                    default: ok = false; break;\n")
+		g.pf("                    default:\n                        ok = false;\n                        break;\n")
 		g.pf("                }\n            }\n")
 	}
 	g.pf("            // the ATTRIBUTION part: the node directory (§6.3), one entry per node\n")

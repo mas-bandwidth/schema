@@ -531,7 +531,7 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%[1]s        if ( !%[2]sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -594,7 +594,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d;\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
 			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, entry.Name)
-			g.pf("%s    if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }\n", ind)
+			g.pf("%[1]s    if ( at + bytes > capacity )\n%[1]s    {\n%[1]s        TableMapRelease( cursor );\n%[1]s        return false;\n%[1]s    }\n", ind)
 			g.pf("%s    %s * placed = (%s *) ( extent + at );\n", ind, entry.Name, entry.Name)
 			g.pf("%s    at += bytes;\n", ind)
 			g.pf("%s    %s.count = cursor.count;\n", ind, slot)
@@ -605,7 +605,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%[1]s        if ( !%[2]sExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -698,14 +698,14 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 	g.pf("// %sWireArmExtent: the extent one %s value's set arm commands, from the FRAMING alone (§2.6, §6.5).\n", un.Name, un.Name)
 	g.pf("inline bool %sWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )\n{\n", un.Name)
 	g.pf("    uint64_t arm_ref = 0;\n")
-	g.pf("    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.getleb( arm_ref ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload\n")
-	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint64_t arm_id = r.ids->at( arm_ref );\n")
-	g.pf("    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.has( 1 ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    r.offset += 1; // the arm's kind byte\n")
 	g.pf("    uint64_t arm_len = 0;\n")
-	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint8_t * arm_body = r.buffer + r.offset;\n")
 	g.pf("    r.offset += (int64_t) arm_len;\n")
 	g.pf("    switch ( arm_id )\n    {\n")
@@ -983,7 +983,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			if g.hasExtent(entry) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sCookExtent( ctx, region, extent, at, array + i * %d, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name, el.Size)
+				g.pf("%[1]s        if ( !%[2]sCookExtent( ctx, region, extent, at, array + i * %[3]d, *cursor[i], order ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name, el.Size)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n%s}\n", ind, ind)

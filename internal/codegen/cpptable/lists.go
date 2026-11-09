@@ -808,11 +808,11 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
-		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true; r.report->refuse_reason = kind_mismatch;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
+		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = kind_mismatch;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
 	} else {
-		g.pf("%s    else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%[1]s    else if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, elemKind)
 	}
 	g.pf("%s    else\n%s    {\n", ind, ind)
 	g.emitListFill(f, elemKind, ind, false)
@@ -847,7 +847,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	}
 	g.pf("%s        for ( uint64_t i = 0; i < count; i++ )\n%s        {\n", ind, ind)
 	g.pf("%s            %s * slot = TableListFillNext( fill );\n", ind, g.listElementType(f))
-	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL )\n%[1]s            {\n%[1]s                nodes.refused = true;\n%[1]s                return false;\n%[1]s            }\n%[1]s                r.report->damaged = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
+	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                if ( fill.worker != NULL )\n%[1]s                {\n%[1]s                    nodes.refused = true;\n%[1]s                    return false;\n%[1]s                }\n%[1]s                r.report->damaged = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
 	if widened {
@@ -874,7 +874,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 				g.pf("%s            if ( slot->value_length > 0 ) { spent += (int64_t) slot->value_length; }\n", ind)
 			}
 		}
-		g.pf("%s            if ( spent > %d ) { r.report->refused = true; r.report->refuse_reason = out_of_range; TableListFillDrop( fill ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
+		g.pf("%[1]s            if ( spent > %[2]d )\n%[1]s            {\n%[1]s                r.report->refused = true;\n%[1]s                r.report->refuse_reason = out_of_range;\n%[1]s                TableListFillDrop( fill );\n%[1]s                break;\n%[1]s            } // | total = %[3]d (§2.13)\n", ind, f.TextTotal, f.TextTotal)
 	}
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
@@ -1262,7 +1262,7 @@ func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("    %s * element = TableListPlace( worker, value.%s );\n", f.Type.Name, field)
 	g.pf("    if ( element == NULL ) { return false; }\n")
 	if unbounded {
-		g.pf("    if ( !schema_table_text_store_( worker, element->%s, text, n ) ) { schema_table_list_drop_last_( *worker.arena, value.%s ); return false; }\n", val.Name, field)
+		g.pf("    if ( !schema_table_text_store_( worker, element->%[1]s, text, n ) )\n    {\n        schema_table_list_drop_last_( *worker.arena, value.%[2]s );\n        return false;\n    }\n", val.Name, field)
 	} else {
 		g.pf("    memcpy( element->%s, text, (size_t) n );\n", val.Name)
 		g.pf("    element->%s[n] = 0;\n", val.Name)
