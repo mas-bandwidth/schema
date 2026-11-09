@@ -3,10 +3,10 @@ package jstable
 // THE ROADMAP'S BOUNDS, ORDINAL AND NORMALISATION ROWS ON THE JS LEG
 // (docs/roadmap.sexp node `fixed-tables`, ROADMAP.md "NEW Fixed Tables"). Law:
 // docs/SPEC-TABLES.md §3.4 (the fixed form), docs/FIXED-FORM-ALGORITHM.md §4.5
-// and §4.6 (the read-side count clamp, bool normalisation and the bounds pass)
-// and §5.4 (the exact-once clamp counts), and docs/FIXED-FORM-VERSIONING-TESTS.md
-// (the hostile half of C1/C2/C7, the exact-once clamp counts). One subtest per
-// task id, table-driven, t.Parallel() first.
+// and §4.6 (the read-side count and length refusals, bool wire_damaged, and the
+// bounds pass refusing out_of_range) and §5.4 (the exact-once counts), and
+// docs/FIXED-FORM-VERSIONING-TESTS.md (the hostile half of C1/C2/C7). One subtest
+// per task id, table-driven, t.Parallel() first.
 //
 // NOTHING HERE SHELLS OUT, so every subtest RUNS under a bare
 // `go test ./internal/codegen/jstable/ -run TestFixedRoadmapJsT06Bounds` and
@@ -18,7 +18,6 @@ package jstable
 // reports ten done verdicts over tests that never executed.
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -51,7 +50,7 @@ func TestFixedRoadmapJsT06Bounds(t *testing.T) {
 
 // t06Decode is the emitted read-side projection for one fixed root, the
 // straight-line JavaScript that lands the reader's own image into the value and
-// is §4.6's bounds pass — the plan never clamps, this decode does.
+// is §4.6's bounds pass — the plan never clamps, this decode refuses.
 func t06Decode(t *testing.T, src, root string) string {
 	t.Helper()
 	_, mod := t02Table(t, src)
@@ -80,8 +79,8 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.x < -5) { value.x = -5; report.oor++; } else if (value.x > 5) { value.x = 5; report.oor++; }",
-		"C7 a ranged scalar clamps at both declared ends and counts each")
+		"if (value.x < -5 || value.x > 5) { report.refused = TableFixedRefusal.OutOfRange; return; }",
+		"C7 a ranged scalar past either declared end refuses out_of_range")
 }
 
 // ---- js/R30 "compressed float rides as the float" ---------------------------
@@ -113,8 +112,8 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.q < 0) { value.q = 0; report.oor++; } else if (value.q > 1) { value.q = 1; report.oor++; }",
-		"R30 the compressed float clamps to the reader's min/max, the bounds following the float")
+		"if (value.q < 0 || value.q > 1) { report.refused = TableFixedRefusal.OutOfRange; return; }",
+		"R30 the compressed float past the reader's min/max refuses out_of_range, the bounds following the float")
 }
 
 // ---- js/C9 "union tag past arms → None" -------------------------------------
@@ -138,8 +137,8 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.p.type > 2) { value.p.type = 0; report.oor++; }",
-		"C9 a union tag past the arm count lands None and counts")
+		"if (value.p.type > 2) { report.refused = TableFixedRefusal.OutOfRange; return; }",
+		"C9 a union tag past the arm count refuses out_of_range")
 }
 
 // ---- js/C10 "enum ordinal past top → None" ----------------------------------
@@ -162,8 +161,8 @@ fixed table T
 }
 `, "T")
 	t02Has(t, t02Norm(body),
-		"if (value.tier > 3) { value.tier = 0; report.oor++; }",
-		"C10 an enum ordinal past the enum's top value lands None and counts")
+		"if (value.tier > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }",
+		"C10 an enum ordinal past the enum's top value refuses out_of_range")
 }
 
 // ---- js/R31 "full-width lanes" ----------------------------------------------
@@ -224,13 +223,12 @@ fixed table T
 		"C13 the present flag reads byte != 0, so a nonzero byte normalises to present")
 }
 
-// ---- js/R17 "normalises and counts nothing" ---------------------------------
+// ---- js/R17 "bool or present byte other than 0/1 refuses" -------------------
 
-// t06JsR17 holds R17: a bool or present byte that is not 0/1 normalises and
-// counts nothing. docs/FIXED-FORM-ALGORITHM.md §5.4: "A `bool` or a present
-// byte that is not `0` or `1` is normalised to the language's own true and
-// counts nothing". A table of only a bool and an optional has no clamp at all,
-// so the whole projection moves no counter.
+// t06JsR17 holds R17: a bool or present byte that is not 0/1 refuses
+// wire_damaged in the check loop (docs/FIXED-FORM-ALGORITHM.md §4.5),
+// before any destination byte is written. The load that follows only ever
+// sees a validated 0 or 1.
 func t06JsR17(t *testing.T) {
 	body := t06Decode(t, `package probe
 
@@ -241,13 +239,10 @@ fixed table T
 }
 `, "T")
 	n := t02Norm(body)
-	t02Has(t, n, "value.b = view.getUint8(at) !== 0;",
-		"R17 a bool byte is normalised byte != 0")
-	t02Has(t, n, "value.vPresent = view.getUint8(at + 1) !== 0;",
-		"R17 a present byte is normalised byte != 0")
-	if strings.Contains(body, "report.") {
-		t.Error("R17: the bool or present load moves a counter; a hostile byte counts nothing")
-	}
+	t02Has(t, n, "const b = view.getUint8(at); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; }",
+		"R17 a bool byte other than 0/1 refuses wire_damaged")
+	t02Has(t, n, "const p = view.getUint8(at + 1); if (p > 1) { report.refused = TableFixedRefusal.WireDamaged; return; }",
+		"R17 a present byte other than 0/1 refuses wire_damaged")
 }
 
 // ---- js/C1 "count clamp v<0" ------------------------------------------------
@@ -264,8 +259,8 @@ fixed table T
     vals [..4]int32
 }
 `, "T")
-	t02Has(t, t02Norm(body), "if (n < 0) { n = 0; report.oor++; }",
-		"C1 a count below zero clamps to zero and counts")
+	t02Has(t, t02Norm(body), "if (n < 0 || n > 4) { report.refused = TableFixedRefusal.CountOverBound; return; }",
+		"C1 a count below zero or past the max refuses count_over_bound")
 }
 
 // ---- js/C2 "count clamp v>Max" ----------------------------------------------
@@ -281,6 +276,6 @@ fixed table T
     vals [..4]int32
 }
 `, "T")
-	t02Has(t, t02Norm(body), "else if (n > 4) { n = 4; report.oor++; }",
-		"C2 a count above the max clamps to the max and counts")
+	t02Has(t, t02Norm(body), "if (n < 0 || n > 4) { report.refused = TableFixedRefusal.CountOverBound; return; }",
+		"C2 a count above the max refuses count_over_bound")
 }
