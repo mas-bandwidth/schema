@@ -1815,6 +1815,15 @@ define tables_zero_cost_no_block_files
 	fi
 endef
 
+# $(call) drops the trailing newline of a define. Two calls written on one
+# assignment then glue the last command of the first to the first command of
+# the second (a tab, no newline), and schema reports the next binary path as
+# a unit file. This is one newline, put back between those calls.
+define tables_zero_cost_nl
+
+
+endef
+
 .PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
 
 tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKFUL = $(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
@@ -1845,8 +1854,8 @@ tables-block-zero-cost-cs: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cs)
 	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
 
-tables-block-zero-cost-c: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
-tables-block-zero-cost-c: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+tables-block-zero-cost-c: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+tables-block-zero-cost-c: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(tables_zero_cost_nl)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
 tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
 	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
 	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
