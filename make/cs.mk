@@ -577,6 +577,35 @@ tables-cs-leg-debug: build/tables-generated-cs/.stamp
 tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# PER-COMMIT SHARDS of the leg above (card green-fit-cs-tables-leg): the
+# unsplit leg measured 133 s per configuration in CI run 42554833739
+# (12 s corpus generation + 106 s `run the leg`), over the fleet's 120 s
+# per-commit kill (110 s budget). Program.cs partitions its suites into
+# wire, core, evolution and fixed; each shard target below runs one
+# partition in one configuration, and ci-full.yml runs all eight as
+# parallel matrix rows, so a row pays generation + build + one quarter
+# of the suites instead of the whole leg. Nothing is dropped: with no
+# shard argument the binary still runs every suite, `tables-cs-leg`
+# still runs both configurations whole for `make test` and certify, and
+# every shard is also reachable through the umbrella targets.
+.PHONY: tables-cs-leg-debug-wire tables-cs-leg-debug-core tables-cs-leg-debug-evolution tables-cs-leg-debug-fixed tables-cs-leg-release-wire tables-cs-leg-release-core tables-cs-leg-release-evolution tables-cs-leg-release-fixed
+tables-cs-leg-debug-wire: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- wire
+tables-cs-leg-debug-core: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- core
+tables-cs-leg-debug-evolution: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- evolution
+tables-cs-leg-debug-fixed: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -- fixed
+tables-cs-leg-release-wire: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- wire
+tables-cs-leg-release-core: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- core
+tables-cs-leg-release-evolution: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- evolution
+tables-cs-leg-release-fixed: build/tables-generated-cs/.stamp
+	cd test/cs-tables && $(DOTNET) run -c Release -- fixed
+
 # THE LEG'S NEGATIVE CONTROLS (docs/PORTING.md M5, M6, M10, M14, M17 and M19,
 # and the native region writer's shared-blob refusal, docs/SPEC-TABLES.md §2.5).
 # Each takes ONE rule out of the C# emitter (tools/sabotage, through a go build

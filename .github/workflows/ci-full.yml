@@ -1456,11 +1456,21 @@ jobs:
   # target still runs both halves in order for `make test` and the nightly;
   # this job runs one half per row.
   #
+  # SPLIT INTO SUITE SHARDS (card green-fit-cs-tables-leg): even one
+  # configuration measured 133 s in run 42554833739 (12 s corpus generation
+  # + 106 s `run the leg`), over the fleet's 120 s per-commit kill, so each
+  # configuration is now split by suite partition (wire, core, evolution,
+  # fixed; Program.cs runs one partition per invocation, all of them with
+  # no argument). This job runs all eight config x shard rows in parallel;
+  # nothing moves to nightly and nothing is dropped — the umbrella
+  # `tables-cs-leg` target still runs both configurations whole. The
+  # dispatch evidence (run id and slowest row) is recorded on the card.
+  #
   # internal/ci/tableslegs_test.go is what keeps this job from being quietly
   # deleted: TestEveryNamedTableLegRunsOnEveryPullRequest refuses a named leg
   # with no pull-request coverage.
   cs-tables:
-    name: C# tables leg (${{ matrix.config }})
+    name: C# tables leg (${{ matrix.config }}-${{ matrix.shard }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1471,6 +1481,7 @@ jobs:
       fail-fast: false
       matrix:
         config: [debug, release]
+        shard: [wire, core, evolution, fixed]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1513,7 +1524,7 @@ jobs:
         run: make -j"$(nproc)" bin/schema build/tables-generated-cs/.stamp
 
       - name: run the leg
-        run: make tables-cs-leg-${{ matrix.config }}
+        run: make tables-cs-leg-${{ matrix.config }}-${{ matrix.shard }}
 
 
   # DOGFOOD BIG-ENDIAN (issue #303). docs/SPEC-TABLES.md §3 says the wire is
