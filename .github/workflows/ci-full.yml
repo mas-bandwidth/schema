@@ -1940,21 +1940,18 @@ jobs:
       # whether one job runs them or three. `c-control` is the C twin. They are
       # what prove the matrix can go red.
       #
-      # PER-COMMIT SMOKE vs NIGHTLY BATTERY (green-be-nightly). Before this
-      # split the four heavy rows broke the two-minute rule on ubuntu-24.04:
-      # `control` 322 s, `tables` 282 s, `go-control` 250 s, and `go` 136 s
-      # (while `c`, `c-control`, `collections` and `cook` fit). Per commit,
-      # `tables` (`tables-big-endian-tables`, 39 s) runs the 10-unit wire,
-      # pointer, keyed and golden smoke under qemu-s390x; `control`
-      # (`tables-big-endian-control-only`, 41 s) runs the host-order put16
-      # control on `tables/examples` (`root_full`); and `go`
-      # (`conformance-big-endian`, ~65 s cold / ~35 s warm) cross-compiles with
-      # `-gcflags=all=-l` and saves the hosted Linux Go build cache (including
-      # the s390x objects). The full 120-unit 154-translation-unit 30,000-pass
-      # C++ battery (`tables-big-endian-tables-full`), its full corpus control
-      # (`tables-big-endian-control-full`) and the two-build Go overlay control
-      # (`conformance-big-endian-negative-control`, 250 s) run nightly in
-      # certify.yml's `big-endian` job.
+      # PER-COMMIT SMOKE vs NIGHTLY BATTERY (green-be-nightly). The four heavy
+      # rows on the card were control 322 s, tables 282 s, go-control 250 s and
+      # go 136 s. Run 42581682964 at ecc2d21ba, job wall from started_at to
+      # completed_at: tables 46 s, control 44 s, collections 82 s, cook 76 s,
+      # c 85 s, c-control 103 s, go 127 s. The go make step
+      # (conformance-big-endian) was 96 s inside that 127 s job, past the 110 s
+      # row budget, so the full Go harness moves to certify.yml and this go row
+      # is conformance-big-endian-smoke: three units, host bytes against
+      # qemu-s390x. The full C++ battery and its host-order control stay
+      # nightly as tables-big-endian-tables-full and
+      # tables-big-endian-control-full. Big-endian reds stay with
+      # green-be-message-form, green-be-control and green-conf-go-big-endian.
       matrix:
         include:
           - leg: tables
@@ -1970,7 +1967,7 @@ jobs:
           - leg: c-control
             target: tables-c-big-endian-negative-control
           - leg: go
-            target: conformance-big-endian
+            target: conformance-big-endian-smoke
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

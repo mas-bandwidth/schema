@@ -938,14 +938,14 @@ jobs:
     uses: ./.github/workflows/leg.yml
 
   # THE FULL BIG-ENDIAN BATTERY AND CONTROLS (green-be-nightly). Per-commit CI
-  # (ci-full.yml's `big-endian` job) runs the fast per-commit smoke (39 s for
-  # `tables-big-endian-tables`, 41 s for `tables-big-endian-control-only`, and
-  # `conformance-big-endian`); the three rows that exceed the two-minute per-commit
-  # budget on ubuntu-24.04 — the full 120-unit 154-translation-unit 30,000-pass
-  # C++ battery (`tables-big-endian-tables-full`, 282 s), its full corpus host-order
-  # control (`tables-big-endian-control-full`, 322 s), and the two-build Go overlay
-  # host-order control (`conformance-big-endian-negative-control`, 250 s) — run here
-  # nightly on the same pinned ubuntu-24.04 archive and s390x/qemu pins.
+  # keeps the smokes. Run 42581682964 at ecc2d21ba measured the full Go harness
+  # conformance-big-endian at 127 s job wall (make step 96 s), past the 110 s
+  # per-commit budget, so that harness runs here with the full C++ battery
+  # (tables-big-endian-tables-full, card 282 s), its full corpus host-order
+  # control (tables-big-endian-control-full, card 322 s) and the Go host-order
+  # control (conformance-big-endian-negative-control, card 250 s). Same pinned
+  # ubuntu-24.04 archive and s390x/qemu pins. Big-endian reds stay with
+  # green-be-message-form, green-be-control and green-conf-go-big-endian.
   big-endian:
     name: big-endian (${{ matrix.leg }})
     runs-on: ubuntu-24.04
@@ -960,6 +960,8 @@ jobs:
             target: tables-big-endian-control-full
           - leg: go-control
             target: conformance-big-endian-negative-control
+          - leg: go
+            target: conformance-big-endian
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
