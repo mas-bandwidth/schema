@@ -410,6 +410,7 @@ impl TableNodeReader {
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
         let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
+        let mut seen_node_table = false;
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
@@ -425,6 +426,15 @@ impl TableNodeReader {
                 if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
+            // A SECOND node table is a repeated reserved field: the numbering
+            // is one table, so the whole load is damaged (§3.1, §4).
+            if seen_node_table {
+                report.damaged = true;
+                reader.good = false;
+                reader.recs.clear();
+                break;
+            }
+            seen_node_table = true;
             if kind != 12 {
                 report.damaged = true;
                 reader.good = false;
