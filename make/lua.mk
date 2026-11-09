@@ -14,10 +14,10 @@
 # leg. Populate with `make dist-lua`; any other sha256 is refused.
 LUA_VERSION := 5.4.8
 LUA_TARBALL := lua-$(LUA_VERSION).tar.gz
-LUA_URL     := https://www.lua.org/ftp/$(LUA_TARBALL)
+LUA_URL     ?= https://www.lua.org/ftp/$(LUA_TARBALL)
 # the mirror of the same tarball in this repository's `deps` prerelease, tried
 # only when LUA_URL is unreachable; both are held to LUA_SHA256 below
-LUA_FALLBACK_URL := https://github.com/mas-bandwidth/schema/releases/download/deps/$(LUA_TARBALL)
+LUA_FALLBACK_URL ?= https://github.com/mas-bandwidth/schema/releases/download/deps/$(LUA_TARBALL)
 # the sources, in the order dist-lua tries them
 LUA_URLS := $(LUA_URL) $(LUA_FALLBACK_URL)
 LUA_SHA256  := 4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae
