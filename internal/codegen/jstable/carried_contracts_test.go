@@ -214,16 +214,39 @@ fixed table T {
 }
 `
 	const script = `
-const value = new T(); InitT(value);
-value.a = -1n; value.b = 65535; value.c = -128; value.d = 18446744073709551615n;
-const raw = new Uint8Array(TMeasure(1));
-if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
-const back = [new T()]; InitT(back[0]);
-const plan = TNewPlan(4096,4096); const report = new TableFixedReport();
-const count = TLoad(back,1,raw,raw.length,plan,report);
-if (count !== 1 || report.refused !== 0 || report.damaged || report.oor !== 4
-    || back[0].a !== 0n || back[0].b !== 9 || back[0].c !== -3 || back[0].d !== 18446744073709551610n) {
-  fail("fixed one-sided clamps: " + show(back) + " " + reason(report));
+const plan = TNewPlan(4096,4096);
+for (const [a, b, c, d] of [
+  [0n, 9, -3, 18446744073709551610n],
+  [9223372036854775807n, 0, 127, 0n],
+]) {
+  const value = new T(); InitT(value);
+  value.a = a; value.b = b; value.c = c; value.d = d;
+  const raw = new Uint8Array(TMeasure(1));
+  if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
+  const back = [new T()]; InitT(back[0]);
+  const report = new TableFixedReport();
+  const count = TLoad(back,1,raw,raw.length,plan,report);
+  if (count !== 1 || report.refused !== 0 || report.damaged || report.oor !== 0
+      || back[0].a !== a || back[0].b !== b || back[0].c !== c || back[0].d !== d) {
+    fail("fixed one-sided in-range read: " + show(back) + " " + reason(report));
+  }
+}
+for (const [a, b, c, d] of [
+  [-1n, 9, -3, 18446744073709551610n],
+  [0n, 65535, -3, 18446744073709551610n],
+  [0n, 9, -128, 18446744073709551610n],
+  [0n, 9, -3, 18446744073709551615n],
+]) {
+  const value = new T(); InitT(value);
+  value.a = a; value.b = b; value.c = c; value.d = d;
+  const raw = new Uint8Array(TMeasure(1));
+  if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
+  const back = [new T()]; InitT(back[0]);
+  const report = new TableFixedReport();
+  const count = TLoad(back,1,raw,raw.length,plan,report);
+  if (count !== -1 || report.refused !== TableFixedRefusal.OutOfRange || report.damaged || report.oor !== 0) {
+    fail("fixed one-sided refusal: " + show(back) + " " + reason(report));
+  }
 }
 `
 	if out, err := jsRunVersionProbe(t, jsNode(t), schema, nil, 0, "T", script); err != nil {

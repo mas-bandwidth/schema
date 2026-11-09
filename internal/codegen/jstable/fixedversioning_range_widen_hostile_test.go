@@ -47,16 +47,26 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 			newer := jsReadSchema(t, "VNEW_"+vec.Row)
 			older := jsReadSchema(t, "VOLD_"+vec.Row)
 			table := jsFixedRootName(t, older)
+			verdict := fmt.Sprintf(`if (n !== 1 || r.damaged || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
+%s`, checks.String())
+			if want.Refused || want.Clamped > 0 {
+				verdict = `if (n !== -1 || r.refused !== TableFixedRefusal.OutOfRange || r.damaged || r.oor !== 0) {
+  fail("a value past the WRITER's range owes out_of_range: n=" + n + " " + reason(r));
+}
+if (show(back[0]) !== fresh0) {
+  fail("a refused read must leave the destination untouched: " + show(back[0]));
+}`
+			}
 			src := fmt.Sprintf(`
 const data = readFileSync(%[1]q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const fresh0 = show(back[0]);
 const r = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 const n = TLoad(back, back.length, data, data.length, plan, r);
-if (n !== 1 || r.damaged || r.refused !== 0) { fail("the forged file reads one record: n=" + n + " " + reason(r)); }
-%[2]sif (r.oor !== %[3]d) { fail("clamped=" + r.oor + ", want exactly %[3]d: one forged value, one clamp"); }
+%[2]s
 if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) { fail("a counter that must not move did: " + reason(r)); }
-`, filepath.Join(corpus, vec.File), checks.String(), want.Clamped)
+`, filepath.Join(corpus, vec.File), verdict)
 			out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", vec.File, err, out)

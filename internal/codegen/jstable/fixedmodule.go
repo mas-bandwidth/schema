@@ -532,8 +532,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }\n")
 	if writerBounds {
 		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
-		g.pf("    // the image, then the projection's clamp.\n")
+		g.pf("    // the image. A value past what that writer could have written REFUSES by\n")
+		g.pf("    // name here, never clamping onto the writer's bound.\n")
 		g.pf("    if (writerBounds !== null) { writerBounds(imageView, stage); }\n")
+		g.pf("    if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }\n")
 	}
 	g.pf("    %sFixedDecode(values[k], imageView, 0, stage);\n", st.Name)
 	g.pf("    // THE PROJECTION'S OWN CONTENT RULE (§4.5 fix 11): a copied run carries\n")

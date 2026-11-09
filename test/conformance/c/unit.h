@@ -84,6 +84,30 @@
         return SCHEMA_CONFORMANCE_Q(FN##_save)( (const SCHEMA_CONFORMANCE_Q(FN##_t) *) value, buffer, capacity ); \
     }
 
+/* A FIXED ROOT PAST THE FORM-3 CEILING HAS NO FILE FORM (docs/plans/strict-only.md,
+   the carried fixed-root ceiling conflict, resolved): its file save refuses and its
+   file read refuses a form-1 file as previous_form, so the file load lands nothing. */
+#define SCHEMA_CONFORMANCE_FILE_NOFORM( TYPE, FN ) \
+    static int schema_conformance_load_##TYPE( void * value, const uint8_t * bytes, int64_t size, ConformanceReport * report ) \
+    { \
+        SCHEMA_CONFORMANCE_Q(table_report_t) inner; \
+        (void) value; (void) bytes; (void) size; \
+        memset( &inner, 0, sizeof( inner ) ); \
+        inner.refused = 1; \
+        SCHEMA_CONFORMANCE_COPY_REPORT( inner, report ); \
+        return 0; \
+    } \
+    static int64_t schema_conformance_measure_##TYPE( const void * value ) \
+    { \
+        (void) value; \
+        return -1; \
+    } \
+    static int64_t schema_conformance_save_##TYPE( const void * value, uint8_t * buffer, int64_t capacity ) \
+    { \
+        (void) value; (void) buffer; (void) capacity; \
+        return -1; \
+    }
+
 #define SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FORM ) \
     static int64_t schema_conformance_message_fuzz_##TYPE(const uint8_t * wire,int64_t bytes,uint8_t ** saved,ConformanceReport * report,int * loaded,int64_t * extent) \
     { \
@@ -180,6 +204,7 @@
 /* a fixed root with a file form, and one past the ceiling with none */
 #define SCHEMA_CONFORMANCE_CODEC( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FIXED )
 #define SCHEMA_CONFORMANCE_CODEC_FORM1( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, FORM1 )
+#define SCHEMA_CONFORMANCE_CODEC_NOFORM( TYPE, FN ) SCHEMA_CONFORMANCE_CODEC_IN( TYPE, FN, NOFORM )
 
 /* Variable roots are loaded into driver-owned regions. The generated load
    itself neither allocates nor follows a reference. A variable table has no

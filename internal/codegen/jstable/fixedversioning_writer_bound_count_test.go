@@ -41,27 +41,15 @@ view.setUint32(found + 4, 7, true); /* the forge */
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== 1) { fail("writer_bound_count: n is not 1: " + n + " " + reason(r)); }
-if (back[0].valsCount !== 4) {
-  fail("vals_count is the WRITER's bound carried by the plan, never the reader's 8 nor the forged 7: " + show(back[0].valsCount));
+if (n !== -1 || r.refused !== TableFixedRefusal.CountOverBound || r.damaged || r.oor !== 0) {
+  fail("writer_bound_count: a count past the WRITER's 4 owes count_over_bound, never the reader's 8: n=" + n + " " + reason(r));
 }
-for (let i = 0; i < 4; i++) {
-  if (back[0].vals[i] !== 1000 + i) { fail("vals[" + i + "] did not land: " + show(back[0])); }
+if (back[0].valsCount !== 0 || back[0].lead !== 1 || back[0].trail !== 2) {
+  fail("a refused read must leave the destination untouched: " + show(back[0]));
 }
-for (let i = 4; i < 8; i++) {
-  if (back[0].vals[i] !== 0) { fail("vals[" + i + "] is not the reader's declared default: " + show(back[0])); }
+if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0 || r.repeated !== 0) {
+  fail("REFUSE is total: no counter moves: " + reason(r));
 }
-if (back[0].lead !== 0xAAAAAAAA || back[0].trail !== 0xBBBBBBBB) {
-  fail("the row moved a neighbour: " + show(back[0]));
-}
-if (r.oor !== 1) {
-  fail("the bounds pass counts once per entry per record, so clamped is EXACTLY 1, never 2: " + reason(r));
-}
-if (r.unknown !== 0 || r.mismatch !== 0 || r.widened !== 0) {
-  fail("counters moved on a clean clamped read: " + reason(r));
-}
-if (r.damaged) { fail("a count inside the writer's bound is not malformed: " + reason(r)); }
-if (r.refused !== 0) { fail("a count inside the writer's bound is not a refusal: " + reason(r)); }
 `, filepath.Join(corpus, "old_array_bounded_grow.bin"))
 	out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 	if err != nil {
