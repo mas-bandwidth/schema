@@ -1067,10 +1067,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -3037,6 +3049,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3173,6 +3186,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3333,7 +3352,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -3465,6 +3484,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -3474,7 +3505,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -3483,7 +3515,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3508,10 +3540,15 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 )
     {
@@ -3563,7 +3600,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -3656,6 +3698,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4214,7 +4257,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4419,15 +4468,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -5966,10 +6023,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -9195,7 +9254,8 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9224,7 +9284,8 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -9248,17 +9309,19 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9277,10 +9340,16 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -9303,17 +9372,19 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9331,13 +9402,19 @@ inline bool LeafLoadBody( TableReader & r, const TableNodeMap & nodes, Leaf & va
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9433,7 +9510,8 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 );
+                w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBody( ctx, numbering, w, ids, value.carry.leaf ) ) { return false; }
                 break;
             }
@@ -9442,7 +9520,8 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.carry.plain ) );
                 break;
             }
@@ -9527,7 +9606,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9536,11 +9616,27 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                     break;
                 }
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.carry.type = CarryType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.carry.type = CarryType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -9559,7 +9655,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.carry.type = CarryType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.carry.type = CarryType::Leaf;
@@ -9576,7 +9673,12 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.carry.type = CarryType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.carry.type = CarryType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.carry.plain, 0, sizeof( value.carry.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -9594,7 +9696,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.carry.type = CarryType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.carry.type = CarryType::Plain;
@@ -9629,7 +9732,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9658,7 +9762,8 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -9682,17 +9787,19 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9711,10 +9818,16 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -9737,17 +9850,19 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -9765,13 +9880,19 @@ inline bool HolderLoadBody( TableReader & r, const TableNodeMap & nodes, Holder 
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -9910,7 +10031,8 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // leaf
+                        w.header( arm_refu, 13 );
+                        w.putleb( (uint64_t) arm_payloadu ); // leaf
                         if ( !LeafSaveBody( ctx, numbering, w, ids, value.entries[elem_i].leaf ) ) { return false; }
                         break;
                     }
@@ -9919,7 +10041,8 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // int32
-                        w.header( arm_refu, 4 ); w.putleb( (uint64_t) arm_payloadu ); // plain
+                        w.header( arm_refu, 4 );
+                        w.putleb( (uint64_t) arm_payloadu ); // plain
                         w.put32( uint32_t( value.entries[elem_i].plain ) );
                         break;
                     }
@@ -9992,7 +10115,8 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10020,96 +10144,131 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 15 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 15 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 2 ) { keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
+                        uint64_t keep = count;
+                        if ( keep > 2 )
                         {
-                            uint64_t elem_arm_ref = 0;
-                            if ( !sub.getleb( elem_arm_ref ) ) { r.report->damaged = true; break; }
-                            value.entries[(int32_t) i].type = CarryType::None;
-                            if ( elem_arm_ref != 0 ) // the zero reference is a None element in its place
+                            keep = 2;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
                             {
-                                if ( elem_arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
-                                const uint64_t elem_arm_id = r.ids->at( elem_arm_ref );
-                                if ( !sub.has( 1 ) ) { r.report->damaged = true; break; }
-                                const uint8_t elem_arm_kind = sub.get8();
-                                uint64_t elem_arm_len = 0;
-                                if ( !sub.getleb( elem_arm_len ) || !sub.room( elem_arm_len ) ) { r.report->damaged = true; break; }
-                                TableReader elem_arm( sub.buffer + sub.offset, (int64_t) elem_arm_len, r.report, r.ids );
-                                switch ( elem_arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                uint64_t elem_arm_ref = 0;
+                                if ( !sub.getleb( elem_arm_ref ) )
                                 {
-                                    case 0x24ad84ada20208d5ull: // leaf
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                value.entries[(int32_t) i].type = CarryType::None;
+                                if ( elem_arm_ref != 0 ) // the zero reference is a None element in its place
+                                {
+                                    if ( elem_arm_ref > (uint64_t) r.ids->count )
                                     {
-                                        if ( elem_arm_kind != 13 )
-                                        {
-                                            value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
-                                        }
-                                        value.entries[(int32_t) i].type = CarryType::Leaf;
-                                        LeafLoadBody( elem_arm, nodes, value.entries[(int32_t) i].leaf );
-                                        if ( nodes.refused ) { return false; }
-                                        if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
+                                        r.report->damaged = true;
                                         break;
                                     }
-                                    case 0xfd4d194e1652b207ull: // plain
+                                    const uint64_t elem_arm_id = r.ids->at( elem_arm_ref );
+                                    if ( !sub.has( 1 ) )
                                     {
-                                        if ( elem_arm_kind != 4 )
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    const uint8_t elem_arm_kind = sub.get8();
+                                    uint64_t elem_arm_len = 0;
+                                    if ( !sub.getleb( elem_arm_len ) || !sub.room( elem_arm_len ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableReader elem_arm( sub.buffer + sub.offset, (int64_t) elem_arm_len, r.report, r.ids );
+                                    switch ( elem_arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                    {
+                                        case 0x24ad84ada20208d5ull: // leaf
                                         {
-                                            if ( TableKindWidens( elem_arm_kind, 4 ) )
+                                            if ( elem_arm_kind != 13 )
                                             {
-                                                // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                                // that is not that width is the arm's own framing damage (§3)
-                                                if ( elem_arm.size != TableKindWidth( elem_arm_kind ) ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
-                                                memset( (void *) &value.entries[(int32_t) i].plain, 0, sizeof( value.entries[(int32_t) i].plain ) ); // selection establishes the arm (§2.6)
-                                                int64_t widened_v = 0;
-                                                if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) )
-                                                {
-                                                    value.entries[(int32_t) i].type = CarryType::None;
-                                                    r.report->damaged = true;
-                                                    break;
-                                                }
-                                                int32_t decoded_v = (int32_t) widened_v;
-                                                value.entries[(int32_t) i].plain = decoded_v;
-                                                value.entries[(int32_t) i].type = CarryType::Plain;
-                                                r.report->widened++;
-                                                break;
+                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
-                                            value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
-                                        }
-                                        value.entries[(int32_t) i].type = CarryType::Plain;
-                                        if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                                        if ( !elem_arm.has( 4 ) )
-                                        {
-                                            value.entries[(int32_t) i].type = CarryType::None;
-                                            r.report->damaged = true;
+                                            value.entries[(int32_t) i].type = CarryType::Leaf;
+                                            LeafLoadBody( elem_arm, nodes, value.entries[(int32_t) i].leaf );
+                                            if ( nodes.refused ) { return false; }
+                                            if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
                                             break;
                                         }
-                                        int32_t decoded_v = int32_t( elem_arm.get32() );
-                                        value.entries[(int32_t) i].plain = decoded_v;
-                                        break;
+                                        case 0xfd4d194e1652b207ull: // plain
+                                        {
+                                            if ( elem_arm_kind != 4 )
+                                            {
+                                                if ( TableKindWidens( elem_arm_kind, 4 ) )
+                                                {
+                                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                    // that is not that width is the arm's own framing damage (§3)
+                                                    if ( elem_arm.size != TableKindWidth( elem_arm_kind ) )
+                                                    {
+                                                        value.entries[(int32_t) i].type = CarryType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
+                                                    memset( (void *) &value.entries[(int32_t) i].plain, 0, sizeof( value.entries[(int32_t) i].plain ) ); // selection establishes the arm (§2.6)
+                                                    int64_t widened_v = 0;
+                                                    if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) )
+                                                    {
+                                                        value.entries[(int32_t) i].type = CarryType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
+                                                    int32_t decoded_v = (int32_t) widened_v;
+                                                    value.entries[(int32_t) i].plain = decoded_v;
+                                                    value.entries[(int32_t) i].type = CarryType::Plain;
+                                                    r.report->widened++;
+                                                    break;
+                                                }
+                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                            }
+                                            value.entries[(int32_t) i].type = CarryType::Plain;
+                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( !elem_arm.has( 4 ) )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
+                                            int32_t decoded_v = int32_t( elem_arm.get32() );
+                                            value.entries[(int32_t) i].plain = decoded_v;
+                                            break;
+                                        }
+                                        default:
+                                            r.report->unknown++;
+                                             break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
-                                    default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                    sub.offset += (int64_t) elem_arm_len;
                                 }
-                                sub.offset += (int64_t) elem_arm_len;
                             }
+                            decoded = i + 1;
                         }
-                        decoded = i + 1;
-                    }
-                    value.entries_count = (int32_t) decoded;
-                    for ( int32_t tail = value.entries_count; tail < previous_count; tail++ ) {
-                        LeafReset( value.entries[tail].leaf );
-                        value.entries[tail].plain = 0;
-                        value.entries[tail].type = CarryType::None;
-                    }
+                        value.entries_count = (int32_t) decoded;
+                        for ( int32_t tail = value.entries_count; tail < previous_count; tail++ )
+                        {
+                            LeafReset( value.entries[tail].leaf );
+                            value.entries[tail].plain = 0;
+                            value.entries[tail].type = CarryType::None;
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -10136,7 +10295,8 @@ inline bool HandLoadBody( TableReader & r, const TableNodeMap & nodes, Hand & va
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10295,7 +10455,8 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                                 if ( arm_body_linksu < 0 ) { return false; }
                                 arm_payload_linksu += arm_body_linksu; // the arm's own table body (§3)
                             }
-                            w.header( arm_ref_linksu, 13 ); w.putleb( (uint64_t) arm_payload_linksu ); // leaf
+                            w.header( arm_ref_linksu, 13 );
+                            w.putleb( (uint64_t) arm_payload_linksu ); // leaf
                             if ( !LeafSaveBody( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf ) ) { return false; }
                             break;
                         }
@@ -10304,7 +10465,8 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payload_linksu = 0;
                             arm_payload_linksu += 4; // int32
-                            w.header( arm_ref_linksu, 4 ); w.putleb( (uint64_t) arm_payload_linksu ); // plain
+                            w.header( arm_ref_linksu, 4 );
+                            w.putleb( (uint64_t) arm_payload_linksu ); // plain
                             w.put32( uint32_t( cursor_links[elem_i_links].plain ) );
                             break;
                         }
@@ -10378,7 +10540,8 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10403,7 +10566,13 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                     if ( !counted_ok ) { r.report->damaged = true; }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
-                    else if ( elem_kind != 15 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 15 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
@@ -10425,17 +10594,19 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Carry * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -10443,16 +10614,32 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                             {
                                 {
                                     uint64_t elem_arm_ref_links = 0;
-                                    if ( !sub.getleb( elem_arm_ref_links ) ) { r.report->damaged = true; break; }
+                                    if ( !sub.getleb( elem_arm_ref_links ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     ( *slot ).type = CarryType::None;
                                     if ( elem_arm_ref_links != 0 ) // the zero reference is a None element in its place
                                     {
-                                        if ( elem_arm_ref_links > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                                        if ( elem_arm_ref_links > (uint64_t) r.ids->count )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         const uint64_t elem_arm_id_links = r.ids->at( elem_arm_ref_links );
-                                        if ( !sub.has( 1 ) ) { r.report->damaged = true; break; }
+                                        if ( !sub.has( 1 ) )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         const uint8_t elem_arm_kind_links = sub.get8();
                                         uint64_t elem_arm_len_links = 0;
-                                        if ( !sub.getleb( elem_arm_len_links ) || !sub.room( elem_arm_len_links ) ) { r.report->damaged = true; break; }
+                                        if ( !sub.getleb( elem_arm_len_links ) || !sub.room( elem_arm_len_links ) )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         TableReader elem_arm_links( sub.buffer + sub.offset, (int64_t) elem_arm_len_links, r.report, r.ids );
                                         switch ( elem_arm_id_links ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
@@ -10476,7 +10663,12 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                                     {
                                                         // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                                         // that is not that width is the arm's own framing damage (§3)
-                                                        if ( elem_arm_links.size != TableKindWidth( elem_arm_kind_links ) ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; }
+                                                        if ( elem_arm_links.size != TableKindWidth( elem_arm_kind_links ) )
+                                                        {
+                                                            ( *slot ).type = CarryType::None;
+                                                            r.report->damaged = true;
+                                                            break;
+                                                        }
                                                         memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
                                                         int64_t widened_v = 0;
                                                         if ( !TableReadSignedAt( elem_arm_links, elem_arm_kind_links, widened_v ) )
@@ -10505,7 +10697,9 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                                                 ( *slot ).plain = decoded_v;
                                                 break;
                                             }
-                                            default: r.report->unknown++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            default:
+                                                r.report->unknown++;
+                                                 break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_links;
                                     }
@@ -10515,13 +10709,19 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
@@ -10545,7 +10745,8 @@ inline bool ChainLoadBody( TableReader & r, const TableNodeMap & nodes, Chain & 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11004,14 +11205,30 @@ inline bool ChainExtentPack( const Ctx & ctx, const Chain & src, Chain & dst, ui
 inline bool CarryWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t arm_ref = 0;
-    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_ref ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload
-    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }
+    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint64_t arm_id = r.ids->at( arm_ref );
-    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }
+    if ( !r.has( 1 ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += 1; // the arm's kind byte
     uint64_t arm_len = 0;
-    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     const uint8_t * arm_body = r.buffer + r.offset;
     r.offset += (int64_t) arm_len;
     switch ( arm_id )
@@ -15454,7 +15671,8 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -15483,7 +15701,8 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -15507,17 +15726,19 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -15536,10 +15757,16 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -15562,17 +15789,19 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -15590,13 +15819,19 @@ inline bool LeafLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Lea
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -15693,7 +15928,8 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 );
+                w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                 break;
             }
@@ -15702,7 +15938,8 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
                 const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.carry.plain ) );
                 break;
             }
@@ -15793,7 +16030,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -15803,11 +16041,27 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                 }
                 TableRetainDiscardField( retain, path, 0 );
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.carry.type = CarryType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.carry.type = CarryType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -15826,7 +16080,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.carry.type = CarryType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.carry.type = CarryType::Leaf;
@@ -15843,7 +16098,12 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.carry.type = CarryType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.carry.type = CarryType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.carry.plain, 0, sizeof( value.carry.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -15861,7 +16121,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.carry.type = CarryType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.carry.type = CarryType::Plain;
@@ -15896,7 +16157,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -15925,7 +16187,8 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -15949,17 +16212,19 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -15978,10 +16243,16 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                     else
                     {
@@ -16004,17 +16275,19 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -16032,13 +16305,19 @@ inline bool HolderLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, H
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xffffffffffffffffull:
@@ -16178,7 +16457,8 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // leaf
+                        w.header( arm_refu, 13 );
+                        w.putleb( (uint64_t) arm_payloadu ); // leaf
                         if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                         break;
                     }
@@ -16187,7 +16467,8 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // int32
-                        w.header( arm_refu, 4 ); w.putleb( (uint64_t) arm_payloadu ); // plain
+                        w.header( arm_refu, 4 );
+                        w.putleb( (uint64_t) arm_payloadu ); // plain
                         w.put32( uint32_t( value.entries[elem_i].plain ) );
                         break;
                     }
@@ -16266,7 +16547,8 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16294,99 +16576,134 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 15 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 15 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
-                    // records under this field go with the value it is about to lose.
-                    TableRetainDiscardField( retain, path, 0 );
-                    uint64_t keep = count;
-                    if ( keep > 2 ) { keep = 2; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
+                        // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
+                        // records under this field go with the value it is about to lose.
+                        TableRetainDiscardField( retain, path, 0 );
+                        uint64_t keep = count;
+                        if ( keep > 2 )
                         {
-                            uint64_t elem_arm_ref = 0;
-                            if ( !sub.getleb( elem_arm_ref ) ) { r.report->damaged = true; break; }
-                            value.entries[(int32_t) i].type = CarryType::None;
-                            if ( elem_arm_ref != 0 ) // the zero reference is a None element in its place
+                            keep = 2;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
                             {
-                                if ( elem_arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
-                                const uint64_t elem_arm_id = r.ids->at( elem_arm_ref );
-                                if ( !sub.has( 1 ) ) { r.report->damaged = true; break; }
-                                const uint8_t elem_arm_kind = sub.get8();
-                                uint64_t elem_arm_len = 0;
-                                if ( !sub.getleb( elem_arm_len ) || !sub.room( elem_arm_len ) ) { r.report->damaged = true; break; }
-                                TableReader elem_arm( sub.buffer + sub.offset, (int64_t) elem_arm_len, r.report, r.ids );
-                                switch ( elem_arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                uint64_t elem_arm_ref = 0;
+                                if ( !sub.getleb( elem_arm_ref ) )
                                 {
-                                    case 0x24ad84ada20208d5ull: // leaf
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                value.entries[(int32_t) i].type = CarryType::None;
+                                if ( elem_arm_ref != 0 ) // the zero reference is a None element in its place
+                                {
+                                    if ( elem_arm_ref > (uint64_t) r.ids->count )
                                     {
-                                        if ( elem_arm_kind != 13 )
-                                        {
-                                            value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
-                                        }
-                                        value.entries[(int32_t) i].type = CarryType::Leaf;
-                                        LeafLoadBodyRetain( elem_arm, nodes, value.entries[(int32_t) i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
-                                        if ( nodes.refused ) { return false; }
-                                        if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
+                                        r.report->damaged = true;
                                         break;
                                     }
-                                    case 0xfd4d194e1652b207ull: // plain
+                                    const uint64_t elem_arm_id = r.ids->at( elem_arm_ref );
+                                    if ( !sub.has( 1 ) )
                                     {
-                                        if ( elem_arm_kind != 4 )
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    const uint8_t elem_arm_kind = sub.get8();
+                                    uint64_t elem_arm_len = 0;
+                                    if ( !sub.getleb( elem_arm_len ) || !sub.room( elem_arm_len ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
+                                    TableReader elem_arm( sub.buffer + sub.offset, (int64_t) elem_arm_len, r.report, r.ids );
+                                    switch ( elem_arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
+                                    {
+                                        case 0x24ad84ada20208d5ull: // leaf
                                         {
-                                            if ( TableKindWidens( elem_arm_kind, 4 ) )
+                                            if ( elem_arm_kind != 13 )
                                             {
-                                                // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
-                                                // that is not that width is the arm's own framing damage (§3)
-                                                if ( elem_arm.size != TableKindWidth( elem_arm_kind ) ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
-                                                memset( (void *) &value.entries[(int32_t) i].plain, 0, sizeof( value.entries[(int32_t) i].plain ) ); // selection establishes the arm (§2.6)
-                                                int64_t widened_v = 0;
-                                                if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) )
-                                                {
-                                                    value.entries[(int32_t) i].type = CarryType::None;
-                                                    r.report->damaged = true;
-                                                    break;
-                                                }
-                                                int32_t decoded_v = (int32_t) widened_v;
-                                                value.entries[(int32_t) i].plain = decoded_v;
-                                                value.entries[(int32_t) i].type = CarryType::Plain;
-                                                r.report->widened++;
-                                                break;
+                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
                                             }
-                                            value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
-                                        }
-                                        value.entries[(int32_t) i].type = CarryType::Plain;
-                                        if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
-                                        if ( !elem_arm.has( 4 ) )
-                                        {
-                                            value.entries[(int32_t) i].type = CarryType::None;
-                                            r.report->damaged = true;
+                                            value.entries[(int32_t) i].type = CarryType::Leaf;
+                                            LeafLoadBodyRetain( elem_arm, nodes, value.entries[(int32_t) i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( i ) ), 0, (uint32_t) ( 0 ) ) );
+                                            if ( nodes.refused ) { return false; }
+                                            if ( elem_arm.offset != elem_arm.size ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; }
                                             break;
                                         }
-                                        int32_t decoded_v = int32_t( elem_arm.get32() );
-                                        value.entries[(int32_t) i].plain = decoded_v;
-                                        break;
+                                        case 0xfd4d194e1652b207ull: // plain
+                                        {
+                                            if ( elem_arm_kind != 4 )
+                                            {
+                                                if ( TableKindWidens( elem_arm_kind, 4 ) )
+                                                {
+                                                    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
+                                                    // that is not that width is the arm's own framing damage (§3)
+                                                    if ( elem_arm.size != TableKindWidth( elem_arm_kind ) )
+                                                    {
+                                                        value.entries[(int32_t) i].type = CarryType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
+                                                    memset( (void *) &value.entries[(int32_t) i].plain, 0, sizeof( value.entries[(int32_t) i].plain ) ); // selection establishes the arm (§2.6)
+                                                    int64_t widened_v = 0;
+                                                    if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) )
+                                                    {
+                                                        value.entries[(int32_t) i].type = CarryType::None;
+                                                        r.report->damaged = true;
+                                                        break;
+                                                    }
+                                                    int32_t decoded_v = (int32_t) widened_v;
+                                                    value.entries[(int32_t) i].plain = decoded_v;
+                                                    value.entries[(int32_t) i].type = CarryType::Plain;
+                                                    r.report->widened++;
+                                                    break;
+                                                }
+                                                value.entries[(int32_t) i].type = CarryType::None; r.report->refused = true; r.report->refuse_reason = kind_mismatch; break;
+                                            }
+                                            value.entries[(int32_t) i].type = CarryType::Plain;
+                                            if ( elem_arm.size != 4 ) { value.entries[(int32_t) i].type = CarryType::None; r.report->damaged = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
+                                            if ( !elem_arm.has( 4 ) )
+                                            {
+                                                value.entries[(int32_t) i].type = CarryType::None;
+                                                r.report->damaged = true;
+                                                break;
+                                            }
+                                            int32_t decoded_v = int32_t( elem_arm.get32() );
+                                            value.entries[(int32_t) i].plain = decoded_v;
+                                            break;
+                                        }
+                                        default:
+                                            r.report->unknown++;
+                                             r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                     }
-                                    default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                    sub.offset += (int64_t) elem_arm_len;
                                 }
-                                sub.offset += (int64_t) elem_arm_len;
                             }
+                            decoded = i + 1;
                         }
-                        decoded = i + 1;
-                    }
-                    value.entries_count = (int32_t) decoded;
-                    for ( int32_t tail = value.entries_count; tail < previous_count; tail++ ) {
-                        LeafReset( value.entries[tail].leaf );
-                        value.entries[tail].plain = 0;
-                        value.entries[tail].type = CarryType::None;
-                    }
+                        value.entries_count = (int32_t) decoded;
+                        for ( int32_t tail = value.entries_count; tail < previous_count; tail++ )
+                        {
+                            LeafReset( value.entries[tail].leaf );
+                            value.entries[tail].plain = 0;
+                            value.entries[tail].type = CarryType::None;
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -16413,7 +16730,8 @@ inline bool HandLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Han
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16573,7 +16891,8 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                                 if ( arm_body_linksu < 0 ) { return false; }
                                 arm_payload_linksu += arm_body_linksu; // the arm's own table body (§3)
                             }
-                            w.header( arm_ref_linksu, 13 ); w.putleb( (uint64_t) arm_payload_linksu ); // leaf
+                            w.header( arm_ref_linksu, 13 );
+                            w.putleb( (uint64_t) arm_payload_linksu ); // leaf
                             if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                             break;
                         }
@@ -16582,7 +16901,8 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payload_linksu = 0;
                             arm_payload_linksu += 4; // int32
-                            w.header( arm_ref_linksu, 4 ); w.putleb( (uint64_t) arm_payload_linksu ); // plain
+                            w.header( arm_ref_linksu, 4 );
+                            w.putleb( (uint64_t) arm_payload_linksu ); // plain
                             w.put32( uint32_t( cursor_links[elem_i_links].plain ) );
                             break;
                         }
@@ -16662,7 +16982,8 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16687,7 +17008,13 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                     if ( !counted_ok ) { r.report->damaged = true; }
                     // AN ELEMENT KIND THAT DISAGREES with the reader's declaration is §3's
                     // element-kind rule: the field reads EMPTY and one kind_mismatch counts
-                    else if ( elem_kind != 15 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 15 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so out_of_range
@@ -16712,17 +17039,19 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                         // cover is damage, flags malformed, and the load is discarded
                         // whole (§4)
                         TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        bool elements_consumed = true;
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             Carry * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
                                 if ( fill.worker != NULL )
-                            {
-                                nodes.refused = true;
-                                return false;
-                            }
+                                {
+                                    nodes.refused = true;
+                                    return false;
+                                }
                                 r.report->damaged = true;
+                                elements_consumed = false;
                                 break;
                             } // the arena could not carve
                             bool landed = false;
@@ -16730,16 +17059,32 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                             {
                                 {
                                     uint64_t elem_arm_ref_links = 0;
-                                    if ( !sub.getleb( elem_arm_ref_links ) ) { r.report->damaged = true; break; }
+                                    if ( !sub.getleb( elem_arm_ref_links ) )
+                                    {
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     ( *slot ).type = CarryType::None;
                                     if ( elem_arm_ref_links != 0 ) // the zero reference is a None element in its place
                                     {
-                                        if ( elem_arm_ref_links > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                                        if ( elem_arm_ref_links > (uint64_t) r.ids->count )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         const uint64_t elem_arm_id_links = r.ids->at( elem_arm_ref_links );
-                                        if ( !sub.has( 1 ) ) { r.report->damaged = true; break; }
+                                        if ( !sub.has( 1 ) )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         const uint8_t elem_arm_kind_links = sub.get8();
                                         uint64_t elem_arm_len_links = 0;
-                                        if ( !sub.getleb( elem_arm_len_links ) || !sub.room( elem_arm_len_links ) ) { r.report->damaged = true; break; }
+                                        if ( !sub.getleb( elem_arm_len_links ) || !sub.room( elem_arm_len_links ) )
+                                        {
+                                            r.report->damaged = true;
+                                            break;
+                                        }
                                         TableReader elem_arm_links( sub.buffer + sub.offset, (int64_t) elem_arm_len_links, r.report, r.ids );
                                         switch ( elem_arm_id_links ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)
                                         {
@@ -16763,7 +17108,12 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                                     {
                                                         // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                                         // that is not that width is the arm's own framing damage (§3)
-                                                        if ( elem_arm_links.size != TableKindWidth( elem_arm_kind_links ) ) { ( *slot ).type = CarryType::None; r.report->damaged = true; break; }
+                                                        if ( elem_arm_links.size != TableKindWidth( elem_arm_kind_links ) )
+                                                        {
+                                                            ( *slot ).type = CarryType::None;
+                                                            r.report->damaged = true;
+                                                            break;
+                                                        }
                                                         memset( (void *) &( *slot ).plain, 0, sizeof( ( *slot ).plain ) ); // selection establishes the arm (§2.6)
                                                         int64_t widened_v = 0;
                                                         if ( !TableReadSignedAt( elem_arm_links, elem_arm_kind_links, widened_v ) )
@@ -16792,7 +17142,9 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                                                 ( *slot ).plain = decoded_v;
                                                 break;
                                             }
-                                            default: r.report->unknown++; r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
+                                            default:
+                                                r.report->unknown++;
+                                                 r.report->retain_lost++; break; // an arm this reader cannot name: the element reads None, the body skips by its length
                                         }
                                         sub.offset += (int64_t) elem_arm_len_links;
                                     }
@@ -16802,13 +17154,19 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                             if ( !landed )
                             {
                                 TableListFillDrop( fill );
+                                elements_consumed = false;
                                 break;
                             } // the element's own framing gave out before it decoded
                         }
                         TableListFillEnd( fill );
+                        // EVERY BYTE OF THE L IS AN ELEMENT'S (§2.9, §4): bytes left
+                        // inside the array frame after the count's elements are damage.
+                        // A narrower element kind that does not fill the frame the writer
+                        // sized is this case, and damage discards the load.
+                        if ( elements_consumed && sub.offset != sub.size ) { r.report->damaged = true; }
                     }
                 }
-                r.offset = body_end; // excess bytes and slack skip via the length
+                r.offset = body_end; // the cursor closes the L (§4)
                 break;
             }
             case 0xbf82010f6f71eae9ull: // past
@@ -16832,7 +17190,8 @@ inline bool ChainLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ch
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -18877,13 +19236,13 @@ inline bool HandCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
     for ( int32_t i = 0; i < 2; i++ )
     {
         {
-            table_cook_put( at + 0 + i * 24, (uint64_t) value.entries[ i ].type, 1, order ); // the tag; None is the tag alone
-            switch ( value.entries[ i ].type )
+            table_cook_put( at + 0 + i * 24, (uint64_t) value.entries[i].type, 1, order ); // the tag; None is the tag alone
+            switch ( value.entries[i].type )
             {
-                case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + i * 24 + 8, value.entries[ i ].leaf, order ) ) { return false; } break;
+                case CarryType::Leaf: if ( !LeafCookBody( ctx, region, at + 0 + i * 24 + 8, value.entries[i].leaf, order ) ) { return false; } break;
                 case CarryType::Plain:
                 {
-                    table_cook_put( at + 0 + i * 24 + 8, (uint64_t) value.entries[ i ].plain, 4, order );
+                    table_cook_put( at + 0 + i * 24 + 8, (uint64_t) value.entries[i].plain, 4, order );
                     break;
                 }
                 default: break; // every byte outside the set arm stays zero

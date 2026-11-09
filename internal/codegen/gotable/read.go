@@ -171,7 +171,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	g.pf("\tr, verdict := tableOpenChecked(data, read)\n")
 	g.pf("\tif verdict != TableOpenOk || !%sLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {\n", n)
-	g.pf("\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)
+	g.pf("\t\tif verdict == TableOpenOk { read.Verdict = TableOpenDamaged }\n\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)
 	g.pf("// %sReadStrict is %sLoad under a second spelling (docs/SPEC-TABLES.md §6.5): the value, or the typed reason.\n", n, n)
 	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=&%s{};var report TableReport;if !%sLoad(value,wire,&report){return nil,report.Err()};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
 }

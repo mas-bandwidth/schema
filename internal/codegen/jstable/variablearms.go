@@ -745,6 +745,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     case "union": {
       const x = TableVariableUnionRead(f.u, r, table, report, st, retain, path, o);
       if (x === undefined) { return null; }
+      if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;
       return holder;
     }

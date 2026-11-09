@@ -385,6 +385,9 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TeamConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TeamConfigReset(value)
 		return false
@@ -807,6 +810,9 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		GunnerConfigReset(value)
 		return false
@@ -1228,6 +1234,9 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TurretConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TurretConfigReset(value)
 		return false
@@ -1988,6 +1997,9 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !HullConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		HullConfigReset(value)
 		return false
@@ -3278,6 +3290,9 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !KeyedConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		KeyedConfigReset(value)
 		return false
@@ -4592,6 +4607,9 @@ func ScoreBoardLoad(value *ScoreBoardRow, data []byte, report *TableReport) bool
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ScoreBoardLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		ScoreBoardReset(value)
 		return false
