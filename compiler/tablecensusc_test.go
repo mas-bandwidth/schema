@@ -171,21 +171,10 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 }
 
 func TestCTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCHeader(t, deadCWideSrc)
-	for _, sym := range deadCWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
+	_, err := generateCUnqualified(unitFromSource(t, deadCWideSrc))
+	if err == nil || !strings.Contains(err.Error(), wstringRetired) || !strings.Contains(err.Error(), "kind 33") {
+		t.Fatalf("a wstring(N) unit must be refused by name, got %v", err)
 	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// them, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "!table_wire_utf16( sub.buffer, sub.size/2 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16")
-	}
-	if !strings.Contains(with, "table_wire_utf16_clamp( sub.buffer, sub.size/2, 4 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16_clamp at its declared bound")
-	}
-	deadCCompile(t, files)
 
 	without, files := deadCHeader(t, deadCNarrowSrc)
 	for _, sym := range deadCWideSymbols {

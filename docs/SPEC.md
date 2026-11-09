@@ -2091,6 +2091,8 @@ the same idea walks through for types.
 
 ### 4.12 Wide strings: `wstring(N)`
 
+**Retired (Glenn, 2026-10-31).** `wstring(N)` is retired. Kind 33 is retired with it. Text is `string(N)`, UTF-8 (§4.7). The compiler refuses a unit that declares `wstring` by the name `wstring retired`. What follows is the retired wire, not a construct a new unit may use.
+
 **Declaration.** `f wstring(N)`. **N is the capacity in UTF-16 CODE UNITS**,
 not in code points and not in bytes, so a character outside the basic plane
 occupies two of them. The bound is positional, part of the type's shape,

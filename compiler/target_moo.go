@@ -106,10 +106,8 @@ func init() {
 	registerMapCarrier("moo")
 	registerListCarrier("moo")
 	registerOptionalArrayCarrier("moo")
-	// wstring(N): the packet wire (internal/codegen/moo, the packet-wide
-	// gate) and the table wire's kind 33 (construct_test.go: wide_text)
+	// wstring(N) is retired (kind 33). The call grants nothing.
 	registerWideTextCarrier("moo")
-	tableWideTextTargets["moo"] = true
 	// string, bytes and flags defaults: the packet constructors, and the
 	// table wire's elision and absent read (construct_test.go: defaults_at,
 	// defaults_off)

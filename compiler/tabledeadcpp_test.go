@@ -103,21 +103,10 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 }
 
 func TestCppTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCppHeader(t, deadCppWideSrc)
-	for _, sym := range deadCppWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
+	_, err := New().Generate(unitFromSource(t, deadCppWideSrc), "cpp", Options{})
+	if err == nil || !strings.Contains(err.Error(), wstringRetired) || !strings.Contains(err.Error(), "kind 33") {
+		t.Fatalf("a wstring(N) unit must be refused by name, got %v", err)
 	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// the pair, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "if ( !TableUtf16Valid( r.buffer + r.offset, units ) )") {
-		t.Error("the wide-text field's codec must call TableUtf16Valid")
-	}
-	if !strings.Contains(with, "TableUtf16Clamp( r.buffer + r.offset, units, 4 )") {
-		t.Error("the wide-text field's codec must call TableUtf16Clamp at its declared bound")
-	}
-	deadCppCompile(t, files)
 
 	without, _ := deadCppHeader(t, deadCppNarrowSrc)
 	for _, sym := range deadCppWideSymbols {

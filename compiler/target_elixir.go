@@ -27,8 +27,7 @@ func (t elixirTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, err
 // elixirtable opens no file and a build ships a reader for every layout the lock
 // records.
 func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried, and table kind 33 too: elixir is in
-	// tableWideTextTargets (compiler/widetext.go, docs/SPEC-TABLES.md §3).
+	// wstring is retired (kind 33). refuseWideText names the refusal.
 	if err := refuseWideText(u, "elixir"); err != nil {
 		return nil, err
 	}

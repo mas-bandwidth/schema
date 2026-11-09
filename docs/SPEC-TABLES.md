@@ -4785,6 +4785,8 @@ array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
 fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
 `32` no payload, `33` wstring, `36` timestamp.
 
+**`33` IS RETIRED.** `wstring` and table kind 33 are retired (Glenn, 2026-10-31). Text is UTF-8 `string` (kind `12`). The compiler refuses a declaration by the name `wstring retired`. A payload that still arrives as kind `33` is not a construct a writer emits.
+
 **`34` IS RESERVED BY NAME FOR `float16`, AND THE RESERVATION IS OF THE NAME
 AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
 writer emits it, and no reader has a rule for it. The construct is declined
@@ -4865,8 +4867,8 @@ one document rather than two.
   invisible on the wire like a compressed float's resolution, and the
   baseline is what guards a change to it (§4.1, §18).
 
-  **KIND `33` IS WIDE TEXT, and it is the table half of `wstring(N)`**
-  (SPEC.md §4.12). Its `L` is a byte length, as every `L` on this wire is, so
+  **KIND `33` IS RETIRED WIDE TEXT, and it was the table half of `wstring(N)`**
+  (SPEC.md §4.12). The compiler refuses the declaration (`wstring retired`). Its `L` is a byte length, as every `L` on this wire is, so
   the value is `L / 2` UTF-16 code units and an ODD `L` is damage:
   the whole load refuses `wire_damaged` and nothing is kept (§4). Each unit is two bytes
   little-endian, which is this wire's order for every fixed-width number, and
