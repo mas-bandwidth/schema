@@ -17,6 +17,7 @@ MANIFEST.txt          the registry: every case, by kind
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
+rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
@@ -43,6 +44,7 @@ connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
 report       <case> <unit> <root> <wire file>
+rewrite      <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -111,6 +113,16 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   `read` or `refused`, keyed by case. An accepted row also owes its complete
   value at `report-values/<case>.json` and its canonical write-back wire at
   `save-wire/<case>.bin`; a refused row has neither.
+- **`rewrite`** is an input every leg READS AND WRITES BACK
+  (docs/SPEC-TABLES.md §22.7): the reader's unit and root and the input wire.
+  The expected answer is `rewrite/<case>.bin`, the canonical bytes, which
+  `harness generate` writes as the oracle's read of the input followed by its
+  write of the value, and refuses to write unless they are a fixed point (read
+  and written again, the same bytes). Every `report` row and `framing` row that
+  reads has a rewrite row of the same name, which the harness's tests hold; the
+  rest are hand-built spellings no conforming writer produces (fields out of
+  declaration order, an id table out of first-use order) and the §22.7 edge
+  vectors.
 - **`framing`** is a hand-built wire and expectation from a framing rule.
   `<verdict>` is `read` or `refused`; legacy `malformed` means refusal, not a
   distinct outcome. `<value file>` holds the complete accepted value or is `-`
