@@ -151,6 +151,14 @@ export const TableFixedRefusal = Object.freeze({
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
   IntegrityMismatch: 19,
+  // THE FOUR CONTENT BOUND RULINGS (docs/FIXED-FORM-ALGORITHM.md §4.5,
+  // §4.6): a count past the plan's bound, a text length past its cap, and a
+  // ranged scalar, `bits(N)`, union tag or enum ordinal past the plan's set.
+  // Each REFUSES BY NAME and writes not one destination byte. They are not
+  // §4's six events: nothing was decoded and there is nothing to count.
+  CountOverBound: 20,
+  LengthOverBound: 21,
+  OutOfRange: 22,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -176,6 +184,9 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
     case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
+    case TableFixedRefusal.CountOverBound: return "count_over_bound";
+    case TableFixedRefusal.LengthOverBound: return "length_over_bound";
+    case TableFixedRefusal.OutOfRange: return "out_of_range";
     default: return "???";
   }
 }
@@ -454,9 +465,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         break;
       }
       case TableFixedOpCount: {
-        let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.oor++; }
-        else if (v > size) { v = size; report.oor++; }
+        // A COUNT PAST THE PLAN'S BOUND IS A REFUSAL BY NAME (§4.5), never a
+        // clamp: the bound is the WRITER's own for the lineage entry, and a
+        // forged count is not a number this writer could have written. It
+        // refuses before any destination byte is written.
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
