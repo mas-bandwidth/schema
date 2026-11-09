@@ -108,7 +108,7 @@ int main(void)
 
     memset(&report, 0, sizeof(report));
     loaded = handover_load(region, sizeof(region), wire, n, &report);
-    CHECK(loaded != NULL && report.clamped == 0 && !report.refused);
+    CHECK(loaded != NULL && !report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
     s = handover_rules_text_at(loaded, 1, &len);
     CHECK(s != NULL && len == 4 && strcmp(s, "beta") == 0);
     s = handover_repos_text_at(NULL, loaded, 0, &len);
@@ -148,25 +148,15 @@ int main(void)
     CHECK(s != NULL && len == 3 && strcmp(s, "678") == 0);
     handover_builder_shutdown(&b);
 
-    /* 4. JSON total = 8 prefix clamp + streaming tail skip (trailing oversized string does not double-clamp) */
+    /* 4. JSON total = 8 over-cap refuses the whole load */
     {
         const char * over_json = "{\"capped_rules\":[\"aaaa\",\"bbbb\",\"cc\",\"cccccccccccc\"],\"capped_repos\":[\"1234\",null,\"5678\",\"99\",\"9999999999\"]}";
         CHECK(handover_builder_init(&b));
         memset(&report, 0, sizeof(report));
         CHECK(!handover_from_json(&b, over_json, (int64_t)strlen(over_json), &report));
-        CHECK(report.clamped == 2 && report.refuse_reason == SCHEMA_TABLE_REFUSE_CLAMPED);
-        handover_builder_shutdown(&b);
-
-        CHECK(handover_builder_init(&b));
-        memset(&report, 0, sizeof(report));
-        CHECK(handover_from_json(&b, over_json, (int64_t)strlen(over_json), &report));
-        CHECK(report.clamped == 2); /* 1 per field, trailing oversized elements skipped without decoding */
+        CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
         root = handover_builder_root(&b);
-        memset(&ctx, 0, sizeof(ctx)); ctx.arena = &b.arena;
-        CHECK(root->capped_rules_count == 2);
-        CHECK(root->capped_repos.count == 3);
-        s = handover_capped_repos_text_at(&ctx, root, 2, &len);
-        CHECK(s != NULL && len == 4 && strcmp(s, "5678") == 0);
+        CHECK(root->capped_rules_count == 0 && root->capped_repos.count == 0);
         handover_builder_shutdown(&b);
     }
 
@@ -209,15 +199,7 @@ int main(void)
 
         memset(&report, 0, sizeof(report));
         CHECK(handover_load(region, sizeof(region), wire, n, &report) == NULL);
-        CHECK(report.clamped == 2 && report.refuse_reason == SCHEMA_TABLE_REFUSE_CLAMPED);
-
-        memset(&report, 0, sizeof(report));
-        loaded = handover_load(region, sizeof(region), wire, n, &report);
-        CHECK(loaded != NULL && report.clamped == 2);
-        CHECK(loaded->capped_rules_count == 2);
-        CHECK(loaded->capped_repos.count == 3);
-        s = handover_capped_repos_text_at(NULL, loaded, 2, &len);
-        CHECK(s != NULL && len == 4 && strcmp(s, "5678") == 0);
+        CHECK(report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
     }
 
     return 0;

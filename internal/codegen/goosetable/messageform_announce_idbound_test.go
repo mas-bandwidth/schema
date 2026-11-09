@@ -89,7 +89,6 @@ func announceIdBoundRed(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseMessageFormAnnounceIdBound(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	if red := announceIdBoundRed(t, nil); len(red) != 0 {
 		t.Fatalf("goose differs from the Go reference on %v", red)
@@ -97,7 +96,6 @@ func TestGooseMessageFormAnnounceIdBound(t *testing.T) {
 }
 
 func TestGooseMessageFormAnnounceIdBoundNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	src := string(Runtime()["wire_load.goose"])
 	const from, to = "let IdTableBound: i64 = 4096;\n", "let IdTableBound: i64 = 4097;\n"

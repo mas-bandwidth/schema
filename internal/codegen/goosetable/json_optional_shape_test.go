@@ -104,7 +104,7 @@ func jsonOptionalRun(t *testing.T, edit func(map[string][]byte)) []string {
 	b.WriteString("    var text: u8[>..] = [];\n    if !read_file(name, text) { print(\"read-failed\"); return; }\n")
 	fmt.Fprintf(&b, "    var v = %s::NewRoot();\n    var r = schema_rt::json_report();\n", ns)
 	fmt.Fprintf(&b, "    let ok = %s::RootFromJson(v, text, r);\n", ns)
-	b.WriteString("    if !ok || r.damaged { print(\"refused\"); return; }\n")
+	b.WriteString("    if !ok || r.damaged { print(\"refused\"); print(\"-\"); return; }\n")
 	b.WriteString("    print(r.unknown, \",\", r.mismatch, \",\", r.widened, \",\", r.oor, \",\", r.repeated, \",false,read\");\n")
 	fmt.Fprintf(&b, "    var out: u8[>..] = [];\n    let n = %s::RootToJson(v, out);\n    if n != out.len { print(\"short\"); }\n    hex(out);\n", ns)
 	b.WriteString("}\n\nfn main() {\n")
@@ -144,7 +144,8 @@ func jsonOptionalOracle(t *testing.T) []string {
 		inst := model.New(model.Lookup("Root"))
 		var r tabletext.Report
 		if !model.Read(inst, []byte(text), &r) || r.Refused {
-			t.Fatalf("%s: the Go engine refused the text (%+v)", text, r)
+			want = append(want, "refused -")
+			continue
 		}
 		out, err := model.Write(inst)
 		if err != nil {
@@ -157,7 +158,6 @@ func jsonOptionalOracle(t *testing.T) []string {
 }
 
 func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	got, want := jsonOptionalRun(t, nil), jsonOptionalOracle(t)
 	texts := jsonOptionalTexts()
@@ -169,11 +169,10 @@ func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
 }
 
 func TestGooseJSONOptionalKeyIsPresenceNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	got := jsonOptionalRun(t, func(files map[string][]byte) {
-		const anchor = "                if !json_skip_value(jr, depth + 1) { return false; }\n                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }\n"
-		const reversed = "                if !json_skip_value(jr, depth + 1) { return false; }\n"
+		const anchor = "    if good && (jr.rep.mismatch > 0 || jr.rep.oor > 0 || jr.rep.repeated > 0) { good = false; }\n"
+		const reversed = "    if good && (jr.rep.oor > 0 || jr.rep.repeated > 0) { good = false; }\n"
 		var hit string
 		for name, data := range files {
 			if strings.Contains(string(data), anchor) {
@@ -196,7 +195,8 @@ func TestGooseJSONOptionalKeyIsPresenceNegativeControl(t *testing.T) {
 			red = append(red, texts[i])
 		}
 	}
-	if strings.Join(red, " | ") != strings.Join(jsonOptionalWrongShape, " | ") {
-		t.Fatalf("the absent mismatch is red on %q, want exactly %q", red, jsonOptionalWrongShape)
+	wantRed := append(append([]string{}, jsonOptionalWrongShape...), `{"x": "y"}`)
+	if strings.Join(red, " | ") != strings.Join(wantRed, " | ") {
+		t.Fatalf("the absent mismatch refusal is red on %q, want %q", red, wantRed)
 	}
 }

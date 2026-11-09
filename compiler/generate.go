@@ -94,12 +94,6 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
 	}
 	carrier := g.Names()[0]
-	// wstring IS RETIRED ON EVERY TARGET (Glenn, 2026-10-31). Kind 33 is not
-	// emitted. The check is here so a target that never called refuseWideText
-	// (the old carriers) cannot still write the construct.
-	if err := refuseWideText(u, carrier); err != nil {
-		return nil, err
-	}
 	// GO CARRIES THE `timestamp` KIND FIRST (SPEC.md §4.13): every other
 	// target refuses a unit that uses it, here, once, by name — the
 	// construct, the target and the rule — so no other emitter is edited

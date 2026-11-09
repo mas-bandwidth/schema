@@ -7557,7 +7557,7 @@ define pins_compile_cxx
 	rm -rf "$$objdir"
 endef
 
-PINS_SOURCE_CPP_DIRS := examples pointers block blockhome messages stream blobs scalars maps lists arms wide
+PINS_SOURCE_CPP_DIRS := examples pointers block blockhome messages stream blobs scalars maps lists arms
 PINS_SOURCE_C_DIRS   := examples block pointers
 PINS_SOURCE_CS_DIRS  := examples block blockhome
 

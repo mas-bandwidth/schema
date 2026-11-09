@@ -24,18 +24,3 @@ func tableUtf16Valid(data []byte) bool {
 }
 `
 
-const tableJSONWStringSource = `
-func tableJSONWriteWString(out *tableJSONOut,units []uint16) {
- out.put('"')
- for i:=0;i<len(units);i++ {
-  code:=uint32(units[i])
-  if code>=0xd800 && code<=0xdbff && i+1<len(units) && units[i+1]>=0xdc00 && units[i+1]<=0xdfff {
-   code=0x10000+(code-0xd800)<<10+(uint32(units[i+1])-0xdc00);i++
-  }
-  if code>=0xd800 && code<=0xdfff {out.invalid=true;continue} // an unpaired surrogate is not text: the write refuses (§16.14 W0)
-  var encoded [4]byte;n:=tableJSONEncodeUTF8(code,encoded[:])
-  tableJSONWriteStringBody(out,encoded[:n])
- }
- out.put('"')
-}
-`

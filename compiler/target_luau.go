@@ -65,7 +65,6 @@ func init() {
 	registerPacketValueDefaultCarrier("luau")
 	valueDefaultTargets = append(valueDefaultTargets, "luau")
 	wasRowTargets = append(wasRowTargets, "luau")
-	registerWideTextCarrier("luau")
 	registerListCarrier("luau")
 	registerMapCarrier("luau")
 	registerOptionalArrayCarrier("luau")

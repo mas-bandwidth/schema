@@ -212,7 +212,6 @@ func init() {
 		Name{Name: "tableRegionToJSON", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableRegionValueEdges", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableStringTypeID", What: "the canonical region and graph text runtime"},
-		Name{Name: "tableJSONWriteWString", What: "wide text conversion"},
 		Name{Name: "tableJSONWriteStringBody", What: "wide text conversion"},
 
 		Name{Name: "tableJSONWide", What: "exact wide scalar text conversion"},

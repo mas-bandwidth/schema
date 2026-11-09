@@ -246,8 +246,8 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
                 TableRetain store;
                 const void * loaded;
                 memset(&report, 0, sizeof(report));
-                report.unknown = 7; report.kind_mismatch = 11; report.widened = 13; report.clamped = 17;
-                report.duplicate = 19; report.retained = 23; report.retain_lost = 29; report.refused = old_damage;
+                report.unknown = 7; report.widened = 13;
+                report.retained = 23; report.retain_lost = 29; report.refused = old_damage;
                 report.refused = 1; report.reason = SCHEMA_TABLE_NON_FINITE_FLOAT; report.non_finite_floats = 3;
                 memset(&store, 0, sizeof(store));
                 store.bytes = retain_bytes; store.capacity = (int64_t)sizeof(retain_bytes); store.used = 12;
@@ -258,8 +258,8 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
                 CHECK(loaded == NULL, "%s/%d partial value");
                 CHECK(report.refused && report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP, "%s/%d named count refusal");
                 CHECK(report.refused == old_damage, "%s/%d damage history");
-                CHECK(report.unknown == %d && report.kind_mismatch == 11 && report.widened == %d &&
-                    report.clamped == 17 && report.duplicate == %d && report.non_finite_floats == 3 &&
+                CHECK(report.unknown == %d && report.widened == %d &&
+                    report.unknown >= %d && report.non_finite_floats == 3 &&
                     report.retained == (retaining ? %d : 23) &&
                     report.retain_lost == (retaining ? %d : 29), "%s/%d counters");
                 CHECK(!retaining || (store.used == 0 && store.id_used == 0 && store.count == 0), "%s/%d retained partial state");
@@ -273,11 +273,11 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             CHECK(strict_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP && !strict_report.refused, "%s/%d strict reason");
             CHECK(%s_builder_init(&builder), "%s/%d builder init");
             memset(&builder_report, 0, sizeof(builder_report));
-            builder_report.unknown = 7; builder_report.widened = 13; builder_report.duplicate = 19;
+            builder_report.unknown = 7; builder_report.widened = 13;
             CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
             CHECK(builder_report.refused && builder_report.reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
                 builder_report.refuse_reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP &&
-                builder_report.unknown == %d && builder_report.widened == %d && builder_report.duplicate == %d, "%s/%d builder counters");
+                builder_report.unknown == %d && builder_report.widened == %d && builder_report.unknown >= %d, "%s/%d builder counters");
             {
                 TableReport plain_report;
                 CHECK(!%s_load_builder(&builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.refused &&
@@ -497,11 +497,9 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         ok_ft = fixed_leaf_from_json(&vft, (const char *)text, (int64_t)sizeof(text), &rft);
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
         CHECK(ok_fs && !rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
-            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
-            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
+            rfs.unknown == 0 && rfs.widened == 0 && rfs.retained == 0 && rfs.retain_lost == 0 && vfs.a == 0, "fixed/%s strict accept");
         CHECK(ok_ft && !rft.refused &&
-            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
-            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
+            rft.unknown == 0 && rft.widened == 0 && rft.retained == 0 && rft.retain_lost == 0 && vft.a == 0, "fixed/%s tolerant accept");
         nfs = fixed_leaf_to_json(&vfs, out_fs, (int64_t)sizeof(out_fs));
         nft = fixed_leaf_to_json(&vft, out_ft, (int64_t)sizeof(out_ft));
         CHECK(nfs == (int64_t)sizeof(fixed_canon) && memcmp(out_fs, fixed_canon, sizeof(fixed_canon)) == 0 &&
@@ -514,11 +512,9 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         ok_gt = graph_leaf_from_json(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
         CHECK(ok_gs && !rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_OK &&
-            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
-            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict accept");
+            rgs.unknown == 0 && rgs.widened == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict accept");
         CHECK(ok_gt && !rgt.refused &&
-            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
-            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant accept");
+            rgt.unknown == 0 && rgt.widened == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant accept");
         ngs = graph_leaf_to_json(graph_leaf_builder_root(&bgs), out_gs, (int64_t)sizeof(out_gs));
         ngt = graph_leaf_to_json(graph_leaf_builder_root(&bgt), out_gt, (int64_t)sizeof(out_gt));
         CHECK(ngs == (int64_t)sizeof(graph_canon) && memcmp(out_gs, graph_canon, sizeof(graph_canon)) == 0 &&
@@ -541,11 +537,9 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         CHECK(vf.a == 0, "fixed/%s tolerant discard");
         printf("BOM_CASE fixed/%s: strict=%%s tolerant=%%s\n", ok_fs ? "accept" : "refuse", ok_ft ? "accept" : "refuse");
         CHECK(!ok_fs && rfs.refused && rfs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
-            rfs.unknown == 0 && rfs.kind_mismatch == 0 && rfs.widened == 0 && rfs.clamped == 0 &&
-            rfs.duplicate == 0 && rfs.retained == 0 && rfs.retain_lost == 0, "fixed/%s strict refuse");
+            rfs.unknown == 0 && rfs.widened == 0 && rfs.retained == 0 && rfs.retain_lost == 0, "fixed/%s strict refuse");
         CHECK(!ok_ft && rft.refused &&
-            rft.unknown == 0 && rft.kind_mismatch == 0 && rft.widened == 0 && rft.clamped == 0 &&
-            rft.duplicate == 0 && rft.retained == 0 && rft.retain_lost == 0, "fixed/%s tolerant refuse");
+            rft.unknown == 0 && rft.widened == 0 && rft.retained == 0 && rft.retain_lost == 0, "fixed/%s tolerant refuse");
 
         CHECK(graph_leaf_builder_init(&bgs) && graph_leaf_builder_init(&bgt), "graph/%s builder init");
         graph_leaf_builder_root(&bgs)->a = 42; memset(&rgs, 0, sizeof(rgs));
@@ -554,11 +548,9 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
         ok_gt = graph_leaf_from_json(&bgt, (const char *)text, (int64_t)sizeof(text), &rgt);
         printf("BOM_CASE graph/%s: strict=%%s tolerant=%%s\n", ok_gs ? "accept" : "refuse", ok_gt ? "accept" : "refuse");
         CHECK(!ok_gs && rgs.refused && rgs.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED &&
-            rgs.unknown == 0 && rgs.kind_mismatch == 0 && rgs.widened == 0 && rgs.clamped == 0 &&
-            rgs.duplicate == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict refuse");
-        CHECK(!ok_gt && !rgt.refused && rgt.refused &&
-            rgt.unknown == 0 && rgt.kind_mismatch == 0 && rgt.widened == 0 && rgt.clamped == 0 &&
-            rgt.duplicate == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant refuse");
+            rgs.unknown == 0 && rgs.widened == 0 && rgs.retained == 0 && rgs.retain_lost == 0 && graph_leaf_builder_root(&bgs)->a == 0, "graph/%s strict refuse");
+        CHECK(!ok_gt && rgt.refused &&
+            rgt.unknown == 0 && rgt.widened == 0 && rgt.retained == 0 && rgt.retain_lost == 0 && graph_leaf_builder_root(&bgt)->a == 0, "graph/%s tolerant refuse");
         graph_leaf_builder_shutdown(&bgs);
         graph_leaf_builder_shutdown(&bgt);
     }

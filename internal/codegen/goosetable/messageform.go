@@ -842,12 +842,13 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		slots := slotCount(f)
 		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)
 		e.p(ind, "let el%s = schema_rt::msg_inner(r, %s);", v, en)
+		e.p(ind, "var seen%s: u64[>..] = [];", v)
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)
 		e.p(ind, "while %s < n%s {", i, v)
 		e.p(ind+1, "if !r.ok { return false; }")
 		e.p(ind+1, "let key%s = schema_rt::msg_name(r);", v)
-		e.p(ind+1, "if key%s < 0 { return schema_rt::msg_damage(r); }", v)
+		e.p(ind+1, "if key%s < 0 || schema_rt::msg_seen(r, seen%s, key%s) { return schema_rt::msg_damage(r); }", v, v, v)
 		e.p(ind+1, "match schema_rt::msg_id(r, key%s) {", v)
 		for k := range f.KeyEnumRef.Variants {
 			id := ir.TableWireId(f.KeyEnumRef.VariantWireName(k))
@@ -855,10 +856,8 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 			if int64(k) < slots {
 				e.getElement(ind+3, el, "el"+v, pl.at(fmt.Sprint(k)).val)
 			} else {
-				// a key past this build's slots is dropped and counted oor
-				e.p(ind+3, "r.oor += 1;")
-				e.p(ind+3, "var sc: %s = %s;", e.elemType(el), e.scratchInit(el))
-				e.getElement(ind+3, el, "el"+v, "sc")
+				// a key past this build's slots refuses out_of_range
+				e.p(ind+3, "return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseOutOfRange);")
 			}
 			e.p(ind+2, "},")
 		}
@@ -966,9 +965,11 @@ func (e *msgEmit) emitStruct(st *ir.Struct) {
 	e.loop = 0
 	e.p(0, "fn _%sMsgLoad(r: schema_rt::MsgReader&, v: %s&) -> bool {", n, typ)
 	e.p(1, "v = %s { .. };", typ)
+	e.p(1, "var seen: u64[>..] = [];")
 	e.p(1, "loop {")
 	e.p(2, "let en = schema_rt::msg_field(r);")
 	e.p(2, "if en < 0 { return r.ok; }")
+	e.p(2, "if schema_rt::msg_seen(r, seen, en) { return false; }")
 	e.p(2, "match schema_rt::msg_id(r, en) {")
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
@@ -1177,10 +1178,6 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "}")
 	e.p(2, "i += 1;")
 	e.p(1, "}")
-	e.p(1, "report.unknown = r.unknown;")
-	e.p(1, "report.mismatch = r.mismatch;")
-	e.p(1, "report.widened = r.widened;")
-	e.p(1, "report.oor = r.oor;")
 	e.p(1, "if !report.damaged && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.damaged = true; }")
 	e.p(1, "if report.damaged {")
 	e.p(2, "var j: i64 = 0;")
@@ -1190,6 +1187,10 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "}")
 	e.p(2, "return 0;")
 	e.p(1, "}")
+	e.p(1, "report.unknown = r.unknown;")
+	e.p(1, "report.mismatch = r.mismatch;")
+	e.p(1, "report.widened = r.widened;")
+	e.p(1, "report.oor = r.oor;")
 	e.p(1, "return count;")
 	e.p(0, "}\n")
 }

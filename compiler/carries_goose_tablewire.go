@@ -39,6 +39,4 @@ func init() {
 	stringTargets = append(stringTargets, "goose")
 	valueDefaultTargets = append(valueDefaultTargets, "goose")
 	wasRowTargets = append(wasRowTargets, "goose")
-	// kind 33 is retired. The call grants nothing.
-	registerWideTextCarrier("goose")
 }

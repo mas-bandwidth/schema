@@ -1025,10 +1025,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -4467,6 +4479,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -4603,6 +4616,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -4763,7 +4782,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -4895,6 +4914,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -4904,7 +4935,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -4913,7 +4945,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -4938,10 +4970,15 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 )
     {
@@ -4993,7 +5030,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -5086,6 +5128,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -5644,7 +5687,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -5849,15 +5898,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -7332,10 +7389,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -9495,10 +9554,18 @@ inline bool TableEnumRef( TableIds & ids, Weapon value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Weapon::None: ref = 0; return true;
-        case Weapon::Cannon: ref = ids.ref_at( 51, 0x5854debe3b2e767cull ); return true;
-        case Weapon::Missile: ref = ids.ref_at( 99, 0xb528592e5a4583e3ull ); return true;
-        case Weapon::Mine: ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull ); return true;
+        case Weapon::None:
+            ref = 0;
+            return true;
+        case Weapon::Cannon:
+            ref = ids.ref_at( 51, 0x5854debe3b2e767cull );
+            return true;
+        case Weapon::Missile:
+            ref = ids.ref_at( 99, 0xb528592e5a4583e3ull );
+            return true;
+        case Weapon::Mine:
+            ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull );
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9506,10 +9573,18 @@ inline bool TableEnumRef( TableRetainIds & ids, Weapon value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Weapon::None: ref = 0; return true;
-        case Weapon::Cannon: ref = ids.ref_at( 51, 0x5854debe3b2e767cull ); return true;
-        case Weapon::Missile: ref = ids.ref_at( 99, 0xb528592e5a4583e3ull ); return true;
-        case Weapon::Mine: ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull ); return true;
+        case Weapon::None:
+            ref = 0;
+            return true;
+        case Weapon::Cannon:
+            ref = ids.ref_at( 51, 0x5854debe3b2e767cull );
+            return true;
+        case Weapon::Missile:
+            ref = ids.ref_at( 99, 0xb528592e5a4583e3ull );
+            return true;
+        case Weapon::Mine:
+            ref = ids.ref_at( 3, 0x04dc16aea8ff5276ull );
+            return true;
         default: return false;
     }
 }
@@ -9528,10 +9603,18 @@ inline bool TableEnumSlot( Weapon value, uint64_t & slot )
 {
     switch ( value )
     {
-        case Weapon::None: slot = 0; return true;
-        case Weapon::Cannon: slot = 125; return true;
-        case Weapon::Missile: slot = 126; return true;
-        case Weapon::Mine: slot = 127; return true;
+        case Weapon::None:
+            slot = 0;
+            return true;
+        case Weapon::Cannon:
+            slot = 125;
+            return true;
+        case Weapon::Missile:
+            slot = 126;
+            return true;
+        case Weapon::Mine:
+            slot = 127;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9539,10 +9622,18 @@ inline bool TableEnumId( Weapon value, uint64_t & id )
 {
     switch ( value )
     {
-        case Weapon::None: id = 0; return true;
-        case Weapon::Cannon: id = 0x5854debe3b2e767cull; return true;
-        case Weapon::Missile: id = 0xb528592e5a4583e3ull; return true;
-        case Weapon::Mine: id = 0x04dc16aea8ff5276ull; return true;
+        case Weapon::None:
+            id = 0;
+            return true;
+        case Weapon::Cannon:
+            id = 0x5854debe3b2e767cull;
+            return true;
+        case Weapon::Missile:
+            id = 0xb528592e5a4583e3ull;
+            return true;
+        case Weapon::Mine:
+            id = 0x04dc16aea8ff5276ull;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9550,9 +9641,15 @@ inline bool TableEnumValue( uint64_t id, Weapon & out )
 {
     switch ( id )
     {
-        case 0x5854debe3b2e767cull: out = Weapon::Cannon; return true;
-        case 0xb528592e5a4583e3ull: out = Weapon::Missile; return true;
-        case 0x04dc16aea8ff5276ull: out = Weapon::Mine; return true;
+        case 0x5854debe3b2e767cull:
+            out = Weapon::Cannon;
+            return true;
+        case 0xb528592e5a4583e3ull:
+            out = Weapon::Missile;
+            return true;
+        case 0x04dc16aea8ff5276ull:
+            out = Weapon::Mine;
+            return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -9569,10 +9666,18 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref_at( 81, 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref_at( 139, 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref_at( 121, 0xcf00d78fd5953f1cull ); return true;
+        case Team::None:
+            ref = 0;
+            return true;
+        case Team::Red:
+            ref = ids.ref_at( 81, 0x9ff1de19feac1b7cull );
+            return true;
+        case Team::Blue:
+            ref = ids.ref_at( 139, 0xecf3d3a7c1693e2dull );
+            return true;
+        case Team::Green:
+            ref = ids.ref_at( 121, 0xcf00d78fd5953f1cull );
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9580,10 +9685,18 @@ inline bool TableEnumRef( TableRetainIds & ids, Team value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref_at( 81, 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref_at( 139, 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref_at( 121, 0xcf00d78fd5953f1cull ); return true;
+        case Team::None:
+            ref = 0;
+            return true;
+        case Team::Red:
+            ref = ids.ref_at( 81, 0x9ff1de19feac1b7cull );
+            return true;
+        case Team::Blue:
+            ref = ids.ref_at( 139, 0xecf3d3a7c1693e2dull );
+            return true;
+        case Team::Green:
+            ref = ids.ref_at( 121, 0xcf00d78fd5953f1cull );
+            return true;
         default: return false;
     }
 }
@@ -9602,10 +9715,18 @@ inline bool TableEnumSlot( Team value, uint64_t & slot )
 {
     switch ( value )
     {
-        case Team::None: slot = 0; return true;
-        case Team::Red: slot = 122; return true;
-        case Team::Blue: slot = 123; return true;
-        case Team::Green: slot = 124; return true;
+        case Team::None:
+            slot = 0;
+            return true;
+        case Team::Red:
+            slot = 122;
+            return true;
+        case Team::Blue:
+            slot = 123;
+            return true;
+        case Team::Green:
+            slot = 124;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9613,10 +9734,18 @@ inline bool TableEnumId( Team value, uint64_t & id )
 {
     switch ( value )
     {
-        case Team::None: id = 0; return true;
-        case Team::Red: id = 0x9ff1de19feac1b7cull; return true;
-        case Team::Blue: id = 0xecf3d3a7c1693e2dull; return true;
-        case Team::Green: id = 0xcf00d78fd5953f1cull; return true;
+        case Team::None:
+            id = 0;
+            return true;
+        case Team::Red:
+            id = 0x9ff1de19feac1b7cull;
+            return true;
+        case Team::Blue:
+            id = 0xecf3d3a7c1693e2dull;
+            return true;
+        case Team::Green:
+            id = 0xcf00d78fd5953f1cull;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9624,9 +9753,15 @@ inline bool TableEnumValue( uint64_t id, Team & out )
 {
     switch ( id )
     {
-        case 0x9ff1de19feac1b7cull: out = Team::Red; return true;
-        case 0xecf3d3a7c1693e2dull: out = Team::Blue; return true;
-        case 0xcf00d78fd5953f1cull: out = Team::Green; return true;
+        case 0x9ff1de19feac1b7cull:
+            out = Team::Red;
+            return true;
+        case 0xecf3d3a7c1693e2dull:
+            out = Team::Blue;
+            return true;
+        case 0xcf00d78fd5953f1cull:
+            out = Team::Green;
+            return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -9643,10 +9778,18 @@ inline bool TableEnumRef( TableIds & ids, Hull value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Hull::None: ref = 0; return true;
-        case Hull::Interceptor: ref = ids.ref_at( 95, 0xae61a6cbe88c2cf4ull ); return true;
-        case Hull::Gunship: ref = ids.ref_at( 32, 0x334d24e1420dbc1full ); return true;
-        case Hull::Freighter: ref = ids.ref_at( 60, 0x6c2321a3d00e23dbull ); return true;
+        case Hull::None:
+            ref = 0;
+            return true;
+        case Hull::Interceptor:
+            ref = ids.ref_at( 95, 0xae61a6cbe88c2cf4ull );
+            return true;
+        case Hull::Gunship:
+            ref = ids.ref_at( 32, 0x334d24e1420dbc1full );
+            return true;
+        case Hull::Freighter:
+            ref = ids.ref_at( 60, 0x6c2321a3d00e23dbull );
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9654,10 +9797,18 @@ inline bool TableEnumRef( TableRetainIds & ids, Hull value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Hull::None: ref = 0; return true;
-        case Hull::Interceptor: ref = ids.ref_at( 95, 0xae61a6cbe88c2cf4ull ); return true;
-        case Hull::Gunship: ref = ids.ref_at( 32, 0x334d24e1420dbc1full ); return true;
-        case Hull::Freighter: ref = ids.ref_at( 60, 0x6c2321a3d00e23dbull ); return true;
+        case Hull::None:
+            ref = 0;
+            return true;
+        case Hull::Interceptor:
+            ref = ids.ref_at( 95, 0xae61a6cbe88c2cf4ull );
+            return true;
+        case Hull::Gunship:
+            ref = ids.ref_at( 32, 0x334d24e1420dbc1full );
+            return true;
+        case Hull::Freighter:
+            ref = ids.ref_at( 60, 0x6c2321a3d00e23dbull );
+            return true;
         default: return false;
     }
 }
@@ -9676,10 +9827,18 @@ inline bool TableEnumSlot( Hull value, uint64_t & slot )
 {
     switch ( value )
     {
-        case Hull::None: slot = 0; return true;
-        case Hull::Interceptor: slot = 116; return true;
-        case Hull::Gunship: slot = 117; return true;
-        case Hull::Freighter: slot = 118; return true;
+        case Hull::None:
+            slot = 0;
+            return true;
+        case Hull::Interceptor:
+            slot = 116;
+            return true;
+        case Hull::Gunship:
+            slot = 117;
+            return true;
+        case Hull::Freighter:
+            slot = 118;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9687,10 +9846,18 @@ inline bool TableEnumId( Hull value, uint64_t & id )
 {
     switch ( value )
     {
-        case Hull::None: id = 0; return true;
-        case Hull::Interceptor: id = 0xae61a6cbe88c2cf4ull; return true;
-        case Hull::Gunship: id = 0x334d24e1420dbc1full; return true;
-        case Hull::Freighter: id = 0x6c2321a3d00e23dbull; return true;
+        case Hull::None:
+            id = 0;
+            return true;
+        case Hull::Interceptor:
+            id = 0xae61a6cbe88c2cf4ull;
+            return true;
+        case Hull::Gunship:
+            id = 0x334d24e1420dbc1full;
+            return true;
+        case Hull::Freighter:
+            id = 0x6c2321a3d00e23dbull;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -9698,9 +9865,15 @@ inline bool TableEnumValue( uint64_t id, Hull & out )
 {
     switch ( id )
     {
-        case 0xae61a6cbe88c2cf4ull: out = Hull::Interceptor; return true;
-        case 0x334d24e1420dbc1full: out = Hull::Gunship; return true;
-        case 0x6c2321a3d00e23dbull: out = Hull::Freighter; return true;
+        case 0xae61a6cbe88c2cf4ull:
+            out = Hull::Interceptor;
+            return true;
+        case 0x334d24e1420dbc1full:
+            out = Hull::Gunship;
+            return true;
+        case 0x6c2321a3d00e23dbull:
+            out = Hull::Freighter;
+            return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -9944,15 +10117,26 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                        else if ( decoded_v > 64 ) { decoded_v = 64; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        if ( decoded_v < 0 )
+                        {
+                            decoded_v = 0;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        else if ( decoded_v > 64 )
+                        {
+                            decoded_v = 64;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.spawn_count = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9966,8 +10150,18 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                else if ( decoded_v > 64 ) { decoded_v = 64; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                if ( decoded_v < 0 )
+                {
+                    decoded_v = 0;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
+                else if ( decoded_v > 64 )
+                {
+                    decoded_v = 64;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.spawn_count = decoded_v;
                 break;
             }
@@ -9977,7 +10171,8 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9986,7 +10181,11 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -9994,10 +10193,16 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBody( TableReader & r, TeamConfig & va
                     r.report->damaged = true;
                     memset( value.banner, 0, sizeof( value.banner ) );
                     value.banner_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 16 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.banner, r.buffer + r.offset, (size_t) keep );
                 value.banner[keep] = 0;
                 value.banner_length = (int32_t) keep;
@@ -10032,7 +10237,11 @@ inline TableOpenVerdict TeamConfigLoadVerdict( TeamConfig & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         TeamConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -10061,10 +10270,23 @@ inline TableOpenVerdict TeamConfigLoadVerdict( TeamConfig & value, const uint8_t
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = TeamConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; TeamConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { TeamConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        TeamConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        TeamConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { TeamConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        TeamConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -10158,19 +10380,31 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xceec99e2d65db674ull: // spawn_count
@@ -10185,7 +10419,11 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -10193,22 +10431,41 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range; }
-                            if ( decoded_wide > 64ll ) { decoded_wide = 64ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide < 0ll )
+                            {
+                                decoded_wide = 0ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
+                            if ( decoded_wide > 64ll )
+                            {
+                                decoded_wide = 64ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.spawn_count = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -10216,8 +10473,18 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < 0ll ) { decoded_wide = 0ll; report->refused = true; report->refuse_reason = out_of_range; }
-                    if ( decoded_wide > 64ll ) { decoded_wide = 64ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide < 0ll )
+                    {
+                        decoded_wide = 0ll;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
+                    if ( decoded_wide > 64ll )
+                    {
+                        decoded_wide = 64ll;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.spawn_count = decoded_v;
                 }
@@ -10230,17 +10497,34 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 12 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     const uint8_t * text = r.buffer + ( r.offset >> 3 );
-                    if ( !TableUtf8Valid( text, n ) ) { report->damaged = true; return false; }
+                    if ( !TableUtf8Valid( text, n ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 16 );
-                    if ( (uint64_t) kept < n ) { report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) kept < n )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     memcpy( value.banner, text, (size_t) kept );
                     value.banner[kept] = 0;
                     r.offset += (int64_t) n * 8;
@@ -10250,7 +10534,11 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -10271,7 +10559,11 @@ inline bool TeamConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
 inline int64_t TeamConfigMeasureMessages( const TeamConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -10285,7 +10577,11 @@ inline int64_t TeamConfigMeasureMessages( const TeamConfig * values, int64_t cou
 inline int64_t TeamConfigSaveMessages( const TeamConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10313,13 +10609,22 @@ inline bool TeamConfigLoadMessages( TeamConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TeamConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { TeamConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -10421,7 +10726,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBody( TableReader & r, GunnerConfig 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10450,7 +10756,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBody( TableReader & r, GunnerConfig 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10463,7 +10770,11 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBody( TableReader & r, GunnerConfig 
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.tracking = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.tracking = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -10494,7 +10805,11 @@ inline TableOpenVerdict GunnerConfigLoadVerdict( GunnerConfig & value, const uin
     if ( verdict != TableOpenOk )
     {
         GunnerConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -10523,10 +10838,23 @@ inline TableOpenVerdict GunnerConfigLoadVerdict( GunnerConfig & value, const uin
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = GunnerConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; GunnerConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { GunnerConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        GunnerConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        GunnerConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { GunnerConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        GunnerConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -10616,19 +10944,31 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xb75aa3662201646aull: // reaction
@@ -10638,8 +10978,13 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -10647,15 +10992,31 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.reaction = decoded_f;
@@ -10669,16 +11030,30 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.tracking = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) )
+                {
+                    report->damaged = true;
+                    return false;
+                    } value.tracking = raw != 0;
+                }
                 break;
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -10699,7 +11074,11 @@ inline bool GunnerConfigLoadMessageBody( TableBitReader & r, const TableVocabula
 inline int64_t GunnerConfigMeasureMessages( const GunnerConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -10713,7 +11092,11 @@ inline int64_t GunnerConfigMeasureMessages( const GunnerConfig * values, int64_t
 inline int64_t GunnerConfigSaveMessages( const GunnerConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10741,13 +11124,22 @@ inline bool GunnerConfigLoadMessages( GunnerConfig * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !GunnerConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { GunnerConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -10803,7 +11195,7 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBody( TableWriter & w, TableIds & id
         const int64_t body_gunner = GunnerConfigMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         w.header( ref_gunner, 13 );
-            w.putleb( (uint64_t) body_gunner ); // gunner
+        w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerConfigSaveBody( w, ids, value.gunner ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -10867,7 +11259,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBody( TableReader & r, TurretConfig 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10896,7 +11289,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBody( TableReader & r, TurretConfig 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10925,7 +11319,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBody( TableReader & r, TurretConfig 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10980,7 +11375,11 @@ inline TableOpenVerdict TurretConfigLoadVerdict( TurretConfig & value, const uin
     if ( verdict != TableOpenOk )
     {
         TurretConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -11009,10 +11408,23 @@ inline TableOpenVerdict TurretConfigLoadVerdict( TurretConfig & value, const uin
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = TurretConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; TurretConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { TurretConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        TurretConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        TurretConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { TurretConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        TurretConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -11118,19 +11530,31 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x7f6308be8ab37fc0ull: // damage
@@ -11140,8 +11564,13 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -11149,15 +11578,31 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.damage = decoded_f;
@@ -11171,8 +11616,13 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -11180,15 +11630,31 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.cooldown = decoded_f;
@@ -11202,8 +11668,13 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 if ( !GunnerConfigLoadMessageBody( r, vocabulary, report, index_bits, value.gunner ) ) { return false; }
@@ -11212,7 +11683,11 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -11233,7 +11708,11 @@ inline bool TurretConfigLoadMessageBody( TableBitReader & r, const TableVocabula
 inline int64_t TurretConfigMeasureMessages( const TurretConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -11247,7 +11726,11 @@ inline int64_t TurretConfigMeasureMessages( const TurretConfig * values, int64_t
 inline int64_t TurretConfigSaveMessages( const TurretConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11275,13 +11758,22 @@ inline bool TurretConfigLoadMessages( TurretConfig * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !TurretConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { TurretConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -11310,8 +11802,13 @@ inline int64_t HullConfigMeasureBody( TableIds & ids, const HullConfig & value )
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_turrets++;
+            body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_turrets > 0 )
         {
@@ -11356,8 +11853,13 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_turrets++;
+            body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_turrets > 0 )
         {
@@ -11365,8 +11867,10 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
-            w.header( ref_turrets, 16 ); w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_turrets );
+            w.header( ref_turrets, 16 );
+            w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_turrets );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -11377,7 +11881,11 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBody( TableWriter & w, TableIds & ids,
                 if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TurretConfigMeasureBody( ids, value.turrets.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TurretConfigSaveBody( w, ids, value.turrets.slots[i] ) ) return false;
@@ -11446,7 +11954,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11475,7 +11984,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11504,7 +12014,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11523,13 +12034,28 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -11539,20 +12065,33 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBody( TableReader & r, HullConfig & va
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Weapon slot = Weapon::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TurretConfigLoadBody( elem, value.turrets.slots[int32_t( slot ) - 1] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; TurretConfigReset( value.turrets.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                TurretConfigReset( value.turrets.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -11588,7 +12127,11 @@ inline TableOpenVerdict HullConfigLoadVerdict( HullConfig & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         HullConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -11617,10 +12160,23 @@ inline TableOpenVerdict HullConfigLoadVerdict( HullConfig & value, const uint8_t
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = HullConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; HullConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { HullConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        HullConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        HullConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { HullConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        HullConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -11770,19 +12326,31 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x7f69d4b5288ba9cfull: // health
@@ -11792,8 +12360,13 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -11801,15 +12374,31 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.health = decoded_f;
@@ -11823,8 +12412,13 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 10 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -11832,15 +12426,31 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                     if ( entry.packing == 2 )
                     {
                         uint64_t index = 0;
-                        if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                        if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count: the packet wire's own refusal
+                        if ( !r.get( index, entry.value_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( index > (uint64_t) entry.qcount )
+                        {
+                            report->damaged = true;
+                            return false;
+                        } // above the step count: the packet wire's own refusal
                         decoded_f = TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount ); // SPEC.md §4.3's rule, in float32
                     }
                     else
                     {
                         uint64_t raw = 0;
-                        if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                        if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                        if ( !r.get( raw, 32 ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
+                        if ( !TableBitsFinite32( (uint32_t) raw ) )
+                        {
+                            TableNonFiniteFloat( report );
+                            return false;
+                        }
                         decoded_f = table_bits_to_float( (uint32_t) raw );
                     }
                     value.mass = decoded_f;
@@ -11854,19 +12464,36 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 16 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     for ( uint64_t p = 0; p < n; p++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         TableMessageEntry key_entry;
-                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->damaged = true; return false; }
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         Weapon key = Weapon::None;
                         const bool named = TableEnumValue( key_entry.id, key );
                         if ( !named ) { report->unknown++; }
@@ -11881,7 +12508,11 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -11902,7 +12533,11 @@ inline bool HullConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
 inline int64_t HullConfigMeasureMessages( const HullConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -11916,7 +12551,11 @@ inline int64_t HullConfigMeasureMessages( const HullConfig * values, int64_t cou
 inline int64_t HullConfigSaveMessages( const HullConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11944,13 +12583,22 @@ inline bool HullConfigLoadMessages( HullConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !HullConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { HullConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -11975,8 +12623,13 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_teams > 0 )
         {
@@ -11996,8 +12649,13 @@ inline int64_t KeyedConfigMeasureBody( TableIds & ids, const KeyedConfig & value
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_hulls++;
+            body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_hulls > 0 )
         {
@@ -12038,8 +12696,13 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_teams > 0 )
         {
@@ -12047,8 +12710,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            w.header( ref_teams, 16 ); w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_teams );
+            w.header( ref_teams, 16 );
+            w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -12059,7 +12724,11 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TeamConfigMeasureBody( ids, value.teams.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TeamConfigSaveBody( w, ids, value.teams.slots[i] ) ) return false;
@@ -12078,8 +12747,13 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_hulls++;
+            body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_hulls > 0 )
         {
@@ -12087,8 +12761,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
-            w.header( ref_hulls, 16 ); w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_hulls );
+            w.header( ref_hulls, 16 );
+            w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_hulls );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -12099,7 +12775,11 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBody( TableWriter & w, TableIds & ids
                 if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = HullConfigMeasureBody( ids, value.hulls.slots[i] );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !HullConfigSaveBody( w, ids, value.hulls.slots[i] ) ) return false;
@@ -12181,7 +12861,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12200,13 +12881,28 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -12216,20 +12912,33 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Team slot = Team::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TeamConfigLoadBody( elem, value.teams.slots[int32_t( slot ) - 1] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; TeamConfigReset( value.teams.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                TeamConfigReset( value.teams.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -12243,7 +12952,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12262,13 +12972,28 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -12278,20 +13003,33 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Hull slot = Hull::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             HullConfigLoadBody( elem, value.hulls.slots[int32_t( slot ) - 1] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; HullConfigReset( value.hulls.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                HullConfigReset( value.hulls.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -12305,7 +13043,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBody( TableReader & r, KeyedConfig & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12359,7 +13098,11 @@ inline TableOpenVerdict KeyedConfigLoadVerdict( KeyedConfig & value, const uint8
     if ( verdict != TableOpenOk )
     {
         KeyedConfigReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -12388,10 +13131,23 @@ inline TableOpenVerdict KeyedConfigLoadVerdict( KeyedConfig & value, const uint8
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = KeyedConfigLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; KeyedConfigReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { KeyedConfigReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        KeyedConfigReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        KeyedConfigReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { KeyedConfigReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        KeyedConfigReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -12593,19 +13349,31 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xbaaeb048a5a8fa6dull: // teams
@@ -12615,19 +13383,36 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 16 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     for ( uint64_t p = 0; p < n; p++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         TableMessageEntry key_entry;
-                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->damaged = true; return false; }
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         Team key = Team::None;
                         const bool named = TableEnumValue( key_entry.id, key );
                         if ( !named ) { report->unknown++; }
@@ -12647,19 +13432,36 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 16 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     for ( uint64_t p = 0; p < n; p++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         TableMessageEntry key_entry;
-                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->damaged = true; return false; }
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         Hull key = Hull::None;
                         const bool named = TableEnumValue( key_entry.id, key );
                         if ( !named ) { report->unknown++; }
@@ -12679,8 +13481,13 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 if ( !ScoreBoardLoadMessageBody( r, vocabulary, report, index_bits, value.scores ) ) { return false; }
@@ -12688,7 +13495,11 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -12709,7 +13520,11 @@ inline bool KeyedConfigLoadMessageBody( TableBitReader & r, const TableVocabular
 inline int64_t KeyedConfigMeasureMessages( const KeyedConfig * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -12723,7 +13538,11 @@ inline int64_t KeyedConfigMeasureMessages( const KeyedConfig * values, int64_t c
 inline int64_t KeyedConfigSaveMessages( const KeyedConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -12751,13 +13570,22 @@ inline bool KeyedConfigLoadMessages( KeyedConfig * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !KeyedConfigLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { KeyedConfigReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -12780,7 +13608,8 @@ inline int64_t ScoreBoardMeasureBody( TableIds & ids, const ScoreBoard & value )
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_per_team++;
+            body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_per_team > 0 )
         {
@@ -12811,7 +13640,8 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_per_team++;
+            body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_per_team > 0 )
         {
@@ -12819,8 +13649,10 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
-            w.header( ref_per_team, 16 ); w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
-            w.put8( 4 ); w.putleb( (uint64_t) pairs_per_team );
+            w.header( ref_per_team, 16 );
+            w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
+            w.put8( 4 );
+            w.putleb( (uint64_t) pairs_per_team );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -12897,7 +13729,8 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12916,12 +13749,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     if ( elem_kind != 4 )
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -12930,7 +13769,11 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -12940,13 +13783,22 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Team slot = Team::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -12960,8 +13812,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                                     continue;
                                 }
                                 int32_t decoded_v = (int32_t) widened_v;
-                                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                                else if ( decoded_v > 100000 ) { decoded_v = 100000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                                if ( decoded_v < 0 )
+                                {
+                                    decoded_v = 0;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
+                                else if ( decoded_v > 100000 )
+                                {
+                                    decoded_v = 100000;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 value.per_team[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -12973,7 +13835,11 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -12983,13 +13849,22 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Team slot = Team::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -13002,8 +13877,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBody( TableReader & r, ScoreBoard & va
                                     continue;
                                 }
                                 int32_t decoded_v = int32_t( elem.get32() );
-                                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                                else if ( decoded_v > 100000 ) { decoded_v = 100000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                                if ( decoded_v < 0 )
+                                {
+                                    decoded_v = 0;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
+                                else if ( decoded_v > 100000 )
+                                {
+                                    decoded_v = 100000;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 value.per_team[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -13041,7 +13926,11 @@ inline TableOpenVerdict ScoreBoardLoadVerdict( ScoreBoard & value, const uint8_t
     if ( verdict != TableOpenOk )
     {
         ScoreBoardReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -13070,10 +13959,23 @@ inline TableOpenVerdict ScoreBoardLoadVerdict( ScoreBoard & value, const uint8_t
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = ScoreBoardLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; ScoreBoardReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { ScoreBoardReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        ScoreBoardReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        ScoreBoardReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { ScoreBoardReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        ScoreBoardReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -13191,19 +14093,31 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         if ( ref == 0 )
         {
             if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
             return true; // the body ENDS AT ITS OWN ZERO REFERENCE
         }
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xf10fad739a0e1660ull: // per_team
@@ -13213,19 +14127,36 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 16 || entry.elem_kind != 4 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     for ( uint64_t p = 0; p < n; p++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         TableMessageEntry key_entry;
-                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->damaged = true; return false; }
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         Team key = Team::None;
                         const bool named = TableEnumValue( key_entry.id, key );
                         if ( !named ) { report->unknown++; }
@@ -13235,7 +14166,11 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
                         {
                             const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
                             if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
                             else if ( width_2 > 0 && width_2 < 64 )
@@ -13243,8 +14178,18 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
                             }
-                            if ( decoded_wide_2 < 0ll ) { decoded_wide_2 = 0ll; report->refused = true; report->refuse_reason = out_of_range; }
-                            if ( decoded_wide_2 > 100000ll ) { decoded_wide_2 = 100000ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide_2 < 0ll )
+                            {
+                                decoded_wide_2 = 0ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
+                            if ( decoded_wide_2 > 100000ll )
+                            {
+                                decoded_wide_2 = 100000ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int32_t decoded_v_2 = (int32_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }
@@ -13255,7 +14200,11 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -13276,7 +14225,11 @@ inline bool ScoreBoardLoadMessageBody( TableBitReader & r, const TableVocabulary
 inline int64_t ScoreBoardMeasureMessages( const ScoreBoard * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -13290,7 +14243,11 @@ inline int64_t ScoreBoardMeasureMessages( const ScoreBoard * values, int64_t cou
 inline int64_t ScoreBoardSaveMessages( const ScoreBoard * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13318,13 +14275,22 @@ inline bool ScoreBoardLoadMessages( ScoreBoard * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !ScoreBoardLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ScoreBoardReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -13374,7 +14340,8 @@ static_assert( (uint32_t) __builtin_offsetof( KeyedConfig, scores ) == 288, "Key
 // which is also what zero-fills every byte of declared slack.
 inline void TeamConfigFixedWriteBody( uint8_t * b, const TeamConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.spawn_count );
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.banner_length );
@@ -13385,7 +14352,8 @@ inline void TeamConfigFixedWriteBody( uint8_t * b, const TeamConfig & value )
 // which is also what zero-fills every byte of declared slack.
 inline void GunnerConfigFixedWriteBody( uint8_t * b, const GunnerConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPutF32( b + 0, value.reaction );
     TableFixedPut8( b + 4, value.tracking ? 1 : 0 );
 }
@@ -13394,7 +14362,8 @@ inline void GunnerConfigFixedWriteBody( uint8_t * b, const GunnerConfig & value 
 // which is also what zero-fills every byte of declared slack.
 inline void TurretConfigFixedWriteBody( uint8_t * b, const TurretConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPutF32( b + 0, value.damage );
     TableFixedPutF32( b + 4, value.cooldown );
     TableFixedPut8( b + 8, value.gunner_present ? 1 : 0 );
@@ -13408,7 +14377,8 @@ inline void TurretConfigFixedWriteBody( uint8_t * b, const TurretConfig & value 
 // which is also what zero-fills every byte of declared slack.
 inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPutF32( b + 0, value.health );
     TableFixedPutF32( b + 4, value.mass );
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
@@ -13421,7 +14391,8 @@ inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
 // which is also what zero-fills every byte of declared slack.
 inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 0 + i * 4 + 0, (uint32_t) value.per_team[i] );
@@ -13432,7 +14403,8 @@ inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 // which is also what zero-fills every byte of declared slack.
 inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TeamConfigFixedWriteBody( b + 0 + i * 24 + 0, value.teams.slots[i] );
@@ -13458,7 +14430,9 @@ TABLE_FIXED_INLINE bool TeamConfigFixedInRange( const TeamConfig & value )
 // TeamConfig's read-side bounds.
 inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     oor_count += (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
     value.spawn_count = ( value.spawn_count < 0 ) ? 0 : ( ( value.spawn_count > 64 ) ? 64 : value.spawn_count );
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) )
@@ -13483,7 +14457,9 @@ TABLE_FIXED_INLINE bool ScoreBoardFixedInRange( const ScoreBoard & value )
 // ScoreBoard's read-side bounds.
 inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )
     {
         oor_count += (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
@@ -13508,7 +14484,9 @@ TABLE_FIXED_INLINE bool KeyedConfigFixedInRange( const KeyedConfig & value )
 // KeyedConfig's read-side bounds.
 inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )
     {
         TeamConfigFixedClampBody( value.teams.slots[i], oor_count, damaged );
@@ -13629,8 +14607,9 @@ constexpr TableFixedDst TeamConfigFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry TeamConfigFixedPlan[] = {
     { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_count
     { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // banner
@@ -13728,7 +14707,12 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -13737,7 +14721,12 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -13746,7 +14735,12 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -13758,7 +14752,10 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = TeamConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -13766,7 +14763,10 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = TeamConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -13788,7 +14788,11 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -13804,7 +14808,12 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -13819,7 +14828,12 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
             const int32_t made = TableFixedCompile( parsed, TeamConfigFixedLayout, (int32_t) TeamConfigFixedLayoutBytes, TeamConfigFixedDst,
                                                    TeamConfigFixedCover, TeamConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -13843,10 +14857,25 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -13868,6 +14897,8 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
         }
     }
     TeamConfig defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -13904,7 +14935,7 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
                 }
                 else
                 {
-                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
                     if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
                 }
             }
@@ -13926,7 +14957,7 @@ inline int64_t TeamConfigFixedLoadWalk( TeamConfig * values, int64_t capacity, c
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TeamConfigFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TeamConfigFixedGuards, NULL );
         TableFixedClampKnownRanges( TeamConfigFixedKnownRanges[lineage_at], TeamConfigFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !TeamConfigFixedClamp( values[k], report ) )
@@ -14001,8 +15032,9 @@ constexpr TableFixedDst GunnerConfigFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry GunnerConfigFixedPlan[] = {
     { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
@@ -14100,7 +15132,12 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -14109,7 +15146,12 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -14118,7 +15160,12 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -14130,7 +15177,10 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = GunnerConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -14138,7 +15188,10 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = GunnerConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -14160,7 +15213,11 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -14176,7 +15233,12 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -14191,7 +15253,12 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
             const int32_t made = TableFixedCompile( parsed, GunnerConfigFixedLayout, (int32_t) GunnerConfigFixedLayoutBytes, GunnerConfigFixedDst,
                                                    GunnerConfigFixedCover, GunnerConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -14215,10 +15282,25 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -14240,6 +15322,8 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
         }
     }
     GunnerConfig defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -14276,7 +15360,7 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
                 }
                 else
                 {
-                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
                     if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
                 }
             }
@@ -14295,7 +15379,7 @@ inline int64_t GunnerConfigFixedLoadWalk( GunnerConfig * values, int64_t capacit
             }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, GunnerConfigFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, GunnerConfigFixedGuards, NULL );
         if ( !GunnerConfigFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { GunnerConfigReset( values[j] ); }
@@ -14387,16 +15471,17 @@ constexpr TableFixedDst TurretConfigFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry TurretConfigFixedPlan[] = {
     { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 9u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 13u, 12u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 8u, 16u, 8u, 8u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
 };
 constexpr int32_t TurretConfigFixedPlanCount = 4;
-constexpr int32_t TurretConfigFixedPlanGuarded = 4;
+constexpr int32_t TurretConfigFixedPlanGuarded = 3;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink TurretConfigFixedGuards[] = {
@@ -14493,7 +15578,12 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -14502,7 +15592,12 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -14511,7 +15606,12 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -14523,7 +15623,10 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = TurretConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -14531,7 +15634,10 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = TurretConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -14553,7 +15659,11 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -14569,7 +15679,12 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -14584,7 +15699,12 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
             const int32_t made = TableFixedCompile( parsed, TurretConfigFixedLayout, (int32_t) TurretConfigFixedLayoutBytes, TurretConfigFixedDst,
                                                    TurretConfigFixedCover, TurretConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -14608,10 +15728,25 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -14633,11 +15768,10 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
         }
     }
     TurretConfig defaults;
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) );
-        TurretConfigReset( defaults );
-    }
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
+    memset( (void *) &defaults, 0, sizeof( defaults ) );
+    TurretConfigReset( defaults );
     const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
@@ -14669,7 +15803,7 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
                 }
                 else
                 {
-                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
                     if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
                 }
             }
@@ -14688,7 +15822,7 @@ inline int64_t TurretConfigFixedLoadWalk( TurretConfig * values, int64_t capacit
             }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TurretConfigFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TurretConfigFixedGuards, (const uint8_t *) &defaults );
         if ( !TurretConfigFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { TurretConfigReset( values[j] ); }
@@ -14813,24 +15947,25 @@ constexpr TableFixedDst HullConfigFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry HullConfigFixedPlan[] = {
     { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 17u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 21u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 31u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 35u, 40u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 45u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 49u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
+    { 16u, 24u, 8u, 16u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 30u, 44u, 8u, 36u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 44u, 64u, 8u, 56u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
 };
 constexpr int32_t HullConfigFixedPlanCount = 12;
-constexpr int32_t HullConfigFixedPlanGuarded = 12;
+constexpr int32_t HullConfigFixedPlanGuarded = 9;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink HullConfigFixedGuards[] = {
@@ -14940,7 +16075,12 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -14949,7 +16089,12 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -14958,7 +16103,12 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -14970,7 +16120,10 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = HullConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -14978,7 +16131,10 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = HullConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -15000,7 +16156,11 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -15016,7 +16176,12 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -15031,7 +16196,12 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
             const int32_t made = TableFixedCompile( parsed, HullConfigFixedLayout, (int32_t) HullConfigFixedLayoutBytes, HullConfigFixedDst,
                                                    HullConfigFixedCover, HullConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -15055,10 +16225,25 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -15080,11 +16265,10 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
         }
     }
     HullConfig defaults;
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) );
-        HullConfigReset( defaults );
-    }
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
+    memset( (void *) &defaults, 0, sizeof( defaults ) );
+    HullConfigReset( defaults );
     const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
@@ -15116,7 +16300,7 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
                 }
                 else
                 {
-                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
                     if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
                 }
             }
@@ -15135,7 +16319,7 @@ inline int64_t HullConfigFixedLoadWalk( HullConfig * values, int64_t capacity, c
             }
         }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, HullConfigFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, HullConfigFixedGuards, (const uint8_t *) &defaults );
         if ( !HullConfigFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { HullConfigReset( values[j] ); }
@@ -15373,8 +16557,9 @@ constexpr TableFixedDst KeyedConfigFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry KeyedConfigFixedPlan[] = {
     { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_count
     { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // banner
@@ -15383,45 +16568,45 @@ constexpr TableFixedEntry KeyedConfigFixedPlan[] = {
     { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // spawn_count
     { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // banner
     { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 89u, 100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 93u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 103u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 107u, 124u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 121u, 144u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 139u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 143u, 172u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 153u, 188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 157u, 192u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 167u, 208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 171u, 212u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // health
-    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 189u, 236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 193u, 240u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 203u, 256u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 207u, 260u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // damage
-    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present
     { 217u, 276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // reaction
     { 221u, 280u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tracking
     { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // per_team, whole
+    { 88u, 108u, 8u, 100u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 102u, 128u, 8u, 120u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 116u, 148u, 8u, 140u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 138u, 176u, 8u, 168u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 152u, 196u, 8u, 188u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 166u, 216u, 8u, 208u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 188u, 244u, 8u, 236u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 202u, 264u, 8u, 256u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
+    { 216u, 284u, 8u, 276u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // gunner present, absent payload defaults
 };
 constexpr int32_t KeyedConfigFixedPlanCount = 43;
-constexpr int32_t KeyedConfigFixedPlanGuarded = 43;
+constexpr int32_t KeyedConfigFixedPlanGuarded = 34;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink KeyedConfigFixedGuards[] = {
@@ -15569,7 +16754,12 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -15578,7 +16768,12 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -15587,7 +16782,12 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -15599,7 +16799,10 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = KeyedConfigFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -15607,7 +16810,10 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = KeyedConfigFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -15629,7 +16835,11 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -15645,7 +16855,12 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -15660,7 +16875,12 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
             const int32_t made = TableFixedCompile( parsed, KeyedConfigFixedLayout, (int32_t) KeyedConfigFixedLayoutBytes, KeyedConfigFixedDst,
                                                    KeyedConfigFixedCover, KeyedConfigFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -15684,10 +16904,25 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -15709,11 +16944,10 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
         }
     }
     KeyedConfig defaults;
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) );
-        KeyedConfigReset( defaults );
-    }
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
+    memset( (void *) &defaults, 0, sizeof( defaults ) );
+    KeyedConfigReset( defaults );
     const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
@@ -15745,7 +16979,7 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
                 }
                 else
                 {
-                    if ( TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
                     if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
                 }
             }
@@ -15767,7 +17001,7 @@ inline int64_t KeyedConfigFixedLoadWalk( KeyedConfig * values, int64_t capacity,
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, KeyedConfigFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, KeyedConfigFixedGuards, (const uint8_t *) &defaults );
         if ( !KeyedConfigFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { KeyedConfigReset( values[j] ); }
@@ -15898,15 +17132,26 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBodyRetain( TableReader & r, TeamConfi
                             return false;
                         }
                         int32_t decoded_v = (int32_t) widened_v;
-                        if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                        else if ( decoded_v > 64 ) { decoded_v = 64; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        if ( decoded_v < 0 )
+                        {
+                            decoded_v = 0;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
+                        else if ( decoded_v > 64 )
+                        {
+                            decoded_v = 64;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.spawn_count = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -15920,8 +17165,18 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBodyRetain( TableReader & r, TeamConfi
                     return false;
                 }
                 int32_t decoded_v = int32_t( r.get32() );
-                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                else if ( decoded_v > 64 ) { decoded_v = 64; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                if ( decoded_v < 0 )
+                {
+                    decoded_v = 0;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
+                else if ( decoded_v > 64 )
+                {
+                    decoded_v = 64;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.spawn_count = decoded_v;
                 break;
             }
@@ -15931,7 +17186,8 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBodyRetain( TableReader & r, TeamConfi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -15940,7 +17196,11 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBodyRetain( TableReader & r, TeamConfi
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -15948,10 +17208,16 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigLoadBodyRetain( TableReader & r, TeamConfi
                     r.report->damaged = true;
                     memset( value.banner, 0, sizeof( value.banner ) );
                     value.banner_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 16 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 16 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 16 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.banner, r.buffer + r.offset, (size_t) keep );
                 value.banner[keep] = 0;
                 value.banner_length = (int32_t) keep;
@@ -16051,7 +17317,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBodyRetain( TableReader & r, GunnerC
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16080,7 +17347,8 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBodyRetain( TableReader & r, GunnerC
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16093,7 +17361,11 @@ TABLEDEMO_TABLE_INLINE bool GunnerConfigLoadBodyRetain( TableReader & r, GunnerC
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.tracking = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.tracking = bool_byte != 0;
+                }
                 break;
             }
             default:
@@ -16148,7 +17420,7 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigSaveBodyRetain( TableWriter & w, TableRe
         const int64_t body_gunner = GunnerConfigMeasureBodyRetain( ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
         w.header( ref_gunner, 13 );
-            w.putleb( (uint64_t) body_gunner ); // gunner
+        w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerConfigSaveBodyRetain( w, ids, value.gunner, retain, TableRetainStepInto( path, 2, (uint32_t) ( 0 ) ) ) ) return false;
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -16207,7 +17479,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBodyRetain( TableReader & r, TurretC
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16236,7 +17509,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBodyRetain( TableReader & r, TurretC
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16265,7 +17539,8 @@ TABLEDEMO_TABLE_INLINE bool TurretConfigLoadBodyRetain( TableReader & r, TurretC
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16325,8 +17600,13 @@ inline int64_t HullConfigMeasureBodyRetain( TableRetainIds & ids, const HullConf
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBodyRetain( ids, value.turrets.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_turrets++;
+            body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_turrets > 0 )
         {
@@ -16364,8 +17644,13 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBodyRetain( TableWriter & w, TableReta
             if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TurretConfigMeasureBodyRetain( ids, value.turrets.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_turrets++; body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_turrets++;
+            body_turrets += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_turrets > 0 )
         {
@@ -16373,8 +17658,10 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBodyRetain( TableWriter & w, TableReta
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_turrets = 1 + TableLebBytes( (uint64_t) pairs_turrets ) + body_turrets;
-            w.header( ref_turrets, 16 ); w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_turrets );
+            w.header( ref_turrets, 16 );
+            w.putleb( (uint64_t) whole_turrets ); // turrets (keyed by Weapon)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_turrets );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -16385,7 +17672,11 @@ TABLEDEMO_TABLE_INLINE bool HullConfigSaveBodyRetain( TableWriter & w, TableReta
                 if ( !TableEnumRef( ids, Weapon( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TurretConfigMeasureBodyRetain( ids, value.turrets.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TurretConfigSaveBodyRetain( w, ids, value.turrets.slots[i], retain, TableRetainStepInto( path, 2, (uint32_t) ( i ) ) ) ) return false;
@@ -16449,7 +17740,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16478,7 +17770,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16507,7 +17800,8 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16526,13 +17820,28 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -16542,20 +17851,33 @@ TABLEDEMO_TABLE_INLINE bool HullConfigLoadBodyRetain( TableReader & r, HullConfi
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Weapon slot = Weapon::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TurretConfigLoadBodyRetain( elem, value.turrets.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 2, (uint32_t) ( int32_t( slot ) - 1 ) ) );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; TurretConfigReset( value.turrets.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                TurretConfigReset( value.turrets.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -16591,8 +17913,13 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBodyRetain( ids, value.teams.slots[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_teams > 0 )
         {
@@ -16612,8 +17939,13 @@ inline int64_t KeyedConfigMeasureBodyRetain( TableRetainIds & ids, const KeyedCo
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBodyRetain( ids, value.hulls.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return -1; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_hulls++;
+            body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_hulls > 0 )
         {
@@ -16647,8 +17979,13 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = TeamConfigMeasureBodyRetain( ids, value.teams.slots[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_teams > 0 )
         {
@@ -16656,8 +17993,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            w.header( ref_teams, 16 ); w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_teams );
+            w.header( ref_teams, 16 );
+            w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -16668,7 +18007,11 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = TeamConfigMeasureBodyRetain( ids, value.teams.slots[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !TeamConfigSaveBodyRetain( w, ids, value.teams.slots[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) ) ) return false;
@@ -16687,8 +18030,13 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
             if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
             const int64_t elem_bytes = HullConfigMeasureBodyRetain( ids, value.hulls.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
-            pairs_hulls++; body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
+            if ( elem_bytes <= 1 )
+            {
+                ids.truncate( slot_mark );
+                continue;
+            } // an all-default slot elides
+            pairs_hulls++;
+            body_hulls += TableLebBytes( key_ref ) + TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         if ( pairs_hulls > 0 )
         {
@@ -16696,8 +18044,10 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_hulls = 1 + TableLebBytes( (uint64_t) pairs_hulls ) + body_hulls;
-            w.header( ref_hulls, 16 ); w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
-            w.put8( 13 ); w.putleb( (uint64_t) pairs_hulls );
+            w.header( ref_hulls, 16 );
+            w.putleb( (uint64_t) whole_hulls ); // hulls (keyed by Hull)
+            w.put8( 13 );
+            w.putleb( (uint64_t) pairs_hulls );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -16708,7 +18058,11 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigSaveBodyRetain( TableWriter & w, TableRet
                 if ( !TableEnumRef( ids, Hull( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 const int64_t elem_bytes = HullConfigMeasureBodyRetain( ids, value.hulls.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) );
                 if ( elem_bytes < 0 ) { return false; }
-                if ( elem_bytes <= 1 ) { ids.truncate( slot_mark ); continue; } // an all-default slot elides
+                if ( elem_bytes <= 1 )
+                {
+                    ids.truncate( slot_mark );
+                    continue;
+                } // an all-default slot elides
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( (uint64_t) elem_bytes );
                 if ( !HullConfigSaveBodyRetain( w, ids, value.hulls.slots[i], retain, TableRetainStepInto( path, 1, (uint32_t) ( i ) ) ) ) return false;
@@ -16785,7 +18139,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16804,13 +18159,28 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -16820,20 +18190,33 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Team slot = Team::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             TeamConfigLoadBodyRetain( elem, value.teams.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 0, (uint32_t) ( int32_t( slot ) - 1 ) ) );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; TeamConfigReset( value.teams.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                TeamConfigReset( value.teams.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -16847,7 +18230,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16866,13 +18250,28 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -16882,20 +18281,33 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Hull slot = Hull::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             r.report->retain_lost++; // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
                         {
                             TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
                             HullConfigLoadBodyRetain( elem, value.hulls.slots[int32_t( slot ) - 1], retain, TableRetainStepInto( path, 1, (uint32_t) ( int32_t( slot ) - 1 ) ) );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; HullConfigReset( value.hulls.slots[int32_t( slot ) - 1] ); }
+                            if ( elem.offset != elem.size )
+                            {
+                                r.report->damaged = true;
+                                HullConfigReset( value.hulls.slots[int32_t( slot ) - 1] );
+                            }
                         }
                         sub.offset += (int64_t) elem_len;
                     }
@@ -16909,7 +18321,8 @@ TABLEDEMO_TABLE_INLINE bool KeyedConfigLoadBodyRetain( TableReader & r, KeyedCon
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -16962,7 +18375,8 @@ inline int64_t ScoreBoardMeasureBodyRetain( TableRetainIds & ids, const ScoreBoa
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_per_team++;
+            body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_per_team > 0 )
         {
@@ -16986,7 +18400,8 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
             if ( value.per_team[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_per_team++; body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_per_team++;
+            body_per_team += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_per_team > 0 )
         {
@@ -16994,8 +18409,10 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_per_team = 1 + TableLebBytes( (uint64_t) pairs_per_team ) + body_per_team;
-            w.header( ref_per_team, 16 ); w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
-            w.put8( 4 ); w.putleb( (uint64_t) pairs_per_team );
+            w.header( ref_per_team, 16 );
+            w.putleb( (uint64_t) whole_per_team ); // per_team (keyed by Team)
+            w.put8( 4 );
+            w.putleb( (uint64_t) pairs_per_team );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -17067,7 +18484,8 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -17086,12 +18504,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     if ( elem_kind != 4 )
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -17100,7 +18524,11 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -17110,13 +18538,22 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Team slot = Team::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -17130,8 +18567,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                                     continue;
                                 }
                                 int32_t decoded_v = (int32_t) widened_v;
-                                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                                else if ( decoded_v > 100000 ) { decoded_v = 100000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                                if ( decoded_v < 0 )
+                                {
+                                    decoded_v = 0;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
+                                else if ( decoded_v > 100000 )
+                                {
+                                    decoded_v = 100000;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 value.per_team[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -17143,7 +18590,11 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -17153,13 +18604,22 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Team slot = Team::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -17172,8 +18632,18 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
                                     continue;
                                 }
                                 int32_t decoded_v = int32_t( elem.get32() );
-                                if ( decoded_v < 0 ) { decoded_v = 0; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                                else if ( decoded_v > 100000 ) { decoded_v = 100000; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                                if ( decoded_v < 0 )
+                                {
+                                    decoded_v = 0;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
+                                else if ( decoded_v > 100000 )
+                                {
+                                    decoded_v = 100000;
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                }
                                 value.per_team[int32_t( slot ) - 1] = decoded_v;
                             }
                             sub.offset += (int64_t) elem_len;
@@ -17627,7 +19097,7 @@ inline bool HullConfigCookBody( uint8_t * at, const HullConfig & value, TableByt
     // [Weapon]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        if ( !TurretConfigCookBody( at + 8 + i * 20, value.turrets.slots[ i ], order ) ) { return false; }
+        if ( !TurretConfigCookBody( at + 8 + i * 20, value.turrets.slots[i], order ) ) { return false; }
     }
     return true;
 }
@@ -17637,12 +19107,12 @@ inline bool KeyedConfigCookBody( uint8_t * at, const KeyedConfig & value, TableB
     // [Team]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        if ( !TeamConfigCookBody( at + 0 + i * 28, value.teams.slots[ i ], order ) ) { return false; }
+        if ( !TeamConfigCookBody( at + 0 + i * 28, value.teams.slots[i], order ) ) { return false; }
     }
     // [Hull]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        if ( !HullConfigCookBody( at + 84 + i * 68, value.hulls.slots[ i ], order ) ) { return false; }
+        if ( !HullConfigCookBody( at + 84 + i * 68, value.hulls.slots[i], order ) ) { return false; }
     }
     if ( !ScoreBoardCookBody( at + 288, value.scores, order ) ) { return false; }
     return true;
@@ -17653,7 +19123,7 @@ inline bool ScoreBoardCookBody( uint8_t * at, const ScoreBoard & value, TableByt
     // [Team]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        table_cook_put( at + 0 + i * 4, (uint64_t) value.per_team[ i ], 4, order );
+        table_cook_put( at + 0 + i * 4, (uint64_t) value.per_team[i], 4, order );
     }
     return true;
 }
@@ -17701,7 +19171,11 @@ inline bool TeamConfigCook( const TeamConfig & value, void * out, uint64_t capac
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !TeamConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !TeamConfigCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -17753,7 +19227,11 @@ inline bool GunnerConfigCook( const GunnerConfig & value, void * out, uint64_t c
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !GunnerConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !GunnerConfigCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -17805,7 +19283,11 @@ inline bool TurretConfigCook( const TurretConfig & value, void * out, uint64_t c
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !TurretConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !TurretConfigCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -17857,7 +19339,11 @@ inline bool HullConfigCook( const HullConfig & value, void * out, uint64_t capac
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !HullConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !HullConfigCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -17909,7 +19395,11 @@ inline bool KeyedConfigCook( const KeyedConfig & value, void * out, uint64_t cap
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !KeyedConfigCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !KeyedConfigCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

@@ -1068,10 +1068,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -3658,6 +3670,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3794,6 +3807,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3954,7 +3973,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -4086,6 +4105,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -4095,7 +4126,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -4104,7 +4136,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -4129,10 +4161,15 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 )
     {
@@ -4184,7 +4221,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -4277,6 +4319,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4835,7 +4878,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -5040,15 +5089,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -6587,10 +6644,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -8591,7 +8650,6 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
 #define MAPDEMO_SCHEMA_TABLE_MAP
 
 namespace mapdemo {
-
 // ---- a MAP: a sorted entry array, and the lookup over it (§2.8) ----
 //
 // On the wire, in a region and in a cook a map is an array of one generated
@@ -8607,7 +8665,8 @@ static const int32_t kTableMapSegmentEntries = 32;
 // TableDeclRef names a type in an unevaluated context and is never defined —
 // what <utility>'s declval is for, without the include the generated corpus
 // refuses to pay for (the iterator_traits note, §13.9).
-template <typename T> T & TableDeclRef();
+template <typename T>
+T & TableDeclRef();
 
 // THE ORDER IS TOTAL, AND IT IS THE SAME IN NINE LANGUAGES (§2.8). Integers
 // compare by VALUE, signed for the signed kinds and unsigned for the unsigned.
@@ -8632,7 +8691,10 @@ inline int TableKeyOrder( const char * a, int32_t a_length, const char * b, int3
 inline int32_t TableKeyLength( const char * key, int32_t bound )
 {
     if ( key == NULL ) { return 0; }
-    for ( int32_t i = 0; i <= bound; i++ ) { if ( key[i] == 0 ) { return i; } }
+    for ( int32_t i = 0; i <= bound; i++ )
+    {
+        if ( key[i] == 0 ) { return i; }
+    }
     return bound + 1; // longer than the bound: the caller refuses it
 }
 
@@ -8655,17 +8717,18 @@ struct TableMapKeyRef
 // padding to eight. The reference is a TableRef like a pointer's: in the arena
 // it names the builder's HEAD, in a region it is the delta from the slot to
 // the first entry, and 0 is the empty map in both.
-template <typename Entry> struct TableMap
+template <typename Entry>
+struct TableMap
 {
     TableRef entries;
     int32_t count = 0;   // the LIVE count, in both forms
     int32_t padding = 0; // named, so the record has no unwritten byte in it
 
-    // ---- the CONST form: a locked region, a loaded one, an opened cook ----
-    //
-    // One surface over one encoding (§6.3). A region reference resolves from
-    // the slot's own address, so every one of these is a member and needs no
-    // base and no context.
+// ---- the CONST form: a locked region, a loaded one, an opened cook ----
+//
+// One surface over one encoding (§6.3). A region reference resolves from
+// the slot's own address, so every one of these is a member and needs no
+// base and no context.
     const Entry * Entries() const
     {
         return entries.value != 0 ? (const Entry *) ( (const uint8_t *) &entries + entries.value ) : NULL;
@@ -8675,7 +8738,8 @@ template <typename Entry> struct TableMap
     // FIND: floor( log2 n ) + 1 key compares, in place, no allocation. NULL
     // when absent, and on a map[K]*T the RESOLVED pointer, which is what a
     // pointer field's accessor answers.
-    template <typename Key> const Entry * FindEntry( Key key ) const
+    template <typename Key>
+    const Entry * FindEntry( Key key ) const
     {
         const Entry * base = Entries();
         int32_t low = 0, high = count;
@@ -8684,14 +8748,19 @@ template <typename Entry> struct TableMap
             const int32_t mid = low + ( high - low ) / 2;
             const int order = TableEntryOrder( base[mid], key );
             if ( order == 0 ) { return base + mid; }
-            if ( order < 0 ) { low = mid + 1; } else { high = mid; }
+            if ( order < 0 ) { low = mid + 1; }
+            else
+            {
+                high = mid;
+            }
         }
         return NULL;
     }
     // the return type is DEDUCED, so it is worked out when a call site
     // instantiates Find and not when the holder's record declares the slot —
     // which is what lets the entry's own overloads be declared after it
-    template <typename Key> auto Find( Key key ) const
+    template <typename Key>
+    auto Find( Key key ) const
     {
         return TableEntryFound( FindEntry( key ) );
     }
@@ -8711,7 +8780,11 @@ template <typename Entry> struct TableMap
     {
         const Entry * at;
         ConstEntry operator*() const { return ConstEntry{ TableEntryKey( *at ), TableEntryFound( at ) }; }
-        ConstIterator & operator++() { at++; return *this; }
+        ConstIterator & operator++()
+        {
+            at++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return at == other.at; }
         bool operator!=( const ConstIterator & other ) const { return at != other.at; }
     };
@@ -8735,18 +8808,19 @@ struct TableMapHead
     int32_t dead;
 };
 
-template <typename Entry> struct TableMapSegment
+template <typename Entry>
+struct TableMapSegment
 {
     TableRef next;
     int32_t used;                                        // entries carved from this segment
     int32_t padding;
-    uint32_t dead[ ( kTableMapSegmentEntries + 31 ) / 32 ]; // Erase marks one bit, never the entry
-    Entry entries[ kTableMapSegmentEntries ];
+    uint32_t dead[( kTableMapSegmentEntries + 31 ) / 32]; // Erase marks one bit, never the entry
+    Entry entries[kTableMapSegmentEntries];
 };
 
 inline bool TableMapSegmentDead( const uint32_t * dead, int32_t index )
 {
-    return ( dead[ index / 32 ] & ( 1u << ( index % 32 ) ) ) != 0;
+    return ( dead[index / 32] & ( 1u << ( index % 32 ) ) ) != 0;
 }
 
 // ---- the ORDERED CURSOR the four writing walks read (§2.8) ----
@@ -8761,7 +8835,8 @@ inline bool TableMapSegmentDead( const uint32_t * dead, int32_t index )
 // allocated through the pair and released before the walk returns, because
 // sorting the segments themselves would move entries whose addresses a caller
 // holds.
-template <typename Entry> struct TableMapCursor
+template <typename Entry>
+struct TableMapCursor
 {
     const Entry * const * order = NULL; // the builder's form: sorted pointers
     const Entry * entries = NULL;       // the region's form: the array in place
@@ -8776,7 +8851,8 @@ template <typename Entry> struct TableMapCursor
 
 // heapsort: O( n log n ) once per map, no recursion, no allocation past the
 // pointer array the caller already paid for
-template <typename Entry> inline void TableMapSort( const TableArena & arena, const Entry ** order, int32_t count )
+template <typename Entry>
+inline void TableMapSort( const TableArena & arena, const Entry ** order, int32_t count )
 {
     for ( int32_t start = count / 2 - 1; start >= 0; start-- )
     {
@@ -8787,13 +8863,17 @@ template <typename Entry> inline void TableMapSort( const TableArena & arena, co
             if ( child >= count ) { break; }
             if ( child + 1 < count && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
             if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
-            const Entry * swap = order[root]; order[root] = order[child]; order[child] = swap;
+            const Entry * swap = order[root];
+            order[root] = order[child];
+            order[child] = swap;
             root = child;
         }
     }
     for ( int32_t end = count - 1; end > 0; end-- )
     {
-        const Entry * swap = order[0]; order[0] = order[end]; order[end] = swap;
+        const Entry * swap = order[0];
+        order[0] = order[end];
+        order[end] = swap;
         int32_t root = 0;
         for ( ;; )
         {
@@ -8801,7 +8881,9 @@ template <typename Entry> inline void TableMapSort( const TableArena & arena, co
             if ( child >= end ) { break; }
             if ( child + 1 < end && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
             if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
-            const Entry * hold = order[root]; order[root] = order[child]; order[child] = hold;
+            const Entry * hold = order[root];
+            order[root] = order[child];
+            order[child] = hold;
             root = child;
         }
     }
@@ -8826,7 +8908,12 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
     TableMapCursor<Entry> cursor;
     cursor.allocator = arena.allocator;
     cursor.count = map.count;
-    if ( map.entries.value == 0 || map.count <= 0 ) { cursor.ok = map.count == 0; cursor.count = 0; return cursor; }
+    if ( map.entries.value == 0 || map.count <= 0 )
+    {
+        cursor.ok = map.count == 0;
+        cursor.count = 0;
+        return cursor;
+    }
     const TableMapHead * head = (const TableMapHead *) TableArenaAt( arena, (uint32_t) map.entries.value );
     if ( head->live != map.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
     const Entry ** order = (const Entry **) table_allocate( arena.allocator, (int64_t) map.count * (int64_t) sizeof( const Entry * ) );
@@ -8860,7 +8947,8 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArenaCtx & ctx, const Tab
     return TableMapOrder( *ctx.arena, map );
 }
 
-template <typename Entry> inline void TableMapRelease( TableMapCursor<Entry> & cursor )
+template <typename Entry>
+inline void TableMapRelease( TableMapCursor<Entry> & cursor )
 {
     if ( cursor.order != NULL ) { table_release( cursor.allocator, (void *) cursor.order ); }
     cursor.order = NULL;
@@ -8965,7 +9053,7 @@ inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
             if ( TableEntryOrder( &arena, segment->entries[i], key ) != 0 ) { continue; }
-            segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+            segment->dead[i / 32] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
             map.count--;
@@ -8977,7 +9065,8 @@ inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
 }
 
 // ---- iterate on the BUILDER: INSERTION order, live entries only (§2.8) ----
-template <typename Entry> struct TableMapEach
+template <typename Entry>
+struct TableMapEach
 {
     const TableArena * arena;
     TableRef first;
@@ -8999,12 +9088,21 @@ template <typename Entry> struct TableMapEach
                     index = 0;
                     continue;
                 }
-                if ( TableMapSegmentDead( segment->dead, index ) ) { index++; continue; }
+                if ( TableMapSegmentDead( segment->dead, index ) )
+                {
+                    index++;
+                    continue;
+                }
                 return;
             }
         }
         auto operator*() const { return TableEntryEach( arena, segment->entries + index ); }
-        Iterator & operator++() { index++; Skip(); return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            Skip();
+            return *this;
+        }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
@@ -9089,7 +9187,8 @@ inline bool TableMapVisitStored( const TableArenaCtx & ctx, const TableMap<Entry
 // TableMapFill is one map field being decoded: where the next entry lands, and
 // the entry that last LANDED, which is what the ascending check compares
 // against.
-template <typename Entry> struct TableMapFill
+template <typename Entry>
+struct TableMapFill
 {
     TableMap<Entry> * map = NULL;
     Entry * array = NULL;        // the region path: the carved array
@@ -9133,7 +9232,8 @@ inline TableMapFill<Entry> TableMapFillBegin( const TableNodeMap & nodes, TableM
 }
 
 // the entry that last LANDED — NULL before the first
-template <typename Entry> inline Entry * TableMapFillLast( TableMapFill<Entry> & fill )
+template <typename Entry>
+inline Entry * TableMapFillLast( TableMapFill<Entry> & fill )
 {
     if ( fill.map->count <= 0 ) { return NULL; }
     if ( fill.array != NULL ) { return fill.array + ( fill.map->count - 1 ); }
@@ -9141,7 +9241,8 @@ template <typename Entry> inline Entry * TableMapFillLast( TableMapFill<Entry> &
 }
 
 // the next slot, at the entry type's declared defaults
-template <typename Entry> inline Entry * TableMapFillNext( TableMapFill<Entry> & fill )
+template <typename Entry>
+inline Entry * TableMapFillNext( TableMapFill<Entry> & fill )
 {
     if ( fill.array != NULL )
     {
@@ -9161,7 +9262,8 @@ template <typename Entry> inline Entry * TableMapFillNext( TableMapFill<Entry> &
 // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): at the first entry whose key
 // kind disagrees with the reader's declaration the map resets to EMPTY, one
 // kind_mismatch is counted for the map, and its remaining bytes are skipped.
-template <typename Entry> inline void TableMapFillReset( TableMapFill<Entry> & fill )
+template <typename Entry>
+inline void TableMapFillReset( TableMapFill<Entry> & fill )
 {
     if ( fill.array != NULL )
     {
@@ -9182,7 +9284,8 @@ template <typename Entry> inline void TableMapFillReset( TableMapFill<Entry> & f
 
 // an EMPTY map's reference is null in both encodings, so a load that placed
 // nothing leaves the slot exactly as a Reset does
-template <typename Entry> inline void TableMapFillEnd( TableMapFill<Entry> & fill )
+template <typename Entry>
+inline void TableMapFillEnd( TableMapFill<Entry> & fill )
 {
     if ( fill.array != NULL && fill.map->count == 0 ) { fill.map->entries.value = 0; }
 }
@@ -9227,8 +9330,8 @@ inline Entry * TableMapLive( const TableArena & arena, const TableMap<Entry> & m
 static const int64_t kTableMapEntryFloor = 2;
 
 inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                int64_t entry_size, int64_t entry_align, TableWireExtentFn inner,
-                                const TableIdTable * ids, TableRefuseReason & reason )
+    int64_t entry_size, int64_t entry_align, TableWireExtentFn inner,
+    const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -9242,7 +9345,11 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
         return false;
     }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
+    if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) )
+    {
+        reason = count_over_length;
+        return false;
+    } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
     at += (int64_t) n * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
@@ -9287,7 +9394,7 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     if ( !TableEntrySetKey( worker, *entry, key ) )
     {
         TableMapSegment<Entry> * seg = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
-        seg->dead[ ( seg->used - 1 ) / 32 ] |= 1u << ( ( seg->used - 1 ) % 32 );
+        seg->dead[( seg->used - 1 ) / 32] |= 1u << ( ( seg->used - 1 ) % 32 );
         head->live--;
         map.count--;
         return NULL;
@@ -9318,7 +9425,11 @@ inline uint64_t TableMapHash( const void * bytes, int32_t length )
 {
     uint64_t hash = 0xCBF29CE484222325ull;
     const uint8_t * at = (const uint8_t *) bytes;
-    for ( int32_t i = 0; i < length; i++ ) { hash ^= (uint64_t) at[i]; hash *= 0x100000001B3ull; }
+    for ( int32_t i = 0; i < length; i++ )
+    {
+        hash ^= (uint64_t) at[i];
+        hash *= 0x100000001B3ull;
+    }
     return hash;
 }
 inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int32_t) sizeof( key ) ); }
@@ -10287,9 +10398,15 @@ inline bool TableEnumRef( TableIds & ids, Slot value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Slot::None: ref = 0; return true;
-        case Slot::Alpha: ref = ids.ref_at( 24, 0x4fda04cbc245e18bull ); return true;
-        case Slot::Beta: ref = ids.ref_at( 46, 0xa0b562a796b69487ull ); return true;
+        case Slot::None:
+            ref = 0;
+            return true;
+        case Slot::Alpha:
+            ref = ids.ref_at( 24, 0x4fda04cbc245e18bull );
+            return true;
+        case Slot::Beta:
+            ref = ids.ref_at( 46, 0xa0b562a796b69487ull );
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -10297,9 +10414,15 @@ inline bool TableEnumRef( TableRetainIds & ids, Slot value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Slot::None: ref = 0; return true;
-        case Slot::Alpha: ref = ids.ref_at( 24, 0x4fda04cbc245e18bull ); return true;
-        case Slot::Beta: ref = ids.ref_at( 46, 0xa0b562a796b69487ull ); return true;
+        case Slot::None:
+            ref = 0;
+            return true;
+        case Slot::Alpha:
+            ref = ids.ref_at( 24, 0x4fda04cbc245e18bull );
+            return true;
+        case Slot::Beta:
+            ref = ids.ref_at( 46, 0xa0b562a796b69487ull );
+            return true;
         default: return false;
     }
 }
@@ -10317,9 +10440,15 @@ inline bool TableEnumSlot( Slot value, uint64_t & slot )
 {
     switch ( value )
     {
-        case Slot::None: slot = 0; return true;
-        case Slot::Alpha: slot = 48; return true;
-        case Slot::Beta: slot = 49; return true;
+        case Slot::None:
+            slot = 0;
+            return true;
+        case Slot::Alpha:
+            slot = 48;
+            return true;
+        case Slot::Beta:
+            slot = 49;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -10327,9 +10456,15 @@ inline bool TableEnumId( Slot value, uint64_t & id )
 {
     switch ( value )
     {
-        case Slot::None: id = 0; return true;
-        case Slot::Alpha: id = 0x4fda04cbc245e18bull; return true;
-        case Slot::Beta: id = 0xa0b562a796b69487ull; return true;
+        case Slot::None:
+            id = 0;
+            return true;
+        case Slot::Alpha:
+            id = 0x4fda04cbc245e18bull;
+            return true;
+        case Slot::Beta:
+            id = 0xa0b562a796b69487ull;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -10337,8 +10472,12 @@ inline bool TableEnumValue( uint64_t id, Slot & out )
 {
     switch ( id )
     {
-        case 0x4fda04cbc245e18bull: out = Slot::Alpha; return true;
-        case 0xa0b562a796b69487ull: out = Slot::Beta; return true;
+        case 0x4fda04cbc245e18bull:
+            out = Slot::Alpha;
+            return true;
+        case 0xa0b562a796b69487ull:
+            out = Slot::Beta;
+            return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -10427,10 +10566,18 @@ inline int TableEntryOrder( const TableArena *, const SlotsSeatsEntry & entry, i
 inline int32_t TableEntryKey( const SlotsSeatsEntry & entry ) { return entry.key; }
 inline int32_t TableEntryKey( const TableArena *, const SlotsSeatsEntry & entry ) { return entry.key; }
 inline void TableEntrySetKey( SlotsSeatsEntry & entry, int32_t key ) { entry.key = key; }
-inline bool TableEntrySetKey( TableWorker &, SlotsSeatsEntry & entry, int32_t key ) { entry.key = key; return true; }
+inline bool TableEntrySetKey( TableWorker &, SlotsSeatsEntry & entry, int32_t key )
+{
+    entry.key = key;
+    return true;
+}
 inline const TableKeyed<int32_t, Slot> * TableEntryFound( const SlotsSeatsEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline TableKeyed<int32_t, Slot> * TableEntryValue( SlotsSeatsEntry * entry ) { return &entry->value; }
-struct SlotsSeatsEntryEach { int32_t key; decltype( TableEntryValue( (SlotsSeatsEntry *) NULL ) ) value; };
+struct SlotsSeatsEntryEach
+{
+    int32_t key;
+    decltype( TableEntryValue( (SlotsSeatsEntry *) NULL ) ) value;
+};
 inline SlotsSeatsEntryEach TableEntryEach( const TableArena * arena, SlotsSeatsEntry * entry ) { return SlotsSeatsEntryEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( SlotsSeatsEntry & value )
 {
@@ -10459,11 +10606,27 @@ inline SlotsSeatsEntryKeyRead SlotsSeatsEntryReadKey( const uint8_t * body, int6
     for ( ;; )
     {
         uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { out.damaged = true; return out; }
-        if ( field_ref == 0 ) { out.damaged = r.offset != r.size; return out; } // the terminator consumes the entry's L
-        if ( ids == NULL || field_ref > (uint64_t) ids->count ) { out.damaged = true; return out; }
+        if ( !r.getleb( field_ref ) )
+        {
+            out.damaged = true;
+            return out;
+        }
+        if ( field_ref == 0 )
+        {
+            out.damaged = r.offset != r.size;
+            return out;
+        } // the terminator consumes the entry's L
+        if ( ids == NULL || field_ref > (uint64_t) ids->count )
+        {
+            out.damaged = true;
+            return out;
+        }
         const uint64_t field_id = ids->at( field_ref );
-        if ( !r.has( 1 ) ) { out.damaged = true; return out; }
+        if ( !r.has( 1 ) )
+        {
+            out.damaged = true;
+            return out;
+        }
         uint8_t field_kind = r.get8();
         if ( field_id == 0x3dc94a19365b10ecull ) // `key`, the ordinary hash of an ordinary name
         {
@@ -10473,7 +10636,11 @@ inline SlotsSeatsEntryKeyRead SlotsSeatsEntryReadKey( const uint8_t * body, int6
                 out.kind_bad = false; // this occurrence replaces an earlier key kind (§2.8, §3)
                 out.found = true;
                 int64_t widened_v = 0;
-                if ( !TableReadSignedAt( r, field_kind, widened_v ) ) { out.damaged = true; return out; }
+                if ( !TableReadSignedAt( r, field_kind, widened_v ) )
+                {
+                    out.damaged = true;
+                    return out;
+                }
                 out.key = (int32_t) widened_v;
                 continue; // the LAST occurrence is the one §3 keeps
             }
@@ -10481,12 +10648,20 @@ inline SlotsSeatsEntryKeyRead SlotsSeatsEntryReadKey( const uint8_t * body, int6
             out.found = !out.kind_bad;
             if ( !out.kind_bad )
             {
-                if ( !r.has( 4 ) ) { out.damaged = true; return out; }
+                if ( !r.has( 4 ) )
+                {
+                    out.damaged = true;
+                    return out;
+                }
                 out.key = (int32_t) r.get32();
                 continue; // the LAST occurrence is the one §3 keeps
             }
         }
-        if ( !r.skip( field_kind ) ) { out.damaged = true; return out; }
+        if ( !r.skip( field_kind ) )
+        {
+            out.damaged = true;
+            return out;
+        }
     }
 }
 
@@ -10520,7 +10695,8 @@ inline int64_t SlotsSeatsEntryMeasureBody( TableIds & ids, const SlotsSeatsEntry
             if ( value.value.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Slot( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_value++; body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_value++;
+            body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_value > 0 )
         {
@@ -10548,7 +10724,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBody( TableWriter & w, TableIds & i
             if ( value.value.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Slot( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_value++; body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_value++;
+            body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_value > 0 )
         {
@@ -10556,8 +10733,10 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBody( TableWriter & w, TableIds & i
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_value = 1 + TableLebBytes( (uint64_t) pairs_value ) + body_value;
-            w.header( ref_value, 16 ); w.putleb( (uint64_t) whole_value ); // value (keyed by Slot)
-            w.put8( 4 ); w.putleb( (uint64_t) pairs_value );
+            w.header( ref_value, 16 );
+            w.putleb( (uint64_t) whole_value ); // value (keyed by Slot)
+            w.put8( 4 );
+            w.putleb( (uint64_t) pairs_value );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -10637,7 +10816,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10660,7 +10840,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10679,12 +10860,18 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     if ( elem_kind != 4 )
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -10693,7 +10880,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -10703,13 +10894,22 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Slot slot = Slot::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -10734,7 +10934,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -10744,13 +10948,22 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBody( TableReader & r, SlotsSeatsEn
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Slot slot = Slot::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -10803,7 +11016,11 @@ inline int64_t SlotsMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_seats = SlotsSeatsEntryMeasureBody( ids, *order_seats[i] );
-                if ( elem_seats < 0 ) { TableMapRelease( order_seats ); return -1; }
+                if ( elem_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return -1;
+                }
                 body_seats += TableLebBytes( (uint64_t) ( elem_seats ) ) + ( elem_seats ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
             }
             bytes += TableLebBytes( ref_seats ) + 1 + TableLebBytes( (uint64_t) ( body_seats ) ) + ( body_seats );
@@ -10829,17 +11046,31 @@ inline bool SlotsSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_seats = SlotsSeatsEntryMeasureBody( ids, *order_seats[i] );
-                if ( elem_seats < 0 ) { TableMapRelease( order_seats ); return false; }
+                if ( elem_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
                 body_seats += TableLebBytes( (uint64_t) ( elem_seats ) ) + ( elem_seats );
             }
-            w.header( ref_seats, 14 ); w.putleb( (uint64_t) body_seats );
-            w.put8( 13 ); w.putleb( (uint64_t) order_seats.count );
+            w.header( ref_seats, 14 );
+            w.putleb( (uint64_t) body_seats );
+            w.put8( 13 );
+            w.putleb( (uint64_t) order_seats.count );
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_len_seats = SlotsSeatsEntryMeasureBody( ids, *order_seats[i] );
-                if ( elem_len_seats < 0 ) { TableMapRelease( order_seats ); return false; }
+                if ( elem_len_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
                 w.putleb( (uint64_t) elem_len_seats );
-                if ( !SlotsSeatsEntrySaveBody( w, ids, *order_seats[i] ) ) { TableMapRelease( order_seats ); return false; }
+                if ( !SlotsSeatsEntrySaveBody( w, ids, *order_seats[i] ) )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
             }
         }
         TableMapRelease( order_seats );
@@ -10908,7 +11139,8 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10927,10 +11159,21 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableMapFill<SlotsSeatsEntry> fill = TableMapFillBegin( nodes, value.seats, count );
                     if ( fill.refused )
                     {
@@ -10950,12 +11193,20 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         SlotsSeatsEntryKeyRead read = SlotsSeatsEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
                         // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
+                        if ( read.widened && !map_widened )
+                        {
+                            map_widened = true;
+                            r.report->widened++;
+                        }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -10965,12 +11216,22 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
                             // to EMPTY, ONE kind_mismatch is counted for it, and the rest
                             // is skipped. Events counted inside earlier entries stand.
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             TableMapFillReset( fill );
                             break;
                         }
-                        if ( read.damaged ) { r.report->damaged = true; break; }
-                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range; continue; } // skipped by its L, one count per entry
+                        if ( read.damaged )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
+                        if ( read.over )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                            continue;
+                        } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
                         if ( order > 0 )
                         {
@@ -10992,12 +11253,20 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                         {
                             slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         }
-                        if ( slot == NULL ) { r.report->damaged = true; break; }
+                        if ( slot == NULL )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SlotsSeatsEntryLoadBody( elem, *slot );
                         }
-                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }
+                        if ( order == 0 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = malformed;
+                        }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -11027,7 +11296,8 @@ inline bool SlotsLoadBody( TableReader & r, const TableNodeMap & nodes, Slots & 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11132,7 +11402,11 @@ inline bool SlotsExtentPack( const Ctx & ctx, const Slots & src, Slots & dst, ui
         if ( !cursor.ok ) { return false; }
         at = ( at + 3 ) & ~(int64_t) 3;
         const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( SlotsSeatsEntry );
-        if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }
+        if ( at + bytes > capacity )
+        {
+            TableMapRelease( cursor );
+            return false;
+        }
         SlotsSeatsEntry * placed = (SlotsSeatsEntry *) ( extent + at );
         at += bytes;
         dst.seats.count = cursor.count;
@@ -12277,7 +12551,8 @@ inline int64_t SlotsSeatsEntryMeasureBodyRetain( TableRetainIds & ids, const Slo
             if ( value.value.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Slot( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_value++; body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_value++;
+            body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_value > 0 )
         {
@@ -12306,7 +12581,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBodyRetain( TableWriter & w, TableR
             if ( value.value.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Slot( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_value++; body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
+            pairs_value++;
+            body_value += TableLebBytes( key_ref ) + TableLebBytes( 4 ) + 4;
         }
         if ( pairs_value > 0 )
         {
@@ -12314,8 +12590,10 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntrySaveBodyRetain( TableWriter & w, TableR
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_value = 1 + TableLebBytes( (uint64_t) pairs_value ) + body_value;
-            w.header( ref_value, 16 ); w.putleb( (uint64_t) whole_value ); // value (keyed by Slot)
-            w.put8( 4 ); w.putleb( (uint64_t) pairs_value );
+            w.header( ref_value, 16 );
+            w.putleb( (uint64_t) whole_value ); // value (keyed by Slot)
+            w.put8( 4 );
+            w.putleb( (uint64_t) pairs_value );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -12401,7 +12679,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12424,7 +12703,8 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12443,12 +12723,18 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     if ( elem_kind != 4 )
                     {
                         if ( !TableKindWidens( elem_kind, 4 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
@@ -12457,7 +12743,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -12467,13 +12757,22 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Slot slot = Slot::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -12498,7 +12797,11 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                         for ( uint64_t i = 0; i < count; i++ )
                         {
                             uint64_t key_ref = 0;
-                            if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( key_ref ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             if ( key_ref == 0 )
                             {
                                 // None is the NULL KEY, and a stored key reference of 0 names
@@ -12508,13 +12811,22 @@ MAPDEMO_TABLE_INLINE bool SlotsSeatsEntryLoadBodyRetain( TableReader & r, SlotsS
                                 r.report->damaged = true;
                                 break;
                             }
-                            if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                            if ( key_ref > (uint64_t) r.ids->count )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             uint64_t elem_len = 0;
-                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
                             Slot slot = Slot::None;
                             if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                             {
-                                r.report->unknown++; r.report->retain_lost++; // a slot this reader cannot name
+                                r.report->unknown++;
+                                 r.report->retain_lost++; // a slot this reader cannot name
                                 sub.offset += (int64_t) elem_len;
                                 continue;
                             }
@@ -12567,7 +12879,11 @@ inline int64_t SlotsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_seats = SlotsSeatsEntryMeasureBodyRetain( ids, *order_seats[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
-                if ( elem_seats < 0 ) { TableMapRelease( order_seats ); return -1; }
+                if ( elem_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return -1;
+                }
                 body_seats += TableLebBytes( (uint64_t) ( elem_seats ) ) + ( elem_seats ); // BUT THE ENTRY ALWAYS RIDES: identity here is the key
             }
             bytes += TableLebBytes( ref_seats ) + 1 + TableLebBytes( (uint64_t) ( body_seats ) ) + ( body_seats );
@@ -12594,17 +12910,31 @@ inline bool SlotsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_seats = SlotsSeatsEntryMeasureBodyRetain( ids, *order_seats[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
-                if ( elem_seats < 0 ) { TableMapRelease( order_seats ); return false; }
+                if ( elem_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
                 body_seats += TableLebBytes( (uint64_t) ( elem_seats ) ) + ( elem_seats );
             }
-            w.header( ref_seats, 14 ); w.putleb( (uint64_t) body_seats );
-            w.put8( 13 ); w.putleb( (uint64_t) order_seats.count );
+            w.header( ref_seats, 14 );
+            w.putleb( (uint64_t) body_seats );
+            w.put8( 13 );
+            w.putleb( (uint64_t) order_seats.count );
             for ( int32_t i = 0; i < order_seats.count; i++ )
             {
                 const int64_t elem_len_seats = SlotsSeatsEntryMeasureBodyRetain( ids, *order_seats[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) );
-                if ( elem_len_seats < 0 ) { TableMapRelease( order_seats ); return false; }
+                if ( elem_len_seats < 0 )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
                 w.putleb( (uint64_t) elem_len_seats );
-                if ( !SlotsSeatsEntrySaveBodyRetain( w, ids, *order_seats[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) ) ) { TableMapRelease( order_seats ); return false; }
+                if ( !SlotsSeatsEntrySaveBodyRetain( w, ids, *order_seats[i], retain, TableRetainStepInto( path, 0, (uint32_t) ( i ) ) ) )
+                {
+                    TableMapRelease( order_seats );
+                    return false;
+                }
             }
         }
         TableMapRelease( order_seats );
@@ -12679,7 +13009,8 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -12698,10 +13029,21 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     // A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array
                     // kind mismatch of §4, and nothing about a map is special-cased
-                    if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     // THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
@@ -12724,12 +13066,20 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         const uint8_t * elem_body = sub.buffer + sub.offset;
                         sub.offset += (int64_t) elem_len;
                         SlotsSeatsEntryKeyRead read = SlotsSeatsEntryReadKey( elem_body, (int64_t) elem_len, r.ids );
                         // A KEY KIND THE DECLARATION WIDENS: the map counts ONE widened (§2.8, §4)
-                        if ( read.widened && !map_widened ) { map_widened = true; r.report->widened++; }
+                        if ( read.widened && !map_widened )
+                        {
+                            map_widened = true;
+                            r.report->widened++;
+                        }
                         // THE KEY KIND IS CHECKED FIRST: a key read under another kind
                         // desynchronizes the rest of the scan, and the honest answer to a
                         // body whose key is not this reader's kind is the KIND, not the
@@ -12739,12 +13089,22 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                             // A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
                             // to EMPTY, ONE kind_mismatch is counted for it, and the rest
                             // is skipped. Events counted inside earlier entries stand.
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             TableMapFillReset( fill );
                             break;
                         }
-                        if ( read.damaged ) { r.report->damaged = true; break; }
-                        if ( read.over ) { r.report->refused = true; r.report->refuse_reason = out_of_range; continue; } // skipped by its L, one count per entry
+                        if ( read.damaged )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
+                        if ( read.over )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                            continue;
+                        } // skipped by its L, one count per entry
                         const int order = landed ? TableKeyOrder( (int64_t) last_key, (int64_t) read.key ) : -1;
                         if ( order > 0 )
                         {
@@ -12766,12 +13126,20 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                         {
                             slot = TableMapFillNext( fill ); // ASCENDING: the next slot
                         }
-                        if ( slot == NULL ) { r.report->damaged = true; break; }
+                        if ( slot == NULL )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         {
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SlotsSeatsEntryLoadBodyRetain( elem, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
                         }
-                        if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }
+                        if ( order == 0 )
+                        {
+                            r.report->refused = true;
+                            r.report->refuse_reason = malformed;
+                        }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -12801,7 +13169,8 @@ inline bool SlotsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sl
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -13347,7 +13716,7 @@ inline bool SlotsSeatsEntryCookBody( uint8_t * at, const SlotsSeatsEntry & value
     // [Slot]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 2; i++ )
     {
-        table_cook_put( at + 4 + i * 4, (uint64_t) value.value.slots[ i ], 4, order );
+        table_cook_put( at + 4 + i * 4, (uint64_t) value.value.slots[i], 4, order );
     }
     return true;
 }

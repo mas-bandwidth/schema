@@ -43,9 +43,6 @@ func (t mooTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error)
 // hands the fixed form's lineage down as DATA, so mootable opens no file and
 // a build ships a reader for every layout the lock records.
 func (mooTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	if err := refuseWideText(u, "moo"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "moo"); err != nil {
 		return nil, err
 	}
@@ -106,8 +103,6 @@ func init() {
 	registerMapCarrier("moo")
 	registerListCarrier("moo")
 	registerOptionalArrayCarrier("moo")
-	// wstring(N) is retired (kind 33). The call grants nothing.
-	registerWideTextCarrier("moo")
 	// string, bytes and flags defaults: the packet constructors, and the
 	// table wire's elision and absent read (construct_test.go: defaults_at,
 	// defaults_off)
