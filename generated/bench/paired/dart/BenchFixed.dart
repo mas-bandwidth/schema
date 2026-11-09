@@ -1144,7 +1144,8 @@ int tableFixedRun(
         // out of the read loop at hostile bytes, which is the one thing the
         // forgery oracle refuses (§5.4, §5.9 #8). Any raw the WRITER could not
         // have written — past its variant count, the negative case included —
-        // is None AND COUNTED, on this plan exactly as on the identity one.
+        // REFUSES THE READ out_of_range (docs/plans/strict-only.md), on this
+        // plan exactly as on the identity one.
         var raw = 0;
         for (var k = 0; k < size; k++) {
           raw |= source[s + k] << (8 * k);
@@ -1152,7 +1153,7 @@ int tableFixedRun(
         final remapAt = plan[b + TableFixedLane.aux];
         var landed = 0;
         if (raw < 0 || raw > remap[remapAt]) {
-          report.unknown++;
+          return TableFixedRefusal.outOfRange;
         } else if (raw != 0) {
           landed = remap[remapAt + raw];
         }
@@ -1196,8 +1197,8 @@ int tableFixedRun(
           image[d + k] = (value >>> (8 * k)) & 0xff;
         }
         // AN UNGUARDED None CONST CARRIES THE WRITER'S ARM COUNT in meta: a tag
-        // PAST that set lands None — already written, just above — and COUNTS,
-        // which is the same landing the identity plan's decode gives it (§5.4).
+        // PAST that set REFUSES THE READ out_of_range, the same verdict the
+        // identity plan's decode gives it (§5.4, docs/plans/strict-only.md).
         // THE TAG IS READ UNSIGNED: a Dart int is 64-bit signed, so an
         // eight-byte tag with the high bit set is negative here and a signed
         // '>' would pass it as if it named an arm.
@@ -1205,7 +1206,7 @@ int tableFixedRun(
         if (value == 0 && arms != 0 && guard == tableFixedNoGuard) {
           final raw = tableFixedTagAt(source, s, size);
           if (raw < 0 || raw > arms) {
-            report.unknown++;
+            return TableFixedRefusal.outOfRange;
           }
         }
         break;
@@ -4397,7 +4398,7 @@ void mixedEntityFixedDecode(
   value.weapon = MixedWeapon(view.getUint8(at + 40));
   if (value.weapon > 15) {
     value.weapon = MixedWeapon.none;
-    report.unknown++;
+    report.refused = TableFixedRefusal.outOfRange;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
   value.moving = view.getUint8(at + 49) != 0;
@@ -4794,7 +4795,7 @@ void benchMixedFixedDecode(
       break;
     default:
       value.gameEvent.type = MixedEventType.none;
-      report.unknown++;
+      report.refused = TableFixedRefusal.outOfRange;
       break;
   }
   value.loadout.setRange(0, 4, image, at + 1122);

@@ -12,9 +12,9 @@ import (
 // build's COMPILED plan (selected by the lineage) and once through the OLD
 // build's IDENTITY plan (its own hash). The forge turns old_enum_append.bin's
 // r0.tier from 3 (Gold) into 4, an ordinal past the writer's three variants.
-// `clamped` is asserted EXACTLY `== 1` on both plans, never `>= 1`: a leg that
-// counts in the `ordinal` op as well lands 2 and passes a looser read — the
-// row exists to catch that double count.
+// Under the one read (docs/plans/strict-only.md) BOTH plans refuse the whole
+// read as out_of_range and nothing lands. THE CONTROL reads the unforged file
+// through the same two plans and lands Gold, so the refusal is the forge's.
 
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	corpus := fixedCorpus(t)
@@ -43,16 +43,30 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 
 	body := `  final data = File(FILE).readAsBytesSync();
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1, 'the forged file carries one record: n=$n ${why(report)}');
-  check(report.refused == 0,
-      'a forged ordinal is not a refusal: ${why(report)}');
-  check(values[0].tier == 0, 'a forged ordinal lands None: ${values[0].tier}');
+  check(n == -1, 'a forged ordinal refuses the whole read: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.outOfRange,
+      'the refusal is named out_of_range: ${why(report)}');
   check(values[0].tier != 4, 'a forged ordinal never lands Platinum: ${values[0].tier}');
-  check(values[0].seq == 9, 'the scalar after the enum is untouched: ${values[0].seq}');
-  check(report.unknown == 1,
-      'the forged ordinal counts unknown exactly once: ${why(report)}');
-  check(report.widened == 0,
-      'no other counter moved: ${why(report)}');`
+  check(values[0].seq != 9, 'nothing lands, not even the neighbour: ${values[0].seq}');
+  check(report.unknown == 0 && report.widened == 0,
+      'a refusal moves no counter: ${why(report)}');`
+	control := `  final data = File(FILE).readAsBytesSync();
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n == 1, 'CONTROL: the unforged file reads: n=$n ${why(report)}');
+  check(report.refused == 0, 'CONTROL: and refuses nothing: ${why(report)}');
+  check(values[0].tier == 3 && values[0].seq == 9,
+      'CONTROL: Gold and its neighbour land: ${values[0].tier} ${values[0].seq}');`
+	for _, plan := range []struct {
+		name, build string
+		lineage     []string
+	}{
+		{"COMPILED", "VNEW_enum_append", []string{"VOLD_enum_append"}},
+		{"IDENTITY", "VOLD_enum_append", nil},
+	} {
+		if out, err := runVersionProbe(t, dartBin, plan.build, plan.lineage, 0, old, control); err != nil {
+			t.Fatalf("the %s plan read of the unforged file (the control): %v\n%s", plan.name, err, out)
+		}
+	}
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_enum_append", []string{"VOLD_enum_append"}, 0, forged, body)
 	if err != nil {
