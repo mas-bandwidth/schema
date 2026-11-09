@@ -1853,67 +1853,94 @@ static partial class Program
             return RunSoak(args);
         }
 
-        TestWireContracts();
-        TestFiniteFloats();
-        TestVocabularyDistinctness();
-        TestLebWireContracts();
-        TestRootPayloadSizes();
-        TestRootReset();
-        TestUnionContracts();
-        TestCollections();
-        TestSurfaces();
-        TestRegions();
-        TestAllocators();
-        TestBuilders();
-        TestBlobJsonAllocation();
-        TestAllocationGate();
-        TestAllocationGateCanGoRed();
-        TestRetention();
-        TestRetentionContracts();
-        TestRetentionPaths();
-        TestCollectionEdges();
-        TestGoldenWireWrite();
-        TestGoldenWireRead();
-        TestGoldenSeamsWrite();
-        TestGoldenSeamsRead();
-        TestOptionalPresence();
-        TestKeyedEvolution();
-        TestKeyedVersusPositional();
-        TestKeyedHostileKeys();
-        TestSeamReflection();
-        TestKeyedIndexerRefusesNone();
-        TestKeyedIteration();
-        TestExactCapacity();
-        TestStorageInvariants();
-        TestBoundedElements();
-        TestCountedArrayShorterReplacement();
-        TestAllDefault();
-        TestGuard();
-        TestEvolutionOldReaderNewData();
-        TestEvolutionNewReaderOldData();
-        TestEvolutionEnumInsertOldData();
-        TestEvolutionEnumInsertNewData();
-        TestEvolutionUnionInsertOldData();
-        TestEvolutionUnionInsertNewData();
-        TestRepeatedIdUnnameableVariant();
-        TestEvolutionArrayBounds();
-        TestUnnameableEnumRefused();
-        TestUnnameableEnumElementRead();
-        TestFlagsArePositional();
-        TestWideExtents();
-        TestClamping();
-        TestMalformed();
-        TestDamageDiscardsTheWholeLoad();
-        TestReflection();
-        TestCrossFile();
-        TestFixedForm();
+        // Shard selection for the per-commit CI rows (make/cs.mk): with no
+        // argument every suite runs, which is what `make tables-cs-leg`,
+        // the negative controls (they invoke the built dll with no argument)
+        // and a workstation run. A named shard runs only its suites, so the
+        // ci-full cs-tables matrix can run the shards in parallel rows each
+        // under the 110 s per-commit bound. An unknown name is a failure,
+        // never a silent pass over zero suites.
+        string shard = args.Length > 0 ? args[0] : "";
+        bool All(string name) => shard.Length == 0 || shard == name;
+        if (shard.Length != 0 && shard != "wire" && shard != "core" && shard != "evolution" && shard != "fixed")
+        {
+            Console.WriteLine("FAILED: unknown cs tables shard \"" + shard + "\" (want wire, core, evolution or fixed)");
+            return 1;
+        }
+
+        if (All("wire"))
+        {
+            TestWireContracts();
+            TestFiniteFloats();
+            TestVocabularyDistinctness();
+            TestLebWireContracts();
+            TestRootPayloadSizes();
+            TestRootReset();
+            TestUnionContracts();
+            TestCollections();
+            TestSurfaces();
+            TestRegions();
+            TestAllocators();
+            TestBuilders();
+            TestBlobJsonAllocation();
+            TestCollectionEdges();
+        }
+        if (All("core"))
+        {
+            TestGoldenWireWrite();
+            TestGoldenWireRead();
+            TestGoldenSeamsWrite();
+            TestGoldenSeamsRead();
+            TestOptionalPresence();
+            TestExactCapacity();
+            TestStorageInvariants();
+            TestBoundedElements();
+            TestCountedArrayShorterReplacement();
+            TestAllDefault();
+            TestGuard();
+            TestReflection();
+            TestCrossFile();
+        }
+        if (All("evolution"))
+        {
+            TestKeyedEvolution();
+            TestKeyedVersusPositional();
+            TestKeyedHostileKeys();
+            TestSeamReflection();
+            TestKeyedIndexerRefusesNone();
+            TestKeyedIteration();
+            TestEvolutionOldReaderNewData();
+            TestEvolutionNewReaderOldData();
+            TestEvolutionEnumInsertOldData();
+            TestEvolutionEnumInsertNewData();
+            TestEvolutionUnionInsertOldData();
+            TestEvolutionUnionInsertNewData();
+            TestRepeatedIdUnnameableVariant();
+            TestEvolutionArrayBounds();
+            TestUnnameableEnumRefused();
+            TestUnnameableEnumElementRead();
+            TestFlagsArePositional();
+            TestWideExtents();
+            TestClamping();
+            TestMalformed();
+        }
+        if (All("fixed"))
+        {
+            TestAllocationGate();
+            TestAllocationGateCanGoRed();
+            TestRetention();
+            TestRetentionContracts();
+            TestRetentionPaths();
+            TestDamageDiscardsTheWholeLoad();
+            TestFixedForm();
+        }
 
         if (failed)
         {
             Console.WriteLine("cs tables test: FAILED");
             return 1;
         }
-        Console.WriteLine("cs tables test passed");
+        Console.WriteLine(shard.Length == 0 ? "cs tables test passed" : "cs tables test passed (shard " + shard + ")");
         return 0;
     }
 }
