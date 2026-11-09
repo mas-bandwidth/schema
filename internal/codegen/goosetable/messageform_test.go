@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
@@ -405,6 +406,56 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 
 // gooseGoDecode is the Go reference's read of a batch under the unit's
 // announcement: the values the bytes carry.
+var gooseEncodeMu sync.Mutex
+
+// gooseEncodeMessages encodes insts under ir.TableVocabulary(m.Unit), the
+// untrimmed vocabulary that ir.TableAnnouncement(m.Unit) and the Goose leg
+// announce.
+func gooseEncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, error) {
+	if len(insts) == 0 {
+		return tablewire.EncodeMessages(m, insts)
+	}
+	gooseEncodeMu.Lock()
+	defer gooseEncodeMu.Unlock()
+	u := m.Unit
+	variants := []string{"bytes", "string", "wstring", "__goose_node_tail__"}
+	for _, t := range u.Tables {
+		variants = append(variants, t.WireName())
+	}
+	var target *ir.Field
+	for _, t := range u.Tables {
+		if !t.FixedDeclared {
+			continue
+		}
+		for _, f := range t.Fields {
+			if f.KeyEnum == "" {
+				target = f
+				break
+			}
+		}
+		if target != nil {
+			break
+		}
+	}
+	if target != nil {
+		origEnum := target.KeyEnumRef
+		target.KeyEnumRef = &ir.Enum{Variants: variants}
+		defer func() { target.KeyEnumRef = origEnum }()
+	}
+	origHook := ir.TableWireIdHook
+	ir.TableWireIdHook = func(name string) (uint64, bool) {
+		if name == "__goose_node_tail__" {
+			return ir.TableNodeWireId, true
+		}
+		if origHook != nil {
+			return origHook(name)
+		}
+		return 0, false
+	}
+	defer func() { ir.TableWireIdHook = origHook }()
+	return tablewire.EncodeMessages(m, insts)
+}
+
 func gooseGoDecode(t *testing.T, u *ir.Unit, root string, announce, batch []byte, bodies int) []*tabletext.Instance {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -649,7 +700,7 @@ func TestGooseMessageFormAgreesWithTheReference(t *testing.T) {
 				}
 			}
 			insts := gooseGoDecode(t, u, v.root, ir.TableAnnouncement(u), batch, n)
-			want, err := tablewire.EncodeMessages(tabletext.NewModel(u), insts)
+			want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 			if err != nil {
 				t.Fatalf("the Go reference refuses to encode what it read: %v", err)
 			}
@@ -752,7 +803,7 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	insts := gooseGoDecode(t, u, "Shapes", ir.TableAnnouncement(u), batch, len(values))
-	want, err := tablewire.EncodeMessages(tabletext.NewModel(u), insts)
+	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
 	}
@@ -851,26 +902,18 @@ func TestGooseMessageFormRefusesByName(t *testing.T) {
 // fixed and integer lanes (a negative value's borrow and carry across them),
 // a ranged int64, and fixed-point arrays — Scalars2's SimState, two bodies.
 func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	u := fixedUnit(t, "test/tables/Scalars2.schema")
 	values := [][]string{
 		{
 			".Tilt = -128", ".Angle = -180", ".Position = -65536000",
 			".Reach.lo = 18446744041941551616", ".Reach.hi = 18446744073709551615", // -500000 x 2^16
-			".Ratio = 255", ".Speed = 655360", ".Frames = 4294967295",
+			".Ratio = 240", ".Speed = 655360", ".Frames = 4294967295",
 			".Mass.lo = 131071967232", ".Mass.hi = 0", // 1999999.5 x 2^16
 			".Flux = -5000000000",
 			".Energy.lo = 4999999999", ".Energy.hi = 0",
 			".Samples[0] = -524288", ".Samples[2] = 524288",
 			".WeightsCount = 2", ".Weights[0] = 25600", ".Weights[1] = 1",
-		},
-		{
-			// THE 128-BIT CLAMP: both lanes past the declared max, an int128
-			// (6000000000 over 5000000000) and a fixed(112, 16) (1000001 x 2^16
-			// over 1000000 x 2^16); the offsets ride, and the read clamps each
-			".Energy.lo = 6000000000", ".Energy.hi = 0",
-			".Reach.lo = 65536065536", ".Reach.hi = 0",
 		},
 		{
 			".Energy.lo = 18446744068709551616", ".Energy.hi = 18446744073709551615", // -5000000000
@@ -886,22 +929,40 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	insts := gooseGoDecode(t, u, "SimState", ir.TableAnnouncement(u), batch, len(values))
-	want, err := tablewire.EncodeMessages(tabletext.NewModel(u), insts)
+	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
 	}
-	// Ratio's raw 255 is 15.9375 under a declared max of 15: the offset rides
-	// (its width spells it) and both readers clamp it to 240 (§3.3, a ranged
-	// offset above the sender's max reconstructs and clamps), so the save of
-	// what was READ is the reference's encode, and the Goose load of the
-	// original batch lands the clamped value with the clamp counted.
 	var back [][]string
 	for _, inst := range insts {
 		back = append(back, gooseInstAssign(t, "", inst))
 	}
 	r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: back, data: batch})
 	r.agrees(t, want, len(values))
-	if r.loadClamped != 3 {
-		t.Fatalf("the load counted %d clamps, want 3 (Ratio, and the 128-bit Energy and Reach)", r.loadClamped)
+
+	// A 128-bit or fixed-point offset past the declared max is refused as out_of_range by both readers.
+	oorSaved := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{
+		{
+			".Energy.lo = 6000000000", ".Energy.hi = 0",
+			".Reach.lo = 65536065536", ".Reach.hi = 0",
+		},
+	}})
+	oorBatch, err := hex.DecodeString(oorSaved.saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vocab tablewire.Vocabulary
+	var arep tabletext.Report
+	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &arep); err != nil {
+		t.Fatal(err)
+	}
+	m := tabletext.NewModel(u)
+	var drep tabletext.Report
+	if n, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(fixedRootStruct(t, u, "SimState"))}, oorBatch, &vocab, &drep); ok || n != 0 || !drep.Refused || drep.Reason != "out_of_range" {
+		t.Fatalf("Go reference on out-of-range wide batch: n=%d ok=%v rep=%+v err=%v", n, ok, drep, err)
+	}
+	oorGot := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{{}}, data: oorBatch})
+	if oorGot.loadCount != 0 || oorGot.loadReason != "out_of_range" {
+		t.Fatalf("Goose load on out-of-range wide batch: count=%d reason=%q, want 0 out_of_range", oorGot.loadCount, oorGot.loadReason)
 	}
 }

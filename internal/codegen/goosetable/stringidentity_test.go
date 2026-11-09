@@ -63,7 +63,22 @@ fn identity(name: const u8[:], edit: const u8[:]) {
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
     let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
-    if root < 0 || report.body_damaged { write_stdout(str(name, "/", edit, " refused\n")); return; }
+    if root < 0 || report.body_damaged {
+        write_stdout(str(name, "/", edit, " refused\n"));
+        if edit == "plain" {
+            var rv: schema_rt::LoadVal[>..] = [];
+            var rn: schema_rt::LoadNode[>..] = [];
+            var rr = schema_rt::LoadReport { .. };
+            var rbytes: u8[>..<] = [];
+            var rrecs: schema_rt::RetainRec[>..<] = [];
+            var rids: u64[>..<] = [];
+            var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+            let rroot = schema_rt::load_table_retain(conformance_unit(), "Root", data, rv, rn, rr, store);
+            if rroot < 0 || rr.body_damaged { write_stdout(str(name, "/retain refused\n")); }
+            else { write_stdout(str(name, "/retain loaded\n")); }
+        }
+        return;
+    }
     let a = vals[slot(vals, root, 0)].bits.lo as! i64;
     let b = vals[slot(vals, root, 1)].bits.lo as! i64;
     if edit == "view" {
@@ -71,10 +86,14 @@ fn identity(name: const u8[:], edit: const u8[:]) {
         nodes[b - 2].off = nodes[a - 2].off;
         nodes[b - 2].len = nodes[a - 2].len;
     } else if edit == "copy" {
-        // the second slot gets a node of its own over the same bytes
+        // the second slot shares the first slot's node, then gets a node of its own over the same bytes
+        vals[slot(vals, root, 1)].bits.lo = a as! u64;
         let n = nodes[a - 2];
         nodes.push(n);
         vals[slot(vals, root, 1)].bits.lo = (nodes.len + 1) as! u64;
+    } else if edit == "one-node" {
+        // the caller names the first slot's node from the second
+        vals[slot(vals, root, 1)].bits.lo = a as! u64;
     }
     saves(str(name, "/", edit), data, vals, nodes, root);
     if edit != "plain" { return; }
@@ -99,8 +118,9 @@ fn main() {
 // identityRow is one saved row's expectation: the refusal name ("" for
 // none) and, when it saves, the bytes.
 type identityRow struct {
-	refusal string
-	wire    []byte
+	refusal     string
+	wire        []byte
+	loadRefusal bool
 }
 
 // stringIdentityGate runs the gate and answers its red list.
@@ -134,12 +154,16 @@ func stringIdentityGate(t *testing.T, override map[string][]byte) []string {
 		name := fmt.Sprintf("decoded%d", i)
 		files[name+".bin"] = wire
 		fmt.Fprintf(&main, "    identity(%q, \"plain\");\n", name)
-		want[name+"/plain"] = identityRow{"", wire}
-		want[name+"/retain"] = identityRow{"", wire}
-		want[name+"/blob_shared"] = identityRow{"0", nil}
+		want[name+"/plain"] = identityRow{wire: wire}
+		want[name+"/retain"] = identityRow{wire: wire}
+		want[name+"/blob_shared"] = identityRow{refusal: "0"}
 		if text == `{"a":"same","b":"same"}` {
 			fmt.Fprintf(&main, "    identity(%q, \"view\");\n", name)
-			want[name+"/view"] = identityRow{"", wire}
+			want[name+"/view"] = identityRow{wire: wire}
+			fmt.Fprintf(&main, "    identity(%q, \"copy\");\n", name)
+			want[name+"/copy"] = identityRow{wire: wire}
+			fmt.Fprintf(&main, "    identity(%q, \"one-node\");\n", name)
+			want[name+"/one-node"] = identityRow{refusal: "blob_shared"}
 		}
 	}
 	// ONE empty-string node named from both root slots (the Dart leg's
@@ -151,23 +175,14 @@ func stringIdentityGate(t *testing.T, override map[string][]byte) []string {
 	}
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, v, shared, &r); !ok || err != nil {
+	if ok, err := tablewire.Decode(m, v, shared, &r); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the reference reads the shared string as %+v %v", r, err)
-	}
-	if _, err := tablewire.Encode(m, v); err == nil || !strings.Contains(err.Error(), "blob_shared") {
-		t.Fatalf("the reference writes the shared string: %v", err)
-	}
-	v.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte("")}
-	detached, err := tablewire.Encode(m, v)
-	if err != nil {
-		t.Fatal(err)
 	}
 	files["shared.bin"] = shared
 	main.WriteString("    identity(\"shared\", \"plain\");\n    identity(\"shared\", \"copy\");\n")
-	want["shared/plain"] = identityRow{"blob_shared", nil}
-	want["shared/retain"] = identityRow{"blob_shared", nil}
-	want["shared/blob_shared"] = identityRow{"1", nil}
-	want["shared/copy"] = identityRow{"", detached}
+	want["shared/plain"] = identityRow{loadRefusal: true}
+	want["shared/copy"] = identityRow{loadRefusal: true}
+	want["shared/retain"] = identityRow{loadRefusal: true}
 	main.WriteString("}\n")
 	files["main.goose"] = []byte(main.String())
 	got := probeLines(gooserun.Run(t, t.TempDir(), "main.goose", files))
@@ -177,6 +192,10 @@ func stringIdentityGate(t *testing.T, override map[string][]byte) []string {
 		switch {
 		case !ok:
 			bad = append(bad, name+": no answer")
+		case w.loadRefusal:
+			if len(f) != 1 || f[0] != "refused" {
+				bad = append(bad, fmt.Sprintf("%s: the load did not refuse (%q)", name, f))
+			}
 		case len(f) == 1 && f[0] == "refused":
 			bad = append(bad, name+": the load refused")
 		case strings.HasSuffix(name, "/blob_shared"):
@@ -200,7 +219,6 @@ func stringIdentityGate(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseStringIdentity(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, b := range stringIdentityGate(t, nil) {
 		t.Error(b)
@@ -215,7 +233,6 @@ func TestGooseStringIdentity(t *testing.T) {
 //   - the blob_shared refusal is dropped, so one node named twice is written
 //     once and referenced twice: the shared rows must go red.
 func TestGooseStringIdentityNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, ctl := range []struct {
 		name, from, to, red string
@@ -227,7 +244,7 @@ func TestGooseStringIdentityNegativeControl(t *testing.T) {
 		{"no-shared-refusal",
 			"        if blob { refuse(c, SaveRefuseBlobShared); }\n",
 			"",
-			"shared/"},
+			"/one-node"},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
