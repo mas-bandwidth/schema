@@ -76,11 +76,11 @@ func csKindMovedRefusal(files map[string][]byte) error {
 		if n := strings.Count(s, sig); n > 0 {
 			sites += n
 			_, rest, _ := strings.Cut(s, sig)
-			j := strings.Index(rest, "public static int Fills(")
-			if j < 0 {
+			before, _, found := strings.Cut(rest, "public static int Fills(")
+			if !found {
 				return fmt.Errorf("the emitted LineagePlans has no Fills successor, so its body cannot be read")
 			}
-			body = rest[:j]
+			body = before
 		}
 	}
 	if sites != 1 {
