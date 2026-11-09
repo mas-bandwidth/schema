@@ -668,7 +668,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s                else {\n", in)
 		fmt.Fprintf(b, "%s                    let keep = if count > %d { report.damaged = true; %d } else { count as usize };\n", in, f.Type.Size, f.Type.Size)
 		fmt.Fprintf(b, "%s                    let avail = sub.saturating_sub(*off);\n", in)
-		fmt.Fprintf(b, "%s                    let n = if keep > avail { report.damaged = true; avail } else { keep };\n", in)
+		fmt.Fprintf(b, "%s                    let n = if keep != avail { report.damaged = true; keep.min(avail) } else { keep };\n", in)
 		fmt.Fprintf(b, "%s                    tmp = wire[*off..*off + n].to_vec();\n", in)
 		fmt.Fprintf(b, "%s                }\n", in)
 		fmt.Fprintf(b, "%s            }\n", in)
@@ -717,11 +717,13 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
+	fmt.Fprintf(b, "%slet mut seen_keys: Vec<u64> = Vec::new();\n", i4)
 	fmt.Fprintf(b, "%sfor _ in 0..count {\n", i4)
 	i5 := i4 + "    "
 	fmt.Fprintf(b, "%slet Some(kref) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 	fmt.Fprintf(b, "%sif kref == 0 || *off > sub || kref as usize > ids.len() { report.damaged = true; break; }\n", i5)
 	fmt.Fprintf(b, "%slet kid = ids[kref as usize - 1];\n", i5)
+	fmt.Fprintf(b, "%sif seen_keys.contains(&kid) { report.damaged = true; } else { seen_keys.push(kid); }\n", i5)
 	fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.damaged = true; break; };\n", i5)
 	fmt.Fprintf(b, "%sif *off > sub || el > (sub - *off) as u64 { report.damaged = true; break; }\n", i5)
 	fmt.Fprintf(b, "%slet eend = *off + el as usize;\n", i5)
@@ -733,6 +735,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s};\n", i5)
 	fmt.Fprintf(b, "%slet Some(slot) = slot else {\n", i5)
 	fmt.Fprintf(b, "%s    report.unknown += 1;\n", i5)
+	fmt.Fprintf(b, "%s    nodes.note_unknown_content(ids, ek, &wire[*off..eend], 0, report);\n", i5)
 	fmt.Fprintf(b, "%s    if retain.is_some() { report.retain_lost += 1; }\n", i5)
 	fmt.Fprintf(b, "%s    *off = eend;\n", i5)
 	fmt.Fprintf(b, "%s    continue;\n", i5)
@@ -778,10 +781,11 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
 	}
 	fmt.Fprintf(b, "%s*off = eend;\n", i5)
-	fmt.Fprintf(b, "%s}\n", i4)                                 // for
-	fmt.Fprintf(b, "%s}\n", i3)                                 // else ek
-	fmt.Fprintf(b, "%s}\n", i2)                                 // Some(count)
-	fmt.Fprintf(b, "%s}\n", i2)                                 // match
+	fmt.Fprintf(b, "%s}\n", i4) // for
+	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
+	fmt.Fprintf(b, "%s}\n", i3) // else ek
+	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
+	fmt.Fprintf(b, "%s}\n", i2) // match
 	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in)
@@ -913,10 +917,11 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s}\n", i5)
 	fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	fmt.Fprintf(b, "%slanded = true;\n", i5)
-	fmt.Fprintf(b, "%s}\n", i4)                                 // for
-	fmt.Fprintf(b, "%s}\n", i3)                                 // else ek
-	fmt.Fprintf(b, "%s}\n", i2)                                 // Some(count)
-	fmt.Fprintf(b, "%s}\n", i2)                                 // match
+	fmt.Fprintf(b, "%s}\n", i4) // for
+	fmt.Fprintf(b, "%sif *off != sub { report.damaged = true; }\n", i4)
+	fmt.Fprintf(b, "%s}\n", i3) // else ek
+	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
+	fmt.Fprintf(b, "%s}\n", i2) // match
 	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in) // else kind
@@ -953,7 +958,7 @@ func (g *gen) emitUnionDecode(b *strings.Builder, f *ir.Field, field, bound stri
 		g.emitArmDecode(b, un, v, field, "aend", "akind", ordinal, in+"        ")
 		fmt.Fprintf(b, "%s    }\n", in)
 	}
-	fmt.Fprintf(b, "%s    _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } %s = %s::None; }\n", in, field, un.Name)
+	fmt.Fprintf(b, "%s    _ => { report.unknown += 1; nodes.note_unknown_content(ids, akind, &wire[*off..aend], 0, report); if retain.is_some() { report.retain_lost += 1; } %s = %s::None; }\n", in, field, un.Name)
 	fmt.Fprintf(b, "%s}\n", in)
 	fmt.Fprintf(b, "%s*off = aend;\n", in)
 	fmt.Fprintf(b, "%s}\n", ind)
@@ -1106,6 +1111,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%swhile %s.len() < %d { %s.push(prior.get(%s.len()).cloned()%s); }\n", i3, field, f.ArrayBound, field, field, orElse(fieldDefault(scalarOnly(f))))
 	}
+	fmt.Fprintf(b, "%sif *off != %s { report.damaged = true; %s = false; }\n", i3, aend, okVar)
 	fmt.Fprintf(b, "%s}\n", i2)
 	fmt.Fprintf(b, "%s    }\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
