@@ -512,6 +512,7 @@ local function skip_container(inp, close, depth, graph)
   end
   inp.p = inp.p + 1
   local first = true
+  local seen = close == "}" and {} or nil
   while true do
     local c = peek(inp)
     if c == close then
@@ -525,6 +526,11 @@ local function skip_container(inp, close, depth, graph)
     if close == "}" then
       local key, _, ok = scan_string(inp, MAX_KEY)
       if not ok then return false end
+      if seen[key] then
+        inp.bad = true
+        return false
+      end
+      seen[key] = true
       if peek(inp) ~= ":" then
         inp.bad = true
         return false
@@ -2383,6 +2389,7 @@ function J.FromJson(T, name, text, report)
     reason = "kind_mismatch"
   end
   if reason ~= nil then
+    report.refused = 1
     report.Reason = reason
     report.reason = reason
     return nil
@@ -2927,13 +2934,9 @@ write_value = function(T, d, val, depth, g, w, _elem)
   elseif s == "map" then
     return write_map(T, d, val or {}, depth, g, w)
   elseif s == "enum" then
-    if val == nil or val == false then
-      return write_string(w, "None")
-    end
+    if val == nil or val == false then return write_string(w, "None") end
     for _, v in ipairs(d.variants) do
-      if v[1] == val then
-        return write_string(w, val)
-      end
+      if v[1] == val then return write_string(w, val) end
     end
     return false
   elseif s == "flags" then
