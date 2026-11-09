@@ -993,10 +993,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -3620,6 +3632,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3756,6 +3769,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3916,7 +3935,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -4048,6 +4067,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -4057,7 +4088,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -4066,7 +4098,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -4091,10 +4123,15 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     if ( oor_count != 0 )
     {
@@ -4146,7 +4183,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -4239,6 +4281,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4797,7 +4840,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -5002,15 +5051,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -5867,11 +5924,21 @@ inline bool TableEnumRef( TableIds & ids, Team value, uint64_t & ref )
 {
     switch ( value )
     {
-        case Team::None: ref = 0; return true;
-        case Team::Red: ref = ids.ref_at( 46, 0x9ff1de19feac1b7cull ); return true;
-        case Team::Blue: ref = ids.ref_at( 80, 0xecf3d3a7c1693e2dull ); return true;
-        case Team::Green: ref = ids.ref_at( 69, 0xcf00d78fd5953f1cull ); return true;
-        case Team::Gold: ref = ids.ref_at( 63, 0xc416c97e0d3218b3ull ); return true;
+        case Team::None:
+            ref = 0;
+            return true;
+        case Team::Red:
+            ref = ids.ref_at( 46, 0x9ff1de19feac1b7cull );
+            return true;
+        case Team::Blue:
+            ref = ids.ref_at( 80, 0xecf3d3a7c1693e2dull );
+            return true;
+        case Team::Green:
+            ref = ids.ref_at( 69, 0xcf00d78fd5953f1cull );
+            return true;
+        case Team::Gold:
+            ref = ids.ref_at( 63, 0xc416c97e0d3218b3ull );
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -5891,11 +5958,21 @@ inline bool TableEnumSlot( Team value, uint64_t & slot )
 {
     switch ( value )
     {
-        case Team::None: slot = 0; return true;
-        case Team::Red: slot = 69; return true;
-        case Team::Blue: slot = 70; return true;
-        case Team::Green: slot = 71; return true;
-        case Team::Gold: slot = 72; return true;
+        case Team::None:
+            slot = 0;
+            return true;
+        case Team::Red:
+            slot = 69;
+            return true;
+        case Team::Blue:
+            slot = 70;
+            return true;
+        case Team::Green:
+            slot = 71;
+            return true;
+        case Team::Gold:
+            slot = 72;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -5903,11 +5980,21 @@ inline bool TableEnumId( Team value, uint64_t & id )
 {
     switch ( value )
     {
-        case Team::None: id = 0; return true;
-        case Team::Red: id = 0x9ff1de19feac1b7cull; return true;
-        case Team::Blue: id = 0xecf3d3a7c1693e2dull; return true;
-        case Team::Green: id = 0xcf00d78fd5953f1cull; return true;
-        case Team::Gold: id = 0xc416c97e0d3218b3ull; return true;
+        case Team::None:
+            id = 0;
+            return true;
+        case Team::Red:
+            id = 0x9ff1de19feac1b7cull;
+            return true;
+        case Team::Blue:
+            id = 0xecf3d3a7c1693e2dull;
+            return true;
+        case Team::Green:
+            id = 0xcf00d78fd5953f1cull;
+            return true;
+        case Team::Gold:
+            id = 0xc416c97e0d3218b3ull;
+            return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -5915,10 +6002,18 @@ inline bool TableEnumValue( uint64_t id, Team & out )
 {
     switch ( id )
     {
-        case 0x9ff1de19feac1b7cull: out = Team::Red; return true;
-        case 0xecf3d3a7c1693e2dull: out = Team::Blue; return true;
-        case 0xcf00d78fd5953f1cull: out = Team::Green; return true;
-        case 0xc416c97e0d3218b3ull: out = Team::Gold; return true;
+        case 0x9ff1de19feac1b7cull:
+            out = Team::Red;
+            return true;
+        case 0xecf3d3a7c1693e2dull:
+            out = Team::Blue;
+            return true;
+        case 0xcf00d78fd5953f1cull:
+            out = Team::Green;
+            return true;
+        case 0xc416c97e0d3218b3ull:
+            out = Team::Gold;
+            return true;
         default: return false; // an id this build cannot name
     }
 }
@@ -6003,7 +6098,8 @@ inline int64_t PaddedRowMeasureBody( TableIds & ids, const PaddedRow & value )
             if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return -1; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
         }
         if ( pairs_teams > 0 )
         {
@@ -6085,7 +6181,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
             if ( value.teams.slots[i] == 0 ) { continue; } // a default slot elides
             uint64_t key_ref = 0;
             if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
-            pairs_teams++; body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
+            pairs_teams++;
+            body_teams += TableLebBytes( key_ref ) + TableLebBytes( 1 ) + 1;
         }
         if ( pairs_teams > 0 )
         {
@@ -6093,8 +6190,10 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
             // incompatible, so a reader of the other kind must see a kind
             // mismatch and skip, never misdecode (docs/SPEC-TABLES.md §3.2)
             const int64_t whole_teams = 1 + TableLebBytes( (uint64_t) pairs_teams ) + body_teams;
-            w.header( ref_teams, 16 ); w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
-            w.put8( 6 ); w.putleb( (uint64_t) pairs_teams );
+            w.header( ref_teams, 16 );
+            w.putleb( (uint64_t) whole_teams ); // teams (keyed by Team)
+            w.put8( 6 );
+            w.putleb( (uint64_t) pairs_teams );
             // ASCENDING BY VARIANT ORDINAL, which is slot order — this
             // writer's choice, and a reader must not rely on it: every
             // slot is found by its key (docs/SPEC-TABLES.md §3.2)
@@ -6176,7 +6275,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6216,7 +6316,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6242,7 +6343,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6255,7 +6357,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     r.report->damaged = true;
                     return false;
                 }
-                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 ) { r.report->damaged = true; } value.flag = bool_byte != 0; }
+                { const uint8_t bool_byte = r.get8(); if ( bool_byte > 1 )
+                {
+                    r.report->damaged = true;
+                    } value.flag = bool_byte != 0;
+                }
                 break;
             }
             case 0x08b72e07b55c3ac0ull: // id
@@ -6279,7 +6385,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6302,7 +6409,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6311,7 +6419,11 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -6319,10 +6431,16 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     r.report->damaged = true;
                     memset( value.label, 0, sizeof( value.label ) );
                     value.label_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 15 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 15 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 15 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 15 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.label, r.buffer + r.offset, (size_t) keep );
                 value.label[keep] = 0;
                 value.label_length = (int32_t) keep;
@@ -6335,7 +6453,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6366,12 +6485,18 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     {
                         if ( !TableKindWidens( elem_kind, 7 ) )
                         {
-                            r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                            r.report->refused = true;
+                            r.report->refuse_reason = kind_mismatch;
                             r.offset = body_end;
                             break;
                         }
                         uint64_t widened_keep = count;
-                        if ( widened_keep > 4 ) { widened_keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range; }
+                        if ( widened_keep > 4 )
+                        {
+                            widened_keep = 4;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                         r.report->widened++;
                         uint64_t widened_decoded = 0;
@@ -6391,23 +6516,28 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 4 ) { keep = 4; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        if ( !sub.has( 2 ) )
+                        uint64_t keep = count;
+                        if ( keep > 4 )
                         {
-                            r.report->damaged = true;
-                            break;
+                            keep = 4;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        uint16_t decoded_v = uint16_t( sub.get16() );
-                        value.slots[(int32_t) i] = decoded_v;
-                    }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            if ( !sub.has( 2 ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            uint16_t decoded_v = uint16_t( sub.get16() );
+                            value.slots[(int32_t) i] = decoded_v;
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -6419,7 +6549,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6438,13 +6569,28 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                 {
                     uint8_t elem_kind = r.get8();
                     uint64_t count = 0;
-                    if ( !r.getleb( count ) ) { r.report->damaged = true; r.offset = body_end; break; }
-                    if ( elem_kind != 6 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    if ( !r.getleb( count ) )
+                    {
+                        r.report->damaged = true;
+                        r.offset = body_end;
+                        break;
+                    }
+                    if ( elem_kind != 6 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     for ( uint64_t i = 0; i < count; i++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( key_ref ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         if ( key_ref == 0 )
                         {
                             // None is the NULL KEY, and a stored key reference of 0 names
@@ -6454,13 +6600,22 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                             r.report->damaged = true;
                             break;
                         }
-                        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }
+                        if ( key_ref > (uint64_t) r.ids->count )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                        {
+                            r.report->damaged = true;
+                            break;
+                        }
                         Team slot = Team::None;
                         if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )
                         {
-                            r.report->unknown++; // a slot this reader cannot name
+                            r.report->unknown++;
+                             // a slot this reader cannot name
                             sub.offset += (int64_t) elem_len;
                             continue;
                         }
@@ -6503,7 +6658,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6549,7 +6705,11 @@ inline TableOpenVerdict PaddedRowLoadVerdict( PaddedRow & value, const uint8_t *
     if ( verdict != TableOpenOk )
     {
         PaddedRowReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -6578,10 +6738,23 @@ inline TableOpenVerdict PaddedRowLoadVerdict( PaddedRow & value, const uint8_t *
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = PaddedRowLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; PaddedRowReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { PaddedRowReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        PaddedRowReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        PaddedRowReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { PaddedRowReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        PaddedRowReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -6788,15 +6961,31 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x56d7ab194448a4f3ull: // tag
@@ -6806,17 +6995,31 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 255ull )
+                    {
+                        decoded_wide = (int64_t) 255ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.tag = decoded_v;
                 }
@@ -6835,26 +7038,52 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                             if ( entry.packing == 2 )
                             {
                                 uint64_t index = 0;
-                                if ( !r.get( index, entry.value_bits ) ) { report->damaged = true; return false; }
-                                if ( index > (uint64_t) entry.qcount ) { report->damaged = true; return false; } // above the step count
+                                if ( !r.get( index, entry.value_bits ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
+                                if ( index > (uint64_t) entry.qcount )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                } // above the step count
                                 value.value = (double) TableMessageDequantize( (uint32_t) index, entry.qmin, entry.qdelta, entry.qcount );
                             }
                             else
                             {
                                 uint64_t raw = 0;
-                                if ( !r.get( raw, 32 ) ) { report->damaged = true; return false; }
-                                if ( !TableBitsFinite32( (uint32_t) raw ) ) { TableNonFiniteFloat( report ); return false; }
+                                if ( !r.get( raw, 32 ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
+                                if ( !TableBitsFinite32( (uint32_t) raw ) )
+                                {
+                                    TableNonFiniteFloat( report );
+                                    return false;
+                                }
                                 value.value = (double) table_bits_to_float( (uint32_t) raw );
                             }
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) ) { TableNonFiniteFloat( report ); return false; } value.value = table_bits_to_double( raw ); }
+                { uint64_t raw = 0; if ( !r.get( raw, 64 ) ) { report->damaged = true; return false; } if ( !TableBitsFinite64( raw ) )
+                {
+                    TableNonFiniteFloat( report );
+                    return false;
+                    } value.value = table_bits_to_double( raw );
+                }
                 break;
             }
             case 0xd5f2d079088c0b17ull: // flag
@@ -6864,11 +7093,21 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 1 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
-                { uint64_t raw = 0; if ( !r.get( raw, 1 ) ) { report->damaged = true; return false; } value.flag = raw != 0; }
+                { uint64_t raw = 0; if ( !r.get( raw, 1 ) )
+                {
+                    report->damaged = true;
+                    return false;
+                    } value.flag = raw != 0;
+                }
                 break;
             }
             case 0x08b72e07b55c3ac0ull: // id
@@ -6883,27 +7122,50 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull )
+                            {
+                                decoded_wide = (int64_t) 4294967295ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.id = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull )
+                    {
+                        decoded_wide = (int64_t) 4294967295ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.id = decoded_v;
                 }
@@ -6916,17 +7178,34 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 12 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     const uint8_t * text = r.buffer + ( r.offset >> 3 );
-                    if ( !TableUtf8Valid( text, n ) ) { report->damaged = true; return false; }
+                    if ( !TableUtf8Valid( text, n ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     const int32_t kept = (int32_t) TableUtf8Clamp( text, n, 15 );
-                    if ( (uint64_t) kept < n ) { report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) kept < n )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     memcpy( value.label, text, (size_t) kept );
                     value.label[kept] = 0;
                     r.offset += (int64_t) n * 8;
@@ -6952,9 +7231,19 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                                 n = raw + (uint64_t) entry.min;
                             }
-                            if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                            if ( entry.elem_kind == 6 && !r.align() )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int32_t kept = 0;
-                            if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                            if ( n > (uint64_t) 4 )
+                            {
+                                kept = 4;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                                } else { kept = (int32_t) n;
+                            }
                             const int64_t surplus_bits = entry.elem_value_bits;
                             uint64_t walk = n;
                             if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -6965,22 +7254,40 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 {
                                     const int64_t width_2 = entry.elem_value_bits;
                                     uint64_t raw_2 = 0;
-                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     int64_t decoded_wide_2 = (int64_t) raw_2;
                                     if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                                    if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
+                                    if ( (uint64_t) decoded_wide_2 > 65535ull )
+                                    {
+                                        decoded_wide_2 = (int64_t) 65535ull;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
                                     uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
                                     scratch = decoded_v_2;
                                 }
                                 if ( in_bounds ) { value.slots[i] = scratch; }
                             }
-                            if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->damaged = true; return false; }
+                            if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -6992,9 +7299,19 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 )
+                    {
+                        kept = 4;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     const int64_t surplus_bits = entry.elem_value_bits;
                     uint64_t walk = n;
                     if ( surplus_bits >= 0 && walk > (uint64_t) 4 ) { walk = (uint64_t) 4; } // the surplus is arithmetic
@@ -7005,16 +7322,29 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         {
                             const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
                             if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            if ( (uint64_t) decoded_wide_2 > 65535ull ) { decoded_wide_2 = (int64_t) 65535ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide_2 > 65535ull )
+                            {
+                                decoded_wide_2 = (int64_t) 65535ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint16_t decoded_v_2 = (uint16_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }
                         if ( in_bounds ) { value.slots[i] = scratch; }
                     }
-                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) ) { report->damaged = true; return false; }
+                    if ( walk < n && !TableMessageSkipRun( r, n - walk, surplus_bits ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 break;
             }
@@ -7025,19 +7355,36 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 16 || entry.elem_kind != 6 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     for ( uint64_t p = 0; p < n; p++ )
                     {
                         uint64_t key_ref = 0;
-                        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                        if ( !r.get( key_ref, vocabulary.ref_bits ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         TableMessageEntry key_entry;
-                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { report->damaged = true; return false; }
+                        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) )
+                        {
+                            report->damaged = true;
+                            return false;
+                        }
                         Team key = Team::None;
                         const bool named = TableEnumValue( key_entry.id, key );
                         if ( !named ) { report->unknown++; }
@@ -7047,10 +7394,19 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         {
                             const int64_t width_2 = entry.elem_value_bits;
                             uint64_t raw_2 = 0;
-                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide_2 = (int64_t) raw_2;
                             if ( entry.elem_packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) entry.elem_base_lo ); }
-                            if ( (uint64_t) decoded_wide_2 > 255ull ) { decoded_wide_2 = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide_2 > 255ull )
+                            {
+                                decoded_wide_2 = (int64_t) 255ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint8_t decoded_v_2 = (uint8_t) decoded_wide_2;
                             scratch = decoded_v_2;
                         }
@@ -7071,7 +7427,11 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
@@ -7079,8 +7439,18 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
                                 if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                             }
-                            if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
-                            if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( decoded_wide < -2147483648ll )
+                            {
+                                decoded_wide = -2147483648ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
+                            if ( decoded_wide > 2147483647ll )
+                            {
+                                decoded_wide = 2147483647ll;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int32_t decoded_v = (int32_t) decoded_wide;
                             value.counter = decoded_v;
                         }
@@ -7088,14 +7458,23 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
@@ -7103,8 +7482,18 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
                         if ( ( raw & sign ) != 0 ) { decoded_wide = (int64_t) ( raw | ~( ( uint64_t(1) << width ) - 1 ) ); }
                     }
-                    if ( decoded_wide < -2147483648ll ) { decoded_wide = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
-                    if ( decoded_wide > 2147483647ll ) { decoded_wide = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( decoded_wide < -2147483648ll )
+                    {
+                        decoded_wide = -2147483648ll;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
+                    if ( decoded_wide > 2147483647ll )
+                    {
+                        decoded_wide = 2147483647ll;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int32_t decoded_v = (int32_t) decoded_wide;
                     value.counter = decoded_v;
                 }
@@ -7113,7 +7502,11 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -7134,7 +7527,11 @@ inline bool PaddedRowLoadMessageBody( TableBitReader & r, const TableVocabulary 
 inline int64_t PaddedRowMeasureMessages( const PaddedRow * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -7148,7 +7545,11 @@ inline int64_t PaddedRowMeasureMessages( const PaddedRow * values, int64_t count
 inline int64_t PaddedRowSaveMessages( const PaddedRow * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7176,13 +7577,22 @@ inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !PaddedRowLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PaddedRowReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -7249,13 +7659,13 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         // rows: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
         // body length was built from, so measuring it twice can only agree.
-        int64_t elem_cache[ 64 ];
+        int64_t elem_cache[64];
         body_rows += 1 + TableLebBytes( (uint64_t) ( value.rows_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.rows_count; elem_i++ )
         {
             const int64_t elem_bytes = PaddedRowMeasureBody( ids, value.rows[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_i < 64 ) { elem_cache[ elem_i ] = elem_bytes; }
+            if ( elem_i < 64 ) { elem_cache[elem_i] = elem_bytes; }
             body_rows += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.header( ref_rows, 14 );
@@ -7265,7 +7675,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         for ( int32_t elem_i = 0; elem_i < value.rows_count; elem_i++ )
         {
             {
-                const int64_t elem_len = elem_i < 64 ? elem_cache[ elem_i ] : PaddedRowMeasureBody( ids, value.rows[elem_i] );
+                const int64_t elem_len = elem_i < 64 ? elem_cache[elem_i] : PaddedRowMeasureBody( ids, value.rows[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !PaddedRowSaveBody( w, ids, value.rows[elem_i] ) ) return false;
@@ -7278,7 +7688,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + value.blob_length;
         w.header( ids.ref_at( 64, 0xc573b39bc29148caull ), 14 ); // blob
         w.putleb( (uint64_t) body_blob );
-        w.put8( 6 ); w.putleb( (uint64_t) value.blob_length );
+        w.put8( 6 );
+        w.putleb( (uint64_t) value.blob_length );
         w.raw( value.blob, value.blob_length );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7342,7 +7753,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7380,7 +7792,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7403,7 +7816,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7431,33 +7845,53 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 64 ) { keep = 64; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        uint64_t keep = count;
+                        if ( keep > 64 )
                         {
-                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
-                            PaddedRowLoadBody( elem, value.rows[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; PaddedRowReset( value.rows[(int32_t) i] ); }
+                            keep = 64;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        sub.offset += (int64_t) elem_len;
-                        decoded = i + 1;
-                    }
-                    value.rows_count = (int32_t) decoded;
-                    for ( int32_t tail = value.rows_count; tail < previous_count; tail++ ) {
-                        PaddedRowReset( value.rows[tail] );
-                    }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            uint64_t elem_len = 0;
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            {
+                                TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                                PaddedRowLoadBody( elem, value.rows[(int32_t) i] );
+                                if ( elem.offset != elem.size )
+                                {
+                                    r.report->damaged = true;
+                                    PaddedRowReset( value.rows[(int32_t) i] );
+                                }
+                            }
+                            sub.offset += (int64_t) elem_len;
+                            decoded = i + 1;
+                        }
+                        value.rows_count = (int32_t) decoded;
+                        for ( int32_t tail = value.rows_count; tail < previous_count; tail++ )
+                        {
+                            PaddedRowReset( value.rows[tail] );
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7469,7 +7903,8 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7496,29 +7931,40 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 6 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 6 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 12 ) { keep = 12; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        if ( !sub.has( 1 ) )
+                        uint64_t keep = count;
+                        if ( keep > 12 )
                         {
-                            r.report->damaged = true;
-                            break;
+                            keep = 12;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        uint8_t decoded_v = uint8_t( sub.get8() );
-                        value.blob[(int32_t) i] = decoded_v;
-                        decoded = i + 1;
-                    }
-                    value.blob_length = (int32_t) decoded;
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            if ( !sub.has( 1 ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            uint8_t decoded_v = uint8_t( sub.get8() );
+                            value.blob[(int32_t) i] = decoded_v;
+                            decoded = i + 1;
+                        }
+                        value.blob_length = (int32_t) decoded;
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -7552,7 +7998,11 @@ inline TableOpenVerdict PaddedFrameLoadVerdict( PaddedFrame & value, const uint8
     if ( verdict != TableOpenOk )
     {
         PaddedFrameReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -7581,10 +8031,23 @@ inline TableOpenVerdict PaddedFrameLoadVerdict( PaddedFrame & value, const uint8
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = PaddedFrameLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; PaddedFrameReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { PaddedFrameReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        PaddedFrameReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        PaddedFrameReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { PaddedFrameReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        PaddedFrameReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -7710,15 +8173,31 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xeddcb72b15486e77ull: // marker
@@ -7728,17 +8207,31 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 6 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull ) { decoded_wide = (int64_t) 255ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 255ull )
+                    {
+                        decoded_wide = (int64_t) 255ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
                     value.marker = decoded_v;
                 }
@@ -7756,7 +8249,11 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -7765,14 +8262,23 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
@@ -7787,8 +8293,13 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -7800,9 +8311,19 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 64 ) { kept = 64; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 64 )
+                    {
+                        kept = 64;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -7822,15 +8343,30 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 6 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 12 ) { kept = 12; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 12 )
+                    {
+                        kept = 12;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     for ( uint64_t i = 0; i < n; i++ )
                     {
                         uint64_t by = 0;
@@ -7843,7 +8379,11 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -7864,7 +8404,11 @@ inline bool PaddedFrameLoadMessageBody( TableBitReader & r, const TableVocabular
 inline int64_t PaddedFrameMeasureMessages( const PaddedFrame * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -7878,7 +8422,11 @@ inline int64_t PaddedFrameMeasureMessages( const PaddedFrame * values, int64_t c
 inline int64_t PaddedFrameSaveMessages( const PaddedFrame * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7906,13 +8454,22 @@ inline bool PaddedFrameLoadMessages( PaddedFrame * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !PaddedFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PaddedFrameReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -7958,7 +8515,8 @@ static_assert( (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ) == 4128
 // which is also what zero-fills every byte of declared slack.
 inline void PaddedRowFixedWriteBody( uint8_t * b, const PaddedRow & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.tag );
     TableFixedPutF64( b + 1, value.value );
     TableFixedPut8( b + 9, value.flag ? 1 : 0 );
@@ -7985,7 +8543,8 @@ inline void PaddedRowFixedWriteBody( uint8_t * b, const PaddedRow & value )
 // which is also what zero-fills every byte of declared slack.
 inline void PaddedFrameFixedWriteBody( uint8_t * b, const PaddedFrame & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.marker );
     TableFixedPut64( b + 1, (uint64_t) value.stamp );
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // the declared count is the bound (§3.4)
@@ -8012,7 +8571,9 @@ TABLE_FIXED_INLINE bool PaddedRowFixedInRange( const PaddedRow & value )
 // PaddedRow's read-side bounds.
 inline void PaddedRowFixedClampBody( PaddedRow & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) )
     {
         damaged++;
@@ -8035,7 +8596,9 @@ TABLE_FIXED_INLINE bool PaddedFrameFixedInRange( const PaddedFrame & value )
 // PaddedFrame's read-side bounds.
 inline void PaddedFrameFixedClampBody( PaddedFrame & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
     {
         PaddedRowFixedClampBody( value.rows[i], oor_count, damaged );
@@ -8186,8 +8749,9 @@ constexpr TableFixedDst PaddedRowFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry PaddedRowFixedPlan[] = {
     { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8195,11 +8759,11 @@ constexpr TableFixedEntry PaddedRowFixedPlan[] = {
     { 10u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 14u, 40u, 15u, 24u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 33u, 44u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 45u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 46u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
+    { 45u, 60u, 4u, 56u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
 };
 constexpr int32_t PaddedRowFixedPlanCount = 8;
-constexpr int32_t PaddedRowFixedPlanGuarded = 8;
+constexpr int32_t PaddedRowFixedPlanGuarded = 7;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PaddedRowFixedGuards[] = {
@@ -8308,7 +8872,12 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -8317,7 +8886,12 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -8326,7 +8900,12 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -8338,7 +8917,10 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = PaddedRowFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -8346,7 +8928,10 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = PaddedRowFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -8368,7 +8953,11 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -8384,7 +8973,12 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -8399,7 +8993,12 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
             const int32_t made = TableFixedCompile( parsed, PaddedRowFixedLayout, (int32_t) PaddedRowFixedLayoutBytes, PaddedRowFixedDst,
                                                    PaddedRowFixedCover, PaddedRowFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -8423,10 +9022,25 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -8448,11 +9062,10 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
         }
     }
     PaddedRow defaults;
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) );
-        PaddedRowReset( defaults );
-    }
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
+    memset( (void *) &defaults, 0, sizeof( defaults ) );
+    PaddedRowReset( defaults );
     const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
@@ -8462,11 +9075,51 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = PaddedRowFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { PaddedRowReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PaddedRowFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PaddedRowFixedGuards, (const uint8_t *) &defaults );
         if ( !PaddedRowFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { PaddedRowReset( values[j] ); }
@@ -8657,8 +9310,9 @@ constexpr TableFixedDst PaddedFrameFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // marker
     { 1u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // stamp
@@ -8669,7 +9323,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 23u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 27u, 56u, 15u, 40u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 46u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 58u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 59u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 63u, 80u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 64u, 88u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8677,7 +9330,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 73u, 100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 77u, 120u, 15u, 104u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 96u, 124u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 108u, 140u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 109u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 113u, 144u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 114u, 152u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8685,7 +9337,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 123u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 127u, 184u, 15u, 168u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 146u, 188u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 158u, 204u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 159u, 200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 163u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 164u, 216u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8693,7 +9344,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 173u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 177u, 248u, 15u, 232u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 196u, 252u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 208u, 268u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 209u, 264u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 213u, 272u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 214u, 280u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8701,7 +9351,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 223u, 292u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 227u, 312u, 15u, 296u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 246u, 316u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 258u, 332u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 259u, 328u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 263u, 336u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 264u, 344u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8709,7 +9358,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 273u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 277u, 376u, 15u, 360u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 296u, 380u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 308u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 309u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 313u, 400u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 314u, 408u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8717,7 +9365,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 323u, 420u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 327u, 440u, 15u, 424u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 346u, 444u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 358u, 460u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 359u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 363u, 464u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 364u, 472u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8725,7 +9372,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 373u, 484u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 377u, 504u, 15u, 488u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 396u, 508u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 408u, 524u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 409u, 520u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 413u, 528u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 414u, 536u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8733,7 +9379,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 423u, 548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 427u, 568u, 15u, 552u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 446u, 572u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 458u, 588u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 459u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 463u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 464u, 600u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8741,7 +9386,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 473u, 612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 477u, 632u, 15u, 616u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 496u, 636u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 508u, 652u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 509u, 648u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 513u, 656u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 514u, 664u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8749,7 +9393,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 523u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 527u, 696u, 15u, 680u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 546u, 700u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 558u, 716u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 559u, 712u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 563u, 720u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 564u, 728u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8757,7 +9400,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 573u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 577u, 760u, 15u, 744u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 596u, 764u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 608u, 780u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 609u, 776u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 613u, 784u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 614u, 792u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8765,7 +9407,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 623u, 804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 627u, 824u, 15u, 808u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 646u, 828u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 658u, 844u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 659u, 840u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 663u, 848u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 664u, 856u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8773,7 +9414,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 673u, 868u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 677u, 888u, 15u, 872u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 696u, 892u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 708u, 908u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 709u, 904u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 713u, 912u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 714u, 920u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8781,7 +9421,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 723u, 932u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 727u, 952u, 15u, 936u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 746u, 956u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 758u, 972u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 759u, 968u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 763u, 976u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 764u, 984u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8789,7 +9428,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 773u, 996u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 777u, 1016u, 15u, 1000u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 796u, 1020u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 808u, 1036u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 809u, 1032u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 813u, 1040u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 814u, 1048u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8797,7 +9435,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 823u, 1060u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 827u, 1080u, 15u, 1064u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 846u, 1084u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 858u, 1100u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 859u, 1096u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 863u, 1104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 864u, 1112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8805,7 +9442,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 873u, 1124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 877u, 1144u, 15u, 1128u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 896u, 1148u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 908u, 1164u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 909u, 1160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 913u, 1168u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 914u, 1176u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8813,7 +9449,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 923u, 1188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 927u, 1208u, 15u, 1192u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 946u, 1212u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 958u, 1228u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 959u, 1224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 963u, 1232u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 964u, 1240u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8821,7 +9456,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 973u, 1252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 977u, 1272u, 15u, 1256u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 996u, 1276u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1008u, 1292u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1009u, 1288u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1013u, 1296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1014u, 1304u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8829,7 +9463,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1023u, 1316u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1027u, 1336u, 15u, 1320u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1046u, 1340u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1058u, 1356u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1059u, 1352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1063u, 1360u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1064u, 1368u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8837,7 +9470,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1073u, 1380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1077u, 1400u, 15u, 1384u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1096u, 1404u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1108u, 1420u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1109u, 1416u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1113u, 1424u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1114u, 1432u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8845,7 +9477,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1123u, 1444u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1127u, 1464u, 15u, 1448u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1146u, 1468u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1158u, 1484u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1159u, 1480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1163u, 1488u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1164u, 1496u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8853,7 +9484,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1173u, 1508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1177u, 1528u, 15u, 1512u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1196u, 1532u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1208u, 1548u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1209u, 1544u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1213u, 1552u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1214u, 1560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8861,7 +9491,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1223u, 1572u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1227u, 1592u, 15u, 1576u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1246u, 1596u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1258u, 1612u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1259u, 1608u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1263u, 1616u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1264u, 1624u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8869,7 +9498,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1273u, 1636u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1277u, 1656u, 15u, 1640u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1296u, 1660u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1308u, 1676u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1309u, 1672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1313u, 1680u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1314u, 1688u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8877,7 +9505,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1323u, 1700u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1327u, 1720u, 15u, 1704u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1346u, 1724u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1358u, 1740u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1359u, 1736u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1363u, 1744u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1364u, 1752u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8885,7 +9512,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1373u, 1764u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1377u, 1784u, 15u, 1768u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1396u, 1788u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1408u, 1804u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1409u, 1800u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1413u, 1808u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1414u, 1816u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8893,7 +9519,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1423u, 1828u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1427u, 1848u, 15u, 1832u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1446u, 1852u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1458u, 1868u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1459u, 1864u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1463u, 1872u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1464u, 1880u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8901,7 +9526,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1473u, 1892u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1477u, 1912u, 15u, 1896u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1496u, 1916u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1508u, 1932u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1509u, 1928u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1513u, 1936u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1514u, 1944u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8909,7 +9533,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1523u, 1956u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1527u, 1976u, 15u, 1960u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1546u, 1980u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1558u, 1996u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1559u, 1992u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1563u, 2000u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1564u, 2008u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8917,7 +9540,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1573u, 2020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1577u, 2040u, 15u, 2024u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1596u, 2044u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1608u, 2060u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1609u, 2056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1613u, 2064u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1614u, 2072u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8925,7 +9547,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1623u, 2084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1627u, 2104u, 15u, 2088u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1646u, 2108u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1658u, 2124u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1659u, 2120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1663u, 2128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1664u, 2136u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8933,7 +9554,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1673u, 2148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1677u, 2168u, 15u, 2152u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1696u, 2172u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1708u, 2188u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1709u, 2184u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1713u, 2192u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1714u, 2200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8941,7 +9561,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1723u, 2212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1727u, 2232u, 15u, 2216u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1746u, 2236u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1758u, 2252u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1759u, 2248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1763u, 2256u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1764u, 2264u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8949,7 +9568,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1773u, 2276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1777u, 2296u, 15u, 2280u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1796u, 2300u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1808u, 2316u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1809u, 2312u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1813u, 2320u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1814u, 2328u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8957,7 +9575,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1823u, 2340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1827u, 2360u, 15u, 2344u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1846u, 2364u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1858u, 2380u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1859u, 2376u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1863u, 2384u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1864u, 2392u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8965,7 +9582,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1873u, 2404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1877u, 2424u, 15u, 2408u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1896u, 2428u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1908u, 2444u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1909u, 2440u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1913u, 2448u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1914u, 2456u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8973,7 +9589,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1923u, 2468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1927u, 2488u, 15u, 2472u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1946u, 2492u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 1958u, 2508u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 1959u, 2504u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 1963u, 2512u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 1964u, 2520u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8981,7 +9596,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 1973u, 2532u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 1977u, 2552u, 15u, 2536u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 1996u, 2556u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2008u, 2572u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2009u, 2568u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2013u, 2576u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2014u, 2584u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8989,7 +9603,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2023u, 2596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2027u, 2616u, 15u, 2600u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2046u, 2620u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2058u, 2636u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2059u, 2632u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2063u, 2640u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2064u, 2648u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -8997,7 +9610,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2073u, 2660u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2077u, 2680u, 15u, 2664u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2096u, 2684u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2108u, 2700u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2109u, 2696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2113u, 2704u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2114u, 2712u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9005,7 +9617,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2123u, 2724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2127u, 2744u, 15u, 2728u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2146u, 2748u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2158u, 2764u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2159u, 2760u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2163u, 2768u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2164u, 2776u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9013,7 +9624,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2173u, 2788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2177u, 2808u, 15u, 2792u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2196u, 2812u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2208u, 2828u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2209u, 2824u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2213u, 2832u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2214u, 2840u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9021,7 +9631,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2223u, 2852u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2227u, 2872u, 15u, 2856u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2246u, 2876u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2258u, 2892u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2259u, 2888u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2263u, 2896u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2264u, 2904u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9029,7 +9638,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2273u, 2916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2277u, 2936u, 15u, 2920u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2296u, 2940u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2308u, 2956u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2309u, 2952u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2313u, 2960u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2314u, 2968u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9037,7 +9645,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2323u, 2980u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2327u, 3000u, 15u, 2984u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2346u, 3004u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2358u, 3020u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2359u, 3016u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2363u, 3024u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2364u, 3032u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9045,7 +9652,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2373u, 3044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2377u, 3064u, 15u, 3048u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2396u, 3068u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2408u, 3084u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2409u, 3080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2413u, 3088u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2414u, 3096u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9053,7 +9659,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2423u, 3108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2427u, 3128u, 15u, 3112u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2446u, 3132u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2458u, 3148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2459u, 3144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2463u, 3152u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2464u, 3160u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9061,7 +9666,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2473u, 3172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2477u, 3192u, 15u, 3176u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2496u, 3196u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2508u, 3212u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2509u, 3208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2513u, 3216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2514u, 3224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9069,7 +9673,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2523u, 3236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2527u, 3256u, 15u, 3240u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2546u, 3260u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2558u, 3276u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2559u, 3272u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2563u, 3280u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2564u, 3288u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9077,7 +9680,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2573u, 3300u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2577u, 3320u, 15u, 3304u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2596u, 3324u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2608u, 3340u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2609u, 3336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2613u, 3344u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2614u, 3352u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9085,7 +9687,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2623u, 3364u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2627u, 3384u, 15u, 3368u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2646u, 3388u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2658u, 3404u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2659u, 3400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2663u, 3408u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2664u, 3416u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9093,7 +9694,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2673u, 3428u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2677u, 3448u, 15u, 3432u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2696u, 3452u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2708u, 3468u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2709u, 3464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2713u, 3472u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2714u, 3480u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9101,7 +9701,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2723u, 3492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2727u, 3512u, 15u, 3496u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2746u, 3516u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2758u, 3532u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2759u, 3528u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2763u, 3536u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2764u, 3544u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9109,7 +9708,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2773u, 3556u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2777u, 3576u, 15u, 3560u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2796u, 3580u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2808u, 3596u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2809u, 3592u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2813u, 3600u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2814u, 3608u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9117,7 +9715,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2823u, 3620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2827u, 3640u, 15u, 3624u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2846u, 3644u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2858u, 3660u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2859u, 3656u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2863u, 3664u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2864u, 3672u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9125,7 +9722,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2873u, 3684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2877u, 3704u, 15u, 3688u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2896u, 3708u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2908u, 3724u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2909u, 3720u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2913u, 3728u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2914u, 3736u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9133,7 +9729,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2923u, 3748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2927u, 3768u, 15u, 3752u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2946u, 3772u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 2958u, 3788u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 2959u, 3784u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 2963u, 3792u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 2964u, 3800u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9141,7 +9736,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 2973u, 3812u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 2977u, 3832u, 15u, 3816u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 2996u, 3836u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 3008u, 3852u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 3009u, 3848u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 3013u, 3856u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 3014u, 3864u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9149,7 +9743,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 3023u, 3876u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 3027u, 3896u, 15u, 3880u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 3046u, 3900u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 3058u, 3916u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 3059u, 3912u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 3063u, 3920u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 3064u, 3928u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9157,7 +9750,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 3073u, 3940u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 3077u, 3960u, 15u, 3944u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 3096u, 3964u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 3108u, 3980u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 3109u, 3976u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 3113u, 3984u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 3114u, 3992u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9165,7 +9757,6 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 3123u, 4004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 3127u, 4024u, 15u, 4008u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 3146u, 4028u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 3158u, 4044u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 3159u, 4040u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 3163u, 4048u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // tag
     { 3164u, 4056u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // value
@@ -9173,12 +9764,75 @@ constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
     { 3173u, 4068u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // id
     { 3177u, 4088u, 15u, 4072u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 3196u, 4092u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // slots, whole
-    { 3208u, 4108u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present
     { 3209u, 4104u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter
     { 3213u, 4128u, 12u, 4116u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // blob
+    { 58u, 76u, 4u, 72u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 108u, 140u, 4u, 136u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 158u, 204u, 4u, 200u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 208u, 268u, 4u, 264u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 258u, 332u, 4u, 328u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 308u, 396u, 4u, 392u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 358u, 460u, 4u, 456u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 408u, 524u, 4u, 520u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 458u, 588u, 4u, 584u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 508u, 652u, 4u, 648u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 558u, 716u, 4u, 712u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 608u, 780u, 4u, 776u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 658u, 844u, 4u, 840u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 708u, 908u, 4u, 904u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 758u, 972u, 4u, 968u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 808u, 1036u, 4u, 1032u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 858u, 1100u, 4u, 1096u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 908u, 1164u, 4u, 1160u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 958u, 1228u, 4u, 1224u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1008u, 1292u, 4u, 1288u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1058u, 1356u, 4u, 1352u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1108u, 1420u, 4u, 1416u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1158u, 1484u, 4u, 1480u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1208u, 1548u, 4u, 1544u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1258u, 1612u, 4u, 1608u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1308u, 1676u, 4u, 1672u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1358u, 1740u, 4u, 1736u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1408u, 1804u, 4u, 1800u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1458u, 1868u, 4u, 1864u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1508u, 1932u, 4u, 1928u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1558u, 1996u, 4u, 1992u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1608u, 2060u, 4u, 2056u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1658u, 2124u, 4u, 2120u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1708u, 2188u, 4u, 2184u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1758u, 2252u, 4u, 2248u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1808u, 2316u, 4u, 2312u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1858u, 2380u, 4u, 2376u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1908u, 2444u, 4u, 2440u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 1958u, 2508u, 4u, 2504u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2008u, 2572u, 4u, 2568u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2058u, 2636u, 4u, 2632u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2108u, 2700u, 4u, 2696u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2158u, 2764u, 4u, 2760u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2208u, 2828u, 4u, 2824u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2258u, 2892u, 4u, 2888u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2308u, 2956u, 4u, 2952u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2358u, 3020u, 4u, 3016u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2408u, 3084u, 4u, 3080u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2458u, 3148u, 4u, 3144u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2508u, 3212u, 4u, 3208u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2558u, 3276u, 4u, 3272u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2608u, 3340u, 4u, 3336u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2658u, 3404u, 4u, 3400u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2708u, 3468u, 4u, 3464u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2758u, 3532u, 4u, 3528u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2808u, 3596u, 4u, 3592u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2858u, 3660u, 4u, 3656u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2908u, 3724u, 4u, 3720u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 2958u, 3788u, 4u, 3784u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 3008u, 3852u, 4u, 3848u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 3058u, 3916u, 4u, 3912u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 3108u, 3980u, 4u, 3976u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 3158u, 4044u, 4u, 4040u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
+    { 3208u, 4108u, 4u, 4104u, kTableFixedNoGuard, kTableFixedPresentDefaults, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // counter present, absent payload defaults
 };
 constexpr int32_t PaddedFrameFixedPlanCount = 516;
-constexpr int32_t PaddedFrameFixedPlanGuarded = 516;
+constexpr int32_t PaddedFrameFixedPlanGuarded = 452;
 // THE GUARD POOL: the (guard, arg, argw) links every chain above points
 // into, OUTERMOST FIRST (§5.8 row 6).
 constexpr TableFixedGuardLink PaddedFrameFixedGuards[] = {
@@ -9484,7 +10138,12 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -9493,7 +10152,12 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -9502,7 +10166,12 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -9514,7 +10183,10 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = PaddedFrameFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -9522,7 +10194,10 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = PaddedFrameFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -9544,7 +10219,11 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -9560,7 +10239,12 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -9575,7 +10259,12 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
             const int32_t made = TableFixedCompile( parsed, PaddedFrameFixedLayout, (int32_t) PaddedFrameFixedLayoutBytes, PaddedFrameFixedDst,
                                                    PaddedFrameFixedCover, PaddedFrameFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -9599,10 +10288,25 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -9624,11 +10328,10 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
         }
     }
     PaddedFrame defaults;
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) );
-        PaddedFrameReset( defaults );
-    }
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
+    memset( (void *) &defaults, 0, sizeof( defaults ) );
+    PaddedFrameReset( defaults );
     const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
@@ -9638,11 +10341,51 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = PaddedFrameFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { PaddedFrameReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PaddedFrameFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, PaddedFrameFixedGuards, (const uint8_t *) &defaults );
         if ( !PaddedFrameFixedFiniteBody( values[k] ) )
         {
             for ( int64_t j = 0; j <= k; ++j ) { PaddedFrameReset( values[j] ); }
@@ -9855,12 +10598,12 @@ inline bool PaddedRowCookBody( uint8_t * at, const PaddedRow & value, TableByteO
     table_cook_put( at + 40, (uint64_t) (uint32_t) value.label_length, 4, order );
     for ( int32_t i = 0; i < 4; i++ )
     {
-        table_cook_put( at + 44 + i * 2, (uint64_t) value.slots[ i ], 2, order );
+        table_cook_put( at + 44 + i * 2, (uint64_t) value.slots[i], 2, order );
     }
     // [Team]: E.Max slots at the SHIFTED positions the storage has (§2.4, §7.2)
     for ( int32_t i = 0; i < 4; i++ )
     {
-        table_cook_put( at + 52 + i * 1, (uint64_t) value.teams.slots[ i ], 1, order );
+        table_cook_put( at + 52 + i * 1, (uint64_t) value.teams.slots[i], 1, order );
     }
     table_cook_put( at + 60, (uint64_t) ( value.counter_present ? 1 : 0 ), 1, order ); // ?T's presence companion
     table_cook_put( at + 56, (uint64_t) value.counter, 4, order );
@@ -9874,7 +10617,7 @@ inline bool PaddedFrameCookBody( uint8_t * at, const PaddedFrame & value, TableB
     // all 64 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 64; i++ )
     {
-        if ( !PaddedRowCookBody( at + 16 + i * 64, value.rows[ i ], order ) ) { return false; }
+        if ( !PaddedRowCookBody( at + 16 + i * 64, value.rows[i], order ) ) { return false; }
     }
     table_cook_put( at + 4112, (uint64_t) (uint32_t) value.rows_count, 4, order );
     table_cook_bytes( at + 4116, value.blob, value.blob_length, 12 );
@@ -9925,7 +10668,11 @@ inline bool PaddedRowCook( const PaddedRow & value, void * out, uint64_t capacit
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !PaddedRowCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !PaddedRowCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -9977,7 +10724,11 @@ inline bool PaddedFrameCook( const PaddedFrame & value, void * out, uint64_t cap
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !PaddedFrameCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !PaddedFrameCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
