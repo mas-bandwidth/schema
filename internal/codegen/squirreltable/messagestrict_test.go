@@ -9,6 +9,11 @@ package squirreltable_test
 // and requires the row's verdict to move. The rows the read resets are the Go
 // engine's: every row it wrote (the refused one included) returns to its
 // declared defaults, and a row it never reached is untouched.
+//
+// Functional tests, not unit tests: both run the pinned Squirrel interpreter
+// (sqrun). The negative control plants its one fault in the generated runtime
+// artifact (schema_table_message.nut), not in a stand-in. They take no sockets
+// and no network.
 
 import (
 	"fmt"
