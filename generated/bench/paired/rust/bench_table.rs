@@ -263,14 +263,21 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
     if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
+    let mut seen = [false; 2];
+    let mut seen_unknown: Vec<u64> = Vec::new();
+    let mut seen_node = false;
+    let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
+            if seen_node { report.damaged = true; return false; }
+            seen_node = true;
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
@@ -280,6 +287,8 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
         }
         match id {
             0xa5013e9ad5caeda4 => {
+                if seen[0] { report.damaged = true; return false; }
+                seen[0] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -289,6 +298,8 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xfbf1ac4d96ebd022 => {
+                if seen[1] { report.damaged = true; return false; }
+                seen[1] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -298,10 +309,12 @@ pub fn mixed_chat_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids:
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
+                if seen_unknown.contains(&id) { report.damaged = true; return false; }
+                seen_unknown.push(id);
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
-                nodes.note_unknown_payload(kind, &wire[start..*off], report);
+                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedChatEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -339,14 +352,21 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
     if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
+    let mut seen = [false; 14];
+    let mut seen_unknown: Vec<u64> = Vec::new();
+    let mut seen_node = false;
+    let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
+            if seen_node { report.damaged = true; return false; }
+            seen_node = true;
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
@@ -356,6 +376,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
         }
         match id {
             0x23fcfd6678e36712 => {
+                if seen[0] { report.damaged = true; return false; }
+                seen[0] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -365,6 +387,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b37357667310e => {
+                if seen[1] { report.damaged = true; return false; }
+                seen[1] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -374,6 +398,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b3835766732c1 => {
+                if seen[2] { report.damaged = true; return false; }
+                seen[2] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -383,6 +409,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xcb4b353576672da8 => {
+                if seen[3] { report.damaged = true; return false; }
+                seen[3] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -392,6 +420,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xb54d8e19798e16e8 => {
+                if seen[4] { report.damaged = true; return false; }
+                seen[4] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -401,6 +431,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x53a9f665a90cc1b1 => {
+                if seen[5] { report.damaged = true; return false; }
+                seen[5] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -410,6 +442,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede6b6eb60ee67 => {
+                if seen[6] { report.damaged = true; return false; }
+                seen[6] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -419,6 +453,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede5b6eb60ecb4 => {
+                if seen[7] { report.damaged = true; return false; }
+                seen[7] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -428,6 +464,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x6cede8b6eb60f1cd => {
+                if seen[8] { report.damaged = true; return false; }
+                seen[8] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -437,6 +475,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f69d4b5288ba9cf => {
+                if seen[9] { report.damaged = true; return false; }
+                seen[9] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -446,6 +486,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0xa0b610205f2c6e01 => {
+                if seen[10] { report.damaged = true; return false; }
+                seen[10] = true;
                 if kind != 30 { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
                 else {
                     let Some(vref) = leb_read(wire, off) else { report.damaged = true; return false; };
@@ -475,6 +517,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 }
             }
             0x7f6308be8ab37fc0 => {
+                if seen[11] { report.damaged = true; return false; }
+                seen[11] = true;
                 if kind == 9 || table_kind_widens(kind, 9) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 9 { report.widened += 1; }
@@ -483,6 +527,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x11a44fc1d1243da7 => {
+                if seen[12] { report.damaged = true; return false; }
+                seen[12] = true;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
@@ -491,6 +537,8 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7674cfd19b9031ca => {
+                if seen[13] { report.damaged = true; return false; }
+                seen[13] = true;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
@@ -499,10 +547,12 @@ pub fn mixed_entity_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
+                if seen_unknown.contains(&id) { report.damaged = true; return false; }
+                seen_unknown.push(id);
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
-                nodes.note_unknown_payload(kind, &wire[start..*off], report);
+                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedEntity", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -540,14 +590,21 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
     if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
+    let mut seen = [false; 4];
+    let mut seen_unknown: Vec<u64> = Vec::new();
+    let mut seen_node = false;
+    let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
+            if seen_node { report.damaged = true; return false; }
+            seen_node = true;
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
@@ -557,6 +614,8 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
         }
         match id {
             0xb7bc9ac015a25050 => {
+                if seen[0] { report.damaged = true; return false; }
+                seen[0] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -566,6 +625,8 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x7f6308be8ab37fc0 => {
+                if seen[1] { report.damaged = true; return false; }
+                seen[1] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -575,6 +636,8 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x01fbc365b059b925 => {
+                if seen[2] { report.damaged = true; return false; }
+                seen[2] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -584,6 +647,8 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x126167908c9aa52d => {
+                if seen[3] { report.damaged = true; return false; }
+                seen[3] = true;
                 if kind == 1 || table_kind_widens(kind, 1) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 1 { report.widened += 1; }
@@ -592,10 +657,12 @@ pub fn mixed_hit_event_load_body(wire: &[u8], off: &mut usize, end: usize, ids: 
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
+                if seen_unknown.contains(&id) { report.damaged = true; return false; }
+                seen_unknown.push(id);
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
-                nodes.note_unknown_payload(kind, &wire[start..*off], report);
+                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedHitEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -633,14 +700,21 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
     if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
+    let mut seen = [false; 2];
+    let mut seen_unknown: Vec<u64> = Vec::new();
+    let mut seen_node = false;
+    let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
+            if seen_node { report.damaged = true; return false; }
+            seen_node = true;
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
@@ -650,6 +724,8 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
         }
         match id {
             0x9e7fd06d864fbd56 => {
+                if seen[0] { report.damaged = true; return false; }
+                seen[0] = true;
                 if kind == 7 || table_kind_widens(kind, 7) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 7 { report.widened += 1; }
@@ -659,6 +735,8 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x8113fe7ea2b16969 => {
+                if seen[1] { report.damaged = true; return false; }
+                seen[1] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -668,10 +746,12 @@ pub fn mixed_pickup_event_load_body(wire: &[u8], off: &mut usize, end: usize, id
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
+                if seen_unknown.contains(&id) { report.damaged = true; return false; }
+                seen_unknown.push(id);
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
-                nodes.note_unknown_payload(kind, &wire[start..*off], report);
+                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedPickupEvent", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -709,14 +789,21 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
     if end > wire.len() { report.damaged = true; return false; }
     // LEBs in this body cannot borrow a byte from the enclosing body.
     let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);
+    let mut seen = [false; 2];
+    let mut seen_unknown: Vec<u64> = Vec::new();
+    let mut seen_node = false;
+    let mut seen_ids: Vec<u64> = Vec::new();
     while *off < end {
         let Some(r) = leb_read(wire, off) else { report.damaged = true; return false; };
         if r == 0 { return true; }
         let Some(id) = ref_id(ids, r) else { report.damaged = true; return false; };
+        if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }
         if *off >= end { report.damaged = true; return false; }
         let kind = wire[*off]; *off += 1;
         if id == BUILD_VERSION_ID || id == VOCABULARY_ID { report.damaged = true; return false; } // the reserved announcement ids ride in the announcement and nowhere else (§3.3)
         if id == NODE_TABLE_ID {
+            if seen_node { report.damaged = true; return false; }
+            seen_node = true;
             // the reserved id inside a NESTED body is malformed (§3.1); a
             // variable-class root steps over its own node table (§3.1).
             // A fixed-class root has no numbering and sees it as unknown (§4).
@@ -726,6 +813,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
         }
         match id {
             0x80ab75f0866dbf65 => {
+                if seen[0] { report.damaged = true; return false; }
+                seen[0] = true;
                 if kind == 6 || table_kind_widens(kind, 6) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 6 { report.widened += 1; }
@@ -735,6 +824,8 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             0x52076675ec13a0c1 => {
+                if seen[1] { report.damaged = true; return false; }
+                seen[1] = true;
                 if kind == 4 || table_kind_widens(kind, 4) {
                     let Some(raw) = table_scalar_read(wire, off, end, kind) else { report.damaged = true; return false; };
                     if kind != 4 { report.widened += 1; }
@@ -744,10 +835,12 @@ pub fn mixed_stat_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u64
                 } else { report.damaged = true; if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; } }
             }
             _ => {
+                if seen_unknown.contains(&id) { report.damaged = true; return false; }
+                seen_unknown.push(id);
                 report.unknown += 1;
                 let start = *off;
                 if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }
-                nodes.note_unknown_payload(kind, &wire[start..*off], report);
+                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);
                 if let Some(ret) = retain.as_deref_mut() {
                     if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown("MixedStat", id); continue; }
                     match retain_capture(ids, kind, &wire[start..*off]) {
@@ -1179,6 +1272,7 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
     let mut pending = first;
     let mut n = 0usize;
     let mut seen = [false; 2];
+    let mut all_keys = std::collections::HashSet::new();
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1195,6 +1289,10 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             }
         };
         n += 1;
+        if !all_keys.insert(key.clone()) {
+            jr.damaged = true;
+            return n;
+        }
         match key.as_str() {
             "channel" => {
                 if seen[0] { jr.damaged = true; }
@@ -1299,6 +1397,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
     let mut pending = first;
     let mut n = 0usize;
     let mut seen = [false; 14];
+    let mut all_keys = std::collections::HashSet::new();
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1315,6 +1414,10 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             }
         };
         n += 1;
+        if !all_keys.insert(key.clone()) {
+            jr.damaged = true;
+            return n;
+        }
         match key.as_str() {
             "entity_id" => {
                 if seen[0] { jr.damaged = true; }
@@ -1548,6 +1651,7 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
     let mut pending = first;
     let mut n = 0usize;
     let mut seen = [false; 4];
+    let mut all_keys = std::collections::HashSet::new();
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1564,6 +1668,10 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             }
         };
         n += 1;
+        if !all_keys.insert(key.clone()) {
+            jr.damaged = true;
+            return n;
+        }
         match key.as_str() {
             "target_id" => {
                 if seen[0] { jr.damaged = true; }
@@ -1684,6 +1792,7 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
     let mut pending = first;
     let mut n = 0usize;
     let mut seen = [false; 2];
+    let mut all_keys = std::collections::HashSet::new();
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1700,6 +1809,10 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             }
         };
         n += 1;
+        if !all_keys.insert(key.clone()) {
+            jr.damaged = true;
+            return n;
+        }
         match key.as_str() {
             "item_id" => {
                 if seen[0] { jr.damaged = true; }
@@ -1804,6 +1917,7 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
     let mut pending = first;
     let mut n = 0usize;
     let mut seen = [false; 2];
+    let mut all_keys = std::collections::HashSet::new();
     loop {
         let key = match pending.take() {
             Some(k) => k,
@@ -1820,6 +1934,10 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             }
         };
         n += 1;
+        if !all_keys.insert(key.clone()) {
+            jr.damaged = true;
+            return n;
+        }
         match key.as_str() {
             "stat_id" => {
                 if seen[0] { jr.damaged = true; }

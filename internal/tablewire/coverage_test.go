@@ -40,32 +40,6 @@ func TestBitBigRoundTrip(t *testing.T) {
 	}
 }
 
-func TestTextHelpers(t *testing.T) {
-	t.Parallel()
-	units := wideUnits([]byte{0x41, 0x00, 0x42, 0x00})
-	if units[0] != 0x41 || units[1] != 0x42 {
-		t.Fatalf("wideUnits = %v", units)
-	}
-	if !wideValid([]uint16{0x41, 0x42}) {
-		t.Fatal("plain units must be valid")
-	}
-	if wideValid([]uint16{0x41, 0x00}) {
-		t.Fatal("a zero unit must be invalid")
-	}
-	if wideValid([]uint16{0xD800}) {
-		t.Fatal("an unpaired high surrogate must be invalid")
-	}
-	if wideValid([]uint16{0xD800, 0x0041}) {
-		t.Fatal("a high surrogate before a non-low must be invalid")
-	}
-	if !wideValid([]uint16{0xD800, 0xDC00}) {
-		t.Fatal("a paired surrogate must be valid")
-	}
-	if wideValid([]uint16{0xDC00, 0xD800}) {
-		t.Fatal("a leading low surrogate must be invalid")
-	}
-}
-
 func TestMessageReasonString(t *testing.T) {
 	t.Parallel()
 	expect := map[MessageReason]string{
@@ -865,7 +839,6 @@ func TestDamagedWiresDoNotPanic(t *testing.T) {
 func TestUncoveredPaths(t *testing.T) {
 	t.Parallel()
 	t.Run("bit big", TestBitBigRoundTrip)
-	t.Run("text helpers", TestTextHelpers)
 	t.Run("reasons", TestMessageReasonString)
 	t.Run("refusals", TestMessageRefusalError)
 	t.Run("form refusals", TestFormAndCountRefusalError)

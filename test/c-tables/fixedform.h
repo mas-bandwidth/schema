@@ -58,7 +58,7 @@ void fixed_v2_read_v1( const uint8_t * data, int64_t bytes );
    own flavour (docs/SPEC-TABLES.md §3.4). The control puts them back in one
    lane and watches the same record read wrong. */
 void fixed_ut1_read_own( const uint8_t * data, int64_t bytes );
-void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes );
+void fixed_ut2_shared_lane_control( void );
 void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes );
 void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes );
 

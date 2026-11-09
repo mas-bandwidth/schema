@@ -41,7 +41,6 @@ export type FieldDescriptor = {
 	-- form writes each element as its string, or null when absent
 	optText: boolean?,
 	min: number?,
-	wide: boolean?,
 	f32: boolean?,
 	res: number?,
 	vs: { { any } }?,

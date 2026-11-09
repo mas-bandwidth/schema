@@ -349,15 +349,6 @@ func (e *msgEmit) putValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 		e.put(ind, fmt.Sprintf("(%s as! u64)", pl.length), int64(bits))
 		e.p(ind, "schema_rt::msg_align(w, out);") // THE TEXT ALIGN (§3.3): a string(N) and a bytes(N) align before their bytes
 		e.p(ind, "schema_rt::msg_put_bytes(w, out, %s, %s);", pl.val, pl.length)
-	case f.Type.Kind == ir.TWString:
-		e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.length, pl.length, f.Type.Size)
-		e.put(ind, fmt.Sprintf("(%s as! u64)", pl.length), int64(ir.TableMessageBitsRequired(0, entry.Shape.Max)))
-		i := e.loopVar()
-		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < %s {", i, pl.length)
-		e.put(ind+1, fmt.Sprintf("%s[%s]", pl.val, i), 16)
-		e.p(ind+1, "%s += 1;", i)
-		e.p(ind, "}")
 	case f.KeyEnum != "":
 		e.putKeyed(ind, f, entry, pl)
 	case f.Array != ir.ArrayNone:
@@ -498,7 +489,7 @@ func (e *msgEmit) putField(ind int, f *ir.Field) {
 		header(ind + 2)
 		e.p(ind+1, "}")
 		e.p(ind, "}")
-	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		e.p(ind, "if %s != 0 {", pl.length)
 		header(ind + 1)
 		e.p(ind, "}")
@@ -546,7 +537,7 @@ func (e *msgEmit) usesDefaults(st *ir.Struct) bool {
 		switch {
 		case f.Type.Optional, e.isUnion(f) && f.Array == ir.ArrayNone, e.isStruct(f):
 		case f.Array == ir.ArrayCounted:
-		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		case f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		case (f.Array == ir.ArrayFixed || f.KeyEnum != "") && e.isUnion(f):
 		default:
 			return true
@@ -815,29 +806,6 @@ func (e *msgEmit) getValue(ind int, f *ir.Field, en string, pl place) {
 		e.p(ind, "}")
 		e.p(ind, "%s = n%s as! i32;", pl.length, v)
 		e.p(ind, "r.pos += n%s * 8;", v)
-	case f.Type.Kind == ir.TWString:
-		e.p(ind, "let n%s = schema_rt::msg_wide_len(r, %s);", v, en)
-		e.p(ind, "if !r.ok { return false; }")
-		e.p(ind, "if n%s > %d { return schema_rt::msg_refuse_read(r, schema_rt::MsgRefuseLengthOverBound); }", v, f.Type.Size)
-		e.p(ind, "var high%s = false;", v)
-		i := e.loopVar()
-		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < n%s {", i, v)
-		e.p(ind+1, "let cu = schema_rt::msg_get(r, 16) as! u16;")
-		e.p(ind+1, "if cu == 0 { return schema_rt::msg_damage(r); }")
-		e.p(ind+1, "if high%s {", v)
-		e.p(ind+2, "if cu < 0xDC00 || cu > 0xDFFF { return schema_rt::msg_damage(r); }")
-		e.p(ind+2, "high%s = false;", v)
-		e.p(ind+1, "} else if cu >= 0xD800 && cu <= 0xDBFF {")
-		e.p(ind+2, "high%s = true;", v)
-		e.p(ind+1, "} else if cu >= 0xDC00 && cu <= 0xDFFF {")
-		e.p(ind+2, "return schema_rt::msg_damage(r);")
-		e.p(ind+1, "}")
-		e.p(ind+1, "%s[%s] = cu;", pl.val, i)
-		e.p(ind+1, "%s += 1;", i)
-		e.p(ind, "}")
-		e.p(ind, "if high%s { return schema_rt::msg_damage(r); }", v)
-		e.p(ind, "%s = n%s as! i32;", pl.length, v)
 	case f.KeyEnum != "":
 		slots := slotCount(f)
 		e.p(ind, "let n%s = schema_rt::msg_keyed_count(r, %s);", v, en)

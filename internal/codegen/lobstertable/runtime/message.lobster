@@ -198,7 +198,7 @@ def message_bits(n:int) -> int:
     return c
 
 def message_known_kind(k:int) -> bool:
-    return k <= 33 or k == 36
+    return k <= 32 or k == 36
 
 def message_kind_bits(k:int) -> int:
     if k == 0 or k == 32:
@@ -293,7 +293,7 @@ def message_shape_read(r:Reader, k:int) -> MessageShape, bool:
             s.bits = message_bits(count)
             return s, true
         return s, false
-    if k == 12 or k == 33:
+    if k == 12:
         let n, ok = leb(r)
         if not ok or ult(0x7FFFFFFF, n):
             return s, false
@@ -329,7 +329,7 @@ def message_entry_read(r:Reader) -> MessageEntry, bool:
         if not has(r, 1):
             return e, false
         let elem = u8(r)
-        if not message_known_kind(elem) or elem == 12 or elem == 33:
+        if not message_known_kind(elem) or elem == 12:
             return e, false
         let es, eok = message_shape_read(r, elem)
         e.element = es
@@ -339,7 +339,7 @@ def message_entry_read(r:Reader) -> MessageEntry, bool:
             if not has(r, 1):
                 return e, false
             let inner = u8(r)
-            if not message_known_kind(inner) or inner == 12 or inner == 33:
+            if not message_known_kind(inner) or inner == 12:
                 return e, false
     return e, true
 
@@ -628,7 +628,7 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
         if not arm:
             return false
         return ult(arm.id, message_vocabulary_id) and arm.shape.kind != 0 and message_skip(m, arm.shape, arm.element, depth + 1)
-    if k == 12 or k == 33:
+    if k == 12:
         let n, ok = message_count(r, s)
         if not ok:
             return false
@@ -787,35 +787,6 @@ def message_bytes(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
     if n > sl.fd.bound:
         return message_refuse(rep, "length_over_bound")
     sl.cell.s = substring(r.b, start, n)
-    sl.count = n
-    return true
-
-// message_wide reads a wstring(N): the length, NO align, sixteen bits a code
-// unit; a zero unit, an unpaired surrogate or an exceeded bound refuses.
-def message_wide(m:MessageRead, sl:Slot, s:MessageShape) -> bool:
-    let r = m.bits
-    let rep = m.rep
-    let n, ok = message_count(r, s)
-    if not ok or n * 16 > r.n - r.off:
-        rep.malformed = true
-        return false
-    if n > sl.fd.bound:
-        return message_refuse(rep, "length_over_bound")
-    let units:[int] = []
-    var high = false
-    var i = 0
-    while i < n:
-        let u, _ = mb_get(r, 16)
-        if u == 0 or (u >= 0xdc00 and u <= 0xdfff and not high) or (high and (u < 0xdc00 or u > 0xdfff)):
-            rep.malformed = true
-            return false
-        high = u >= 0xd800 and u <= 0xdbff
-        push(units, u)
-        i++
-    if high:
-        rep.malformed = true
-        return false
-    sl.cell.units = units
     sl.count = n
     return true
 
@@ -999,8 +970,6 @@ def message_keyed(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
 def message_value(m:MessageRead, sl:Slot, e:MessageEntry) -> bool:
     let f = sl.fd
     let sh = f.s
-    if sh == "str" and f.wide:
-        return message_wide(m, sl, e.shape)
     if sh == "str" or sh == "text":
         return message_text(m, sl, e.shape)
     if sh == "bytes":
@@ -1219,10 +1188,8 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
                     return true, true
             i++
         return false, true
-    if sh == "bytes" or sh == "text" or (sh == "str" and not f.wide):
+    if sh == "bytes" or sh == "text" or sh == "str":
         return sl.cell.s != f.def_str, true
-    if sh == "str":
-        return length(sl.cell.units) > 0, true
     return mw_cell_rides(w, f, f.k, sl.cell, false)
 
 def mw_keyed_pairs(w:MessageWriter, sl:Slot) -> int, bool:
@@ -1360,14 +1327,6 @@ def mw_value(w:MessageWriter, sl:Slot, e:MessageEntry) -> bool:
     let s = e.shape
     let sh = f.s
     let count_bits = message_bits(s.max - s.min)
-    if sh == "str" and f.wide:
-        let units = sl.cell.units
-        if length(units) > f.bound:
-            return false
-        mw_put(w, length(units), count_bits)
-        for(units) u:
-            mw_put(w, u, 16)
-        return true
     if sh == "str" or sh == "text":
         if sh == "str" and length(sl.cell.s) > f.bound:
             return false

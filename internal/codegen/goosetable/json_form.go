@@ -161,8 +161,6 @@ func jsonUncarried(st *ir.Struct) string {
 			return at + ": a pointer or a blob"
 		case t.TextUnbounded() || t.Unbounded:
 			return at + ": unbounded text"
-		case t.Kind == ir.TWString:
-			return at + ": wstring"
 		case t.Timestamp:
 			return at + ": a timestamp"
 		case t.Kind == ir.TFixed:
@@ -388,7 +386,7 @@ func (e *jsonEmit) zero(f *ir.Field) string {
 		return "false"
 	case ir.TFloat32, ir.TFloat64:
 		return "0.0"
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return fmt.Sprintf("[0; %d]", t.Size)
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
@@ -553,7 +551,7 @@ func (e *jsonEmit) emitStruct(st *ir.Struct) {
 			pl := fieldPlace("v", f)
 			e.p(2, "if op == schema_rt::JsonOpAbsent {")
 			e.p(3, "%s = %s;", pl.val, e.zero(f))
-			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 				e.p(3, "%s = 0;", pl.length)
 			}
 			e.p(3, "%s = false;", present)

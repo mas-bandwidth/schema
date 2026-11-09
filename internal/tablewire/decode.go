@@ -341,13 +341,19 @@ func (r *wireReader) skip(kind uint8) bool {
 		_, ok := r.leb()
 		return ok
 	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
+		ir.TableKindEscape, ir.TableKindNoPayload:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
 		}
 		r.off += int(n)
 		return true
+	case ir.TableKindRetiredWstring, ir.TableKindReservedFloat16:
+		// KIND 33 IS RETIRED AND KIND 34 IS RESERVED FOR float16; NEITHER IS
+		// PART OF THIS MAJOR (§3): no writer emits them and no reader has a
+		// rule for them, so a reader meets them only as DAMAGE, exactly as it
+		// meets 35 or 200
+		return false
 	case ir.TableKindUnion:
 		arm, ok := r.leb()
 		if !ok {

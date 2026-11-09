@@ -126,16 +126,6 @@ fn cook_put_wide(b: u8[:], at: i64, v: Int128, big: bool) {
     cook_put(b, at + 8, second, 8, big);
 }
 
-// cook_put_wtext writes a wstring's used code units in the order the cook is FOR.
-fn cook_put_wtext(b: u8[:], at: i64, src: const u16[:], big: bool) {
-    if b.len == 0 { return; }
-    var i: i64 = 0;
-    while i < src.len {
-        cook_put(b, at + 2 * i, src[i], 2, big);
-        i += 1;
-    }
-}
-
 // cook_begin zeroes the whole extent — EVERY BYTE NO FIELD COVERS IS ZERO
 // (§7.2), one zeroing rather than a rule per padding site — and writes the
 // header (§7.1): the magic and every word after it in the target's order, the
@@ -203,19 +193,3 @@ fn cook_loaded_text(data: const u8[:], vals: const LoadVal[:], s: i64, dst: u8[:
     return n as! i32;
 }
 
-// cook_loaded_wtext copies a wide text value's UTF-16LE code units out of the
-// input into the record's buffer and answers the used length in code units.
-fn cook_loaded_wtext(data: const u8[:], vals: const LoadVal[:], s: i64, dst: u16[:]) -> i32 {
-    var n = vals[s].len / 2;
-    if n > dst.len { n = dst.len; }
-    if n < 0 { n = 0; }
-    let off = vals[s].off;
-    var i: i64 = 0;
-    while i < n {
-        let lo = data[off + 2 * i] as! u16;
-        let hi = data[off + 2 * i + 1] as! u16;
-        dst[i] = lo | (hi << 8);
-        i += 1;
-    }
-    return n as! i32;
-}

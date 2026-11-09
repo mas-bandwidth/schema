@@ -311,9 +311,9 @@ func TestLuaFixedEvolutionArrayBounds(t *testing.T) {
 func TestLuaFixedEvolutionText(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
-	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table T\n{\n    s string(4)\n    w wstring(4)\n}\n"), nil)
-	clean := g.save(t, "T", "local v = T.NewT(); v.s = \"ab\"; v.w = { 0x41, 0x42 }; values[1] = v")
-	body := len(clean) - 20
+	g := luaEvoGen(t, luaEvoSource(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n"), nil)
+	clean := g.save(t, "T", "local v = T.NewT(); v.s = \"ab\"; values[1] = v")
+	body := len(clean) - 8
 	cut := func(f func(b []byte)) []byte { b := luaEvoClone(clean); f(b); return b }
 	cases := []struct {
 		name string
@@ -324,15 +324,13 @@ func TestLuaFixedEvolutionText(t *testing.T) {
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), "refused text_ill_formed"},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), "refused text_ill_formed"},
 		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0 u0"},
-		{"C5 an unpaired surrogate", cut(func(b []byte) { b[body+12], b[body+13] = 0x00, 0xd8 }), "refused text_ill_formed"},
-		{"C5 a wide length past the capacity", cut(func(b []byte) { b[body+8] = 5 }), "refused length_over_bound"},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file).head; got != c.want {
 			t.Errorf("%s: %s, want %s", c.name, got, c.want)
 		}
 	}
-	if got := g.load(t, "T", clean); got.head != "ok 1 w0 u0" || got.dump["r0.s"] != `"ab"` || got.dump["r0.w.2"] != "66" {
+	if got := g.load(t, "T", clean); got.head != "ok 1 w0 u0" || got.dump["r0.s"] != `"ab"` {
 		t.Errorf("the control: %s %v", got.head, got.dump)
 	}
 	gc := luaEvoGen(t, g.unit, nil)

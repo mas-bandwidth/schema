@@ -320,7 +320,7 @@ func (c *wireCheck) payload(buf []byte, off int, kind int) (int, bool) {
 		return next, true
 	case kind == ir.TableKindUnion:
 		return c.union(buf, off)
-	case kind == ir.TableKindString, kind == ir.TableKindWstring, kind == ir.TableKindEscape,
+	case kind == ir.TableKindString, kind == ir.TableKindEscape,
 		kind == ir.TableKindNoPayload, kind == ir.TableKindTable, kind == ir.TableKindArray,
 		kind == ir.TableKindKeyed:
 		n, next, ok := readLeb(buf, off)
@@ -345,11 +345,6 @@ func (c *wireCheck) content(b []byte, kind int) bool {
 	case kind == ir.TableKindString:
 		if !textValid(b) {
 			return c.damage("ill-formed text")
-		}
-		return true
-	case kind == ir.TableKindWstring:
-		if len(b)&1 != 0 || !wideValid(wideUnits(b)) {
-			return c.damage("ill-formed wide text")
 		}
 		return true
 	case kind == ir.TableKindEscape:

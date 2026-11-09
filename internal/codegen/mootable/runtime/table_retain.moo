@@ -132,7 +132,7 @@ local function skip_payload(c: any, kind: number): boolean
 		c.at += w
 		return true
 	end
-	if kind == 12 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 31 or kind == 32 then
 		local n = c_leb(c)
 		if n == nil or c.at + n > c.e then
 			return false

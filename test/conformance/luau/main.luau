@@ -970,8 +970,7 @@ local function cookDump(C: any, S: any, b: buffer, region: number, length: numbe
 					walk.node(target - region, fd.t, depth + 1)
 				end
 			elseif s == "str" or s == "bytes" then
-				local w = if s == "str" and fd.wide then 2 else 1
-				local room = if s == "str" then ((fd.bound or 0) + 1) * w else (fd.bound or 0)
+				local room = if s == "str" then (fd.bound or 0) + 1 else (fd.bound or 0)
 				local used = buffer.readi32(b, L.alignUp(fieldAt + room, 4))
 				if used < 0 or used > (fd.bound or 0) then
 					error(d.name .. "." .. fd.name .. " carries a count companion of " .. used .. ", outside [ 0, " .. (fd.bound or 0) .. " ]")

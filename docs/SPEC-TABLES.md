@@ -15957,8 +15957,8 @@ written as something else.
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
-- **Storage that is not text** — `invalid_value`: a narrow string holding
-  ill-formed UTF-8, a wide string holding an unpaired surrogate (below).
+- **Storage that is not text** — `invalid_value`: a string holding
+  ill-formed UTF-8 (below).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -17289,12 +17289,12 @@ disagreement is a defect in one of them and is fixed, not tolerated.
 before a byte is handed back — §16.3's list, a deprecated enum variant
 (§2.15), a `required` value outside its declared range (§2.3), a text list
 past its declared total (§2.13), a table value past the depth cap (W2), and
-STORAGE THAT IS NOT TEXT, `invalid_value`: a narrow string holding ill-formed
-UTF-8 or a wide string holding an unpaired surrogate (W8), which is refused
+STORAGE THAT IS NOT TEXT, `invalid_value`: a string holding ill-formed
+UTF-8 (W8), which is refused
 and never replaced: the write returns `-1`, measure returns
-`-1`, and no prefix of a text is ever a result. A ZERO BYTE OR UNIT IS NOT
+`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS NOT
 ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
-The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte or unit
+The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte
 is `invalid_value` (a reader of those forms refuses it as `text_ill_formed`).
 Measure returns exactly the length write produces.
 
@@ -17404,8 +17404,7 @@ byte for a string (`string(N)`, `*string`, a key). Each byte is written as:
 | any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
 | `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
 | a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
-| an ill-formed narrow sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
-| an unpaired surrogate in a wide string | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
+| an ill-formed UTF-8 sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
 
 No `\u` escape names anything at or above `0x20`, so none names a surrogate,
 no escape other than these seven short forms and `\u00XX` is ever written, and
@@ -20002,10 +20001,9 @@ fixed form is the other way, and §22.6 says so.
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
 | a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
 | `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
-| `wstring(N)` | it is empty (it takes no default, SPEC.md §4.12) | `L` = twice the unit count, then the units |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |
-| `*T`, `*bytes`, `*string`, `*wstring` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
+| `*T`, `*bytes`, `*string` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
 | `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
 | `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
 | `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
@@ -20115,7 +20113,7 @@ THE ROOT** (§3.1), and the walk is pinned to the step:
    SET arm, and every entry of a map in ASCENDING KEY ORDER (§22.2.1). A
    by-value edge declared before a pointer field reaches its nodes first
    (`stream_arm_first`, §3.1).
-6. A BLOB (`*bytes`, `*string`, `*wstring`) is numbered as a node with no
+6. A BLOB (`*bytes`, `*string`) is numbered as a node with no
    descent.
 7. **A CYCLE CANNOT BE WRITTEN**: a pointer to a node still OPEN on the walk's
    path is refused at save by name (`data_cycle`, §3.1), and a blob named from
@@ -20125,7 +20123,7 @@ THE ROOT** (§3.1), and the walk is pinned to the step:
 
 **THE NODE-TABLE FIELD'S PAYLOAD** is the node count, then one record per
 index from `2` upward: the record's type id REFERENCE (the target table's
-name, or `bytes`, `string`, `wstring` for a blob, §3.1), the body's `L`, then
+name, or `bytes`, `string` for a blob, §3.1), the body's `L`, then
 the body, written by §22.2 exactly as any body (a blob's body is its bytes).
 
 Go numbers in `Number` (`internal/tablewire/nodes.go`) and the C++ writer in

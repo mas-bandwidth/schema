@@ -240,7 +240,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -503,7 +503,7 @@ func (g *gen) hasCheckField(f *ir.Field) bool {
 
 func (g *gen) hasCheckScalar(f *ir.Field) bool {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return true
 	case ir.TFixed:
 		return true
@@ -603,7 +603,7 @@ func (g *gen) emitCheckElem(f *ir.Field, name, iv, ind string) {
 
 func (g *gen) emitCheckScalar(f *ir.Field, name, ind string) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		g.assertRange(name+"Length", big.NewInt(0), big.NewInt(f.Type.Size), true, ind)
 	case ir.TFixed:
 		rawMin, rawMax, _ := fixedRaw(f)
@@ -952,8 +952,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.pf("%s    final long b = Double.doubleToRawLongBits(%s);\n", ind, name)
 		g.emitWriteWide64("b", 64, ind+"    ")
 		g.pf("%s}\n", ind)
-	case ir.TWString:
-		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -1287,8 +1285,6 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1390,8 +1386,6 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		return
 	}
 	switch f.Type.Kind {
-	case ir.TWString:
-		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1680,9 +1674,6 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, defaults bool) 
 	}
 	name := path + "." + javaName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.usesArrays = true
-		g.pf("%sArrays.fill(%s, (char) 0);\n%s%sLength = 0;\n", ind, name, ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.usesArrays = true
 		g.pf("%sArrays.fill(%s, (byte) 0);\n", ind, name)

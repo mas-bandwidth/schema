@@ -84,7 +84,6 @@ fixed table Row {
     ratio float32
     label string(6)
     data bytes(3)
-    wide_text wstring(4)
     optional ?Leaf
     absent ?int32
     fixed_values [2]int32
@@ -123,8 +122,6 @@ row.Label = "hello!"
 row.LabelLength = 5
 row.Data = "abc"
 row.DataLength = 2
-row.WideText = write_int16_le(row.WideText, 0, 0x03bb)
-row.WideTextLength = 1
 row.OptionalPresent = true
 row.Optional.X = 7
 row.FixedValues = [-8, 19]
@@ -149,7 +146,6 @@ if rec:
     print("binary " + string(saved == wire and why == ""))
     assert(schema_rt.slot_named(rec, "label").count == 5)
     assert(schema_rt.slot_named(rec, "data").count == 2)
-    assert(schema_rt.slot_named(rec, "wide_text").count == 1)
     let text, text_why = schema_rt.json_write(rec)
     let back = schema_rt.json_read("Row", text, report)
     if back:

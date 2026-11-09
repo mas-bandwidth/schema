@@ -387,17 +387,6 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         w.raw(b);
       }
       return true;
-    case "wstr":
-      // WIDE TEXT (docs/SPEC-TABLES.md §3; SPEC.md §4.12): it takes no
-      // declared default, so the EMPTY text is what elides; L is a BYTE length,
-      // twice the units, and a value past N units refuses the save
-      if (val.length !== 0) {
-        if (val.length > fd.bound) { return false; }
-        TableVariableHeader(w, ids, fd, 33);
-        w.leb(val.length * 2);
-        TableVariableWideWrite(w, val, fd.bound);
-      }
-      return true;
     case "bytes":
       if (!TableVariableSameBytes(val, fd.def)) {
         // bytes ride as an array of u8 (§2.5): the body is the element kind,
@@ -962,7 +951,7 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     if (structural && depth >= 128) { return false; }
     return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, structural ? depth + 1 : depth);
   }
-  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32 || kind === 33) {
+  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32) {
     const L = sub.leb();
     if (sub.bad || sub.at + L > sub.end) { return false; }
     const from = sub.at;
@@ -997,10 +986,6 @@ function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
     return inner.at === inner.end;
   }
   if (kind === 12) { return TableVariableUtf8Decode(b.subarray(from, to)).ok; }
-  if (kind === 33) {
-    if (((to - from) & 1) !== 0) { return false; }
-    return TableVariableWideDecode(b.subarray(from, to)) !== null;
-  }
   if (kind === 31) { return true; }
   if (kind === 32) { return from === to; }
   const w = tableRetainWidth(kind);
@@ -1078,11 +1063,10 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     if (!TableVariableNotePayload(inner, kind, table, st, st.report, 0)) { return false; }
     return inner.at === to;
   }
-  if (kind === 12 || kind === 33 || kind === 32) {
+  if (kind === 12 || kind === 32) {
     const L = sub.leb();
     if (sub.bad || sub.at + L !== to) { return false; }
     if (kind === 12) { return TableVariableUtf8Decode(b.subarray(sub.at, to)).ok; }
-    if (kind === 33) { return TableVariableWideDecode(b.subarray(sub.at, to)) !== null; }
     return L === 0;
   }
   if (kind === 1) { return to - from === 1 && b[from] <= 1; }
@@ -1298,21 +1282,6 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       } else {
         v[fd.n] = dec.s;
       }
-      return true;
-    }
-    case "wstr": {
-      // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; internal/tablewire decode.go):
-      // an ODD L is framing damage on this field and ill-formed UTF-16 (an
-      // unpaired surrogate, a zero unit) is damage too — each reads the
-      // declared default, counts one damaged, and the parent reads on past
-      // L; a payload past N units is CLAMPED, a pair never split
-      const L = r.leb();
-      if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
-      const s = TableVariableWideDecode(r.b.subarray(r.at, r.at + L));
-      r.at += L;
-      if (s === null) { report.damaged = true; v[fd.n] = fd.def; return true; }
-      if (s.length > fd.bound) { report.oor++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
-      else { v[fd.n] = s; }
       return true;
     }
     case "enum": {
@@ -2029,9 +1998,6 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
     case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
-    // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
-    // tabletext writeWString), and an unpaired surrogate refuses the write
-    case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
@@ -2515,16 +2481,6 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       } else {
         v[fd.n] = s;
       }
-      return true;
-    }
-    case "wstr": {
-      // the wstring row of §16.2 (tabletext scanWString): the same text,
-      // TRANSCODED at the boundary — a JavaScript string already is UTF-16 —
-      // and oor at N CODE UNITS with a pair never split
-      const s = inp.str();
-      if (!TableVariableStoredText(s, inp, report)) { return false; }
-      if (s.length > fd.bound) { report.oor++; v[fd.n] = TableVariableWideClamp(s, fd.bound); }
-      else { v[fd.n] = s; }
       return true;
     }
     case "bytes": {

@@ -44,7 +44,7 @@ fixed table R {
   arr [..4]int32
   fixedArr [2]int32
   s string(8)
-  w wstring(4)
+  w string(4)
   b bytes(6)
   leaf Leaf
   opt ?Leaf

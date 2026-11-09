@@ -192,7 +192,6 @@ local function at_default(fd, v)
     end
     return n == 0
   end
-  if s == "wstring" then return x == nil or #x == 0 end
   if s == "float" then return same_float(fd.f32, x, fd.default) end
   return x == fd.default
 end
@@ -254,11 +253,6 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
     w_raw(w, val)
-  elseif s == "wstring" then
-    if val == nil or #val == 0 then return true, false end
-    for i = 1, #val do
-      w_raw(w, string.pack("<I2", val[i]))
-    end
   elseif s == "enum" then
     if val == nil or val == false then return true, false end
     local vref = 0
@@ -324,17 +318,6 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       w_u8(w, 12)
       w_leb(w, #x)
       w_raw(w, x)
-    end
-  elseif s == "wstring" then
-    -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
-    -- little-endian, L their byte count; it rides when it holds a unit
-    if fd.optional or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id))
-      w_u8(w, fd.kind)
-      w_leb(w, #x * 2)
-      for i = 1, #x do
-        w_raw(w, string.pack("<I2", x[i]))
-      end
     end
   elseif s == "bytes" then
     if fd.optional or not at_default(fd, v) then
@@ -544,14 +527,6 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
     val = val or ""
     w_leb(body, #val)
     w_raw(body, val)
-  elseif s == "wstring" then
-    val = val or {}
-    local parts = {}
-    for i = 1, #val do
-      parts[#parts + 1] = string.pack("<I2", val[i])
-    end
-    w_leb(body, #table.concat(parts))
-    w_raw(body, table.concat(parts))
   elseif s == "bytes" then
     val = val or ""
     w_leb(body, #val)
@@ -593,7 +568,7 @@ local function file_minimum(kind)
   if kind == 13 then return 16 end
   if kind == 14 or kind == 16 then return 10 end
   if kind == 15 or kind == 30 then return 8 end
-  if kind == 12 or kind == 31 or kind == 32 or kind == 33 then return 1 end
+  if kind == 12 or kind == 31 or kind == 32 then return 1 end
   return 0
 end
 
@@ -754,7 +729,7 @@ tr_payload = function(r, atable, kind, depth, w)
     r.at = r.at + width
     return true
   end
-  if kind == 12 or kind == 31 or kind == 32 or kind == 33 then
+  if kind == 12 or kind == 31 or kind == 32 then
     local n = tr_leb(r)
     if r.bad or not tr_has(r, n) then return false end
     cw_leb(w, n)
@@ -859,7 +834,7 @@ end
 out_payload = function(o, kind, depth)
   local width = kind_width(kind)
   if width ~= 0 then return out_raw(o, width) end
-  if kind == 12 or kind == 31 or kind == 32 or kind == 33 then
+  if kind == 12 or kind == 31 or kind == 32 then
     local n = tr_leb(o.r)
     if o.r.bad or not tr_has(o.r, n) then return false end
     out_leb(o.w, n)
@@ -973,10 +948,6 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
     if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then
     w_raw(body, val)
-  elseif s == "wstring" then
-    for i = 1, #val do
-      w_raw(body, string.pack("<I2", val[i]))
-    end
   elseif s == "bytes" then
     w_u8(body, 6)
     w_leb(body, #val)
@@ -1060,7 +1031,7 @@ local function wire_skip(r, kind)
     tr_leb(r)
     return not r.bad
   end
-  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
     local n = tr_leb(r)
     if r.bad or not tr_has(r, n) then return false end
     r.at = r.at + n

@@ -1626,22 +1626,6 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 			minN = 2
 			what = "string"
 			k = ir.TString
-		case ast.ScalarWString:
-			minN = 2
-			what = "wstring"
-			k = ir.TWString
-		}
-		if k == ir.TWString {
-			// `*wstring` is the unbounded spelling of wide text and it is
-			// specified ahead of its implementation (docs/SPEC-TABLES.md
-			// §2.5): the blob record is law and no backend emits one, so the
-			// spelling is refused BY NAME. The BOUNDED spelling rides both
-			// wires — the packet wire's groups (SPEC §4.12) and kind 33 on
-			// the table wire (docs/SPEC-TABLES.md §3).
-			if f.Type.Pointer {
-				c.errf(f.Type.Pos, "field %s: *wstring is specified ahead of its implementation and no backend emits it (docs/SPEC-TABLES.md §2.5); declare *string for an unbounded byte buffer, or wstring(N) in a `type` for inline wide text (SPEC §4.12, schema#522)", f.Name)
-				return nil
-			}
 		}
 		if f.Type.Unbounded && !f.Type.Pointer {
 			// a bare `string` — UNBOUNDED text (docs/SPEC-TABLES.md §2.13.1):
@@ -1755,7 +1739,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 	// array bound
 	if f.Array != nil {
 		switch out.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes, ir.TBits:
+		case ir.TString, ir.TBytes, ir.TBits:
 			c.errf(f.Pos, "an array of %s is not supported in v1 — wrap the element in a type", scalarName(out.Type.Kind))
 			return nil
 		}
@@ -1994,8 +1978,6 @@ func (c *checker) resolveDefault(f *ast.Field, out *ir.Field) {
 			}
 			out.HasDefault = true
 			out.DefBytes = []byte(lit.Value)
-		case ir.TWString:
-			c.errf(lit.Pos, "field %s: a wstring takes no specified default (SPEC §4.12)", f.Name)
 		default:
 			c.errf(lit.Pos, "field %s: a quoted string is a string(N) or bytes(N) default — this field is neither (SPEC §4.2)", f.Name)
 		}
@@ -2126,8 +2108,6 @@ func scalarName(k ir.FieldTypeKind) string {
 	switch k {
 	case ir.TString:
 		return "string(N)"
-	case ir.TWString:
-		return "wstring(N)"
 	case ir.TBytes:
 		return "bytes(N)"
 	case ir.TBits:
@@ -3383,7 +3363,7 @@ func (c *checker) checkOptionalSpelling(f *ast.Field, out *ir.Field, inTable boo
 		return false
 	}
 	switch out.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		c.errf(f.Type.Pos, "field %s: ? on %s is a named follow-on — the generated length companion already carries emptiness, and a second presence bit beside it would be two answers to one question; wrap it in a table and make that optional (docs/SPEC-TABLES.md §15)",
 			f.Name, scalarName(out.Type.Kind))
 		return false

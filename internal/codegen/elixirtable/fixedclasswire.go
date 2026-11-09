@@ -191,7 +191,7 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
           {l, content} when byte_size(content) >= l ->
             inner = binary_part(content, 0, l)
             framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
-            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            arm_payload = if kind in [12, 13, 14, 16], do: framed, else: inner
             wire_payload_refs(kind, arm_payload, ids)
 
           _ ->
@@ -277,7 +277,7 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
             inner = binary_part(content, 0, l)
             framed = binary_part(after_kind, 0, byte_size(after_kind) - byte_size(content) + l)
             after_elem = binary_part(content, l, byte_size(content) - l)
-            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            arm_payload = if kind in [12, 13, 14, 16], do: framed, else: inner
             {wire_payload_refs(kind, arm_payload, ids), after_elem}
 
           _ ->
@@ -289,7 +289,7 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
     end
   end
 
-  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32, 33] do
+  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32] do
     case body(rest) do
       {:ok, payload, after_elem} -> {wire_payload_refs(kind, payload, ids), after_elem}
       :error -> :error
@@ -544,9 +544,6 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
       :enum ->
         fixed_class_enum_to_table(f, value)
 
-      :wstring ->
-        fixed_class_wide_to_table(value)
-
       :keyed ->
         fixed_class_keyed_to_table(f, value)
 
@@ -555,15 +552,6 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
     end
   end
 
-  defp fixed_class_wide_to_table(value) when is_binary(value) do
-    case :unicode.characters_to_binary(value, {:utf16, :little}, :utf8) do
-      text when is_binary(text) -> text
-      _ -> value
-    end
-  end
-
-  defp fixed_class_wide_to_table(value), do: value
-
   defp fixed_class_elem_to_table(f, value) do
     cond do
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
@@ -571,9 +559,6 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_to_table(f, value)
-
-      Map.get(f, :elem_kind) == 33 ->
-        fixed_class_wide_to_table(value)
 
       Map.has_key?(f, :by_name) ->
         fixed_class_enum_to_table(f, value)
@@ -653,7 +638,6 @@ const fixedClassHelperTail = `
       :enum -> :none
       :keyed -> fixed_class_keyed_from_table(f, %{})
       :string -> <<>>
-      :wstring -> <<>>
       :bytes -> <<>>
       :bool -> false
       :float -> 0.0
@@ -679,9 +663,6 @@ const fixedClassHelperTail = `
       :enum ->
         fixed_class_enum_from_table(f, value)
 
-      :wstring ->
-        fixed_class_wide_from_table(value)
-
       :keyed ->
         fixed_class_keyed_from_table(f, value)
 
@@ -703,15 +684,6 @@ const fixedClassHelperTail = `
     end
   end
 
-  defp fixed_class_wide_from_table(value) when is_binary(value) do
-    case :unicode.characters_to_binary(value, :utf8, {:utf16, :little}) do
-      text when is_binary(text) -> text
-      _ -> value
-    end
-  end
-
-  defp fixed_class_wide_from_table(_value), do: <<>>
-
   defp fixed_class_elem_from_table(f, value) do
     cond do
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
@@ -722,9 +694,6 @@ const fixedClassHelperTail = `
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_from_table(f, value)
-
-      Map.get(f, :elem_kind) == 33 ->
-        fixed_class_wide_from_table(value)
 
       Map.has_key?(f, :by_name) ->
         fixed_class_enum_from_table(f, value)

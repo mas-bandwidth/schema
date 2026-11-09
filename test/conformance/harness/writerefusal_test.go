@@ -174,12 +174,6 @@ func mutateWriteRefusal(model *tabletext.Model, inst *tabletext.Instance, path, 
 		switch f.Type.Kind {
 		case ir.TString, ir.TBytes:
 			cell.Str = bytes.Repeat([]byte{'a'}, n)
-		case ir.TWString:
-			units := make([]uint16, n)
-			for i := range units {
-				units[i] = 'a'
-			}
-			cell.Units = units
 		default:
 			return false, fmt.Errorf("%s: length on a %v field", path, f.Type.Kind)
 		}
@@ -192,18 +186,6 @@ func mutateWriteRefusal(model *tabletext.Model, inst *tabletext.Instance, path, 
 		}
 		cell.Str = b
 		fv.Count = len(b)
-		return true, nil
-	case "units":
-		b, err := hex.DecodeString(text)
-		if err != nil || len(b)%2 != 0 {
-			return false, fmt.Errorf("%s: units are four hex digits each", path)
-		}
-		units := make([]uint16, len(b)/2)
-		for i := range units {
-			units[i] = uint16(b[2*i])<<8 | uint16(b[2*i+1])
-		}
-		cell.Units = units
-		fv.Count = len(units)
 		return true, nil
 	case "int":
 		return setRefusalInt(cell, f, text), nil

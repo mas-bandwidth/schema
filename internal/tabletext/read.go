@@ -296,10 +296,8 @@ func encodeUTF8(code uint32) []byte {
 }
 
 // scanUnit reads ONE STRING BODY CHARACTER at the cursor and answers it as
-// UTF-8: an escape's code point, or a UTF-8 sequence read whole. It is ONE
-// grammar serving both text kinds — the narrow scan places these bytes and the
-// wide scan converts them back to code units — so the escape table, the
-// lone-surrogate rule and the U+FFFD replacement are stated once. done is true
+// UTF-8: an escape's code point, or a UTF-8 sequence read whole, so the escape
+// table, the lone-surrogate rule and the U+FFFD replacement are stated once. done is true
 // where the closing quote was consumed; ok false where the text is not JSON.
 // The C++ walk's TableJsonScanUnit is the same function.
 func (in *reader) scanUnit() (unit []byte, done bool, ok bool) {

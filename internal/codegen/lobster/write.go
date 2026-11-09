@@ -206,7 +206,7 @@ func emitWriteElem(g *Gen, val string, f *ir.Field, indent string) {
 	}
 	length := ""
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		length = val + "Length[_i]"
 	}
 	emitWriteScalar(g, val+"[_i]", length, &elem, indent)
@@ -261,21 +261,6 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		}
 		emitBits(g, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), indent, "the used length (SPEC §4.7)")
 		g.Pf("%ss.serialize_bytes(%s, %s) // aligns, then the used bytes (SPEC §4.7)\n", indent, val, length)
-	case ir.TWString:
-		// length in [0, N] code units, then one 32-bit group per unit and NO
-		// align anywhere: the classic wstring framing, carried by this
-		// target over the port's bits primitive (serialize.lobster v2.1.1,
-		// format 2.0, has no wstring; SPEC §4.12). A zero unit is writer
-		// misuse, asserted; surrogate pairing is the reader's to refuse.
-		size := t.Size
-		if length == "" {
-			length = val + "Length"
-		}
-		g.Pf("%sassert %s >= 0 and %s <= %d // the code unit count is in [0, %d] (SPEC §4.12)\n", indent, length, length, size, size)
-		g.Pf("%sassert %s.units_nonzero(%s, %s) // no zero code unit (SPEC §4.12)\n", indent, RuntimeNamespace, val, length)
-		emitBits(g, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), indent, "the code unit count (SPEC §4.12)")
-		g.Pf("%sfor(%s) _u: // one 32-bit group per UTF-16 code unit (SPEC §4.12)\n", indent, length)
-		g.Pf("%s    s.serialize_bits(read_uint16_le(%s, _u * 2), 32)\n", indent, val)
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:

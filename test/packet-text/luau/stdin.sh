@@ -1,6 +1,6 @@
 #!/bin/sh
 # stdin.sh DIR MAIN [ARG...] — the host shim of the Luau packet drivers
-# (test/packet-text/luau, test/packet-wide/luau). The pinned interpreter has
+# (test/packet-text/luau). The pinned interpreter has
 # no io library (docs/PORT-LUAU.md, THE HARNESS), so a Luau program cannot
 # read the harness's stdin. This shim carries stdin in AS SOURCE: it writes
 # DIR/stdin.luau, a module returning the input lines as an array of strings,

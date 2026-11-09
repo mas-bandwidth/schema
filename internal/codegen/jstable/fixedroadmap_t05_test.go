@@ -276,7 +276,7 @@ fixed table T
 	if !strings.Contains(t02Norm(run), "if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }") {
 		t.Error("R16: the count op does not refuse count_over_bound at the writer's bound")
 	}
-	if !strings.Contains(t02Norm(run), "const cap = (size / unit) | 0;") ||
+	if !strings.Contains(t02Norm(run), "const cap = size | 0;") ||
 		!strings.Contains(t02Norm(run), "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }") {
 		t.Error("R16: the text op does not refuse length_over_bound once in the USED units (§3.4)")
 	}
@@ -433,11 +433,9 @@ fixed table T
 `)
 	t02Has(t, t02Norm(src), "report.refused = TableFixedRefusal.TextIllFormed", "R24 ill-formed text refuses by name")
 	t02Has(t, t02Norm(src), "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
-	// THE LENGTH REFUSAL IS IN UNITS: the declared bound `size` in bytes,
-	// divided by the unit width, is the cap the used length is refused past.
-	t02Has(t, t02Norm(src), "const cap = (size / unit) | 0;", "R24 the refusal is in units")
+	t02Has(t, t02Norm(src), "const cap = size | 0;", "R24 the refusal is in units")
 	t02Has(t, t02Norm(src), "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }", "R24 the length refuses once in units")
-	// THE CONTENT CHECK HOLDS THE USED UNITS (v * unit) AND NOT THE SLACK (size):
+	// THE CONTENT CHECK HOLDS THE USED UNITS (v) AND NOT THE SLACK (size):
 	// slack is unspecified on read and is not a refusal.
-	t02Has(t, t02Norm(src), ", v * unit)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")
+	t02Has(t, t02Norm(src), ", v)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")
 }

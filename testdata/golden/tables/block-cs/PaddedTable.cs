@@ -672,14 +672,6 @@ namespace Blockdemo
             }
         }
 
-        private static void PaddedRowFixedSetChars(PaddedRow t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void PaddedRowFixedResetSlot(PaddedRow t, uint slot)
         {
             switch (slot)
@@ -808,8 +800,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -818,14 +809,7 @@ namespace Blockdemo
                                 return "text_ill_formed";
                             }
                             PaddedRowFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                PaddedRowFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                PaddedRowFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            PaddedRowFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -3036,14 +3020,6 @@ namespace Blockdemo
             }
         }
 
-        private static void PaddedFrameFixedSetChars(PaddedFrame t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void PaddedFrameFixedResetSlot(PaddedFrame t, uint slot)
         {
             switch (slot)
@@ -3996,8 +3972,7 @@ namespace Blockdemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -4006,14 +3981,7 @@ namespace Blockdemo
                                 return "text_ill_formed";
                             }
                             PaddedFrameFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                PaddedFrameFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                PaddedFrameFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            PaddedFrameFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:

@@ -201,7 +201,7 @@ public static class TableJson
         if (f.Map) { return 'o'; }
         if (f.Kind == 17 && !f.IsArray) { return f.BlobKind != 0 ? 's' : 'o'; }
         if (f.TextList) { return 'a'; }
-        if (f.Kind == 12 || f.Kind == 33) { return 's'; }          // string
+        if (f.Kind == 12) { return 's'; }          // string
         if (IsBytes(f)) { return 's'; }            // bytes: base64
         if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
         if (f.IsArray) { return 'a'; }
@@ -739,10 +739,6 @@ public static class TableJson
     {
         if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
-        if (f.Kind == 33)
-        {
-            WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
-        }
         if (f.Kind == 12 && !f.TextList)
         {
             if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
@@ -974,7 +970,7 @@ public static class TableJson
     // string without keeping it, and counts no clamp for what it dropped —
     // C++'s NULL destination.
     static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool stored = false)
-    { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length, stored: stored); }
+    { return ScanText(text, ref input, destination, keep, out length, stored: stored); }
     static bool RefuseText(ref In input, string reason)
     {
         input.Bad = true;
@@ -1019,13 +1015,13 @@ public static class TableJson
             return true;
         }
         In probe = input;
-        if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+        if (!ScanText(text, ref probe, Span<byte>.Empty, false, out int size, true)) { input = probe; return false; }
         byte[] decoded = new byte[size];
-        if (!ScanText(text, ref input, decoded, Span<char>.Empty, false, true, out int used)) { return false; }
+        if (!ScanText(text, ref input, decoded, true, out int used)) { return false; }
         body = new ReadOnlySpan<byte>(decoded, 0, used);
         return true;
     }
-    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false, bool stored = false)
+    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool measure = false, bool stored = false)
     {
         length = 0;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1112,17 +1108,6 @@ public static class TableJson
             {
                 if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
                 placed += unitLength;
-            }
-            else if (keep && wide)
-            {
-                int code = Utf8(unit.Slice(0, unitLength), 0, out _);
-                int n = code > 0xffff ? 2 : 1;
-                if (!clamped && placed + n <= chars.Length)
-                {
-                    if (n == 1) { chars[placed++] = (char)code; }
-                    else { code -= 0x10000; chars[placed++] = (char)(0xd800 | (code >> 10)); chars[placed++] = (char)(0xdc00 | (code & 1023)); }
-                }
-                else { clamped = true; }
             }
             else if (keep)
             {
@@ -1669,11 +1654,6 @@ public static class TableJson
     static bool ReadField(ReadOnlySpan<byte> text, ref In input, object value, TableFieldInfo f, int depth)
     {
         if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
-        if (f.Kind == 33)
-        {
-            if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
-            f.SetCount(value, used); return true;
-        }
         if (f.Unbounded)
         {
             if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}

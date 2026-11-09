@@ -72,21 +72,6 @@ pub fn json_escape(s: &str, out: &mut String) {
     out.push('"');
 }
 
-/// A wstring(N)'s code units as a JSON string (docs/SPEC-TABLES.md §16.2's
-/// wstring row), transcoded at the boundary unit by unit. An UNPAIRED
-/// SURROGATE is not text: the answer is false, the whole write refuses
-/// (invalid_value, §16.3, §16.14 W0), and nothing is replaced.
-#[allow(dead_code)]
-pub fn json_escape_wide(units: &[u16], out: &mut String) -> bool {
-    out.push('"');
-    for c in char::decode_utf16(units.iter().copied()) {
-        let Ok(c) = c else { return false };
-        json_escape_char(c, out);
-    }
-    out.push('"');
-    true
-}
-
 /// One code point of a JSON string: the escape JSON spells for it, or the
 /// character itself.
 #[allow(dead_code)]
@@ -122,25 +107,6 @@ pub fn json_bound(s: String, n: usize, damaged: &mut bool) -> String {
     }
     *damaged = true;
     s[..end].to_string()
-}
-
-/// A JSON string as wstring(N) code units (docs/SPEC-TABLES.md §16.2's wstring
-/// row): transcoded at the boundary, and held at N CODE UNITS with a pair
-/// never split; once a character does not fit nothing after it is kept, and
-/// the clamp counts once (the oracle's tabletext scanWString).
-#[allow(dead_code)]
-pub fn json_wide_bound(s: &str, n: usize, damaged: &mut bool) -> Vec<u16> {
-    let mut out: Vec<u16> = Vec::new();
-    let mut buf = [0u16; 2];
-    for c in s.chars() {
-        let units = c.encode_utf16(&mut buf);
-        if out.len() + units.len() > n {
-            *damaged = true;
-            break;
-        }
-        out.extend_from_slice(units);
-    }
-    out
 }
 
 pub const JSON_B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1205,10 +1171,6 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%s%s(%s, w, %s);\n", ind, fn(un.Name, "json_write"), borrowOf(x), d)
 	case vString:
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
-	case vWString:
-		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
-		// §16.2's wstring row); an unpaired surrogate refuses the write (§16.14 W0)
-		fmt.Fprintf(b, "%sif !json_escape_wide(%s, &mut w.out) { w.refused = true; }\n", ind, borrowOf(x))
 	case vBytes:
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vEnum:
@@ -1587,9 +1549,6 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 		fmt.Fprintf(b, "%s} else { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vString:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_bound(s, %d, &mut jr.damaged); } }\n", in, dst, rustTextBound(f))
-		fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
-	case vWString:
-		fmt.Fprintf(b, "%sif jr.peek() == b'\"' { if let Some(s) = jr.read_text() { %s = json_wide_bound(&s, %d, &mut jr.damaged); } }\n", in, dst, f.Type.Size)
 		fmt.Fprintf(b, "%selse { jr.damaged = true; jr.skip_value(); }\n", in)
 	case vBytes:
 		fmt.Fprintf(b, "%sif jr.peek() == b'\"' {\n", in)

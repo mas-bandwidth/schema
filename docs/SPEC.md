@@ -2262,11 +2262,11 @@ a caller can hold that the declaration does not admit:
 | 1 | a ranged integer (scalar, array element, arm payload, map value), or a `fixed`/`ufixed` raw value, off its `min`/`max` | refused |
 | 2 | a `bits(N)` value wider than `N` bits | refused |
 | 3 | a counted array's count past its `Max` or below its `Min` (or negative) | refused |
-| 4 | a `string(N)`, `bytes(N)` or `wstring(N)` length past `N` (or negative) | refused |
+| 4 | a `string(N)` or `bytes(N)` length past `N` (or negative) | refused |
 | 5 | an enum ordinal outside its variant set | refused |
 | 6 | a union tag outside its arm set | refused |
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
-| 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte, a `wstring` with an unpaired surrogate or a zero unit | refused |
+| 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (`invalid_value` on write; `out_of_range` on read) |
 
@@ -2313,9 +2313,9 @@ across languages.
 |---|---|
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
 | C | 1–2 and 8 debug; 3–7 every build; 9 unchecked; 10 every build |
-| C# | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build; 9 unchecked; 10 every build |
-| Rust | 1–2, 4 and a `wstring`'s 8 debug; 3, 7 and a `wstring`'s 4 every build; 5–6 and a `string`'s 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
-| Java | 1–5 and a `string`'s 8 debug; 6–7 and a `wstring`'s 8 every build; 9 unchecked; 10 every build |
+| C# | 1–2 debug; 3–8 every build; 9 unchecked; 10 every build |
+| Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
+| Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
 | Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |
 | Go | 1–8 and 10 every build; 9 unchecked |
 | JavaScript | 1–8 and 10 every build; 9 not audited |
@@ -2346,7 +2346,7 @@ reader refuses.
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
 |---|---|---|---|
 | C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build | 1 and 3–7 debug; 2 unchecked |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked |
 | Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
 | Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug |

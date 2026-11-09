@@ -245,7 +245,6 @@ func init() {
 		Name{Name: "tableWireSkipValue", What: "the wire-alone check: an unknown payload held to every wire-alone condition as it is skipped (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireCheck", What: "the wire-alone check over every byte of a file (docs/SPEC-TABLES.md §4, §6.5)"},
 		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
-		Name{Name: "tableWireUtf16Valid", What: "the wire-alone check: a wide string's code units pair (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireBytesID", What: "the wire-alone check: the bytes kind's field id"},
 		Name{Name: "tableWireStringID", What: "the wire-alone check: the string kind's field id"},
 		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
@@ -440,7 +439,6 @@ func init() {
 		Name{Name: "TableRefuseLengthOverBound", What: "the fixed form refusal reason length_over_bound"},
 		Name{Name: "tableFixedTag", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextUTF8", What: "the fixed form (form 3)"},
-		Name{Name: "tableFixedTextWide", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextBytes", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedNoGuard", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedEntryBytes", What: "the fixed form (form 3)"},
@@ -448,7 +446,6 @@ func init() {
 		// The write-side text rule (docs/FIXED-FORM-ALGORITHM.md §3.1): the fixed
 		// form's refusal of ill-formed UTF-8 and NUL, the twin of the reader's.
 		Name{Name: "tableFixedUTF8Ok", What: "the fixed form (form 3): the writer's UTF-8 and no-NUL rule over a text field's used bytes"},
-		Name{Name: "tableFixedUnitsIllFormed", What: "the fixed form (form 3): the writer's wstring rule, true when the used units are not paired UTF-16 or hold a zero unit"},
 		// <T>FixedPlanMax (docs/FIXED-FORM-ALGORITHM.md §5.2): the generated
 		// export, claimed under the template spelling the page writes. A plan
 		// slice of this length never refuses plan_too_large for a layout the

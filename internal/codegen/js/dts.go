@@ -209,8 +209,6 @@ func (g *dgen) scalarType(t ir.FieldType) string {
 func (g *dgen) emitMembers(f *ir.Field, ind string) {
 	name := MemberName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s%s: Uint16Array;\n%s%sLength: number;\n", ind, name, ind, name)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s: Uint8Array;\n%s%sLength: number;\n", ind, name, ind, name)
 	case f.Array != ir.ArrayNone:

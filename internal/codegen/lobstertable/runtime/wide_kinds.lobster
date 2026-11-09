@@ -10,9 +10,8 @@
 // other. The scalar shape reads every other kind exactly as load.lobster's
 // scalar_at does, which is where the clamps, defaults and widening live.
 //
-// The other wide kinds need no shape of their own here: enum (30), escape
-// (31) and wstring (33) are dispatched by load.lobster's enum, skip and wstr
-// shapes, the 128-bit and fixed-point family (18-29) is the scalar shape's
+// The other wide kinds need no shape of their own here: enum (30) and escape
+// (31) are dispatched by load.lobster's enum and skip shapes, the 128-bit and fixed-point family (18-29) is the scalar shape's
 // kind_wide branch, a one-sided range reaches the descriptor as the
 // two-sided range the checker filled (ir.Field.RangeOneSided), and
 // schema_save.lobster writes kind 36 at kind_width(36) = 8.

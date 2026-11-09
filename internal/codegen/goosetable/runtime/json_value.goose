@@ -572,57 +572,6 @@ fn jv_put_stamp(out: u8[>..]&, nanos: i64) {
     out.append("Z\"");
 }
 
-// jv_put_units writes a wstring's UTF-16LE units as a JSON string: a pair is
-// one code point, a zero unit \u0000. An unpaired surrogate is not text: it
-// answers false and the whole write refuses (invalid_value, §16.14 W0).
-fn jv_put_units(out: u8[>..]&, b: const u8[:]) -> bool {
-    let hex = "0123456789abcdef";
-    out.push('"');
-    let n = b.len / 2;
-    var i: i64 = 0;
-    while i < n {
-        let b0: i64 = b[2 * i];
-        let b1: i64 = b[2 * i + 1];
-        var code = b0 | (b1 << 8);
-        if code >= 0xD800 && code <= 0xDBFF && i + 1 < n {
-            let b2: i64 = b[2 * i + 2];
-            let b3: i64 = b[2 * i + 3];
-            let low = b2 | (b3 << 8);
-            if low >= 0xDC00 && low <= 0xDFFF {
-                code = 0x10000 + (code - 0xD800) * 1024 + (low - 0xDC00);
-                i += 1;
-            }
-        }
-        if code >= 0xD800 && code <= 0xDFFF { return false; }
-        if code == '"' {
-            out.append("\\\"");
-        } else if code == '\\' {
-            out.append("\\\\");
-        } else if code == 8 {
-            out.append("\\b");
-        } else if code == 12 {
-            out.append("\\f");
-        } else if code == 10 {
-            out.append("\\n");
-        } else if code == 13 {
-            out.append("\\r");
-        } else if code == 9 {
-            out.append("\\t");
-        } else if code < 0x20 {
-            out.append("\\u00");
-            out.push(hex[code >> 4]);
-            out.push(hex[code & 15]);
-        } else {
-            var unit: u8[4] = [0; 4];
-            let w = json_encode_utf8(code, unit);
-            out.append(unit[..w]);
-        }
-        i += 1;
-    }
-    out.push('"');
-    return true;
-}
-
 // ======================================================================
 // ---- THE WRITE (§16.1, §16.7; internal/tabletext write.go) ----
 // ======================================================================
@@ -830,14 +779,6 @@ recursive fn jw_pointer(c: JvOut&, out: u8[>..]&, wire: i64, depth: i64) -> bool
 // buffer, text, a map, a keyed or plain array, or one value.
 recursive fn jw_field(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     if d.shape == ShapeSBlob || d.shape == ShapeBBlob { return jw_blob(c, out, s, d); }
-    if d.shape == ShapeStr && d.wide {
-        if jv_state(c.vals, s) == ValAbsent {
-            json_put_string(out, if d.has_def { d.def_s } else { "" });
-        } else {
-            return jv_put_units(out, jw_view(c, s, d));
-        }
-        return true;
-    }
     if d.shape == ShapeStr || d.shape == ShapeText {
         return json_put_text(out, jw_view(c, s, d));
     }
@@ -915,8 +856,6 @@ recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
             let fs = jv_slot(c.vals, rec, 0);
             if fd.optional && jv_state(c.vals, fs) == ValAbsent {
                 out.append("null");
-            } else if fd.shape == ShapeStr && fd.wide {
-                if !jv_put_units(out, jw_view(c, fs, fd)) { return false; }
             } else if !json_put_text(out, jw_view(c, fs, fd)) {
                 return false;
             }
@@ -1520,12 +1459,6 @@ recursive fn jr_keys(c: JvIn&, tab: i64, rec: i64, depth: i64, first: const u8[:
 recursive fn jr_field(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     if d.shape == ShapeSBlob || d.shape == ShapeBBlob { return jr_blob(c, s, d); }
     if d.shape == ShapePtr { return jr_pointer(c, s, d.ref, depth); }
-    if d.shape == ShapeStr && d.wide {
-        let off = c.data.len;
-        if !jr_units(c, d.bound) { return false; }
-        jr_place_view(c, s, off);
-        return true;
-    }
     if d.shape == ShapeStr || d.shape == ShapeText {
         let off = c.data.len;
         if !jr_text(c, if d.shape == ShapeStr { d.bound } else { -1 }) { return false; }
@@ -1557,40 +1490,6 @@ fn jr_text(c: JvIn&, bound: i64) -> bool {
         if !was_oor && (bound < 0 || placed + n <= bound) {
             for k in n { c.data.push(unit[k]); }
             placed += n;
-        } else {
-            was_oor = true;
-        }
-    };
-    if !ok { return false; }
-    if was_oor { c.jr.rep.oor += 1; }
-    return true;
-}
-
-// jr_units appends one string's UTF-16LE code units to data, oor at
-// bound units with a pair never split (the wstring row, §16.2).
-fn jr_units(c: JvIn&, bound: i64) -> bool {
-    var placed: i64 = 0;
-    var was_oor = false;
-    let ok = json_scan(c.jr, true) { unit, n =>
-        var code: i64 = unit[0];
-        if n == 2 { code = ((unit[0] & 0x1F) as i64) * 64 + (unit[1] & 0x3F) as i64; }
-        if n == 3 { code = ((unit[0] & 0x0F) as i64) * 4096 + ((unit[1] & 0x3F) as i64) * 64 + (unit[2] & 0x3F) as i64; }
-        if n == 4 { code = ((unit[0] & 0x07) as i64) * 262144 + ((unit[1] & 0x3F) as i64) * 4096 + ((unit[2] & 0x3F) as i64) * 64 + (unit[3] & 0x3F) as i64; }
-        let need: i64 = if code >= 0x10000 { 2 } else { 1 };
-        if !was_oor && (bound < 0 || placed + need <= bound) {
-            if need == 2 {
-                let v = code - 0x10000;
-                let hi = 0xD800 + (v >> 10);
-                let lo = 0xDC00 + (v & 0x3FF);
-                c.data.push((hi & 0xFF) as! u8);
-                c.data.push((hi >> 8) as! u8);
-                c.data.push((lo & 0xFF) as! u8);
-                c.data.push((lo >> 8) as! u8);
-            } else {
-                c.data.push((code & 0xFF) as! u8);
-                c.data.push((code >> 8) as! u8);
-            }
-            placed += need;
         } else {
             was_oor = true;
         }
@@ -1854,7 +1753,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
             let t = jr_new_record(c, et);
             let fs = c.vals[t].first;
             let off = c.data.len;
-            let good = if fd.shape == ShapeStr && fd.wide { jr_units(c, fd.bound) } else { jr_text(c, if fd.shape == ShapeStr { fd.bound } else { -1 }) };
+            let good = jr_text(c, if fd.shape == ShapeStr { fd.bound } else { -1 });
             if !good { ok = false; break; }
             jr_place_view(c, fs, off);
             let n = c.data.len - off;

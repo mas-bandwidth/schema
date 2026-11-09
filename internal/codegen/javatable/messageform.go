@@ -460,7 +460,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 33 || kind == 36;
+        return kind <= 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -595,7 +595,7 @@ public final class TableVocabulary {
             }
             return null; // a packing outside the closed set
         }
-        if (kind == 12 || kind == 33) {
+        if (kind == 12) {
             long max = r.leb();
             if (r.err || max > 0x7fffffffL) {
                 return null;
@@ -640,7 +640,7 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12 || elem == 33) {
+            if (!knownKind(elem) || elem == 12) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -652,7 +652,7 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12 || inner == 33) {
+                if (!knownKind(inner) || inner == 12) {
                     return false;
                 }
             }
@@ -993,11 +993,6 @@ public final class TableMessage {
                 long n = r.get(TableVocabulary.bitCount(s.max));
                 if (r.err || !r.align()) { return false; }
                 return r.skipBits(n * 8L);
-            }
-            case 33: {
-                long n = r.get(TableVocabulary.bitCount(s.max));
-                if (r.err) { return false; }
-                return r.skipBits(n * 16L);
             }
             case 31: {
                 if (!r.align()) { return false; }
@@ -1460,10 +1455,6 @@ func (g *messageGen) emitResetField(f *ir.Field, owner string, indent int) {
 		g.pf("%s%sPresent = false;\n", ind, expr)
 	}
 	switch {
-	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		g.pf("%sjava.util.Arrays.fill(%s, (char) 0);\n", ind, expr)
-		g.pf("%s%sLength = 0;\n", ind, expr)
-		return
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
 		if len(f.DefBytes) > 0 {
@@ -1707,7 +1698,7 @@ func (g *messageGen) emitWriteBoundsCheck(f *ir.Field, owner string, indent int)
 	name := javaName(f.Name)
 	expr := owner + "." + name
 	switch {
-	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) && f.Array == ir.ArrayNone && f.KeyEnum == "":
+	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
 		g.pf("%sif (%sLength < 0 || %sLength > %d) { return false; }\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		g.pf("%sif (%sCount < %d || %sCount > %d) { return false; }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
@@ -1728,9 +1719,6 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 			return expr + "Length > 0"
 		}
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
-	}
-	if f.Type.Kind == ir.TWString {
-		return expr + "Length > 0"
 	}
 	if f.Array == ir.ArrayCounted {
 		return expr + "Count > 0"
@@ -1814,14 +1802,6 @@ func (g *messageGen) emitSavePayload(f *ir.Field, entry ir.TableVocabularyEntry,
 		countBits := ir.TableMessageCountBits(shape)
 		g.pf("%sw.put((long) %sLength - %dL, %d);\n", ind, expr, shape.Min, countBits)
 		g.pf("%sw.raw(%s, %sLength);\n", ind, expr, expr)
-
-	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		countBits := ir.TableMessageBitsRequired(0, shape.Max)
-		idx := g.nextTemp("i")
-		g.pf("%sw.put((long) %sLength, %d);\n", ind, expr, countBits)
-		g.pf("%sfor (int %s = 0; %s < %sLength; %s++) {\n", ind, idx, idx, expr, idx)
-		g.pf("%s    w.put((long) (%s[%s] & 0xffff), 16);\n", ind, expr, idx)
-		g.pf("%s}\n", ind)
 
 	case f.KeyEnum != "":
 		pairs := g.nextTemp("pairs")
@@ -2079,33 +2059,6 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.pf("%sif ((long) %s < %s) { r.report.refuse(\"length_over_bound\"); }\n", ind, keptVar, nVar)
 		g.pf("%sjava.util.Arrays.fill(%s, (byte) 0);\n", ind, expr)
 		g.pf("%sSystem.arraycopy(r.buf, %s, %s, 0, %s);\n", ind, startVar, expr, keptVar)
-		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
-
-	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		nVar := g.nextTemp("n")
-		keptVar := g.nextTemp("kept")
-		highVar := g.nextTemp("high")
-		idxVar := g.nextTemp("i")
-		uVar := g.nextTemp("u")
-		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
-		g.pf("%sif (r.err || %s < 0L || %s > (r.totalBits - r.at) / 16L) { r.report.damaged = true; return false; }\n", ind, nVar, nVar)
-		g.pf("%sint %s = (int) Math.min(%s, %dL);\n", ind, keptVar, nVar, f.Type.Size)
-		g.pf("%sif ((long) %s < %s) { r.report.refuse(\"length_over_bound\"); }\n", ind, keptVar, nVar)
-		g.pf("%sjava.util.Arrays.fill(%s, (char) 0);\n", ind, expr)
-		g.pf("%sboolean %s = false;\n", ind, highVar)
-		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
-		g.pf("%s    int %s = (int) r.get(16);\n", ind, uVar)
-		g.pf("%s    if (%s == 0 || (%s >= 0xdc00 && %s <= 0xdfff && !%s) || (%s && (%s < 0xdc00 || %s > 0xdfff))) {\n",
-			ind, uVar, uVar, uVar, highVar, highVar, uVar, uVar)
-		g.pf("%s        r.report.damaged = true;\n", ind)
-		g.pf("%s        return false;\n", ind)
-		g.pf("%s    }\n", ind)
-		g.pf("%s    %s = (%s >= 0xd800 && %s <= 0xdbff);\n", ind, highVar, uVar, uVar)
-		g.pf("%s    if (%s < (long) %s) { %s[(int) %s] = (char) %s; }\n", ind, idxVar, keptVar, expr, idxVar, uVar)
-		g.pf("%s}\n", ind)
-		g.pf("%sif (%s) { r.report.damaged = true; return false; }\n", ind, highVar)
-		g.pf("%sif (%s > 0 && %s[%s - 1] >= 0xd800 && %s[%s - 1] <= 0xdbff) { %s--; %s[%s] = 0; }\n",
-			ind, keptVar, expr, keptVar, expr, keptVar, keptVar, expr, keptVar)
 		g.pf("%s%sLength = %s;\n", ind, expr, keptVar)
 
 	case f.KeyEnum != "":

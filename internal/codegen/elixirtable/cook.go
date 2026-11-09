@@ -621,7 +621,7 @@ func cookRowMembers(f *ir.Field) []string {
 	names := []string{f.Name}
 	switch {
 	case f.Type.Pointer || f.Type.TextUnbounded():
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")

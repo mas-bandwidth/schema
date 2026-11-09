@@ -140,9 +140,9 @@ func cppRuntimeNames() []Name {
 			"TableJsonNamed", "TableJsonSetCount", "TableJsonSetRaw", "TableJsonShape", "TableJsonValueShape",
 		}},
 		{what: "the text form's JSON lexer: scanning, skipping and UTF-8 (§16.1)", names: []string{
-			"TableJsonDecodeUtf8", "TableJsonEncodeUtf8", "TableJsonHex4", "TableJsonLiteral", "TableJsonPeek",
+			"TableJsonEncodeUtf8", "TableJsonHex4", "TableJsonLiteral", "TableJsonPeek",
 			"TableJsonScanLabel", "TableJsonScanNumber", "TableJsonScanString", "TableJsonScanUnit",
-			"TableJsonScanWString", "TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand",
+			"TableJsonSkipContainer", "TableJsonSkipValue", "TableJsonSkippedAmpersand",
 			"TableJsonSpace", "TableJsonTokenDouble", "TableJsonUtf8", "TableJsonWalkNumber",
 		}},
 		{what: "the text form's JSON reader and writer walk (§16)", names: []string{
@@ -152,7 +152,7 @@ func cppRuntimeNames() []Name {
 			"TableJsonWriteField", "TableJsonWriteFields", "TableJsonWriteFloat", "TableJsonWriteGraph",
 			"TableJsonWriteList", "TableJsonWriteMap", "TableJsonWriteMapIntegerKey", "TableJsonWriteMapKey",
 			"TableJsonWritePointer", "TableJsonWriteScalar", "TableJsonWriteSigned", "TableJsonWriteString",
-			"TableJsonWriteTimestamp", "TableJsonWriteUnsigned", "TableJsonWriteValue", "TableJsonWriteWString",
+			"TableJsonWriteTimestamp", "TableJsonWriteUnsigned", "TableJsonWriteValue",
 			"TableJsonWriteWide",
 		}},
 		{what: "the text form's RFC 3339 timestamp walk (§16.5)", names: []string{
@@ -219,9 +219,9 @@ var cppSharedNames = []string{
 	"kTableFixedCount", "kTableFixedEntryBytes", "kTableFixedForm", "kTableFixedHashAt",
 	"kTableFixedHeaderBytes", "kTableFixedLayoutHeaderBytes", "kTableFixedMaxDepth", "kTableFixedOrdinal",
 	"kTableFixedPresent", "kTableFixedPresentDefaults", "kTableFixedRecordMaxBytes", "kTableFixedText", "kTableFixedTextBytes",
-	"kTableFixedTextUtf8", "kTableFixedTextWide", "kTableFixedWiden", "kTableFixedWidenF", "kTableJsonMaxDepth",
+	"kTableFixedTextUtf8", "kTableFixedWiden", "kTableFixedWidenF", "kTableJsonMaxDepth",
 	"kTableJsonMaxKey", "kTableJsonMaxNumber", "kTableMaxSegments", "kTableMessageBatchMax",
 	"kTableMessageEntriesHere", "kTableMessageRefBitsHere", "kTableSegmentBits", "kTableSegmentMask",
 	"kTableSegmentSize", "kTableSlabBytes", "kTableStringTypeId", "table_allocate", "table_block_read32",
-	"table_cook_put128", "table_cook_units", "table_release",
+	"table_cook_put128", "table_release",
 }

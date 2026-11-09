@@ -28,10 +28,9 @@ package ir
 // costs a unit a helper it does not call. The cost of the superset is dead
 // text; the cost of a subset is a translation unit that does not compile.
 //
-// THE CENSUS IS UNIT-LEVEL AND NOT PER-FILE, for the reason [WideTextFields]
-// is: a runtime that sits behind one guard is defined by whichever header a
-// translation unit reaches first, so the question is asked of the unit and
-// never of a file.
+// THE CENSUS IS UNIT-LEVEL AND NOT PER-FILE: a runtime that sits behind one
+// guard is defined by whichever header a translation unit reaches first, so
+// the question is asked of the unit and never of a file.
 func TableDeclaredKinds(u *Unit) map[int]bool {
 	kinds := map[int]bool{}
 	seen := map[*Union]bool{}

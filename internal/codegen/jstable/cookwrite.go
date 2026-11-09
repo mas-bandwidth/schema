@@ -240,11 +240,9 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 			return false
 		case f.Type.Kind == ir.TMap:
 			return true
-		case f.Type.Kind == ir.TWString && (f.Type.Pointer || f.Type.Unbounded || f.Array != ir.ArrayNone):
+		case f.IsList() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 			return true
-		case f.IsList() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
-			return true
-		case f.Array != ir.ArrayNone && f.Array != ir.ArrayList && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+		case f.Array != ir.ArrayNone && f.Array != ir.ArrayList && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 			return true
 		}
 		if f.Type.Kind == ir.TNamed {
@@ -263,7 +261,7 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 			}
 		}
 		switch f.Type.Kind {
-		case ir.TBool, ir.TInt, ir.TFixed, ir.TFloat32, ir.TFloat64, ir.TString, ir.TWString, ir.TBytes, ir.TBits:
+		case ir.TBool, ir.TInt, ir.TFixed, ir.TFloat32, ir.TFloat64, ir.TString, ir.TBytes, ir.TBits:
 			return false
 		}
 		return true
@@ -271,11 +269,11 @@ func cookFieldBlocked(f *ir.Field, variable bool) bool {
 	switch {
 	case f.Type.Optional, f.IsMap(), f.IsList(), f.KeyEnum != "", f.Guard != "":
 		return true
-	case f.Type.Kind == ir.TFixed, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TMap:
+	case f.Type.Kind == ir.TFixed, f.Type.Kind == ir.TMap:
 		return true
 	case f.Type.Kind == ir.TInt && f.Type.Width >= 128:
 		return true
-	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString):
+	case f.Array != ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		return true
 	case !variable && f.Type.Pointer:
 		return true
@@ -367,11 +365,6 @@ func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) stri
 		size, align := ir.ListElementLayout(u, f)
 		return fmt.Sprintf("{k:\"list\",n:%s,at:%d,size:%d,align:%d,elem:%s}",
 			qn, pieces[0].Offset, size, max(align, 1), cookElemLiteral(u, f, variable))
-	}
-	if variable && f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone {
-		// char16_t[N+1]: the used CODE UNITS, each a two-byte scalar in the
-		// cook's byte order, then a zero tail, and the unit count beside it
-		return fmt.Sprintf("{k:\"wstr\",n:%s,at:%d,lenAt:%d,cap:%d}", qn, pieces[0].Offset, pieces[1].Offset, f.Type.Size)
 	}
 	if f.KeyEnum != "" || f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted {
 		stride := cookElemStride(u, f)
@@ -660,7 +653,6 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     // a LIST's or a MAP's holder is written by the extent's carve, which
     // places the array it points at (§2.8, §2.9)
     if (fd.k === "list" || fd.k === "map" || fd.k === "textref") { return true; }
-    if (fd.k === "wstr") { return writeWide(view, base, fd, parent, le); }
     if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
     if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
     if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
@@ -709,16 +701,6 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       default:
         return false;
     }
-  }
-  // char16_t[N+1]: a JavaScript string IS its UTF-16 code units, each written
-  // as a two-byte scalar in the cook's byte order, the unit count beside them
-  function writeWide(view, base, fd, parent, le) {
-    const s = parent[fd.n];
-    if (typeof s !== "string" || s.length > fd.cap) { return false; }
-    if (view !== null) {
-      for (let i = 0; i < s.length; i++) { view.setUint16(base + fd.at + 2 * i, s.charCodeAt(i), le); }
-    }
-    return putWidth(view, base + fd.lenAt, 4, s.length, true, le);
   }
   function holeValue(fd) {
     switch (fd.k) {

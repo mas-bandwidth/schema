@@ -239,8 +239,8 @@ local function shift(n: Node, d: number)
 end
 
 -- THE CONTENT RULES over a text field's USED units (docs/SPEC-TABLES.md §3.4;
--- docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8 with no zero byte,
--- paired non-zero UTF-16 code units for wstring. bytes(N) carries no text rule.
+-- docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8 with no zero byte.
+-- bytes(N) carries no text rule.
 local function utf8IllFormed(buf: buffer, at: number, n: number): boolean
 	local i = 0
 	while i < n do
@@ -518,7 +518,7 @@ local function readTable(d: any, w: Node, r: Node, buf: buffer, at: number, cx: 
 end
 
 local function readText(f: any, w: Node, buf: buffer, at: number): (any, any)
-	local unit = if w.kind == 33 then 2 else 1
+	local unit = 1
 	local cap = math.floor((w.size - COUNT) / unit)
 	local length = buffer.readu32(buf, w.off + at)
 	-- the WRITER's cap (bill §12.5, §4.5): a length past it refuses by name
@@ -694,7 +694,7 @@ readPair = function(f: any, w: Node, r: Node, buf: buffer, at: number, cx: Cx, d
 		return readArray(f, w, r, buf, at, cx, def)
 	elseif k == 16 then
 		return readKeyed(f, w, r, buf, at, cx, def), nil
-	elseif k == 12 or k == 33 then
+	elseif k == 12 then
 		return readText(f, w, buf, at)
 	elseif k == 30 then
 		return readEnum(f, w, r, buf, at, cx), nil
@@ -762,7 +762,7 @@ censusPair = function(f: any, w: Node, r: Node, c: Census)
 				censusPair(arm, w.children[j], rarm, c)
 			end
 		end
-	elseif k ~= 12 and k ~= 33 and k ~= 30 and w.size ~= r.size then
+	elseif k ~= 12 and k ~= 30 and w.size ~= r.size then
 		if not (w.size < r.size and r.size <= 8) then c.kindMismatch += 1 end
 	end
 end
@@ -806,7 +806,8 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 	end
 end
 
-function writeOne(f: any, n: Node, value: any, buf: buffer)
+local writeStruct: (d: any, n: Node, value: any, buf: buffer) -> ()
+local function writeOne(f: any, n: Node, value: any, buf: buffer)
 	local slot = f.slot
 	local own = value
 	if slot ~= nil then own = value[slot] end
@@ -815,7 +816,7 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 		buffer.writeu32(buf, n.off, length)
 		local b = own
 		if b ~= nil and length > 0 then
-			buffer.copy(buf, n.off + COUNT, b, 0, length * (f.wide and 2 or 1))
+			buffer.copy(buf, n.off + COUNT, b, 0, length)
 		end
 	elseif f.s == "bytes" then
 		local length = value[slot .. "Length"] or 0
@@ -889,7 +890,7 @@ local function deprecatedValue(f: any, value: any, record: any): any
 	return nil
 end
 
-function writeStruct(d: any, n: Node, value: any, buf: buffer)
+writeStruct = function(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)

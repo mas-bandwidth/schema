@@ -2,7 +2,7 @@
 //
 // docs/FIXED-FORM-ALGORITHM.md:54-55 — "bytes(N) is walked as an ARRAY OF u8
 // — kind 14 with one synthetic child at kind 6, size 1 — never as a text kind;
-// only string(N) (12) and wstring(N) (33) are text kinds in a layout."
+// only string(N) (12) is a text kind in a layout."
 //
 // docs/FIXED-FORM-ALGORITHM.md:75 — the kind table confirms: "14 | array —
 // and bytes(N), as an array of 6".
@@ -117,15 +117,15 @@ void main() {
   // ---- NEGATIVE CONTROL: the text field before it has kind 12, not 14 ----
   //
   // ProfileConfig's `name string(32)` is the field before `icon bytes(16)`.
-  // It should be kind 12 (string), NOT kind 14 — only string/wstring are
-  // text kinds, and bytes(N) is an array kind.
+  // It should be kind 12 (string), NOT kind 14 — only string is a text
+  // kind, and bytes(N) is an array kind.
   if (foundBytesEntry && bytesEntryIdx > 1) {
     final textOffset = 4 + 1 * 17; // entry 1: name string(32)
     final textKind = profileConfigFixedLayout[textOffset + 8];
     check(
       textKind == 12,
       'W11: the string field before bytes(16) is kind 12 (got $textKind) — '
-      '"only string(N) (12) and wstring(N) (33) are text kinds"',
+      '"only string(N) (12) is a text kind"',
     );
   }
 

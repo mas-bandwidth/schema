@@ -13,7 +13,7 @@ func TestStoredTextRefusalsCSharp(t *testing.T) {
 table Child { name string(2) }
 table Root {
  name string(2)
- wide wstring(2)
+ wide string(2)
  blob *string
  children []Child
  names map[string(2)]int32

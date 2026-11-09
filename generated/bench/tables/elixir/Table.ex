@@ -1438,9 +1438,6 @@ defmodule Benchtable.Table do
       :enum ->
         fixed_class_enum_to_table(f, value)
 
-      :wstring ->
-        fixed_class_wide_to_table(value)
-
       :keyed ->
         fixed_class_keyed_to_table(f, value)
 
@@ -1449,15 +1446,6 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp fixed_class_wide_to_table(value) when is_binary(value) do
-    case :unicode.characters_to_binary(value, {:utf16, :little}, :utf8) do
-      text when is_binary(text) -> text
-      _ -> value
-    end
-  end
-
-  defp fixed_class_wide_to_table(value), do: value
-
   defp fixed_class_elem_to_table(f, value) do
     cond do
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
@@ -1465,9 +1453,6 @@ defmodule Benchtable.Table do
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_to_table(f, value)
-
-      Map.get(f, :elem_kind) == 33 ->
-        fixed_class_wide_to_table(value)
 
       Map.has_key?(f, :by_name) ->
         fixed_class_enum_to_table(f, value)
@@ -1605,7 +1590,6 @@ defmodule Benchtable.Table do
       :enum -> :none
       :keyed -> fixed_class_keyed_from_table(f, %{})
       :string -> <<>>
-      :wstring -> <<>>
       :bytes -> <<>>
       :bool -> false
       :float -> 0.0
@@ -1631,9 +1615,6 @@ defmodule Benchtable.Table do
       :enum ->
         fixed_class_enum_from_table(f, value)
 
-      :wstring ->
-        fixed_class_wide_from_table(value)
-
       :keyed ->
         fixed_class_keyed_from_table(f, value)
 
@@ -1655,15 +1636,6 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp fixed_class_wide_from_table(value) when is_binary(value) do
-    case :unicode.characters_to_binary(value, :utf8, {:utf16, :little}) do
-      text when is_binary(text) -> text
-      _ -> value
-    end
-  end
-
-  defp fixed_class_wide_from_table(_value), do: <<>>
-
   defp fixed_class_elem_from_table(f, value) do
     cond do
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
@@ -1674,9 +1646,6 @@ defmodule Benchtable.Table do
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_from_table(f, value)
-
-      Map.get(f, :elem_kind) == 33 ->
-        fixed_class_wide_from_table(value)
 
       Map.has_key?(f, :by_name) ->
         fixed_class_enum_from_table(f, value)
@@ -2121,20 +2090,6 @@ defmodule Benchtable.Table do
     end
   end
 
-  # wstring(N) on the variable wire (docs/SPEC-TABLES.md §3): kind 33, L the
-  # UTF-16LE byte count, the code units; an empty one elides.
-  defp emit_field(%{t: :wstring} = f, value, idx_map, ids, order, acc) do
-    v = Map.get(value, f.name, f.default)
-
-    if not emit_scalar?(f, v) do
-      {idx_map, ids, order, acc}
-    else
-      {ref, ids, order} = intern(ids, order, f.id)
-      units = utf16(v)
-      {idx_map, ids, order, [acc, leb_encode(ref), <<33>>, leb_encode(byte_size(units)), units]}
-    end
-  end
-
   defp emit_field(%{t: :map} = f, value, idx_map, ids, order, acc) do
     # SPEC-TABLES §2.8: map storage is the same kind-14/element-13 framing
     # as a list of entry tables, with ascending key order fixed by the writer.
@@ -2325,8 +2280,6 @@ defmodule Benchtable.Table do
 
   defp pad_fixed(_f, elements), do: elements
 
-  defp utf16(v), do: :unicode.characters_to_binary(v, :utf8, {:utf16, :little})
-
   defp keyed_elem(%{elem_kind: 13} = item, v, idx_map, ids, order) do
     {_idx, ids2, order2, body} =
       save_fields(Map.fetch!(@tables, item.elem), v || %{}, idx_map, ids, order, [])
@@ -2516,29 +2469,232 @@ defmodule Benchtable.Table do
 
   defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
 
-  defp strict_reachable!(records, root) do
-    all = Map.put(records, 1, root)
-    seen = strict_reach([1], all, MapSet.new())
+  # A node record no pointer reaches is damage (§3, §4): the reach is
+  # syntactic, over the wire's own pointer payloads in the root body and in
+  # every reached node's body, known and unknown fields alike, so a node
+  # named only by a skipped field still counts as reached and a node named
+  # by no payload at all refuses the whole load.
+  defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
+    node_indices =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.flat_map(fn {node, idx} ->
+        if match?({:table, _, _}, node) or match?({:blob, _, _}, node),
+          do: [idx],
+          else: []
+      end)
 
-    if Enum.any?(Map.keys(all), fn idx -> not MapSet.member?(seen, idx) end),
+    bodies = Map.put(node_fields, 1, fields)
+    seen = wire_reach([1], bodies, MapSet.new(), ids)
+
+    if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
       do: throw(:wire_damaged)
 
     :ok
   end
 
-  defp strict_reach([], _all, seen), do: seen
+  defp wire_reach([], _bodies, seen, _ids), do: seen
 
-  defp strict_reach([idx | rest], all, seen) do
+  defp wire_reach([idx | rest], bodies, seen, ids) do
     if MapSet.member?(seen, idx) do
-      strict_reach(rest, all, seen)
+      wire_reach(rest, bodies, seen, ids)
     else
       refs =
-        case Map.fetch(all, idx) do
-          {:ok, value} -> stored_references(value, [])
+        case Map.fetch(bodies, idx) do
+          {:ok, fields} -> wire_field_refs(fields, ids)
           :error -> []
         end
 
-      strict_reach(refs ++ rest, all, MapSet.put(seen, idx))
+      wire_reach(refs ++ rest, bodies, MapSet.put(seen, idx), ids)
+    end
+  end
+
+  defp wire_field_refs(fields, ids) do
+    Enum.flat_map(fields, fn
+      {_id, kind, payload} when is_binary(payload) -> wire_payload_refs(kind, payload, ids)
+      _ -> []
+    end)
+  end
+
+  defp wire_payload_refs(17, payload, _ids) do
+    case leb(payload) do
+      {idx, _rest} -> [idx]
+      :error -> []
+    end
+  end
+
+  defp wire_payload_refs(13, payload, ids) do
+    case leb(payload) do
+      {len, body} when byte_size(body) >= len -> wire_body_refs(binary_part(body, 0, len), ids)
+      _ -> []
+    end
+  end
+
+  defp wire_payload_refs(14, payload, ids), do: wire_array_refs(payload, false, ids)
+
+  defp wire_payload_refs(16, payload, ids), do: wire_array_refs(payload, true, ids)
+
+  defp wire_payload_refs(15, payload, ids) do
+    case leb(payload) do
+      {0, _rest} ->
+        []
+
+      {_arm, <<kind, rest::binary>>} ->
+        case leb(rest) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+            arm_payload = if kind in [12, 13, 14, 16], do: framed, else: inner
+            wire_payload_refs(kind, arm_payload, ids)
+
+          _ ->
+            []
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  defp wire_payload_refs(_kind, _payload, _ids), do: []
+
+  defp wire_array_refs(payload, keyed, ids) do
+    with {_len, body} <- leb(payload),
+         <<elem_kind, rest::binary>> <- body,
+         {n, elems} <- leb(rest) do
+      wire_elem_refs(elem_kind, elems, n, keyed, ids, [])
+    else
+      _ -> []
+    end
+  end
+
+  defp wire_elem_refs(_kind, _rest, 0, _keyed, _ids, acc), do: Enum.reverse(acc)
+
+  defp wire_elem_refs(kind, rest, n, true, ids, acc) when n > 0 do
+    with {_key, r1} <- leb(rest),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      after_elem = binary_part(r2, l, byte_size(r2) - l)
+
+      refs =
+        if kind == 13 do
+          wire_body_refs(elem, ids)
+        else
+          case wire_one_elem_refs(kind, elem, ids) do
+            {r, _} -> r
+            :error -> []
+          end
+        end
+
+      wire_elem_refs(kind, after_elem, n - 1, true, ids, refs ++ acc)
+    else
+      _ -> Enum.reverse(acc)
+    end
+  end
+
+  defp wire_elem_refs(kind, rest, n, false, ids, acc) when n > 0 do
+    case wire_one_elem_refs(kind, rest, ids) do
+      {refs, after_elem} -> wire_elem_refs(kind, after_elem, n - 1, false, ids, refs ++ acc)
+      :error -> Enum.reverse(acc)
+    end
+  end
+
+  defp wire_elem_refs(_kind, _rest, _n, _keyed, _ids, acc), do: Enum.reverse(acc)
+
+  defp wire_one_elem_refs(17, rest, _ids) do
+    case leb(rest) do
+      {idx, after_elem} -> {[idx], after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(13, rest, ids) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        {wire_body_refs(binary_part(body, 0, len), ids),
+         binary_part(body, len, byte_size(body) - len)}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp wire_one_elem_refs(15, rest, ids) do
+    case leb(rest) do
+      {0, after_elem} ->
+        {[], after_elem}
+
+      {_arm, <<kind, after_kind::binary>>} ->
+        case leb(after_kind) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(after_kind, 0, byte_size(after_kind) - byte_size(content) + l)
+            after_elem = binary_part(content, l, byte_size(content) - l)
+            arm_payload = if kind in [12, 13, 14, 16], do: framed, else: inner
+            {wire_payload_refs(kind, arm_payload, ids), after_elem}
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32] do
+    case body(rest) do
+      {:ok, payload, after_elem} -> {wire_payload_refs(kind, payload, ids), after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, _ids) when kind in [30] do
+    case leb(rest) do
+      {_idx, after_elem} -> {[], after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, _ids) do
+    w = kind_width(kind)
+
+    if w > 0 and byte_size(rest) >= w do
+      {[], binary_part(rest, w, byte_size(rest) - w)}
+    else
+      :error
+    end
+  end
+
+  defp wire_body_refs(bin, ids), do: wire_body_refs(bin, ids, MapSet.new())
+
+  defp wire_body_refs(<<>>, _ids, _seen), do: []
+
+  defp wire_body_refs(bin, ids, seen) do
+    case leb(bin) do
+      {0, _rest} ->
+        []
+
+      {ref, rest} ->
+        _ = seen
+
+        case rest do
+          <<kind, rest2::binary>> ->
+            case slice(rest2, kind) do
+              {:ok, payload, rest3} ->
+                wire_payload_refs(kind, payload, ids) ++
+                  wire_body_refs(rest3, ids, MapSet.put(seen, ref))
+
+              :error ->
+                []
+            end
+
+          _ ->
+            []
+        end
+
+      :error ->
+        []
     end
   end
 
@@ -2869,9 +3025,9 @@ defmodule Benchtable.Table do
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
-                          if strict_flag?() and node_bin != nil, do: throw(:wire_damaged)
-                          # a node table riding twice: the LAST is the
-                          # numbering (§3 last-wins; framing N7)
+                          # a node table riding twice is the same field id
+                          # twice in one body: damage (§3, §4)
+                          if node_bin != nil, do: throw(:wire_damaged)
                           entries(rest3, ids, allowed, transport, acc, payload)
                         else
                           {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
@@ -3129,8 +3285,16 @@ defmodule Benchtable.Table do
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        _ ->
+        :malformed ->
+          # the directory already refused a malformed record before any
+          # body was read (directory_report), so this is never taken
           :null
+
+        _ ->
+          # a record this reader cannot name under a known pointer is a
+          # kind mismatch, not a null (§3.1, §4): the writer of a known
+          # pointer field names a record of the field's own type
+          {:value, :wrong_type}
       end
     end
   end
@@ -3162,22 +3326,24 @@ defmodule Benchtable.Table do
     # A refusal must retain exactly the diagnostic prefix already earned.
     report = directory_report(nodes, empty_report(), false)
 
-    {records, report} =
+    {records, report, node_fields} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{}, report}, fn
-        {{:table, name, body}, idx}, {records, report} ->
-          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
+      |> Enum.reduce({%{}, report, %{}}, fn
+        {{:table, name, body}, idx}, {records, report, node_fields} ->
+          {node_desc, fields_of_node, node_ok} = decoded_fields(name, body, ids)
 
           {_status, value, own_report} =
             carry_count_report(report, fn ->
               in_read_holder(idx, fn ->
-                decode(node_desc, node_fields, nodes, ids, node_ok)
+                decode(node_desc, fields_of_node, nodes, ids, node_ok)
               end)
             end)
 
           if not node_ok, do: throw(:wire_damaged)
-          {Map.put(records, idx, value), merge_report(report, own_report)}
+
+          {Map.put(records, idx, value), merge_report(report, own_report),
+           Map.put(node_fields, idx, fields_of_node)}
 
         _, state ->
           state
@@ -3190,7 +3356,7 @@ defmodule Benchtable.Table do
 
     report = merge_report(report, own_report)
 
-    if strict_flag?(), do: strict_reachable!(records, root)
+    strict_wire_reachable!(fields, node_fields, nodes, ids)
 
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     {assemble_directory(records), report}
@@ -3615,35 +3781,6 @@ defmodule Benchtable.Table do
     end
   end
 
-  # Validate the whole UTF-16LE payload before clamping. NUL and unpaired
-  # surrogates are damage even beyond the bound; a clamp never splits a pair.
-  defp read_payload(%{t: :wstring} = f, payload, _nodes, _ids, report) do
-    case leb(payload) do
-      {len, rest} when byte_size(rest) >= len and rem(len, 2) == 0 ->
-        raw = binary_part(rest, 0, len)
-
-        case :unicode.characters_to_binary(raw, {:utf16, :little}, :utf8) do
-          s when is_binary(s) ->
-            cond do
-              not utf8_valid?(s) ->
-                {:cont, "", throw(:wire_damaged)}
-
-              div(len, 2) > f.size ->
-                throw(:wire_damaged)
-
-              true ->
-                {:cont, s, report}
-            end
-
-          _ ->
-            {:cont, "", throw(:wire_damaged)}
-        end
-
-      _ ->
-        {:cont, "", throw(:wire_damaged)}
-    end
-  end
-
   defp read_payload(%{t: :list} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {_len, arr} when byte_size(arr) < 2 ->
@@ -3665,7 +3802,7 @@ defmodule Benchtable.Table do
                 end
 
               check_wire_count(n, f, report)
-              reader = %{f | elem_kind: elem_kind}
+              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -3865,7 +4002,7 @@ defmodule Benchtable.Table do
   defp read_arm_payload(a, name, inner, framed, nodes, ids, report) do
     # the length-framed kinds read their own L, so they take the framed bytes;
     # every other arm reads its payload exactly as a field does
-    payload = if a.arm_kind in [12, 13, 14, 16, 33], do: framed, else: inner
+    payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
     case read_payload(a, payload, nodes, ids, report) do
       {:cont, :inert, report} -> {:cont, {name, inert_empty(a)}, report}
@@ -4046,8 +4183,13 @@ defmodule Benchtable.Table do
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
-    if strict_flag?() and rest != <<>>, do: throw(:wire_damaged)
+  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4).
+    # A widened element kind reads at the wire width, and the rest of the L
+    # is the writer's wider slots, skipped with the body (§2.9, §4).
+    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
+      do: throw(:wire_damaged)
+
     {Enum.reverse(acc), report}
   end
 
@@ -4356,7 +4498,7 @@ defmodule Benchtable.Table do
         end
       end
 
-      if Map.get(f, :t) in [:string, :wstring] and field_active?(f, desc, value) do
+      if Map.get(f, :t) == :string and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
@@ -4521,7 +4663,7 @@ defmodule Benchtable.Table do
   defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
-  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
+  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32], do: body(bin)
 
   defp slice(bin, 15) do
     case leb(bin) do
@@ -5094,7 +5236,6 @@ defmodule Benchtable.Table do
   defp json_field(%{t: :enum}, nil, _depth), do: "\"None\""
   defp json_field(%{t: :enum}, name, _depth), do: ["\"", json_escape(name), "\""]
   defp json_field(%{t: :union} = f, sel, depth), do: json_arm(f.elem, sel, depth)
-  defp json_field(%{t: :wstring}, v, _depth), do: ["\"", json_escape(v), "\""]
 
   defp json_field(%{t: :keyed} = f, slots, depth) do
     slots = slots || %{}
@@ -5442,11 +5583,22 @@ defmodule Benchtable.Table do
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls. Every
-  # other byte — the card's multibyte UTF-8 included — rides raw.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
+  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
+  # well-formed sequence is not text: no read puts it into storage, so a
+  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
+  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
+  # (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
+
+  defp json_escape(<<c, _::binary>> = bin, acc) when c >= 0x80 do
+    case bin do
+      <<ch::utf8, rest::binary>> -> json_escape(rest, [<<ch::utf8>> | acc])
+      _ -> throw(:invalid_value)
+    end
+  end
 
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
@@ -5619,24 +5771,6 @@ defmodule Benchtable.Table do
     do: json_read_arm(f.elem, raw, report)
 
   defp json_read_field(%{t: :union}, raw, _report) do
-    json_skip_value(raw)
-    {:skip, throw(:wire_damaged)}
-  end
-
-  # wstring(N) (docs/SPEC-TABLES.md §3, §16.2): the text is UTF-8; past N
-  # UTF-16 code units it clamps and counts.
-  defp json_read_field(%{t: :wstring} = f, raw, report) when is_binary(raw) do
-    report = json_text_zero(f, raw, report)
-    units = utf16(raw)
-
-    if div(byte_size(units), 2) > f.size do
-      throw(:wire_damaged)
-    else
-      {raw, report}
-    end
-  end
-
-  defp json_read_field(%{t: :wstring}, raw, _report) do
     json_skip_value(raw)
     {:skip, throw(:wire_damaged)}
   end
@@ -5976,7 +6110,7 @@ defmodule Benchtable.Table do
   defp json_present_default(%{t: :list}), do: []
   defp json_present_default(%{t: :enum} = f), do: enum_none(f)
   defp json_present_default(%{t: kind}) when kind in [:pointer, :blob, :union], do: nil
-  defp json_present_default(%{t: kind}) when kind in [:string, :wstring, :bytes], do: ""
+  defp json_present_default(%{t: kind}) when kind in [:string, :bytes], do: ""
   defp json_present_default(%{t: :bool}), do: false
   defp json_present_default(%{t: :float}), do: 0.0
   defp json_present_default(_f), do: 0
@@ -7514,17 +7648,6 @@ defmodule Benchtable.Table do
     cook_text(buf, base + off, base + len_at, v, bound, order)
   end
 
-  defp cook_value(
-         %{t: :wstring, cook_off: off, count_off: len_at, size: bound},
-         v,
-         base,
-         _index,
-         order,
-         buf
-       ) do
-    cook_units(buf, base + off, base + len_at, v, bound, order)
-  end
-
   defp cook_value(%{t: :enum, cook_off: off} = f, v, base, _index, order, buf) do
     ord = cook_ord(f, v)
     put_uint(buf, base + off, ord, f.enum_width, order)
@@ -7689,24 +7812,6 @@ defmodule Benchtable.Table do
     if not is_binary(v) or byte_size(v) > bound, do: throw(:invalid)
     buf = put_raw(buf, at, v)
     put_i32(buf, len_at, byte_size(v), order)
-  end
-
-  # wstring(N)'s pieces (§7.2): char16_t[N + 1], each UTF-16 code unit a
-  # two-byte scalar in the cook's byte order, then the int32 used length in
-  # code units
-  defp cook_units(buf, at, len_at, v, bound, order) do
-    if not is_binary(v) or not String.valid?(v) or :binary.match(v, <<0>>) != :nomatch,
-      do: throw(:invalid)
-
-    units = for <<u::little-unsigned-16 <- utf16(v)>>, do: u
-    if length(units) > bound, do: throw(:invalid)
-
-    buf =
-      Enum.reduce(Enum.with_index(units), buf, fn {u, i}, buf ->
-        put_uint(buf, at + 2 * i, u, 2, order)
-      end)
-
-    put_i32(buf, len_at, length(units), order)
   end
 
   defp cook_align(v, a) when a <= 1, do: v

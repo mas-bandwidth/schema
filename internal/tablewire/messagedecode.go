@@ -963,13 +963,6 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			return false
 		}
 		return d.r.skip(int(n) * 8)
-	case ir.TableKindWstring:
-		// the length, NO align, then SIXTEEN bits a code unit (§3.3)
-		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
-		if !ok {
-			return false
-		}
-		return d.r.skip(int(n) * 16)
 	case ir.TableKindEscape:
 		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
 		// the one path a later-major writer has on this form (§3.3)

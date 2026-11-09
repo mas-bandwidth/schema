@@ -50,14 +50,6 @@ var cppVarCellAnchors = map[string]struct {
 			"out.invalid = true; // not text: the write refuses (§16.14 W0)",
 		},
 	},
-	// vt/wstring: an unpaired surrogate is not text; the write refuses
-	// (§16.14 W0) rather than writing U+FFFD.
-	"vt/wstring/cpp": {
-		src: "internal/codegen/cpptable/json.go",
-		want: []string{
-			"out.invalid = true; // an unpaired surrogate is not text: the write refuses (§16.14 W0)",
-		},
-	},
 	// vt/widening: a widened value that lands outside the declared range
 	// refuses out_of_range on the raw scale, never reading it.
 	"vt/widening/cpp": {

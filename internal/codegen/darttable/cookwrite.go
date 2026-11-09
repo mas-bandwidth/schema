@@ -41,7 +41,7 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 			if f.Type.Pointer || f.IsList() || f.IsMap() || f.Guard != "" {
 				supported = false
 			}
-			if (f.Array != ir.ArrayNone || f.KeyEnum != "") && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
+			if (f.Array != ir.ArrayNone || f.KeyEnum != "") && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 				supported = false
 			}
 		}
@@ -189,16 +189,12 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		g.pf("%s}\n", ind)
 		return
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
 		g.pf("%sif (%sLength < 0 ||\n%s    %sLength > %d ||\n%s    %sLength > %s.length)\n%s  return false;\n", ind, expr, ind, expr, f.Type.Size, ind, expr, expr, ind)
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %sLength, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%s  for (var i = 0; i < %sLength; i++) {\n", ind, expr)
-		if f.Type.Kind == ir.TWString {
-			g.pf("%s    out.setUint16(at + %d + i * 2, %s[i], order);\n", ind, offset, expr)
-		} else {
-			g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, expr)
-		}
+		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, expr)
 		g.pf("%s  }\n%s}\n", ind, ind)
 		return
 	}
@@ -556,7 +552,7 @@ func variableCookField(f *ir.Field) bool {
 		// width, carried by the wide write below; arrays of them are another
 		// card's family
 		return f.Array == ir.ArrayNone
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return f.Array == ir.ArrayNone
 	case ir.TInt:
 		if f.Type.Width == 128 {
@@ -1169,17 +1165,6 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
 		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
 		g.pf("%s    out.setUint8(at + %d + i, %s[i]);\n", ind, offset, text)
-		g.pf("%s  }\n%s}\n", ind, ind)
-	case f.Type.Kind == ir.TWString:
-		// WIDE TEXT's cooked storage (§7.2): char16_t[N+1], the String's
-		// UTF-16 code units, then the int32 used length in CODE UNITS
-		text := dartName(f.Name) + "Units"
-		g.pf("%sfinal %s = %s.codeUnits;\n", ind, text, expr)
-		g.pf("%sif (%s.length > %d) return false;\n", ind, text, f.Type.Size)
-		g.pf("%sif (out != null) {\n", ind)
-		g.pf("%s  out.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, text)
-		g.pf("%s  for (var i = 0; i < %s.length; i++) {\n", ind, text)
-		g.pf("%s    out.setUint16(at + %d + i * 2, %s[i], order);\n", ind, offset, text)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case isWide(f):
 		g.emitCookVariableWide(f, expr, fmt.Sprintf("at + %d", offset), fmt.Sprintf("at + %d", offset+8), int64(ir.TableKindWidth(wideKind(f))), ind)

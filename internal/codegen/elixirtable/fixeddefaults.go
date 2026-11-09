@@ -56,9 +56,6 @@ func fixedFieldDefault(f *ir.Field) []byte {
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		out = appendFixedU32(out, uint32(len(f.DefBytes)))
 		out = append(out, fixedPadTo(f.DefBytes, f.Type.Size)...)
-	case f.Type.Kind == ir.TWString:
-		out = appendFixedU32(out, uint32(len(f.DefBytes)/2))
-		out = append(out, fixedPadTo(f.DefBytes, 2*f.Type.Size)...)
 	default:
 		out = append(out, fixedElementDefault(f)...)
 	}
@@ -240,7 +237,7 @@ func (g *fixedGen) fixedElemDefaultTerm(f *ir.Field) string {
 			return "true"
 		}
 		return "false"
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		if len(f.DefBytes) == 0 {
 			return "<<>>"
 		}

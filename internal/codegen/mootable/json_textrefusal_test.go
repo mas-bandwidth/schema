@@ -14,7 +14,7 @@ import (
 // manifest's json-write-refusal rows (text_refuse_illformed,
 // text_refuse_unpaired) hold the same through the conformance driver.
 
-const textRefusalSchema = "package probe\ntable R\n{\n    s string(8)\n    w wstring(4)\n}\n"
+const textRefusalSchema = "package probe\ntable R\n{\n    s string(8)\n}\n"
 
 // textRefusalMain prints ToJsonMeasure over a well-formed record, then with
 // the narrow field ill-formed (61 FF 62), then with the wide field's units
@@ -25,10 +25,6 @@ local v = P.NewR()
 v.S = "ab"
 print(if P.RToJsonMeasure(v) > 0 then "ok" else "refused")
 v.S = "a\xffb"
-print(P.RToJsonMeasure(v))
-v.S = "ab"
-v.W = buffer.fromstring("a\x00\x00\xd8b\x00")
-v.WLength = 3
 print(P.RToJsonMeasure(v))
 `
 
@@ -49,7 +45,7 @@ func textRefusalRun(t *testing.T, sabotage func(string) string) string {
 func TestMooJsonWriterRefusesIllFormedText(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted text form)")
 	t.Parallel()
-	if got := textRefusalRun(t, nil); got != "ok\n-1\n-1" {
+	if got := textRefusalRun(t, nil); got != "ok\n-1" {
 		t.Fatalf("moo's ToJsonMeasure over the well-formed, ill-formed and unpaired records: %q, want ok, -1, -1", got)
 	}
 }
@@ -64,7 +60,6 @@ func TestMooJsonWriterRefusesIllFormedTextNegativeControl(t *testing.T) {
 		row        int
 	}{
 		{"narrow", `w.err = "invalid_value: ill-formed UTF-8`, 1},
-		{"wide", `w.err = "invalid_value: an unpaired surrogate`, 2},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -75,10 +70,10 @@ func TestMooJsonWriterRefusesIllFormedTextNegativeControl(t *testing.T) {
 				return strings.Replace(src, c.site, "local _ = "+strings.TrimPrefix(c.site, "w.err = "), 1)
 			})
 			lines := strings.Split(got, "\n")
-			if len(lines) != 3 || lines[0] != "ok" {
+			if len(lines) != 2 || lines[0] != "ok" {
 				t.Fatalf("the sabotaged probe printed %q", got)
 			}
-			for i := 1; i <= 2; i++ {
+			for i := 1; i <= 1; i++ {
 				wrote := lines[i] != "-1"
 				if wrote != (i == c.row) {
 					t.Fatalf("with the %s refusal planted out, row %d answered %q (all: %q): the test cannot see that refusal", c.name, i, lines[i], got)

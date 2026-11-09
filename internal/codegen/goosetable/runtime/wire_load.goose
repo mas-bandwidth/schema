@@ -325,7 +325,7 @@ fn skip(c: LoadCtx&, r: Rd&, kind: u8) -> bool {
         let v, ok = leb(c, r);
         return ok;
     }
-    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 || kind == 33 {
+    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 {
         let n, ok = leb(c, r);
         if !ok || !fits(r, n) { return false; }
         r.off += n as! i64;
@@ -381,42 +381,6 @@ fn text_boundary(data: const u8[:], off: i64, n: i64, bound: i64) -> i64 {
     if n <= bound { return n; }
     var cut = bound;
     while cut > 0 && (data[off + cut] & 0xC0) == 0x80 { cut -= 1; }
-    return cut;
-}
-
-fn unit_at(data: const u8[:], at: i64) -> u16 {
-    let lo: u16 = data[at];
-    let hi: u16 = data[at + 1];
-    return lo | (hi << 8);
-}
-
-// wide_valid: kind 33's rule — surrogates paired, no zero code unit (§3).
-fn wide_valid(data: const u8[:], off: i64, units: i64) -> bool {
-    var i: i64 = 0;
-    while i < units {
-        let u = unit_at(data, off + 2 * i);
-        if u == 0 { return false; }
-        if u >= 0xD800 && u <= 0xDBFF {
-            if i + 1 >= units { return false; }
-            let low = unit_at(data, off + 2 * (i + 1));
-            if low < 0xDC00 || low > 0xDFFF { return false; }
-            i += 1;
-        } else if u >= 0xDC00 && u <= 0xDFFF {
-            return false;
-        }
-        i += 1;
-    }
-    return true;
-}
-
-// wide_boundary: a clamp never splits a surrogate pair (§3).
-fn wide_boundary(data: const u8[:], off: i64, units: i64, bound: i64) -> i64 {
-    if units <= bound { return units; }
-    var cut = bound;
-    if cut > 0 {
-        let last = unit_at(data, off + 2 * (cut - 1));
-        if last >= 0xD800 && last <= 0xDBFF { cut -= 1; }
-    }
     return cut;
 }
 
@@ -811,7 +775,7 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
 // its width (docs/SPEC-TABLES.md §3).
 fn loader_of(d: FieldDesc) -> Loader {
     for g in load_registry {
-        if g.shape == d.shape && g.wide == d.wide && (g.array == 0 || g.array == d.array) { return g.loader; }
+        if g.shape == d.shape && (g.array == 0 || g.array == d.array) { return g.loader; }
     }
     return Loader.Scalar;
 }
@@ -831,9 +795,6 @@ fn load_field(k: Loader.Pointer, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, o
 }
 fn load_field(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
     return load_text(c, r, slot, d);
-}
-fn load_field(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
-    return load_wide(c, r, slot, d);
 }
 fn load_field(k: Loader.Enum, c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, owner: i64) -> bool {
     return load_enum(c, r, slot, d, false);
@@ -888,29 +849,6 @@ fn load_text(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
     c.vals[slot].off = r.off;
     c.vals[slot].len = keep;
     r.off += len;
-    return true;
-}
-
-// load_wide: kind 33 (§3): an odd L or ill-formed units read the default.
-fn load_wide(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc) -> bool {
-    let n, ok = leb(c, r);
-    if !ok || !fits(r, n) { c.report.body_damaged = true; return false; }
-    let len = n as! i64;
-    let at = r.off;
-    r.off += len;
-    if (len & 1) != 0 || !wide_valid(c.data, at, len / 2) {
-        c.report.body_damaged = true;
-        c.vals[slot].state = ValAbsent;
-        return true;
-    }
-    var keep = len / 2;
-    if keep > d.bound {
-        keep = wide_boundary(c.data, at, len / 2, d.bound);
-        c.report.oor += 1;
-    }
-    c.vals[slot].state = ValPresent;
-    c.vals[slot].off = at;
-    c.vals[slot].len = keep * 2;
     return true;
 }
 
@@ -1130,9 +1068,6 @@ fn load_item(k: Loader.Pointer, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc
     return true;
 }
 fn load_item(k: Loader.Text, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
-    return item_text(c, r, es, e);
-}
-fn load_item(k: Loader.Wide, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
     return item_text(c, r, es, e);
 }
 fn load_item(k: Loader.Enum, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
@@ -1546,20 +1481,6 @@ fn load_payload(k: Loader.Text, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, ta
     c.vals[p].state = ValPresent;
     c.vals[p].off = r.off;
     c.vals[p].len = keep;
-    r.off += n;
-    return arm_placed(c, slot, tag, p, true);
-}
-fn load_payload(k: Loader.Wide, c: LoadCtx&, r: Rd&, slot: i64, a: FieldDesc, tag: i64, n: i64) -> bool {
-    let p = arm_value(c, a);
-    if (n & 1) != 0 || !wide_valid(c.data, r.off, n / 2) { c.report.body_damaged = true; return false; }
-    var keep = n / 2;
-    if keep > a.bound {
-        keep = wide_boundary(c.data, r.off, n / 2, a.bound);
-        c.report.oor += 1;
-    }
-    c.vals[p].state = ValPresent;
-    c.vals[p].off = r.off;
-    c.vals[p].len = keep * 2;
     r.off += n;
     return arm_placed(c, slot, tag, p, true);
 }
@@ -1999,7 +1920,7 @@ recursive fn wc_payload(w: WireCheck&, at: i64, end: i64, kind: u8) -> i64 {
         return next;
     }
     if kind == 15 { return wc_union(w, at, end); }
-    if kind == KindString || kind == 33 || kind == 31 || kind == KindNoPayload
+    if kind == KindString || kind == 31 || kind == KindNoPayload
         || kind == KindTable || kind == KindArray || kind == 16 {
         let n, next, ok = leb_at(w.data, at, end);
         if !ok || n > (end - next) as! u64 { wc_damage(w); return -1; }
@@ -2020,10 +1941,6 @@ recursive fn wc_content(w: WireCheck&, at: i64, end: i64, kind: u8) -> bool {
     }
     if kind == KindString {
         if !text_valid(w.data, at, end - at) { return wc_damage(w); }
-        return true;
-    }
-    if kind == 33 {
-        if ((end - at) & 1) != 0 || !wide_valid(w.data, at, (end - at) / 2) { return wc_damage(w); }
         return true;
     }
     if kind == 31 { return true; } // opaque: the one kind whose meaning a reader may not know (§3)

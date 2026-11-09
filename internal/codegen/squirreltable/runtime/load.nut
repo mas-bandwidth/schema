@@ -346,7 +346,7 @@ local skipField = function(r, kind) {
     return true;
   }
   switch (kind) {
-    case 12: case 13: case 14: case 16: case 31: case 32: case 33: {
+    case 12: case 13: case 14: case 16: case 31: case 32: {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) return false;
       r.at += L;
@@ -401,42 +401,6 @@ local utf8Decode = function(b, at, len) {
     i += 1 + need;
   }
   return { s = s, ok = true, used = len };
-};
-
-// WIDE TEXT, kind 33 (docs/SPEC-TABLES.md §3, §4; SPEC.md §4.12): L BYTES
-// holding L / 2 UTF-16 code units, two bytes each little-endian. Storage is the
-// code units, an array of integers. wideDecode answers the units, or null when
-// the payload is not wide text: SURROGATES PAIRED and no zero unit among them,
-// checked as the payload ARRIVES and before the reader's bound, the rule kind
-// 12 takes for UTF-8 (wideValid in internal/tablewire/text.go). The caller has
-// refused an odd L as framing damage first.
-local wideDecode = function(b, at, len) {
-  local n = len / 2;
-  local units = array(n);
-  for (local i = 0; i < n; i++) units[i] = (b[at + 2 * i] & 0xff) | ((b[at + 2 * i + 1] & 0xff) << 8);
-  for (local i = 0; i < n; i++) {
-    local u = units[i];
-    if (u == 0) return null;
-    if (u >= 0xD800 && u <= 0xDBFF) {
-      // a high surrogate whose low half is not the next unit, or is absent
-      if (i + 1 >= n) return null;
-      local lo = units[i + 1];
-      if (lo < 0xDC00 || lo > 0xDFFF) return null;
-      i++;
-    } else if (u >= 0xDC00 && u <= 0xDFFF) {
-      return null; // a low surrogate first
-    }
-  }
-  return units;
-};
-
-// A WIDE CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the first `bound`
-// units, less a final high surrogate whose low half did not fit
-// (wideBoundary in internal/tablewire/text.go).
-local wideClamp = function(units, bound) {
-  local cut = bound;
-  if (cut > 0 && units[cut - 1] >= 0xD800 && units[cut - 1] <= 0xDBFF) cut--;
-  return units.slice(0, cut);
 };
 
 local blobOfRange = function(b, at, len) {
@@ -671,7 +635,7 @@ wcPayload = function(c, at, end, kind) {
     }
     case 15:
       return wcUnion(c, at, end);
-    case 12: case 33: case 31: case 32: case 13: case 14: case 16: {
+    case 12: case 31: case 32: case 13: case 14: case 16: {
       local n = wcLeb(c, at, end);
       if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
       local s = c.pos;
@@ -692,8 +656,6 @@ wcContent = function(c, at, end, kind) {
   switch (kind) {
     case 12:
       return utf8Ok(c.b, at, end - at) ? true : wcDamage(c);
-    case 33:
-      if (((end - at) & 1) != 0 || wideDecode(c.b, at, end - at) == null) return wcDamage(c);
       return true;
     case 31:
       return true; // opaque: the one kind whose meaning a reader may not know (§3)
@@ -976,30 +938,6 @@ readField = function(fd, r, T, table, v, report, st, nested, wireKind = null, se
       v[fd.member] = utf8Decode(r.b, r.at, cut).s;
     } else {
       v[fd.member] = dec.s;
-    }
-    r.at += L;
-    if (fd.optional) v[fd.member + "Present"] = true;
-    return true;
-  }
-  if (shape == "wstr") {
-    // WIDE TEXT (docs/SPEC-TABLES.md §3, §4; kind 33): an ODD L is framing
-    // damage on the body that carries it, and ill-formed content is damage
-    // too: either way the field reads its declared default (empty), one
-    // malformed counts, and the parent reads on past L. A payload past the
-    // bound clamps at a unit boundary that never splits a pair. The field
-    // rode, so an optional is present whatever its content.
-    local L = leb(r);
-    if (r.bad || r.at + L > r.end) { report.bodyDamaged = true; return false; }
-    local units = (L & 1) != 0 ? null : wideDecode(r.b, r.at, L);
-    if (units == null) {
-      report.bodyDamaged = true;
-      v[fd.member] = [];
-    } else {
-      if (units.len() > fd.bound) {
-        report.oor = report.oor + 1;
-        units = wideClamp(units, fd.bound);
-      }
-      v[fd.member] = units;
     }
     r.at += L;
     if (fd.optional) v[fd.member + "Present"] = true;
@@ -1593,7 +1531,7 @@ readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st) 
     inst.Type = 0;
     return true;
   }
-  local framed = wireKind == 12 || wireKind == 13 || wireKind == 14 || wireKind == 16 || wireKind == 33;
+  local framed = wireKind == 12 || wireKind == 13 || wireKind == 14 || wireKind == 16;
   local reader = framed ? newReader(sub.b, lpos, sub.end) : sub;
   local selected = { selected = true };
   local ok = readField(p, reader, T, table, inst, report, st, true, wireKind, selected);
@@ -1802,14 +1740,6 @@ fixedPayload = function(T, fd, bytes, off, report, st, set) {
     local used = i32At(bytes, off);
     if (used < 0 || used > fd.bound) return "length_over_bound";
     set(blobOfRange(bytes, off + 4, used));
-    return null;
-  }
-  if (fd.shape == "wstr") {
-    local used = i32At(bytes, off);
-    if (used < 0 || used > fd.bound) return "length_over_bound";
-    local units = wideDecode(bytes, off + 4, 2 * used);
-    if (units == null) return "text_ill_formed";
-    set(units);
     return null;
   }
   return fixedElement(T, fd, fd, bytes, off, false, report, st, set);

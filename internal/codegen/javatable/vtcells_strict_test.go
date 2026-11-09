@@ -120,15 +120,6 @@ var javaVarCellAnchors = map[string]struct {
 			`if(raw.compareTo(lo)<0){report.refuse("out_of_range");return lo;}if(raw.compareTo(hi)>0){report.refuse("out_of_range");return hi;}return raw;`,
 		},
 	},
-	// vt/wstring/java: WireCheck.wideBytesValid rejects odd byte lengths,
-	// NUL code units and unpaired UTF-16 surrogates on the wire before decode.
-	"vt/wstring/java": {
-		src: "internal/codegen/javatable/variableform.go",
-		want: []string{
-			`boolean wideBytesValid(int off, int end) {`,
-			"case 33:\n                    return wideBytesValid(off, end) || damage();",
-		},
-	},
 	// vt/widening/java: WireCheck.array requires the element payloads to
 	// consume the array body's L exactly (refusing trailing bytes like
 	// list_scalar_widen.bin), while lawful widening is accepted by the walk.
@@ -199,7 +190,6 @@ table Root
     item   OldItem
     mode   Mode = idle
     label  string(16) = "hi"
-    wide   wstring(16)
     rate   fixed(12, 4) | min = -10, max = 10
     big    int128 | min = -1000000000, max = 1000000000
     pick   Pick
@@ -232,7 +222,6 @@ table Root
     item   NewItem
     mode   Mode = idle
     label  string(16) = "hi"
-    wide   wstring(16)
     rate   fixed(12, 4) | min = -10, max = 10
     big    int128 | min = -1000000000, max = 1000000000
     pick   Pick

@@ -181,9 +181,6 @@ table LiveNested
 	if !strings.Contains(item, "if (value.labelLength < 0 || value.labelLength >") {
 		t.Fatalf("decode must refuse a live string length past its bound, slack never:\n%s", item)
 	}
-	if !strings.Contains(item, "if (value.wideLength < 0 || value.wideLength >") {
-		t.Fatalf("decode must refuse a live wstring length past its bound, slack never:\n%s", item)
-	}
 	if !strings.Contains(item, "report.refused = TableFixedRefusal.lengthOverBound;") {
 		t.Fatalf("decode must refuse by name on a length past its bound:\n%s", item)
 	}

@@ -20,7 +20,7 @@
 //     the gate bools are STRUCTURE (§2.7): fixed defaults, held fixed during
 //     variation so bytes/op is constant — two gates default true, two false,
 //     so both branch outcomes are exercised
-//   - ZERO string, bytes, wstring, or [N]uint8 fields: bulk share 0% by bits
+//   - ZERO string, bytes or [N]uint8 fields: bulk share 0% by bits
 //     (§1.7 rule 4)
 //
 // The tool computes the exact wire bits of the pinned all-defaults instance
@@ -357,7 +357,7 @@ func generate(seed uint64, nFields int) ([]byte, stats, error) {
 	var f strings.Builder
 	fmt.Fprintf(&f, `// RealWorld.schema — BENCH-STANDARD §1.7's realistic snapshot shape: one flat
 // packet of individually serialized small scalar fields in seeded-random mixed
-// order. ZERO bulk — no string, bytes, wstring, or [N]uint8 fields, so the
+// order. ZERO bulk — no string, bytes or [N]uint8 fields, so the
 // bulk share is 0%% of wire bits (§1.7 rule 4): every wire bit here flows
 // through an individual serialize statement, which is the work this estate
 // exists to measure.

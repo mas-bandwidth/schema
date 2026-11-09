@@ -295,7 +295,7 @@ local function skip(r, kind)
     r_leb(r)
     return not r.bad
   end
-  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
     local n = r_leb(r)
     if r.bad or not fits(r, n) then return false end
     r.at = r.at + n
@@ -523,32 +523,6 @@ local function utf8_clamp(s, bound)
     cut = cut - 1
   end
   return s:sub(1, cut)
-end
-
--- wide text is L/2 UTF-16 code units, two bytes little-endian, surrogates
--- paired and no zero unit (§3): an odd L or ill-formed content is damage.
-local function wstring_ok(s)
-  if #s % 2 ~= 0 then return false, {} end
-  local units = {}
-  local i = 1
-  while i <= #s do
-    local u = s:byte(i) + s:byte(i + 1) * 0x100
-    if u == 0 then return false, {} end
-    if u >= 0xd800 and u <= 0xdbff then
-      if i + 3 > #s then return false, {} end
-      local lo = s:byte(i + 2) + s:byte(i + 3) * 0x100
-      if lo < 0xdc00 or lo > 0xdfff then return false, {} end
-      units[#units + 1] = u
-      units[#units + 1] = lo
-      i = i + 4
-    elseif u >= 0xdc00 and u <= 0xdfff then
-      return false, {}
-    else
-      units[#units + 1] = u
-      i = i + 2
-    end
-  end
-  return true, units
 end
 
 -- THE WIDENING RUNGS (§4): a narrower kind on its own signedness ladder, and
@@ -806,7 +780,6 @@ local function zero_elem(T, e)
   if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "table" then
@@ -925,28 +898,6 @@ read_element = function(T, ctx, e, ek, sub, out, index, reuse)
       return utf8_clamp(raw, e.bound), true
     end
     return raw, true
-  elseif s == "wstring" then
-    local n = r_leb(sub)
-    if sub.bad or not fits(sub, n) then
-      ctx.report.damaged = true
-      return false
-    end
-    local raw = r_bytes(sub, n)
-    local ok, units = wstring_ok(raw)
-    if not ok then
-      ctx.report.damaged = true
-      return {}, true
-    end
-    if e.bound ~= nil and e.bound > 0 and #units > e.bound then
-      ctx.report.outOfRange = ctx.report.outOfRange + 1
-      local keep = {}
-      for i = 1, e.bound do
-        keep[i] = units[i]
-      end
-      if e.bound > 0 and keep[e.bound] >= 0xd800 and keep[e.bound] <= 0xdbff then keep[e.bound] = nil end
-      return keep, true
-    end
-    return units, true
   end
   local x = scalar_at(sub, e, ek, ctx.report, ctx)
   if x == nil then return false, false end
@@ -1335,15 +1286,6 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
             end
             out[slot] = raw
           end
-        elseif es == "wstring" then
-          local raw = string.sub(body.b, body.at + 1, body.lim)
-          body.at = body.lim
-          local ok, units = wstring_ok(raw)
-          if not ok then
-            report.damaged = true
-          else
-            out[slot] = units
-          end
         else
           local x = scalar_at(body, e, ek, report, ctx)
           if x ~= nil then out[slot] = x end
@@ -1637,30 +1579,6 @@ local function read_payload(T, ctx, fd, r, n, holder, key, kind, reuse)
       raw = utf8_clamp(raw, fd.bound)
     end
     return raw, OK
-  elseif s == "wstring" then
-    if n == nil then
-      n = r_leb(r)
-      if r.bad or not fits(r, n) then
-        report.damaged = true
-        return nil, STOP
-      end
-    end
-    local raw = r_bytes(r, n)
-    local ok, units = wstring_ok(raw)
-    if not ok then
-      report.damaged = true
-      return {}, DAMAGED
-    end
-    if fd.bound ~= nil and fd.bound > 0 and #units > fd.bound then
-      report.outOfRange = report.outOfRange + 1
-      local keep = {}
-      for i = 1, fd.bound do
-        keep[i] = units[i]
-      end
-      if fd.bound > 0 and keep[fd.bound] >= 0xd800 and keep[fd.bound] <= 0xdbff then keep[fd.bound] = nil end
-      units = keep
-    end
-    return units, OK
   elseif s == "enum" then
     local x, ok = enum_read(ctx.table, r, fd, report)
     if not ok then return nil, STOP end
@@ -2328,26 +2246,6 @@ local function wc_text(b, at, lim)
   return true
 end
 
--- wstring_ok over b[at+1 .. lim] in place: UTF-16LE units, surrogates
--- paired, no zero unit, an even L (§3)
-local function wc_wide(b, at, lim)
-  if (lim - at) % 2 ~= 0 then return false end
-  local i = at + 1
-  while i <= lim do
-    local u = string.byte(b, i) + string.byte(b, i + 1) * 0x100
-    if u == 0 or (u >= 0xdc00 and u <= 0xdfff) then return false end
-    if u >= 0xd800 and u <= 0xdbff then
-      if i + 3 > lim then return false end
-      local w = string.byte(b, i + 2) + string.byte(b, i + 3) * 0x100
-      if w < 0xdc00 or w > 0xdfff then return false end
-      i = i + 4
-    else
-      i = i + 2
-    end
-  end
-  return true
-end
-
 -- the scratch set for one level: emptied, then handed out
 local function wc_set(pool, depth)
   local t = pool[depth]
@@ -2492,7 +2390,7 @@ wc_payload = function(c, b, at, lim, kind)
     return nx
   elseif kind == 15 then
     return wc_union(c, b, at, lim)
-  elseif kind == 12 or kind == 33 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+  elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
     local n, nx = wc_leb(b, at, lim)
     if n == nil or above(n, lim - nx) then return wc_fail(c, "wire_damaged") end
     if not wc_content(c, b, nx, nx + n, kind) then return nil end
@@ -2510,9 +2408,6 @@ wc_content = function(c, b, at, lim, kind)
   end
   if kind == 12 then
     if not wc_text(b, at, lim) then return wc_fail(c, "wire_damaged") end
-    return true
-  elseif kind == 33 then
-    if not wc_wide(b, at, lim) then return wc_fail(c, "wire_damaged") end
     return true
   elseif kind == 31 then
     return true

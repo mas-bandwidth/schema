@@ -50,7 +50,7 @@ fixed table Config
 {
     scale   float32 = 1.0
     name    string(16) = "hi"
-    caption wstring(8)
+    caption string(8)
     spot    Spot
 }
 
@@ -66,7 +66,7 @@ union Choice
     xs      [..4]int32
     leaf    *Leaf
     spot    Spot
-    caption wstring(8)
+    caption string(8)
 }
 
 table Root
@@ -75,7 +75,7 @@ table Root
     cfg     Config
     renamed int32 | was = "former"
     text    string(16)
-    caption wstring(16)
+    caption string(16)
     mood    Slot = beta
     keyed   [Slot]int32
     xs      []int32
@@ -196,7 +196,7 @@ func buildDartShapeVectors(t *testing.T, u *ir.Unit) []dartShapeVector {
 			return append(append(ref(ir.TableWireId("choice")), byte(ir.TableKindUnion)), arm...)
 		})},
 		{name: "short-union-wstring-1", want: false, wire: makeWire(func(ref func(uint64) []byte) []byte {
-			arm := append(ref(ir.TableWireId("caption")), byte(ir.TableKindWstring), 1, byte(ir.TableKindWstring))
+			arm := append(ref(ir.TableWireId("caption")), 33, 1, 33)
 			return append(append(ref(ir.TableWireId("choice")), byte(ir.TableKindUnion)), arm...)
 		})},
 		{name: "short-choice-array-1", want: false, wire: makeWire(func(ref func(uint64) []byte) []byte {

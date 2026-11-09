@@ -424,11 +424,6 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 		g.sf("    public fixed byte %s[%d]; // string(%d): buffer, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
 		next()
 		g.sf("    public int %sLength;\n", name)
-	case f.Type.Kind == ir.TWString:
-		next()
-		g.sf("    public fixed char %s[%d];\n", name, f.Type.Size+1)
-		next()
-		g.sf("    public int %sLength;\n", name)
 	case f.Type.Kind == ir.TBytes:
 		next()
 		g.sf("    public fixed byte %s[%d]; // bytes(%d): buffer, used length beside it\n", name, f.Type.Size, f.Type.Size)
@@ -566,7 +561,7 @@ func (g *cookGen) cookFieldAddress(f *ir.Field) string {
 	if f.IsList() || f.IsMap() {
 		return "&probe." + name
 	}
-	if !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
+	if !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
 	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
@@ -765,8 +760,6 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, member, name, elem, member, member, member)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
-		case f.Type.Kind == ir.TWString:
-			g.hf("    public static ReadOnlySpan<char> %s(%sRow* row) { int used = row->%sLength; return new ReadOnlySpan<char>(row->%s, used < 0 || used > %d ? 0 : used); }\n\n", member, name, member, member, f.Type.Size)
 		case f.Type.TextUnbounded():
 			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot=(byte*)&row->%s; long delta=*(long*)slot; if(delta==0){return default;} byte* blob=slot+delta; return new ReadOnlySpan<byte>(blob+8,checked((int)*(uint*)blob)); }\n", member, name, member)
 		case f.Type.Kind == ir.TString:

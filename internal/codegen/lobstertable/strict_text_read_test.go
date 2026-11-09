@@ -17,7 +17,6 @@ table Node { value int32 | required
 table Root {
  n int32 | min = 0, max = 10
  s string(4)
- wide wstring(2)
  a [..2]int32
  words [..2]string(4) | total = 5
  keys map[string(4)]int32
@@ -133,7 +132,7 @@ func TestLobsterStrictJSONRead(t *testing.T) {
 	t.Parallel()
 	runStrictTextCases(t, "json", []strictTextCase{
 		{"defaults", `{"need":1}`, `{"need":1}`},
-		{"bounds", `{"need":1,"n":10,"s":"αβ","wide":"😀","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`, `{"need":1,"n":10,"s":"αβ","wide":"😀","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
+		{"bounds", `{"need":1,"n":10,"s":"αβ","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`, `{"need":1,"n":10,"s":"αβ","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
 		{"unknown", `{"need":1,"future":{"x":[1,true,null,"ok"]}}`, `{"need":1}`},
 		{"base64", `{"need":1,"blob":"YQ"}`, `{"need":1,"blob":"YQ=="}`},
 		{"optional", `{"need":1,"optional":null}`, `{"need":1}`},
@@ -148,7 +147,6 @@ func TestLobsterStrictJSONRead(t *testing.T) {
 		{"kind", `{"need":true}`, ""},
 		{"float overflow", `{"need":1,"f":1e39}`, ""},
 		{"string bound", `{"need":1,"s":"abcde"}`, ""},
-		{"wide bound", `{"need":1,"wide":"😀a"}`, ""},
 		{"array bound", `{"need":1,"a":[1,2,3]}`, ""},
 		{"array kind", `{"need":1,"a":[true]}`, ""},
 		{"text total", `{"need":1,"words":["abc","def"]}`, ""},
@@ -178,7 +176,7 @@ func TestLobsterStrictTextRead(t *testing.T) {
 	t.Parallel()
 	runStrictTextCases(t, "text", []strictTextCase{
 		{"defaults", `(:need 1)`, `{"need":1}`},
-		{"bounds", `(:need 1 :n 10 :s "αβ" :wide "😀" :a (1 2) :words ("abc" "de") :keys (("abcd" 2)) :f 1.5)`, `{"need":1,"n":10,"s":"αβ","wide":"😀","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
+		{"bounds", `(:need 1 :n 10 :s "αβ" :a (1 2) :words ("abc" "de") :keys (("abcd" 2)) :f 1.5)`, `{"need":1,"n":10,"s":"αβ","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
 		{"escapes", `(:need 1 :s "\u03b1")`, `{"need":1,"s":"α"}`},
 		{"exact exponent", `(:need 1e0 :n 10.0)`, `{"need":1,"n":10}`},
 		{"sharing", `(:need 1 :link ("&node" 1 :value 3) :other ("&node" 1))`, `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`},
@@ -194,7 +192,6 @@ func TestLobsterStrictTextRead(t *testing.T) {
 		{"huge exponent", `(:need 1e999999999)`, ""},
 		{"float overflow", `(:need 1 :f 1e39)`, ""},
 		{"string bound", `(:need 1 :s "abcde")`, ""},
-		{"wide bound", `(:need 1 :wide "😀a")`, ""},
 		{"array bound", `(:need 1 :a (1 2 3))`, ""},
 		{"text total", `(:need 1 :words ("abc" "def"))`, ""},
 		{"map bound", `(:need 1 :keys (("abcde" 1)))`, ""},

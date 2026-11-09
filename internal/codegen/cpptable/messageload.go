@@ -101,7 +101,7 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 		g.pf("%svalue.%s_present = true; // the field rode, so it is PRESENT (§2.3)\n", ind, name)
 	case f.KeyEnum != "":
 		g.emitMessageReadKeyed(f, ind)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadTextFrom(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry")
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false)
@@ -118,7 +118,7 @@ func (g *tableGen) emitMessageReadField(f *ir.Field) {
 
 func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 	switch {
-	case (f.Type.Kind == ir.TString && !f.Type.TextUnbounded()) || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case (f.Type.Kind == ir.TString && !f.Type.TextUnbounded()) || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadTextFrom(f, expr, fmt.Sprintf("value.%s_length", f.Name), ind, "entry")
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(f, expr, fmt.Sprintf("value.%s_count", f.Name), ind, "entry", false)
@@ -151,11 +151,7 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 	g.pf("%s{\n%s    uint64_t n%s = 0;\n", ind, ind, sfx)
 	// A LENGTH WHOSE PAYLOAD RUNS PAST THE BATCH IS DAMAGE at the field that
 	// carried it (§3.3), found before the clamp so nothing else counts
-	if f.Type.Kind == ir.TWString {
-		g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.has( (int64_t) n%[4]s * 16 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
-	} else {
-		g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( (int64_t) n%[4]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
-	}
+	g.pf("%[1]s    if ( !r.get( n%[2]s, %[3]s ) || !r.align() || !r.has( (int64_t) n%[4]s * 8 ) )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, width, sfx)
 	if f.Type.Kind == ir.TString {
 		g.pf("%s    const uint8_t * text%s = r.buffer + ( r.offset >> 3 );\n", ind, sfx)
 		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): the
@@ -184,38 +180,12 @@ func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from 
 	// untouched, and lands a negative length in the caller's storage
 	g.pf("%s    int32_t kept%s = 0;\n", ind, sfx)
 	g.pf("%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\n%[1]s    {\n%[1]s        kept%[4]s = %[5]d;\n%[1]s        report->refused = true;\n%[1]s        report->refuse_reason = out_of_range;\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\n%[1]s    }\n", ind, sfx, f.Type.Size, sfx, f.Type.Size, sfx, sfx)
-	if f.Type.Kind == ir.TWString {
-		g.pf("%s    bool high%s = false; // a high surrogate awaiting its low half\n%s    bool ill%s = false;\n", ind, sfx, ind, sfx)
-	}
 	g.pf("%s    for ( uint64_t %s = 0; %s < n%s; %s++ )\n%s    {\n", ind, idx, idx, sfx, idx, ind)
-	if f.Type.Kind == ir.TWString {
-		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): an
-		// unpaired surrogate or a zero code unit, checked over the WHOLE
-		// payload as it arrives and before this reader's bound, because a
-		// payload that is not text is not text at whatever length the reader
-		// would have kept. A bit stream has no recovery, which is the only
-		// thing that differs from §3.
-		g.pf("%s        uint64_t unit%s = 0;\n%s        if ( !r.get( unit%s, 16 ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx)
-		g.pf("%s        const uint16_t u%s = (uint16_t) unit%s;\n", ind, sfx, sfx)
-		g.pf("%s        if ( u%s == 0 ) { ill%s = true; }\n", ind, sfx, sfx)
-		g.pf("%s        if ( high%s ) { if ( u%s < 0xDC00 || u%s > 0xDFFF ) { ill%s = true; } high%s = false; }\n", ind, sfx, sfx, sfx, sfx, sfx)
-		g.pf("%s        else if ( u%s >= 0xD800 && u%s <= 0xDBFF ) { high%s = true; }\n", ind, sfx, sfx, sfx)
-		g.pf("%s        else if ( u%s >= 0xDC00 && u%s <= 0xDFFF ) { ill%s = true; }\n", ind, sfx, sfx, sfx)
-		g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (char16_t) u%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
-		g.pf("%[1]s    if ( high%[2]s || ill%[3]s )\n%[1]s    {\n%[1]s        report->damaged = true;\n%[1]s        return false;\n%[1]s    }\n", ind, sfx, sfx)
-		// A CLAMP NEVER SPLITS A PAIR (§3, §3.3): where the last kept unit is
-		// a high surrogate whose low half did not fit, it is dropped with it
-		g.pf("%s    if ( kept%s > 0 && (uint64_t) kept%s < n%s )\n%s    {\n", ind, sfx, sfx, sfx, ind)
-		g.pf("%s        const char16_t last%s = %s[kept%s - 1];\n", ind, sfx, value, sfx)
-		g.pf("%s        if ( last%s >= 0xD800 && last%s <= 0xDBFF ) { kept%s--; }\n%s    }\n", ind, sfx, sfx, sfx, ind)
-		g.pf("%s    %s[kept%s] = 0;\n", ind, value, sfx)
-	} else {
-		// a `bytes(N)` and every ARRAY whose element kind is 6: the payload is
-		// bytes, so it carries no content rule and the surplus is stepped over
-		// one byte at a time
-		g.pf("%s        uint64_t by%s = 0;\n%s        if ( !r.get( by%s, 8 ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx)
-		g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (uint8_t) by%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
-	}
+	// a `bytes(N)` and every ARRAY whose element kind is 6: the payload is
+	// bytes, so it carries no content rule and the surplus is stepped over
+	// one byte at a time
+	g.pf("%s        uint64_t by%s = 0;\n%s        if ( !r.get( by%s, 8 ) ) { report->damaged = true; return false; }\n", ind, sfx, ind, sfx)
+	g.pf("%s        if ( (int32_t) %s < kept%s ) { %s[%s] = (uint8_t) by%s; }\n%s    }\n", ind, idx, sfx, value, idx, sfx, ind)
 	g.pf("%s    %s = kept%s;\n%s}\n", ind, count, sfx, ind)
 }
 
@@ -394,7 +364,7 @@ func (g *tableGen) emitMessageReadArm(v ir.UnionVariant, base, ind, arm string, 
 	af := v.F
 	value, count := armValue(base, v), armCount(base, v)
 	switch {
-	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes || af.Type.Kind == ir.TWString:
+	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
 		g.emitMessageReadTextFrom(af, value, count, ind, arm)
 	case af.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFrom(af, value, count, ind, arm, widened)
