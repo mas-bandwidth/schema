@@ -51,7 +51,7 @@ func TestGooseDamagedLoadNegativeControl(t *testing.T) {
 	changed := string(goosetable.Runtime()["wire_load.goose"])
 	for _, anchor := range [][2]string{
 		{"    let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);\n", "    let wfail: i64 = 0;\n    let wnon = false;\n"},
-		{"    if report.body_damaged { return -1; }\n", ""},
+		{"    if report.body_damaged {\n        report.refused = true;\n        report.reason = LoadRefuseMalformed;\n        return -1;\n    }\n", ""},
 		{"    let refusal = load_error(report, c.root_val);\n", "    let refusal = LoadRefuseOk;\n"},
 	} {
 		if strings.Count(changed, anchor[0]) != 1 {
