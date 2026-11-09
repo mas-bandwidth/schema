@@ -23,7 +23,8 @@ import (
 
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
-	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery"}
+	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
+	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
 
 type driver struct {
 	lang string
@@ -263,6 +264,11 @@ func deriveManifest(m *Manifest, path string) error {
 		}
 		fmt.Fprintf(&b, "forgery %s %s %s %s %d %s\n",
 			f.Name, f.Kind, f.Subject, repoRelative(f.File), f.Extent, pointer)
+	}
+	for _, wr := range m.WriteRefusals {
+		// the verdict is the answer and stays withheld: a driver is handed the
+		// value and owes what its writer does with it (docs/SPEC.md §5.1)
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s\n", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
 	}
 	return writeFileAtomic(path, []byte(b.String()))
 }
@@ -514,6 +520,17 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: b.Name, want: want})
+		}
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+		// THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declaration does
+		// not admit is refused, and the lawful value at the same boundary is
+		// written. An assert leg answers from its debug build, where the
+		// check is active; every other leg answers from any build.
+		for _, wr := range m.WriteRefusals {
+			if wr.Surface() != surface {
+				continue
+			}
+			out = append(out, expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")})
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
@@ -823,6 +840,14 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomePass)
 			return
 		}
+	}
+	if strings.HasPrefix(surface, "write-refusal") && string(e.want) == "refused\n" && string(got) == "unrepresentable\n" {
+		// THE TYPE SYSTEM REFUSED IT FIRST: a leg whose storage cannot hold
+		// the value (a Rust enum is a native enum) has nothing for its writer
+		// to refuse, and says so rather than claiming a refusal it never made.
+		r.pass++
+		r.mark(e.name, outcomePass)
+		return
 	}
 	if e.value != "" {
 		text, err := os.ReadFile(e.value)

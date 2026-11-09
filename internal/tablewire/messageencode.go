@@ -49,7 +49,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
 	// §5): the message form's narrow fields never clamp or truncate one.
 	for _, inst := range insts {
-		if err := m.CheckValue(inst); err != nil {
+		if err := m.CheckBinaryValue(inst); err != nil {
 			return nil, err
 		}
 	}

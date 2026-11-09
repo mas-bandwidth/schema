@@ -50,6 +50,8 @@ cook-write   <instance> <little-endian file> <big-endian file> [input=<JSON path
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
+write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
 ```
 
@@ -81,6 +83,27 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   program can build them, and the writer refuses them rather than writing a
   replacement. A leg whose storage cannot hold the bytes the row names holds
   the nearest value that is not text in that leg and says so in its driver.
+- **`write-refusal`** is one row of the WRITE CONTRACT's battery
+  (docs/SPEC.md §5.1): load `<wire>` as `<root>`, set the one field at `<path>`
+  to `<value>`, and save through the variable-form Save. `<path>` is dotted
+  field names with `[i]` element indexes, from the root. `<kind>` says what the
+  value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
+  count of the array at `<path>` (a new element is a copy of element 0),
+  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
+  an enum by its raw ordinal, `tag` a union by its raw tag (a lawful tag takes
+  its arm at the arm's declared defaults), `float` one of `nan`, `inf` or
+  `-inf`, `bytes` a narrow text's exact bytes in hex, and `units` a wide text's
+  exact UTF-16 units, four hex digits each. `<verdict>` is `refused` or `wrote`,
+  and the derived manifest withholds it. The driver writes `refused`, `wrote`
+  or, where the leg's own types cannot hold the value at all, `unrepresentable`,
+  which answers a `refused` row and no other.
+  **The same row drives three more writers, one line kind and one surface
+  each**: `write-refusal-fixed` saves the value through the fixed form's
+  `FixedSave` as a batch of one; `write-refusal-message` saves it through
+  `SaveMessages` as a batch of one, and its `<unit>` column is a `connection`
+  key whose announced vocabulary the batch is written against; and
+  `write-refusal-json` writes it through the text writer, where `wrote` means
+  the text was written and spells the value (a zero byte or unit as `\u0000`).
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary
@@ -181,6 +204,7 @@ Construction input remains data the driver needs. These derived lines are:
 retain <case> <unit> <root> <wire> <capacity> <ids>
 framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
+write-refusal[-fixed|-message|-json] <case> <unit> <root> <wire> <path> <kind> <value>
 ```
 
 `retain` has seven fields including its keyword. `framing` always has five,

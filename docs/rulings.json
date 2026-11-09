@@ -153,6 +153,14 @@
         "i think this is both achievable and a good idea, we should enforce this, with some deterministic sorting order for outputting json the same way across all languages, and you should spec the walking order and how this is done so it is deterministic when you follow the spec."
       ],
       "source": "the maintainer, relayed in session, answering whether every language must write byte-identical JSON (and canonical text) for the same value. The spec is docs/SPEC-TABLES.md §16.14, the canonical writer step by step: field walk order, what is emitted and omitted, map key order per key kind, number, string, base64 and timestamp spelling, and layout. The json-write conformance surface compares every leg's text to the reference's as bytes, and conformance-negative-control-go-key-order is its reversed witness. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "write-refusal",
+      "date": "2026-11-03",
+      "quotes": [
+        "It is our intent to refuse the write of out of range values. In low level languages like C/C++ our intent is to do this at debug time for speed. Keep that behavior. In languages that do not have asserts it is OK to refuse in release build. Some mechanism for refusal of invalid values or write must exist."
+      ],
+      "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). Under strict-only there is no clamp to fall back on: a value outside its declaration refuses on both sides, and a compressed or ranged float off its range is refused by the writer (docs/plans/strict-only.md, decision 8). docs/SPEC.md §5.1 carries the per-leg table and the four conformance surfaces write-refusal, write-refusal-fixed, write-refusal-message and write-refusal-json hold it. This ruling makes nothing not-applicable."
     }
   ]
 }
