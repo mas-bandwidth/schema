@@ -118,6 +118,33 @@ var tsCases = []struct{ name string; n int64 }{
 }
 
 // the variable wire (form 1) of a fixed table: kind 36, eight bytes, UTC on read
+
+func sessionForm1(value *Session, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if SessionLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !SessionLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		SessionReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestVariableWire(t *testing.T) {
  for _, c := range tsCases {
   v := Session{N: 7, Started: c.n, Ended: -c.n / 2}
@@ -125,7 +152,7 @@ func TestVariableWire(t *testing.T) {
   if SessionSave(&v, b) != int64(len(b)) { t.Fatalf("%s: save", c.name) }
   var got Session
   var r TableReport
-  if !SessionLoad(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
+  if !sessionForm1(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
   if got != v { t.Fatalf("%s: %+v vs %+v", c.name, got, v) }
   if got.StartedTime().UnixNano() != c.n || got.EndedTime().UnixNano() != -c.n/2 { t.Fatalf("%s: %v %v", c.name, got.StartedTime(), got.EndedTime()) }
   if got.StartedTime().Location() != time.UTC { t.Fatalf("%s: not UTC: %v", c.name, got.StartedTime().Location()) }
@@ -147,7 +174,7 @@ func TestZeroTimeIsAbsent(t *testing.T) {
  if len(a) >= 16 { t.Fatalf("two zero timestamps cost %d bytes", len(a)) }
  var v Session
  var r TableReport
- if !SessionLoad(&v, a, &r) || !v.StartedTime().Equal(time.Unix(0, 0)) || v.StartedTime().UnixNano() != 0 { t.Fatalf("zero time reads as %v", v.StartedTime()) }
+ if !sessionForm1(&v, a, &r) || !v.StartedTime().Equal(time.Unix(0, 0)) || v.StartedTime().UnixNano() != 0 { t.Fatalf("zero time reads as %v", v.StartedTime()) }
 }
 
 // a time outside Time.UnixNano's domain has no count: the setter REFUSES it,
@@ -246,7 +273,7 @@ func TestKindIsItsOwn(t *testing.T) {
  b[i+1] = 5
  var got Session
  var r TableReport
- SessionLoad(&got, b, &r)
+ sessionForm1(&got, b, &r)
  if !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || got.Started != 0 { t.Fatalf("int64 under a timestamp field: %+v %d", r, got.Started) }
  // and the reverse: a kind-36 payload under an int32 field (n) and anended field skips cleanly
  v2 := Session{Started: 1760531645123456789, Ended: 42}
@@ -262,7 +289,7 @@ func TestKindIsItsOwn(t *testing.T) {
  copy(b2[idIdx:idIdx+8], nBytes[:])
  got = Session{}
  r = TableReport{}
- if SessionLoad(&got, b2, &r) || r.Err() == nil || got.N != 0 || got.Ended != 0 {
+ if sessionForm1(&got, b2, &r) || r.Err() == nil || got.N != 0 || got.Ended != 0 {
   t.Fatalf("kind 36 over an int32 field read: %+v %+v", r, got)
  }
 }

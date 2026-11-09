@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -57,15 +58,23 @@ func goConformanceRoot(t *testing.T) string {
 	return root
 }
 
+var goEnsureGeneratedMu sync.Mutex
+
 func goEnsureGeneratedTables(t *testing.T, root string) {
 	t.Helper()
+	goEnsureGeneratedMu.Lock()
+	defer goEnsureGeneratedMu.Unlock()
 	stamp := filepath.Join(root, "build", "tables-generated-go", ".stamp")
 	cards := filepath.Join(root, "build", "tables-generated-go", "cards", "cards.go")
+	wide := filepath.Join(root, "build", "tables-generated-go", "examples", "WideTable.go")
 	if _, err := os.Stat(stamp); err == nil {
 		if _, err := os.Stat(cards); err == nil {
-			return
+			if wideSrc, err := os.ReadFile(wide); err == nil && bytes.Contains(wideSrc, []byte("read.Refuse(TableRefusePreviousForm, \"\")\n\t\tWideBlobReset(value)")) {
+				return
+			}
 		}
 	}
+	_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "make", "build/conformance-go")
@@ -275,6 +284,55 @@ func goDriverCheckAll(t *testing.T, root, bin string, reports []goReportRow, ret
 	return wrong
 }
 
+// buildWideBlobOpenedDriver drops the noFileForm bind and the generated
+// form-1 Load guard, so WideBlobLoad reads the variable form again.
+func buildWideBlobOpenedDriver(t *testing.T, root string) string {
+	t.Helper()
+	goEnsureGeneratedTables(t, root)
+	dir := t.TempDir()
+	repl := map[string]string{}
+	plant := func(rel string, src []byte) {
+		t.Helper()
+		orig := filepath.Join(root, filepath.FromSlash(rel))
+		path := filepath.Join(dir, filepath.Base(rel))
+		if err := os.WriteFile(path, src, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		repl[orig] = path
+	}
+	fixedRel := "test/conformance/go/fixed.go"
+	fixedSrc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(fixedRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor := []byte("bind(\"tabledemo\", \"WideBlob\", noFileForm)")
+	if bytes.Count(fixedSrc, anchor) != 1 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: anchor appears %d times", bytes.Count(fixedSrc, anchor))
+	}
+	plant(fixedRel, bytes.Replace(fixedSrc, anchor, []byte("// SABOTAGED: WideBlob left on its variable-form load"), 1))
+	wideRel := "build/tables-generated-go/examples/WideTable.go"
+	wideSrc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(wideRel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard := []byte("\tif len(data) > 0 && data[0] == 1 {\n\t\tread.Refuse(TableRefusePreviousForm, \"\")\n\t\tWideBlobReset(value)\n\t\treturn false\n\t}\n")
+	if bytes.Count(wideSrc, guard) != 1 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: WideBlob form-1 Load guard appears %d times", bytes.Count(wideSrc, guard))
+	}
+	plant(wideRel, bytes.Replace(wideSrc, guard, nil, 1))
+	overlayData, err := json.Marshal(struct {
+		Replace map[string]string
+	}{Replace: repl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayPath := filepath.Join(dir, "overlay.json")
+	if err := os.WriteFile(overlayPath, overlayData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return goBuildDriver(t, root, overlayPath)
+}
+
 func buildSabotagedGoDriver(t *testing.T, root, relFile, anchor, replacement string) string {
 	t.Helper()
 	origPath := filepath.Join(root, filepath.FromSlash(relFile))
@@ -320,13 +378,7 @@ func TestGoDriverReportAndRetainNegativeControl(t *testing.T) {
 	reports, retains := goReportAndRetainRows(t, root)
 
 	t.Run("wide_blob_no_file_form", func(t *testing.T) {
-		bin := buildSabotagedGoDriver(
-			t,
-			root,
-			"test/conformance/go/fixed.go",
-			`bind("tabledemo", "WideBlob", noFileForm)`,
-			`// SABOTAGED: WideBlob left on its variable-form load`,
-		)
+		bin := buildWideBlobOpenedDriver(t, root)
 		wrong := goDriverCheckAll(t, root, bin, reports, retains)
 		want := "report/previous_form_wide_blob: got verdict read, want refused"
 		if len(wrong) != 1 || wrong[0] != want {

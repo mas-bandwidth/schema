@@ -13,6 +13,33 @@ fixed table Big {
 }
 `, `package probe
 import("testing";"bytes";"errors")
+
+func bigForm1(value *Big, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if BigLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !BigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		BigReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestExact(t *testing.T) {
 	if BigTableFields[0].RangeIntMax != 9007199254740993 {
 		t.Fatalf("n RangeIntMax = %d", BigTableFields[0].RangeIntMax)
@@ -44,7 +71,7 @@ func TestExact(t *testing.T) {
 			t.Fatal("save")
 		}
 		var got Big
-		if !BigLoad(&got, b, &r) || got.N != v.N || got.M != v.M || got.U != v.U {
+		if !bigForm1(&got, b, &r) || got.N != v.N || got.M != v.M || got.U != v.U {
 			t.Fatalf("binary roundtrip %+v", got)
 		}
 	}

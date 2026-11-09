@@ -696,23 +696,14 @@ func TestForgedOrdinal(t *testing.T) {
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
 	n := %[2]sFixedLoad(back, data, plan, &r)
-	if n != 1 {
-		t.Fatalf("the forged file reads one record, not %%d (report %%+v)", n, r)
+	if n != -1 {
+		t.Fatalf("the forged file must refuse, not read %%d records (report %%+v)", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("the forged read is not a refusal: %%+v", r)
-	}
-	if back[0].Tier != TierNone {
-		t.Fatalf("the forged ordinal lands None, not %%v (record %%+v)", back[0].Tier, back[0])
-	}
-	if back[0].Seq != 9 {
-		t.Fatalf("the scalar after the enum must stand at 9, not %%v (record %%+v)", back[0].Seq, back[0])
-	}
-	if !r.Refused() {
-		t.Fatalf("Clamped is the BOUNDS pass's count, once per field: %%d (report %%+v)", r.Refusal, r)
+	if r.Verdict != TableOpenRefused || r.Reason != "out_of_range" || !r.FixedRaised {
+		t.Fatalf("the forged read is not an out_of_range refusal: %%+v", r)
 	}
 	if r.Unknown != 0 || r.Widened != 0 {
-		t.Fatalf("only Clamped may move on a forged ordinal: %%+v", r)
+		t.Fatalf("no counter may move on an out_of_range refusal: %%+v", r)
 	}
 }
 `, filepath.Join(corpus, "old_enum_append.bin"), table)

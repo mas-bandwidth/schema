@@ -2690,6 +2690,15 @@ function L.Load(T, name, bytes, report, state, into)
   r.wireDamaged = false
   r.reason = nil
   state = state or L.NewState()
+  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a form-1
+  -- file is previous_form, refused before anything decodes, so nothing moves and
+  -- nothing lands. FixedLoad reads form 3.
+  local desc = T.Tables[name]
+  if desc ~= nil and not desc.variable and type(bytes) == "string" and #bytes >= 1 and bytes:byte(1) == 1 then
+    r.refused = 1
+    r.reason = "previous_form"
+    return nil
+  end
   local root = read_form1(T, name, bytes, r, state, into)
   local reason = strict_refusal(bytes, r, root)
   if reason == nil then

@@ -23,6 +23,33 @@ fixed table Root {
 `, `package probe
 import ("errors"; "testing")
 
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if RootFixedBodyBytes != 36 {
 		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", RootFixedBodyBytes)
@@ -122,13 +149,13 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if !errors.Is(reused.Err(), TableRefuseLayoutUnknown) {
 		t.Fatalf("reuse seed Err()=%v, want TableRefuseLayoutUnknown", reused.Err())
 	}
-	if !RootLoad(&cleanVar, w, &reused) {
+	if !rootForm1(&cleanVar, w, &reused) {
 		t.Fatalf("clean variable reload failed: %+v", reused)
 	}
 	if err := reused.Err(); err != nil {
 		t.Fatalf("clean variable reload Err()=%v, want nil (report=%+v)", err, reused)
 	}
-	if RootLoad(&cleanVar, w[:len(w)-3], &reused) {
+	if rootForm1(&cleanVar, w[:len(w)-3], &reused) {
 		t.Fatalf("three-byte-cut variable reload succeeded: %+v", reused)
 	}
 	if err := reused.Err(); !errors.Is(err, TableRefuseWireDamaged) {

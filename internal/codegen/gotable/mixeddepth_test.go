@@ -48,6 +48,33 @@ func TestGoMixedKnownUnknownBinaryDepth(t *testing.T) {
 
 const mixedDepthProbe = `package probe
 import "testing"
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestDepth(t *testing.T) {
  t.Parallel()
  for _, total := range []int{128,129} {
@@ -64,7 +91,7 @@ func TestDepth(t *testing.T) {
   if %d != 15 {w.PutLeb(uint64(len(payload)))}
   w.Raw(payload);w.Put8(0);w.Trailer()
   var v Root;var r TableReport
-  ok:=RootLoad(&v,w.Buffer[:w.Offset],&r)
+  ok:=rootForm1(&v,w.Buffer[:w.Offset],&r)
   if ok!=(total==128) {t.Errorf("structural depth=%%d accepted=%%v report=%%+v",total,ok,r)}
   if total==129 && r.Refusal!=TableRefuseWireDamaged {t.Errorf("reason %%v",r.Refusal)}
  }

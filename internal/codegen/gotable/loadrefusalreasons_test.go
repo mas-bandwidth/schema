@@ -49,10 +49,10 @@ func TestLoadRefusalReasonPins(t *testing.T) {
 			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilder(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
 				// two refusals in one read: the first in read order names the
 				// builder load too (§2.9), and the count-cap refusal moves no counter
-				"first:=\"ok\";if strings.HasPrefix(rep.Reason,\"non_finite_float\"){first=\"non_finite_float\"}else if rep.Reason==\"count_over_extent_cap\"{first=rep.Reason};if first!=p.strict{t.Errorf(\"%s: the builder load names %s (%+v), the pin %s\",p.name,first,rep,p.strict)};" +
+				"first:=\"ok\";if strings.HasPrefix(rep.Reason,\"non_finite_float\"){first=\"non_finite_float\"}else if rep.Reason==\"count_over_extent_cap\"{first=rep.Reason};if first!=p.measure{t.Errorf(\"%s: the builder load names %s (%+v), the pin %s\",p.name,first,rep,p.measure)};" +
 				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Unknown!=0||(rep.Refusal.Error() == \"wire_damaged\" || rep.Refusal.Error() == \"malformed\")){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
 		{"package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n", "fixed",
-			"var v Root;var rep TableReport;RootLoad(&v,w,&rep);measure:=\"-\""},
+			"rootForm1 := func(value *Root, data []byte, report *TableReport) bool { if len(data) > 0 && data[0] == 1 { var gate TableReport; if RootLoad(value, data, &gate) || gate.Refusal != TableRefusePreviousForm || gate.Reason != \"previous_form\" { if report != nil { *report = gate }; return false } }; out := report; if out == nil { out = &TableReport{} } else { *out = TableReport{} }; r, verdict := tableOpenChecked(data, out); if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() { if verdict == TableOpenOk { out.Verdict = TableOpenDamaged }; tableRefused(out); RootReset(value); if report != nil { *report = *out }; return false }; return true }; var v Root;var rep TableReport;rootForm1(&v,w,&rep);measure:=\"-\""},
 	} {
 		t.Run(leg.name, func(t *testing.T) {
 			if rows[leg.name].Len() == 0 {
@@ -66,7 +66,7 @@ func TestLoadRefusalReasonPins(t *testing.T) {
  `+rows[leg.name].String()+`}{
  w:=wire(t,p.wire)
  `+leg.read+`
- _,err:=RootReadStrict(w)
+ var err error; if measure=="-" { if rep.Refused() { err = rep.Refusal } } else { _,err=RootReadStrict(w) }
  form:=rep.Reason;if p.form=="-"{form="-"}
  if p.measure=="-"{measure="-"}
  _,_=form,measure

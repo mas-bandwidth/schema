@@ -138,7 +138,17 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
-	if g.hasFixedForm(st) {
+	if st.FixedDeclared {
+		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): the
+		// strict read refuses a form-1 file as previous_form before it decodes
+		// anything; <T>FixedLoad reads form 3.
+		g.pf("// %s is a FIXED-CLASS root (docs/SPEC-TABLES.md §3.4): its file is form 3,\n", n)
+		g.pf("// so this Load — the VARIABLE form's entry point — refuses a form-1 file as\n")
+		g.pf("// previous_form, never reading a value.\n")
+		if g.hasFixedForm(st) {
+			g.pf("// %sFixedLoad reads form 3.\n", n)
+		}
+	} else if g.hasFixedForm(st) {
 		g.pf("// %s also carries the FIXED form (form 3): %sFixedLoad reads that one and\n", n, n)
 		g.pf("// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry\n")
 		g.pf("// point and reads form 1 (docs/SPEC-TABLES.md §3.4, §15).\n")
@@ -152,6 +162,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("// declaration's (tla/ReadOrder.tla, OneVerdict).\n")
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tread := report\n\tif read == nil {\n\t\tread = &TableReport{}\n\t} else {\n\t\t*read = TableReport{}\n\t}\n")
+	if st.FixedDeclared {
+		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): a form-1 file is previous_form.
+		g.pf("\tif len(data) > 0 && data[0] == 1 { read.Refuse(TableRefusePreviousForm, \"\"); %sReset(value); return false }\n", n)
+	}
 	if st.Integrity != "" {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, read); !ok { %sReset(value); return false }\n", n)
 	}
