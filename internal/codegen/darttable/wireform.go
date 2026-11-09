@@ -2525,10 +2525,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\tif (elemKind != %d) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, declKind)
 		default:
 			// A smaller kind on the same ladder widens the whole array once (§4).
-			g.pf("%s\t\tif (elemKind != %d) {\n", ind, declKind)
-			g.pf("%s\t\t\tif (!_kindWidens(elemKind, %d)) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, declKind)
-			g.pf("%s\t\t\tr.report.widened++;\n", ind)
-			g.pf("%s\t\t}\n", ind)
+			g.pf("%s\t\tif (elemKind != %d && !_kindWidens(elemKind, %d)) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\n", ind, declKind, declKind)
 		}
 		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6, §3):
 		// the collection is cleared only after the element-kind check above
@@ -2552,6 +2549,14 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
+		}
+		// A widened element kind counts only once the count cap has passed: a
+		// builder count-cap refusal moves no counter (internal/tablewire
+		// decode.go; docs/SPEC-TABLES.md §2.9, §4).
+		switch declKind {
+		case wireKindTable, wireKindPtr, wireKindString, wireKindEnum, wireKindBool, wireKindUnion:
+		default:
+			g.pf("%s\t\tif (elemKind != %d) r.report.widened++;\n", ind, declKind)
 		}
 		// The body spans from after the header to its own end; a header that
 		// ran past that end covers no elements (arrayBody's subTo; \u00a73, \u00a74).
