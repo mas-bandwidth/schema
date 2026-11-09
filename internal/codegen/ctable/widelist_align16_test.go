@@ -115,9 +115,11 @@ int main(void)
 // mutant (seed 1, after 32,051 mutants; sha256
 // 78affc19702f64b42f100d36929e39c0d87f15bbbc9ee88b9f589c7c50d06173) where
 // Gate.reach = text(index=2) appears twice in the root body while node 2 has an
-// unknown wire type id (0x704be0ecfaaffc58, offset UINT64_MAX). Because
-// table_node_resolve leaves the slot null without resolving a blob node,
-// table_node_blob_mark must not mark index 2 as named or count blob_shared on
+// unknown wire type id (0x704be0ecfaaffc58, offset UINT64_MAX). A repeated
+// field id in one body is damage under the one strict read
+// (docs/SPEC-TABLES.md §4, §6.5), so the whole load is refused and no blob
+// marking is ever reached; before the strict read landed, the load kept the
+// value and this pin held table_node_blob_mark to not counting blob_shared on
 // the duplicate field overwrite.
 func TestUnplacedBlobMarkDoesNotCountBlobSharedC(t *testing.T) {
 	t.Parallel()
@@ -146,21 +148,16 @@ static const uint8_t gate_mutant[] = { %s };
 int main(void)
 {
     SCHEMA_C_ALIGN16 uint8_t region[56];
-    SCHEMA_C_ALIGN16 uint8_t cooked[104];
     TableReport report;
     const Gate * root;
 
     CHECK(gate_load_measure(gate_mutant, (int64_t)sizeof(gate_mutant)) == 56);
     memset(&report, 0, sizeof(report));
     root = gate_load(region, (int64_t)sizeof(region), gate_mutant, (int64_t)sizeof(gate_mutant), &report);
-    CHECK(root != NULL);
-    CHECK(!report.refused && report.unknown == 1 && report.blob_shared == 0);
-    CHECK(root->reach.type == REACH_TYPE_TEXT);
-    CHECK(root->reach.as.text.value == 0);
-    CHECK(root->past == 6);
-    CHECK(gate_cook_measure(NULL, root) == 104);
-    CHECK(gate_cook(NULL, root, cooked, sizeof(cooked), TableByteOrder_Little) == 1);
-    CHECK(gate_cook(NULL, root, cooked, sizeof(cooked), TableByteOrder_Big) == 1);
+    /* the repeated reach field is damage: the one strict read refuses the
+       whole load and lands nothing (§4, §6.5) */
+    CHECK(root == NULL);
+    CHECK(report.refused);
     return 0;
 }
 `, t09Check, cMut.String())
