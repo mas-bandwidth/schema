@@ -138,6 +138,27 @@ func TestLobsterDescriptorsNegativeControl(t *testing.T) {
 		"accessor_descriptor": {"agreement", func(files map[string][]byte) {
 			replaceIn(files, "ProbeTable.lobster", `Old: 7,`, `Old: 8,`)
 		}},
+		// The six doc and tag clauses (docs/SPEC-TABLES.md §8.1): each
+		// registration drops one declaration's doc or tags, and exactly that
+		// clause must read differently.
+		"type_doc": {"typedoc", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `schema_rt.view_type(UnreachedDescriptor, "Probe.schema", "A type no table reaches.",`, `schema_rt.view_type(UnreachedDescriptor, "Probe.schema", "",`)
+		}},
+		"type_tags": {"typedtags", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `"Probe.schema", "A type no table reaches.", ["inspected"]::string)`, `"Probe.schema", "A type no table reaches.", []::string)`)
+		}},
+		"table_doc": {"tabledoc", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `schema_rt.view_table(HolderDescriptor, "Probe.schema", "The holder table.",`, `schema_rt.view_table(HolderDescriptor, "Probe.schema", "",`)
+		}},
+		"table_tags": {"tabletags", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `"Probe.schema", "The holder table.", ["inspected"]::string)`, `"Probe.schema", "The holder table.", []::string)`)
+		}},
+		"field_doc": {"fielddoc", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `schema_rt.field_annotation("Holder", "mode", "The mode field.",`, `schema_rt.field_annotation("Holder", "mode", "",`)
+		}},
+		"field_tags": {"fieldtags", func(files map[string][]byte) {
+			replaceIn(files, "ProbeTable.lobster", `schema_rt.field_annotation("Holder", "mode", "The mode field.", ["annotated"]::string)`, `schema_rt.field_annotation("Holder", "mode", "The mode field.", []::string)`)
+		}},
 	}
 	var names []string
 	for name := range cases {
