@@ -49,14 +49,14 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
     fixed_check( tblut1_ut_root_fixed_plan[3].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblut1_ut_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes: the record reads" );
     fixed_check( back.pick.type == TBLUT1_PICK_TYPE_B, "C two lanes: the arm" );
     fixed_check( back.pick.as.b.label_length == 7 && strcmp( back.pick.as.b.label, "seven77" ) == 0,
                  "C two lanes: the arm's string(8), whole" );
     fixed_check( back.pick.as.b.m == 1234 && back.head == 42 && back.tail == 99,
                  "C two lanes: the rest of the record" );
-    fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C two lanes: a clean read moves no counter" );
+    fixed_check( !r.refused && r.unknown == 0 && r.widened == 0, "C two lanes: a clean read moves no counter" );
 }
 
 /* THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is put
@@ -90,7 +90,7 @@ void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
     tblut1_ut_root_t back;
     tblut1_table_report_t r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblut1_ut_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes, back: the record reads" );
     fixed_check( back.pick.type == TBLUT1_PICK_TYPE_B, "C two lanes, back: arm 3 lands as arm 2, by name" );
     fixed_check( back.pick.as.b.label_length == 5 && strcmp( back.pick.as.b.label, "third" ) == 0,
@@ -98,12 +98,13 @@ void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
     fixed_check( back.pick.as.b.m == 555, "C two lanes, back: the arm's other field" );
 }
 
-/* A UNION TAG PAST THE ARM COUNT names no arm: it lands None — the same nothing
-   an unset union holds — and COUNTS as a clamp (docs/SPEC-TABLES.md §3.4). */
+/* A UNION TAG PAST THE ARM COUNT names no arm: under the strict read it
+   refuses the whole read as out_of_range and resets the destination
+   (docs/SPEC-TABLES.md §3.4, §6.5). */
 void fixed_ut1_bounds( void )
 {
     static uint8_t file[4096];
-    tblut1_ut_root_t v, back;
+    tblut1_ut_root_t v, defaults, back;
     tblut1_table_report_t r;
     int64_t n;
 
@@ -114,10 +115,15 @@ void fixed_ut1_bounds( void )
     n = tblut1_ut_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
     fixed_check( n == tblut1_ut_root_fixed_measure( 1 ), "C bounds: UT1 save" );
 
+    tblut1_ut_root_reset( &defaults );
+    tblut1_ut_root_reset( &back );
+    back.head = 77; /* poison: the refusal must put it back */
+    back.tail = 77;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblut1_ut_root_fixed_load_tolerant( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
-                 "C bounds: the union record reads" );
-    fixed_check( back.pick.type == TBLUT1_PICK_TYPE_NONE, "C ORDINAL: a tag past the arm count lands None" );
-    fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
-    fixed_check( back.head == 1 && back.tail == 2, "C ORDINAL: the rest of the record stands" );
+    fixed_check( tblut1_ut_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == -1,
+                 "C ORDINAL: a tag past the arm count refuses the whole read" );
+    fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLUT1_TABLE_REFUSE_OUT_OF_RANGE,
+                 "C ORDINAL: named out_of_range" );
+    fixed_check( back.pick.type == defaults.pick.type && back.head == defaults.head && back.tail == defaults.tail,
+                 "C ORDINAL: nothing lands — not the tag, not the rest of the record" );
 }

@@ -90,8 +90,8 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   {ftag, freason, _} = load(forged, batch_capacity: n)
   check(ftag == :error and freason == :batch_too_large,
     "step 10 answers before step 11's record hash: #{inspect({ftag, freason})}")
-  {rtag, rreason, rreport} = load(data <> <<0x5A>>, batch_capacity: 0)
-  check(rtag == :error and rreason == :malformed and rreport.malformed == true,
+  {rtag, rreason, _rreport} = load(data <> <<0x5A>>, batch_capacity: 0)
+  check(rtag == :error and rreason == :malformed,
     "step 9's ragged tail answers before the capacity: #{inspect({rtag, rreason})}")`)
 		}},
 
@@ -229,7 +229,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   for {label, bytes} <- [{"empty", <<>>}, {"nineteen bytes", binary_part(data, 0, 19)}, {"reserved byte", <<3, 1>> <> binary_part(data, 2, byte_size(data) - 2)}, {"ragged tail", data <> <<0x5A>>}] do
     {tag, reason, report} = load(bytes)
     check(tag == :error and reason == :malformed, "#{label}: malformed names no reason: #{inspect({tag, reason})}")
-    check(report == %{fresh | malformed: true}, "#{label}: only malformed is set: #{why(report)}")
+    check(report == fresh, "#{label}: a malformed read moves no counter: #{why(report)}")
   end
   _ = h`
 			t01Probe(t, "VNEW_field_append", lineage, 0, oldFile, body)

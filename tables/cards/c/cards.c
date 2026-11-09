@@ -320,8 +320,9 @@ static int adopt_builder(cards_card_builder_t *b, CardsRecord *out, char *err,
 }
 
 /* cards_load ports Load in tables/cards/cards.go (docs/SPEC-TABLES.md §6.2):
-   wire to record and report, refusing malformed input, never upgrading
-   implicitly. The record owns a heap copy of its wire. */
+   wire to record and report, refusing the whole load on any strict-read
+   refusal, never upgrading implicitly. The record owns a heap copy of its
+   wire. */
 int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
                cards_table_report_t *report, char *err, size_t err_cap) {
     cards_table_report_t rep;
@@ -337,7 +338,7 @@ int cards_load(const uint8_t *wire, int64_t wire_len, CardsRecord *out,
     }
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = cards_card_load_tolerant(region, n, wire, wire_len, &rep);
+    root = cards_card_load(region, n, wire, wire_len, &rep);
     if (root == NULL) {
         free(region);
         if (report != NULL) *report = rep;
@@ -375,12 +376,11 @@ int cards_from_json(const uint8_t *text, int64_t text_len, CardsRecord *out,
     memset(&report, 0, sizeof(report));
     if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
-    if (!cards_card_from_json_tolerant(&b, (const char *)text, text_len, &report) ||
-        report.malformed) {
+    if (!cards_card_from_json(&b, (const char *)text, text_len, &report)) {
         cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: JSON is malformed");
     }
-    if (report.unknown > 0 || report.kind_mismatch > 0 || report.clamped > 0) {
+    if (report.unknown > 0) {
         cards_card_builder_shutdown(&b);
         return fail(err, err_cap,
                     "cards: JSON has loss events: refused, never truncated");
@@ -1255,7 +1255,7 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
     if (n < 0) return fail(err, err_cap, "cards: wire is not a card");
     region = (uint8_t *)aligned_alloc64(n);
     if (region == NULL) return fail(err, err_cap, "cards: allocation failed");
-    root = cards_card_load_tolerant(region, n, record->wire, record->wire_len, &rep);
+    root = cards_card_load(region, n, record->wire, record->wire_len, &rep);
     if (root == NULL) {
         free(region);
         return fail(err, err_cap, "cards: wire is malformed");
@@ -1348,36 +1348,28 @@ int cards_render(const CardsRecord *record, uint8_t **out, int64_t *out_len,
 /* ---- DESIGN L3: retained upgrade, strict read, task hash ---- */
 
 /* cards_lossy names the read events that make a record unsafe to rewrite or
-   hash (docs/SPEC-TABLES.md §4 tolerance, §6.6 retain-unknown). Unknown,
-   Retained and Widened alone are not loss. */
+   hash (docs/SPEC-TABLES.md §4, §6.6 retain-unknown): an unknown field, a
+   retained field lost, or a strict refusal. Retained and Widened alone are
+   not loss. */
 static int cards_lossy(const cards_table_report_t *rep, char *err, size_t err_cap) {
     if (rep->retain_lost > 0)
         return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
     if (rep->unknown > 0)
         return failf(err, err_cap,
                      "cards: record carries unknown field(s), refusing: refused, never hashed or rewritten");
-    if (rep->kind_mismatch > 0)
-        return fail(err, err_cap, "cards: kind mismatch(es), refusing to replace");
-    if (rep->clamped > 0)
-        return fail(err, err_cap, "cards: clamped value(s), refusing to replace");
-    if (rep->malformed)
-        return fail(err, err_cap, "cards: malformed wire, refusing to replace");
+    if (rep->refused || rep->refuse_reason != 0)
+        return fail(err, err_cap, "cards: refused value, refusing to replace");
     return 1;
 }
 
 /* cards_upgrade_loss names the report events that make a rewrite unsafe
-   (docs/SPEC-TABLES.md §6.6): a retained field that could not be kept, a kind
-   mismatch, a clamped value or framing damage. Unknown, Retained and Widened
-   alone are not loss (§4). */
+   (docs/SPEC-TABLES.md §6.6): a retained field that could not be kept, or a
+   strict refusal. Unknown, Retained and Widened alone are not loss (§4). */
 static int cards_upgrade_loss(const cards_table_report_t *rep, char *err, size_t err_cap) {
     if (rep->retain_lost > 0)
         return fail(err, err_cap, "cards: retained field(s) lost, refusing to replace");
-    if (rep->kind_mismatch > 0)
-        return fail(err, err_cap, "cards: kind mismatch(es), refusing to replace");
-    if (rep->clamped > 0)
-        return fail(err, err_cap, "cards: clamped value(s), refusing to replace");
-    if (rep->malformed)
-        return fail(err, err_cap, "cards: malformed wire, refusing to replace");
+    if (rep->refused || rep->refuse_reason != 0)
+        return fail(err, err_cap, "cards: refused value, refusing to replace");
     return 1;
 }
 
@@ -1628,7 +1620,7 @@ static int edit_common(CardsRecord *r, int (*mutate)(cards_card_t *, cards_table
     if (!cards_card_builder_init(&b))
         return fail(err, err_cap, "cards: arena initialization failed");
     memset(&rep, 0, sizeof(rep));
-    if (!cards_card_load_builder_tolerant(&b, r->wire, r->wire_len, &rep)) {
+    if (!cards_card_load_builder(&b, r->wire, r->wire_len, &rep)) {
         cards_card_builder_shutdown(&b);
         return fail(err, err_cap, "cards: reload into builder failed");
     }

@@ -25,9 +25,10 @@ defmodule Cards.CardsTest do
 
     {:ok, record, report} = Cards.load(wire)
     assert report.unknown == 0
-    assert report.kind_mismatch == 0
-    assert report.clamped == 0
-    assert report.malformed == false
+    assert report.widened == 0
+    assert report.retained == 0
+    assert report.retain_lost == 0
+    assert report.reason == ""
 
     # ToJSON reproduces card-populated.json byte for byte.
     {:ok, text, _} = Cards.to_json(record)
@@ -194,16 +195,18 @@ defmodule Cards.CardsTest do
     |> Enum.map(fn [_s, name, input | rest] -> [name, input | rest] end)
   end
 
+  # The strict read refuses the retired events instead of counting them, so an
+  # accepted read always spells them zero and false (tables/cards/conformance/FORMAT.md).
   defp report_text(report) do
     [
       "Retained=#{Map.get(report, :retained, 0)}\n",
       "RetainLost=#{Map.get(report, :retain_lost, 0)}\n",
       "Widened=#{Map.get(report, :widened, 0)}\n",
       "Unknown=#{Map.get(report, :unknown, 0)}\n",
-      "KindMismatch=#{Map.get(report, :kind_mismatch, 0)}\n",
-      "Clamped=#{Map.get(report, :clamped, 0)}\n",
-      "Duplicate=#{Map.get(report, :duplicate, 0)}\n",
-      "Malformed=#{Map.get(report, :malformed, false)}\n"
+      "KindMismatch=0\n",
+      "Clamped=0\n",
+      "Duplicate=0\n",
+      "Malformed=false\n"
     ]
     |> IO.iodata_to_binary()
   end
@@ -452,7 +455,15 @@ defmodule Cards.CardsTest do
 
   defp retain_ids_used(wire) do
     retain = %{records: [], used: 0, cap: 1 <<< 20, ids: [], id_cap: 4096}
-    report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
+
+    report = %{
+      unknown: 0,
+      widened: 0,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
+    }
 
     codec = :"Elixir.Cards.Table"
     {:ok, value, report, retain} = codec.load_retain("Card", wire, retain, report)

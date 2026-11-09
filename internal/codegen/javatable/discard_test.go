@@ -54,6 +54,7 @@ table Graph
 var (
 	discardGuardLoad   = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE LOAD \(§4\)\s*\n\s*if \()report\.damaged\)`)
 	discardGuardJSON   = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE TEXT READ \(§4, §16\.2\)\s*\n\s*if \()report\.damaged\)`)
+	discardGuardWire   = regexp.MustCompile(`(case WireCheck\.DAMAGED:\s*\n\s*)report\.damaged = true;\s*\n\s*return null;`)
 	discardGuardRetain = regexp.MustCompile(`(// DAMAGE DISCARDS THE WHOLE RETAINING LOAD \(§4, §6\.6\)\s*\n\s*if \()report\.damaged \|\| report\.refused\)`)
 )
 
@@ -322,7 +323,6 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 // point hands back what it decoded. The message batch's own discard is held by
 // TestMessageFormBatchJava (damage_in_body_two, bytes_after_pad: zero bodies).
 func TestDamageDiscardsTheWholeLoadJava(t *testing.T) {
-	t.Skip("generator gaps, re-pinned and red: the Java wire read keeps a value the oracle refuses on a repeated field id (frame_repeat_last_wins, node_table_twice), unknown-field bytes it never checks (frame_unknown_id_length, frame_unknown_id_reference, node_unknown_to_fixed_reader), inert L=0/1 bodies (array_L0_inert, array_L1_inert, map_L1_inert, keyed_L1_inert) and an unreached node record (node_index_null)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	out, err := runDiscardJava(t, nil)
@@ -346,10 +346,14 @@ func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 		guard *regexp.Regexp
 		file  string
 		want  string
+		repl  string
 	}{
-		{"load", discardGuardLoad, "Variable.java", "frame_kind_unknown_37.bin: handed back a value on damage"},
-		{"fromJson", discardGuardJSON, "Variable.java", "fromJson: handed back a value"},
-		{"loadRetain", discardGuardRetain, "Retain.java", "loadRetain"},
+		// the wire-alone check (open) discards wire damage before any value
+		// is decoded; the post-decode guard holds what needs the declaration
+		{"wireCheck", discardGuardWire, "TableVariable.java", "node_cycle_self.bin: handed back a value on damage", "${1}break; /* NEGATIVE CONTROL: the discard is gone */"},
+		{"load", discardGuardLoad, "Variable.java", "map_descending.bin: handed back a value on damage", ""},
+		{"fromJson", discardGuardJSON, "Variable.java", "fromJson: handed back a value", ""},
+		{"loadRetain", discardGuardRetain, "Retain.java", "loadRetain", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -360,7 +364,11 @@ func TestDamageDiscardsTheWholeLoadJavaNegativeControl(t *testing.T) {
 					if !strings.HasSuffix(name, c.file) || !c.guard.Match(data) {
 						continue
 					}
-					files[name] = c.guard.ReplaceAll(data, []byte("${1}false /* NEGATIVE CONTROL: the discard is gone */)"))
+					repl := c.repl
+					if repl == "" {
+						repl = "${1}false /* NEGATIVE CONTROL: the discard is gone */)"
+					}
+					files[name] = c.guard.ReplaceAll(data, []byte(repl))
 					n++
 				}
 				return n

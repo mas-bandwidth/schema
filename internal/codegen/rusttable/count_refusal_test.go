@@ -146,7 +146,6 @@ func rustCountWire(t *testing.T, u *ir.Unit, shape string, count uint64, short b
 
 func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	slowtest.Gate(t, "rustc (the generated count-refusal and retention probe)")
-	t.Skip("layer 4 (rust) gap: the load accepts a node record no pointer reaches, which the engine refuses; follow-up to the strict-leg landing")
 	u := unitFrom(t, rustCountRefusalSchema)
 	model := tabletext.NewModel(u)
 	var body strings.Builder

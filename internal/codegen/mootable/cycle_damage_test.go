@@ -104,7 +104,8 @@ func TestMooCyclicWireIsDamage(t *testing.T) {
 	}
 }
 
-// The control removes the cycle check from the emitted runtime: every cycle
+// The control removes the cycle check from the emitted runtime's decode, and
+// phase one, the wire-alone walk, which judges the graph first: every cycle
 // vector then loads, whole and not malformed, on every path.
 func TestMooCyclicWireNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")
@@ -115,7 +116,11 @@ func TestMooCyclicWireNegativeControl(t *testing.T) {
 		if strings.Count(src, anchor) != 1 {
 			t.Fatal("cycle control anchor must occur exactly once")
 		}
+		if strings.Count(src, wirePhaseOne) != 1 {
+			t.Fatal("phase one's anchor must occur exactly once")
+		}
 		changed := strings.Replace(src, anchor, "if _numberingGood and not report.bodyDamaged and false then", 1)
+		changed = strings.Replace(changed, wirePhaseOne, wirePhaseOneOff, 1)
 		if err := os.WriteFile(filepath.Join(g.dir, "table_load.moo"), []byte(changed), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -159,7 +164,7 @@ func runMapKeyWiden(t *testing.T, dropKind, dropRepeat bool) string {
 		pairs = append(pairs, mapKindRefusalAnchor, `"blobShared", "outOfRange" }`)
 	}
 	if dropRepeat {
-		pairs = append(pairs, mapKeyWidenAnchor, "id == NodeTableId then")
+		pairs = append(pairs, mapKeyWidenAnchor, "id == NodeTableId then", wirePhaseOne, wirePhaseOneOff)
 	}
 	if len(pairs) > 0 {
 		removeMooDiscard(t, g, "table_load.moo", pairs...)
@@ -183,6 +188,7 @@ func TestMooMapKeyWidenReplacesAForeignKind(t *testing.T) {
 
 // The control: with the kind-mismatch refusal removed the repeated-id check
 // alone still refuses the vector, and with the repeated-id check removed too
+// (the decode's, and phase one, whose walk refuses an id twice in one body)
 // the retired last-occurrence-wins rule reads it.
 func TestMooMapKeyWidenNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted readers)")

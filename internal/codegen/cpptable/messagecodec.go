@@ -20,6 +20,7 @@ package cpptable
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -116,7 +117,36 @@ func (g *tableGen) emitMessageCodec(st *ir.Struct) {
 	}
 	g.emitMessageMeasureBody(st)
 	g.emitMessageSaveBody(st)
+	g.emitMessageLoadBodyStrict(st)
+}
+
+// emitMessageLoadBodyStrict emits the message load body with the STRICT
+// whole-value rule (docs/SPEC-TABLES.md §6.5): a field that sets the report's
+// refusal (out_of_range, kind_mismatch, a clamped count/length) must refuse
+// the whole batch, not end as a value at the body's zero reference. The load
+// emitter in messageload.go sets report->refused at each such field and then
+// reaches the zero reference; this wrapper rewrites that one return in the
+// emitted body so a refusal returns false, which makes LoadMessages reset
+// every touched value, return count 0 and name the refusal. It panics if the
+// expected return is not present exactly once, so a changed emitter cannot
+// silently lose the guard.
+func (g *tableGen) emitMessageLoadBodyStrict(st *ir.Struct) {
+	prefix := g.body.String()
 	g.emitMessageLoadBody(st)
+	full := g.body.String()
+	body := full[len(prefix):]
+	const plain = "        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE\n"
+	const strict = "        if ( ref == 0 )\n        {\n" +
+		"            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)\n" +
+		"            return true; // the body ENDS AT ITS OWN ZERO REFERENCE\n" +
+		"        }\n"
+	if strings.Count(body, plain) != 1 {
+		panic(fmt.Sprintf("cpptable: %sLoadMessageBody: the zero-reference return is not present exactly once", st.Name))
+	}
+	body = strings.Replace(body, plain, strict, 1)
+	g.body.Reset()
+	g.body.WriteString(prefix)
+	g.body.WriteString(body)
 }
 
 // messagePass is which half of the pair an emitter is writing. The elision

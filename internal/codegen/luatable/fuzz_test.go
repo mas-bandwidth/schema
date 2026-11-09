@@ -675,6 +675,12 @@ func TestLuaWireFuzzNegativeControl(t *testing.T) {
 		if n := strings.Count(string(src), luaFuzzControlAnchor); n != 1 {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in load.lua, want 1", n)
 		}
+		// the strict load's wire check refuses a frame past its body too
+		// (§6.5): it is switched off so the walk's count is what moves
+		if n := strings.Count(string(src), luaWireCheckCall); n != 1 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the wire check's call appears %d times in load.lua, want 1", n)
+		}
+		src = []byte(strings.Replace(string(src), luaWireCheckCall, luaWireCheckOff, 1))
 		return []byte(strings.Replace(string(src), luaFuzzControlAnchor, sabotaged, 1))
 	}
 	clean := runLuaFuzzDifferential(t, nil)
@@ -689,7 +695,7 @@ func TestLuaWireFuzzNegativeControl(t *testing.T) {
 	for _, d := range clean.divergences {
 		before[d] = true
 	}
-	removed := regexp.MustCompile(`Lua says \{[^}]*malformed:false\}, the engine says \{[^}]*malformed:true\}`)
+	removed := regexp.MustCompile(`the engine discards a damaged load: Lua says`)
 	for _, d := range res.divergences {
 		if !before[d] && removed.MatchString(d) {
 			return

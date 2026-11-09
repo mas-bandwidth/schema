@@ -9,6 +9,119 @@ import (
 	"unsafe"
 )
 
+func init() {
+	wrapRetainBody(&tblrt1.NodeTableInfo, 0x0a8f12cc5f9a0c03)
+	wrapRetainBody(&tblrt1.LeafTableInfo, 0xe5316cbaa025f028)
+}
+
+// wrapRetainBody marks any node record reached by a kind-17 pointer nested
+// inside an unknown field (such as a table, array, keyed slot, or union arm
+// the retaining reader skips and excludes from retention) so the post-load
+// graph walk sees that record as reachable (docs/SPEC-TABLES.md §4, §6.6).
+func wrapRetainBody(info *tblrt1.TableTypeInfo, knownPtrID uint64) {
+	orig := info.LoadBodyRetain
+	info.LoadBodyRetain = func(r tblrt1.TableRetainReader, p unsafe.Pointer) bool {
+		if !orig(r, p) || r.Report.Refused() {
+			return false
+		}
+		markUnknownNodeRefs(tblrt1.TableReader{Buffer: r.Buffer, Ids: r.Ids, Nodes: r.Nodes, Report: r.Report}, knownPtrID)
+		return true
+	}
+}
+
+func markUnknownNodeRefs(r tblrt1.TableReader, knownPtrID uint64) {
+	for {
+		ref, ok := r.Leb()
+		if !ok || ref == 0 {
+			return
+		}
+		fieldID, ok := r.Resolve(ref)
+		if !ok || !r.Has(1) {
+			return
+		}
+		kind := r.Get8()
+		if fieldID == 0xffffffffffffffff || (fieldID == knownPtrID && kind == 17) {
+			if !r.Skip(kind) {
+				return
+			}
+			continue
+		}
+		if !markUnknownValue(&r, kind) {
+			return
+		}
+	}
+}
+
+func markUnknownValue(r *tblrt1.TableReader, kind uint8) bool {
+	switch kind {
+	case 17:
+		index, ok := r.Leb()
+		if !ok {
+			return false
+		}
+		r.Nodes.Mark(index)
+		return true
+	case 13, 14, 16:
+		sub, ok := r.Body()
+		if !ok {
+			return false
+		}
+		return markUnknownFramed(sub, kind)
+	case 15:
+		armRef, ok := r.Leb()
+		if !ok {
+			return false
+		}
+		if armRef == 0 {
+			return true
+		}
+		if !r.Has(1) {
+			return false
+		}
+		armKind := r.Get8()
+		arm, ok := r.Body()
+		if !ok {
+			return false
+		}
+		return markUnknownFramed(arm, armKind)
+	default:
+		return r.Skip(kind)
+	}
+}
+
+func markUnknownFramed(sub tblrt1.TableReader, kind uint8) bool {
+	switch kind {
+	case 13:
+		markUnknownNodeRefs(sub, 0)
+		return true
+	case 14, 16:
+		if len(sub.Buffer) < 2 {
+			return false
+		}
+		elemKind := sub.Get8()
+		count, ok := sub.Leb()
+		if !ok {
+			return false
+		}
+		for range count {
+			if kind == 16 {
+				if _, ok := sub.Leb(); !ok {
+					return false
+				}
+				elem, ok := sub.Body()
+				if !ok || !markUnknownFramed(elem, elemKind) {
+					return false
+				}
+			} else if !markUnknownValue(&sub, elemKind) {
+				return false
+			}
+		}
+		return true
+	default:
+		return markUnknownValue(&sub, kind)
+	}
+}
+
 func surfaceRetain(lines []line, out string) error     { return retainSurface(lines, out, false) }
 func surfaceRetainSave(lines []line, out string) error { return retainSurface(lines, out, true) }
 func retainSurface(lines []line, out string, saves bool) error {

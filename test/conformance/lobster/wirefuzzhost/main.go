@@ -103,17 +103,13 @@ func stage(dir string) (string, error) {
 		return "", err
 	}
 	if _, err := tmp.WriteString(b.String()); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return "", err
+		return "", errors.Join(err, tmp.Close(), os.Remove(tmp.Name()))
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return "", err
+		return "", errors.Join(err, os.Remove(tmp.Name()))
 	}
 	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		os.Remove(tmp.Name())
-		return "", err
+		return "", errors.Join(err, os.Remove(tmp.Name()))
 	}
 	return path, os.Rename(tmp.Name(), path)
 }

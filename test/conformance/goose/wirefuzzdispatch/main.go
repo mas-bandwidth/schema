@@ -166,7 +166,7 @@ func dispatch(in io.Reader, out io.Writer, start starter) (err error) {
 	wg.Wait()
 	for i, c := range children {
 		if sendErr[i] != nil || readErr[i] != nil {
-			return fmt.Errorf("%s did not answer the roster: %v", c.name, errors.Join(sendErr[i], readErr[i]))
+			return fmt.Errorf("%s did not answer the roster: %w", c.name, errors.Join(sendErr[i], readErr[i]))
 		}
 	}
 	route := make([]*child, len(entries))

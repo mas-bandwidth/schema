@@ -58,11 +58,14 @@ cp bench/luau/harness.luau "$STAGE/harness.luau"
 cp "$PROGRAM" "$STAGE/main.luau"
 
 # source_string <file> — the file's bytes as one Luau string literal of \x
-# escapes ("" for a missing file, which the harness refuses by name)
+# escapes ("" for a missing file, which the harness refuses by name). The
+# bytes are split on whitespace with awk, never on od's column padding:
+# BSD od pads its hex columns, and a sed over spaces turns that padding
+# into \x escapes with no digits, which Luau refuses as malformed.
 source_string() {
     printf '"'
     if [ -f "$1" ]; then
-        od -An -v -tx1 "$1" | tr -d '\n' | sed 's/ /\\x/g'
+        od -An -v -tx1 "$1" | awk '{ for (i = 1; i <= NF; i++) printf "\\x%s", $i }'
     fi
     printf '"'
 }

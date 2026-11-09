@@ -330,11 +330,13 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 }
 
 // emitWriterClamps holds an older entry's ranged leaves to its WRITER's range
-// (docs/FIXED-FORM-ALGORITHM.md §4.5), counting each clamp, before the
-// reader's own bounds pass. A range lands on the reader's field the shared
-// helper matches (ir.TableFixedWriterField): a scalar, or every element of a
-// fixed array, each element held the same as a scalar. The lock refuses a
-// narrowed range, so the writer's range lies inside the reader's and the
+// (docs/FIXED-FORM-ALGORITHM.md §4.5), before the reader's own bounds pass.
+// The value lands inside the writer's range. The clamp count itself is the
+// retired manifest field (fixedvector.Expect.Clamped, zero on every dumped
+// line) and is not incremented here. A range lands on the reader's field the
+// shared helper matches (ir.TableFixedWriterField): a scalar, or every element
+// of a fixed array, each element held the same as a scalar. The lock refuses
+// a narrowed range, so the writer's range lies inside the reader's and the
 // reader's pass that follows never moves it.
 func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixedWriterRange) {
 	for j, r := range ranges {
@@ -351,13 +353,13 @@ func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []ir.TableFixed
 				e.p("            while %s < %d {\n", i, f.ArrayBound)
 				val = val + "[" + i + "]"
 				for _, b := range bounds {
-					e.p("                if %s { %s = %s; report.oor += 1; }\n", b.over(val), val, b.land)
+					e.p("                if %s { %s = %s; }\n", b.over(val), val, b.land)
 				}
 				e.p("                %s += 1;\n            }\n", i)
 				break
 			}
 			for _, b := range bounds {
-				e.p("            if %s { %s = %s; report.oor += 1; }\n", b.over(val), val, b.land)
+				e.p("            if %s { %s = %s; }\n", b.over(val), val, b.land)
 			}
 			break
 		}

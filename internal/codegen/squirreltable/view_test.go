@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -234,19 +235,16 @@ table UnboundedProbe {
 	for _, gu := range units {
 		goLines = append(goLines, runGoView(t, root, gu)...)
 	}
-
-	sort.Strings(sqLines)
 	sort.Strings(goLines)
-	if len(sqLines) != len(goLines) {
-		t.Fatalf("the Squirrel view printed %d rows, the Go view printed %d", len(sqLines), len(goLines))
+
+	diffs := viewDiff(sqLines, goLines)
+	for _, d := range diffs {
+		t.Error(d)
 	}
 	fields := 0
-	for i := range sqLines {
-		if strings.HasPrefix(sqLines[i], "VIEW|") {
+	for _, line := range sqLines {
+		if strings.HasPrefix(line, "VIEW|") {
 			fields++
-		}
-		if sqLines[i] != goLines[i] {
-			t.Errorf("view row %d differs\n squirrel: %s\n       go: %s", i, sqLines[i], goLines[i])
 		}
 	}
 	if fields == 0 {
@@ -256,6 +254,80 @@ table UnboundedProbe {
 		t.Fatalf("compared %d units; the manifest is not reached", len(units))
 	}
 	t.Logf("compared %d fields across %d units", fields, len(units))
+
+	// THE NEGATIVE CONTROLS: one emitted fact sabotaged in the Squirrel module
+	// of a probe unit, the Go view unchanged; the differential must go red on
+	// exactly the row that fact feeds (a field descriptor's unbounded marker,
+	// a table's type id, a field's range).
+	for _, blade := range []struct {
+		name, unit, line, from, to, red string
+	}{
+		{"a field's unbounded marker", "unboundedprobe", `{ name = "items", json = "items"`, "unbounded = true", "unbounded = false", "VIEW|unboundedprobe|UnboundedProbe|items|"},
+		{"a field's exact range", "exactrange", `{ name = "m", json = "m"`, "rangeIntMax = 7,", "rangeIntMax = 8,", "VIEW|exactrange|Big|m|"},
+		{"a field's JSON key", "exactrange", `{ name = "n", json = "n"`, `json = "n"`, `json = "nx"`, "VIEW|exactrange|Big|n|"},
+	} {
+		t.Run("negative control "+blade.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.CopyFS(dir, os.DirFS(sqDir)); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, blade.unit, "ProbeTables.nut")
+			src, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(string(src), "\n")
+			hit := 0
+			for i, line := range lines {
+				if strings.Contains(line, blade.line) && strings.Count(line, blade.from) == 1 {
+					lines[i] = strings.Replace(line, blade.from, blade.to, 1)
+					hit++
+				}
+			}
+			if hit != 1 {
+				t.Fatalf("the blade's line %q holding %q is in the emitted module %d times, want 1", blade.line, blade.from, hit)
+			}
+			writeFile(t, path, []byte(strings.Join(lines, "\n")))
+			red := viewDiff(viewLines(sqrun.Run(t, dir, "main.nut", nil)), goLines)
+			if len(red) == 0 {
+				t.Fatal("the sabotaged view still equals the Go view; the differential does not see this fact")
+			}
+			for _, d := range red {
+				if !strings.Contains(d, blade.red) {
+					t.Errorf("the blade turned an unrelated row red: %s", d)
+				}
+			}
+		})
+	}
+}
+
+// viewDiff compares the two views as row multisets and answers each row
+// one view prints and the other does not.
+func viewDiff(sqLines, goLines []string) []string {
+	sqLines = slices.Clone(sqLines)
+	sort.Strings(sqLines)
+	// a row one view prints and the other does not, by multiset
+	count := map[string]int{}
+	for _, line := range sqLines {
+		count[line]++
+	}
+	for _, line := range goLines {
+		count[line]--
+	}
+	var out []string
+	for _, line := range sqLines {
+		if count[line] > 0 {
+			out = append(out, "only the Squirrel view prints: "+line)
+			count[line]--
+		}
+	}
+	for _, line := range goLines {
+		if count[line] < 0 {
+			out = append(out, "only the Go view prints: "+line)
+			count[line]++
+		}
+	}
+	return out
 }
 
 // viewLines splits a probe's output into sorted-edge-preserving rows.

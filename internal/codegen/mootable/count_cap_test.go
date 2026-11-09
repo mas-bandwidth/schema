@@ -123,26 +123,42 @@ func countCapFloatInputs(t *testing.T) (map[string][]byte, []string) {
 // countCapRed is the gate's red list, one line per input and path whose
 // answer is not §2.9's, over the pin's measure and float units. mutate, when
 // set, edits the emitted runtime file `file` first.
-func countCapRed(t *testing.T, file string, mutate func(string) string) []string {
+func countCapRed(t *testing.T, file string, mutate func(string) string, load func(string) string) []string {
 	t.Helper()
 	var bad []string
 	for _, u := range []struct {
 		unit   string
 		inputs func(*testing.T) (map[string][]byte, []string)
 	}{{"measure", countCapInputs}, {"float", countCapFloatInputs}} {
-		bad = append(bad, countCapUnitRed(t, u.unit, u.inputs, file, mutate)...)
+		bad = append(bad, countCapUnitRed(t, u.unit, u.inputs, file, mutate, load)...)
 	}
 	return bad
 }
 
+// phaseOneOff removes phase one, the wire-alone walk, from table_load.moo, so
+// a control on a later check is not answered by the walk first.
+func phaseOneOff(t *testing.T) func(string) string {
+	return func(src string) string {
+		if strings.Count(src, wirePhaseOne) != 1 {
+			t.Fatalf("table_load.moo carries phase one's anchor %d times, want 1", strings.Count(src, wirePhaseOne))
+		}
+		return strings.Replace(src, wirePhaseOne, wirePhaseOneOff, 1)
+	}
+}
+
 // countCapUnitRed runs one pin unit's inputs through every builder read path.
-func countCapUnitRed(t *testing.T, unit string, inputs func(*testing.T) (map[string][]byte, []string), file string, mutate func(string) string) []string {
+func countCapUnitRed(t *testing.T, unit string, inputs func(*testing.T) (map[string][]byte, []string), file string, mutate func(string) string, load func(string) string) []string {
 	t.Helper()
 	in, names := inputs(t)
 	g := generateFiles(t, map[string]string{"Probe.schema": reasonSchemas[unit]})
-	if mutate != nil {
+	if mutate != nil || load != nil {
 		files := maps.Clone(g.files)
-		files[file] = []byte(mutate(string(files[file])))
+		if mutate != nil {
+			files[file] = []byte(mutate(string(files[file])))
+		}
+		if load != nil {
+			files["table_load.moo"] = []byte(load(string(files["table_load.moo"])))
+		}
 		g = writeUnit(t, g.unit, files)
 	}
 	var main strings.Builder
@@ -206,7 +222,7 @@ func countCapUnitRed(t *testing.T, unit string, inputs func(*testing.T) (map[str
 func TestMooCountCapRefusal(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
-	for _, b := range countCapRed(t, "", nil) {
+	for _, b := range countCapRed(t, "", nil, nil) {
 		t.Error(b)
 	}
 }
@@ -223,7 +239,7 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 			t.Fatalf("table_retain.moo carries the anchor %d times, want 1: the control would be vacuous", strings.Count(src, from))
 		}
 		return strings.Replace(src, from, "\tif false then\n", 1)
-	})
+	}, phaseOneOff(t))
 	var red []string
 	for _, b := range bad {
 		red = append(red, b[:strings.Index(b, ":")])
@@ -234,19 +250,20 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 	t.Logf("red: %s", bad[0])
 }
 
-// TestMooCountCapReadOrderNegativeControl drops the read-order rule: the load
-// answers the count whatever the walk met first, so nan_then_over_cap goes red
-// on every builder read path, and only it.
+// TestMooCountCapReadOrderNegativeControl drops the read-order rule from phase
+// one, the wire-alone walk, which meets the count first: the load answers the
+// count whatever the walk met first, so nan_then_over_cap goes red on every
+// builder read path, and only it.
 func TestMooCountCapReadOrderNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
-	const from = "\t\tif _countNonFinite > 0 then\n"
+	const from = `wcFail(if wc.nonFinite then "non_finite_float" else "count_over_extent_cap")`
 	bad := countCapRed(t, "table_load.moo", func(src string) string {
 		if strings.Count(src, from) != 1 {
 			t.Fatalf("table_load.moo carries the anchor %d times, want 1: the control would be vacuous", strings.Count(src, from))
 		}
-		return strings.Replace(src, from, "\t\tif false then\n", 1)
-	})
+		return strings.Replace(src, from, `wcFail("count_over_extent_cap")`, 1)
+	}, nil)
 	var red []string
 	for _, b := range bad {
 		red = append(red, b[:strings.Index(b, ":")])

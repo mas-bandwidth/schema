@@ -70,11 +70,10 @@ func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Dart must carry %s on the variable wire, never refuse it: %v", c.unit, err)
 			}
-			wire, ok := files[c.wire]
-			if !ok || len(wire) == 0 {
+			if len(files[c.wire]) == 0 {
 				t.Fatalf("Generate emitted no %s for %s — the form-1 codec is not carried yet", c.wire, c.unit)
 			}
-			resaveOracleRows(t, c.wire, wire, repo, c.rows, packetFiles(t, u))
+			resaveOracleRows(t, c.wire, files, repo, u, c.rows)
 		})
 	}
 }
@@ -112,6 +111,11 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 			if name, ok := strings.CutPrefix(a, "go-refusal="); ok {
 				r.refusal = name
 			}
+			if a == "wire-refused" {
+				// A wire-refused row names one blob from two slots; every
+				// writer refuses it as blob_shared (SPEC §2.5).
+				r.refusal = "blob_shared"
+			}
 		}
 		rows = append(rows, r)
 	}
@@ -121,35 +125,138 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 	return rows
 }
 
-// resaveOracleRows writes the generated library and one probe that loads every
-// row's oracle wire through <root>WireLoad, saves it through <root>WireSave,
-// and requires the bytes to be identical, naming every row that is not. A row
-// with a refusal must instead throw the refusal's name.
-func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, rows []oracleRow, packet map[string][]byte) {
+// resaveOracleRows writes the generated libraries and one probe that loads every
+// row's oracle wire through its root's codec, saves it back, and requires the
+// bytes to be identical, naming every row that is not. A FIXED ROOT IS FORM 3
+// (docs/SPEC-TABLES.md §3.4; internal/tablewire/fixedroot_test.go): its oracle
+// is a form-3 file, so its resave rides <root>FixedLoad/<root>FixedSave and
+// never the form-1 wire codec. A variable root rides <root>WireLoad/
+// <root>WireSave. A row with a refusal must instead throw the refusal's name.
+func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, repo string, u *ir.Unit, rows []oracleRow) {
 	t.Helper()
 	dir := t.TempDir()
-	writeFiles(t, dir, packet)
+	writeFiles(t, dir, packetFiles(t, u))
+	wire := files[wireName]
+	if len(wire) == 0 {
+		t.Fatalf("no %s form-1 codec", wireName)
+	}
 	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// THE FIXED LIBRARIES (form 3) BESIDE THE VARIABLE ONE: the fixed roots'
+	// oracle wires are form 3, so their resave runs through the Fixed codec.
+	for name, src := range files {
+		if strings.HasSuffix(name, "Fixed.dart") {
+			if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	probe := resaveOracleProbe(wireName, files, rows)
+	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"--enable-asserts", "probe.dart"}
+	for _, r := range rows {
+		abs, err := filepath.Abs(filepath.Join(repo, r.path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		refusal := r.refusal
+		if refusal == "" {
+			refusal = "-"
+		}
+		args = append(args, r.name, r.root, abs, refusal)
+	}
+	cmd := exec.Command(dartBinary(t), args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("oracle round trip over the generated %s: %v\n%s", wireName, err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("probe did not report ok: %s", out)
+	}
+}
+
+// resaveOracleProbe is the probe resaveOracleRows writes. A root whose
+// artifact contains `int <name>FixedLoad(` resaves with FixedLoad/FixedSave (one read: the records or a
+// refusal) and never WireLoad/WireSave. That artifact is a form-3 file. A root with no Fixed
+// codec stays on the form-1 wire. A fixed table past the form's bounds keeps
+// form 1 and has no FixedLoad.
+func resaveOracleProbe(wireName string, files map[string][]byte, rows []oracleRow) string {
+	var fixedNames []string
+	for name := range files {
+		if strings.HasSuffix(name, "Fixed.dart") {
+			fixedNames = append(fixedNames, name)
+		}
+	}
+	sort.Strings(fixedNames)
+	fixedRoots := map[string]bool{}
+	for _, r := range rows {
+		if r.root == "" {
+			continue
+		}
+		fn := strings.ToLower(r.root[:1]) + r.root[1:]
+		for _, name := range fixedNames {
+			if strings.Contains(string(files[name]), "int "+fn+"FixedLoad(") {
+				fixedRoots[r.root] = true
+			}
+		}
+	}
 	roots := map[string]bool{}
 	for _, r := range rows {
-		roots[r.root] = true
+		if r.root != "" {
+			roots[r.root] = true
+		}
 	}
 	var names []string
 	for r := range roots {
 		names = append(names, r)
 	}
 	sort.Strings(names)
+	var imports strings.Builder
+	imports.WriteString("import '" + wireName + "';\n")
+	for _, name := range fixedNames {
+		// Prefixed: the Fixed and Wire libraries define the same table
+		// classes, so an unprefixed import of both is ambiguous.
+		imports.WriteString("import '" + name + "' as f;\n")
+	}
 	var sw strings.Builder
 	for _, r := range names {
 		fn := strings.ToLower(r[:1]) + r[1:]
-		sw.WriteString("    case '" + r + "':\n      return " + fn + "WireSave(" + fn + "WireLoad(wire));\n")
+		if fixedRoots[r] {
+			// A FIXED ROOT IS FORM 3, BOTH WAYS (§3.4): its oracle is a form-3
+			// file and rides the Fixed codec — one record, one whole read or a
+			// refusal — never form 1.
+			sw.WriteString("    case '" + r + "':\n      {\n")
+			sw.WriteString("        final values = List<f." + r + ">.generate(1, (_) => f." + r + "());\n")
+			sw.WriteString("        final plan = f." + fn + "FixedNewPlan();\n")
+			sw.WriteString("        final report = f.TableFixedReport();\n")
+			sw.WriteString("        if (f." + fn + "FixedLoad(values, 1, wire, wire.length, plan, report) != 1 ||\n")
+			sw.WriteString("            report.refused != 0) {\n")
+			sw.WriteString("          throw StateError('fixed load refused');\n")
+			sw.WriteString("        }\n")
+			sw.WriteString("        final out = Uint8List(f." + fn + "FixedMeasure(1));\n")
+			sw.WriteString("        if (f." + fn + "FixedSave(values, 1, out) < 0) {\n")
+			sw.WriteString("          throw StateError('fixed save refused');\n")
+			sw.WriteString("        }\n")
+			sw.WriteString("        return out;\n")
+			sw.WriteString("      }\n")
+		} else {
+			// The strict read is one read: the whole value or a refusal
+			// named in the report, never a default resaved as form 1.
+			sw.WriteString("    case '" + r + "':\n      {\n")
+			sw.WriteString("        final report = TableWireReport();\n")
+			sw.WriteString("        final v = " + fn + "WireLoad(wire, report);\n")
+			sw.WriteString("        if (report.refused) throw StateError(report.refusal);\n")
+			sw.WriteString("        return " + fn + "WireSave(v);\n")
+			sw.WriteString("      }\n")
+		}
 	}
-	probe := `import 'dart:io';
+	return `import 'dart:io';
 import 'dart:typed_data';
-import '` + wireName + `';
-
+` + imports.String() + `
 Uint8List resave(String root, Uint8List wire) {
   switch (root) {
 ` + sw.String() + `    default:
@@ -195,30 +302,6 @@ void main(List<String> args) {
   stdout.writeln('ok');
 }
 `
-	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	args := []string{"--enable-asserts", "probe.dart"}
-	for _, r := range rows {
-		abs, err := filepath.Abs(filepath.Join(repo, r.path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		refusal := r.refusal
-		if refusal == "" {
-			refusal = "-"
-		}
-		args = append(args, r.name, r.root, abs, refusal)
-	}
-	cmd := exec.Command(dartBinary(t), args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("oracle round trip over the generated %s: %v\n%s", wireName, err, out)
-	}
-	if !strings.Contains(string(out), "ok") {
-		t.Fatalf("probe did not report ok: %s", out)
-	}
 }
 
 // packetFiles is the unit's packet libraries (internal/codegen/dart): the

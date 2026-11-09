@@ -584,6 +584,33 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
+# THE WRITER REFUSES STORAGE THAT IS NOT TEXT (docs/SPEC-TABLES.md §16.14 W0):
+# ill-formed UTF-8 in a narrow field answers -1 from ToJson and its measure,
+# never a U+FFFD. The negative control takes the refusal out of a copy of the
+# generated walk and requires the gate to go red on the refusal row by name.
+.PHONY: tables-json-write-refusal tables-json-write-refusal-negative-control
+tables-json-write-refusal: bin/schema test/tables/json_write_refusal_main.cpp
+	@rm -rf build/json-write-refusal && mkdir -p build/json-write-refusal
+	./bin/schema generate --lang cpp --out build/json-write-refusal tables/examples
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-write-refusal test/tables/json_write_refusal_main.cpp build/json-write-refusal/TablesTable.cpp -o build/schema_test_json_write_refusal
+	./build/schema_test_json_write_refusal
+
+tables-json-write-refusal-negative-control: bin/schema test/tables/json_write_refusal_main.cpp
+	@rm -rf build/json-write-refusal-sabotage && mkdir -p build/json-write-refusal-sabotage
+	./bin/schema generate --lang cpp --out build/json-write-refusal-sabotage tables/examples
+	@sed -i.bak 's|out.invalid = true; // not text: the write refuses|out.invalid = false; // SABOTAGED|' build/json-write-refusal-sabotage/TablesTable.cpp
+	@grep -q 'out.invalid = false; // SABOTAGED' build/json-write-refusal-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL FAILED: the sabotage did not apply"; exit 1; }
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-write-refusal-sabotage test/tables/json_write_refusal_main.cpp build/json-write-refusal-sabotage/TablesTable.cpp -o build/schema_test_json_write_refusal_sabotage
+	@if ./build/schema_test_json_write_refusal_sabotage > build/json-write-refusal-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the write-refusal gate passed with the refusal taken out"; \
+		cat build/json-write-refusal-sabotage.log; exit 1; \
+	fi
+	@grep -q 'FAIL json write refusal: ill-formed UTF-8' build/json-write-refusal-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the refusal row"; cat build/json-write-refusal-sabotage.log; exit 1; }
+	@echo "negative control: the write-refusal gate goes red with the refusal taken out"
+
 # THE DOC AND TAGS COST OBSERVABLES, AND THE TWO SAME-DECLARATION PAIRS
 # (docs/SPEC-TABLES.md §8.7). The two cost claims §8.1 makes about the
 # annotation columns are held by observables, not by inspection: a printer
@@ -3687,6 +3714,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-json-write-refusal
+	$(MAKE) tables-json-write-refusal-negative-control
 	$(MAKE) tables-doctags
 	$(MAKE) tables-doctags-negative-controls
 	$(MAKE) tables-view
@@ -5643,7 +5672,7 @@ CPP_DISCARD_NC := build/cpp-discard-nc
 .PHONY: tables-cpp-discard-negative-control
 tables-cpp-discard-negative-control:
 	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
-	@sed -e 's|if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|if ( to->damaged ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
 		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
 	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
@@ -5654,21 +5683,21 @@ tables-cpp-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
 		cat $(CPP_DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "fixed: LoadTolerant answered true on damage" $(CPP_DISCARD_NC)/log || \
+	@grep -q "fixed: the report does not say malformed" $(CPP_DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(CPP_DISCARD_NC)/log; exit 1; }
-	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
+	@grep -m1 "fixed: the report does not say malformed" $(CPP_DISCARD_NC)/log
 	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
 
 # The REGION twin of tables-cpp-discard-negative-control: the discard is
-# removed from a COPY of the variable-class LoadTolerant in pointers.go, so a
+# removed from a COPY of the variable-class Load in pointers.go, so a
 # variable root damaged inside a nested body hands back its region root, and
 # TestDamageDiscardsTheWholeLoadCPP must go red on exactly that.
 CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->malformed )|if ( false )|; }' \
+	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->damaged )|if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5679,10 +5708,10 @@ tables-cpp-region-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
 		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "variable: LoadTolerant handed back a root on damage" $(CPP_REGION_DISCARD_NC)/log || \
+	@grep -q "variable: the report does not say malformed" $(CPP_REGION_DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
-	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
+	@grep -m1 "variable: the report does not say malformed" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
 # A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
@@ -5785,13 +5814,14 @@ tables-engine-cycle-linear-negative-control:
 	@echo "negative control: re-entering a shared node turns the diamond gate RED"
 
 # NOTHING OF A REFUSED BUILDER LOAD IS USED (docs/SPEC-TABLES.md §4): the control
-# removes the root reset from a COPY of pointers.go, so a damaged builder load
-# leaves its root holding what it decoded.
+# removes both root resets from a COPY of pointers.go — the walk's and the strict
+# wrapper's — so a damaged builder load leaves its root holding what it decoded.
 TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-discard-negative-control
 .PHONY: tables-cpp-builder-discard-negative-control
 tables-cpp-builder-discard-negative-control:
 	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
-	@sed -e 's#if ( out->malformed || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+	@sed -e 's#if ( out->damaged || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+		-e 's#if ( refused_root != NULL ) { %sReset( \*refused_root ); }#if ( false ) { %sReset( *refused_root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
