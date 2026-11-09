@@ -119,7 +119,7 @@ func vtPointerFindings(loadSrc, saveSrc, refusalSrc string) []string {
 	checks := []struct{ src, name, want string }{
 		{loadSrc, "load delegates to ReadStrict", "return R.ReadStrict(T, rootName, bytes, report);"},
 		{loadSrc, "load id-table bound check", "if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND)"},
-		{loadSrc, "load id-table distinctness", "if (id in seen) { report.bodyDamaged = true; return null; }"},
+		{loadSrc, "load id-table distinctness", "if (id in seen) { report.bodyDamaged = true; return retainClear(retain, report, \"wire_damaged\"); }"},
 		{loadSrc, "load cycle check", `if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.bodyDamaged = true;`},
 		{loadSrc, "load union arm payload framing", "readArmPayload = function(arm, sub, lpos, wireKind, T, table, inst, report, st)"},
 		{saveSrc, "save node deduplication", "if (found >= 0) continue;"},
@@ -541,7 +541,7 @@ func TestSquirrelVtPointerCellsNegativeControl(t *testing.T) {
 		anchor string
 	}{
 		{"load ReadStrict delegation", "load", "return R.ReadStrict(T, rootName, bytes, report);"},
-		{"load id-table distinctness", "load", "if (id in seen) { report.bodyDamaged = true; return null; }"},
+		{"load id-table distinctness", "load", "if (id in seen) { report.bodyDamaged = true; return retainClear(retain, report, \"wire_damaged\"); }"},
 		{"save node deduplication", "save", "if (found >= 0) continue;"},
 		{"refusal ReadStrict entry", "refusal", "_M.ReadStrict <- function(T, root, bytes, report)"},
 	}
