@@ -1806,12 +1806,14 @@ tables-elixir-wire-fuzz-refusal: build/conformance-harness build/elixir-tables-e
 
 # ITS CONTROL: the driver answers a refused load, and a refused measure, with an
 # EMPTY report (the answer it gave before the discard rule), compiled over a
-# copy of the corpus; the gate must go red on the fixed root's empty buffer.
+# copy of the corpus; the gate must go red on the first empty buffer — the
+# variable root's, which under strict-only owes the report exactly as the fixed
+# root's does — for dropping the report.
 tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
 	@rm -rf $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control && mkdir -p $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin
 	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/ebin/
 	@sed -e 's|          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)|          stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>) # SABOTAGED|' \
-		-e 's|      {:error, _reason, report} -> %{report \| malformed: true}|      {:error, _reason, _report} -> %{} # SABOTAGED|' \
+		-e 's|      {:error, _reason, report} -> Map.put(report, :reason, "wire_damaged")|      {:error, _reason, _report} -> %{} # SABOTAGED|' \
 		test/conformance/elixir/driver_impl.ex > $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex
 	@grep -q SABOTAGED $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/driver_impl.ex || \
 		{ echo "NEGATIVE CONTROL: the driver sabotage did not apply"; exit 1; }
@@ -1822,9 +1824,11 @@ tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness buil
 		cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; \
 		echo "NEGATIVE CONTROL FAILED: a driver that drops the refused load's report left the refusal gate green"; exit 1; \
 	fi
-	@grep -q 'the empty buffer under tabledemo:WideBlob' $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log || \
-		{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the fixed root's empty buffer"; exit 1; }
-	@echo "elixir wire-fuzz refusal negative control: a driver that drops a refused load's report reds the gate on tabledemo.WideBlob"
+	@grep -q 'the empty buffer under graphdemo:Scene' $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the variable root's empty buffer"; exit 1; }
+	@grep -q "leg's report does not name the refusal" $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log || \
+		{ cat $(ELIXIR_WIRE_FUZZ_REFUSAL_DIR)/control/log; echo "NEGATIVE CONTROL FAILED: the gate went red, but not for the dropped report"; exit 1; }
+	@echo "elixir wire-fuzz refusal negative control: a driver that drops a refused load's report reds the gate on graphdemo.Scene"
 
 test-elixir: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
 
