@@ -402,9 +402,10 @@ fixed table T {
 func TestGooseFixedProofOrdinals(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
-	// C9: union tag past arms -> None (0) + clamped == 1 on both plans
-	// C10: enum ordinal past top -> None (0) + clamped == 1 on both plans
+	// C9: union tag past arms -> out_of_range on the identity plan (§4.6)
+	// C10: enum ordinal past top -> out_of_range on the identity plan (§4.6)
 	// R31: writer's variant count governs on compiled plan as well as identity plan
+	// (the compiled plan still counts and lands None; the strict identity read refuses)
 	const oldSchema = `package probe
 enum Tier { Bronze, Silver }
 union Pick {
@@ -448,7 +449,7 @@ fixed table Lineage {
     var dst: probe::Lineage[1] = [probe::Lineage { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
     let n = probe::LineageFixedLoad(dst, data, rep);
-    print(n, " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
+    print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].Tier as u64, " ", dst[0].Pick.Type as u64, " ", dst[0].Seq);
 }
 `, map[string][]byte{"in.bin": file})
 
@@ -462,8 +463,8 @@ fixed table Lineage {
 }
 `, map[string][]byte{"in.bin": file})
 
-	if gotOld != "1 2 0 0 42" || gotNew != "1 2 0 0 42" {
-		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want \"1 2 0 0 42\"", gotOld, gotNew)
+	if gotOld != "-1 out_of_range 0 0 0 0" || gotNew != "1 2 0 0 42" {
+		t.Fatalf("Ordinals (C9/C10/R31): old=%q new=%q, want \"-1 out_of_range 0 0 0 0\" and \"1 2 0 0 42\"", gotOld, gotNew)
 	}
 }
 
@@ -483,7 +484,8 @@ fixed table T {
     var data: u8[>..] = [];
     let _ = probe::TFixedSave([v], data);
     let body = data.len - probe::TFixedBodyBytes;
-    // Forge Flag byte to 0x7f and OptPresent byte to 0x5a: C12, C13, R17 say both normalize to true with 0 clamps!
+    // Forge Flag byte to 0x7f and OptPresent byte to 0x5a: C12, C13, R17 say
+    // both are wire_damaged and the strict read refuses (never lands them as true).
     data[body + 0] = 0x7f;
     data[body + 1] = 0x5a;
     data[body + 2] = 42;
@@ -494,7 +496,7 @@ fixed table T {
     print(n, " ", schema_rt::fixed_refusal_name(rep.reason), " ", rep.oor, " ", dst[0].Flag, " ", dst[0].OptPresent, " ", dst[0].Opt);
 }
 `, nil)
-	if got != "1 ok 0 true true 42" {
+	if got != "-1 wire_damaged 0 false false 0" {
 		t.Fatalf("Normalization (C12/C13/R17): got %q", got)
 	}
 }

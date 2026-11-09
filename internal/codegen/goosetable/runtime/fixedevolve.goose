@@ -42,6 +42,7 @@ fn fixed_evolve_refusal_name(code: i64) -> const u8[:] {
         4 => "reserved_not_zero",
         6 => "truncated",
         14 => "invalid_value",
+        16 => "wire_damaged",
         18 => "out_of_range",
         22 => "integrity_mismatch",
         25 => "previous_form",
