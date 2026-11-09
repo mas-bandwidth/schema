@@ -910,7 +910,8 @@ jobs:
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            2>&1 | tee controls.log || status=1
+            >controls.log 2>&1 || status=1
+          cat controls.log
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
             grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
