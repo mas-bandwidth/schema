@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -221,6 +222,55 @@ func moduleTests(root string) ([]gatedTest, error) {
 		return tests[i].name < tests[j].name
 	})
 	return tests, err
+}
+
+// TestSlowGateCoverageShardsCoverAllShards holds ci-full.yml's slow-gate
+// rows and the Makefile's SLOWGATE_SHARDS to one another: each half
+// (codegen, rest) must declare shard rows 0..n-1 exactly once, as matrix
+// groups and as steps, or a package would be read by no shard (or two).
+func TestSlowGateCoverageShardsCoverAllShards(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "..")
+	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^SLOWGATE_SHARDS \?= (\d+)$`).FindSubmatch(mk)
+	if m == nil {
+		t.Fatal("Makefile does not declare SLOWGATE_SHARDS ?= <n>")
+	}
+	n, err := strconv.Atoi(string(m[1]))
+	if err != nil || n < 2 {
+		t.Fatalf("SLOWGATE_SHARDS = %q, want an integer >= 2", m[1])
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-full.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(body)
+	for _, half := range []string{"codegen", "rest"} {
+		target := "slow-gate-coverage-" + half
+		seen := map[int]bool{}
+		for _, sm := range regexp.MustCompile(`make `+target+` SLOWGATE_SHARD=(\d+)`).FindAllStringSubmatch(text, -1) {
+			k, _ := strconv.Atoi(sm[1])
+			if seen[k] {
+				t.Errorf("%s shard %d is run by two rows", target, k)
+			}
+			seen[k] = true
+			group := fmt.Sprintf("slow-gate-%s-%d", half, k)
+			if !strings.Contains(text, group) {
+				t.Errorf("%s shard %d has no matrix group %s", target, k, group)
+			}
+		}
+		if len(seen) != n {
+			t.Errorf("%s runs %d shards, want %d (SLOWGATE_SHARDS)", target, len(seen), n)
+		}
+		for k := 0; k < n; k++ {
+			if !seen[k] {
+				t.Errorf("%s shard %d is run by no row: its packages are read by nobody", target, k)
+			}
+		}
+	}
 }
 
 // TestSubtreeRecipeIsAudited holds a `go test ./dir/...` recipe line to the

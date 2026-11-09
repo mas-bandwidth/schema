@@ -199,9 +199,14 @@ jobs:
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
     #   unit-elixir     — go test internal/codegen/elixirtable, alone
-    #   slow-gate-codegen — the slowtest accounting (schema#988) over the
-    #                     emitter packages
-    #   slow-gate-rest  — the same accounting over every other package
+    #   slow-gate-codegen-0..11 — the slowtest accounting (schema#988) over
+    #                     the emitter packages, sharded by package
+    #                     (Makefile SLOWGATE_SHARD/SLOWGATE_SHARDS)
+    #   slow-gate-rest-0..5 — the same accounting over every other package,
+    #                     sharded the same way. The unsharded halves were
+    #                     killed at 120 s on main (130 s / 136 s); each shard
+    #                     row must finish under 110 s. Together the rows
+    #                     read exactly the packages the two halves read.
     #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
     #                     and Elixir legs, with the three SDKs only that row
     #                     needs
@@ -223,7 +228,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, versioning ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -355,7 +360,7 @@ jobs:
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
         run: make dist-luau
 
       - name: go vet
@@ -368,7 +373,7 @@ jobs:
       # skip, without it. make/lua.mk's dist-lua builds it from source at the
       # sha256 it names, into dist/lua-<version>/, which is the LUA default.
       - name: install the Lua pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-lua
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
@@ -410,7 +415,7 @@ jobs:
       # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
       # .github/actions/moo builds the pin once per runner image and caches it).
       - uses: ./.github/actions/moo
-        if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
+        if: matrix.group == 'unit-codegen'
 
       # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
       # internal/codegen/lobstertable run generated Lobster under the pinned
@@ -497,16 +502,90 @@ jobs:
       # make target that sets the variable, run only by the two steps above, or
       # run by NOBODY. The third bucket fails the job. The table is uploaded as
       # build/slowgate/coverage.tsv so the accounting is read, not believed.
-      # TWO ROWS, ONE VERDICT: the accounting is per skip, so the emitter
-      # packages and the rest, each read on its own row, reach the verdict one
-      # plain `go test ./...` would, at half the wall time each.
-      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages
-        if: matrix.group == 'slow-gate-codegen'
-        run: make slow-gate-coverage-codegen
+      # No Lua, Luau or Moo pin on these rows: the gated-only -run pattern
+      # reaches the gate (or a runner's Enabled check) and skips before any
+      # interpreter is resolved, as the Squirrel pin note already records
+      # for its pin. The pins were 13-46 s a row here and a network fetch
+      # that can 504; the unit rows still install every pin.
+      # EIGHTEEN ROWS, ONE VERDICT: the accounting is per skip, so each
+      # shard of the emitter packages and of the rest, read on its own
+      # row, reaches the verdict one plain `go test ./...` would for its
+      # skips. The two unsharded halves were killed at 120 s (130 s /
+      # 136 s on main); the shards split them round-robin by package so
+      # no row pays that wall. tools/slowgatescan's
+      # TestSlowGateCoverageShardsCoverAllShards holds the shard indices
+      # below to exactly 0..SLOWGATE_SHARDS-1 per half.
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 0
+        if: matrix.group == 'slow-gate-codegen-0'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=0
 
-      - name: every slowtest gate is run by somebody, by name (schema#988), every other package
-        if: matrix.group == 'slow-gate-rest'
-        run: make slow-gate-coverage-rest
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 1
+        if: matrix.group == 'slow-gate-codegen-1'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=1
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 2
+        if: matrix.group == 'slow-gate-codegen-2'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=2
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 3
+        if: matrix.group == 'slow-gate-codegen-3'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=3
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 4
+        if: matrix.group == 'slow-gate-codegen-4'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=4
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 5
+        if: matrix.group == 'slow-gate-codegen-5'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=5
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 6
+        if: matrix.group == 'slow-gate-codegen-6'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 7
+        if: matrix.group == 'slow-gate-codegen-7'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=7
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 8
+        if: matrix.group == 'slow-gate-codegen-8'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=8
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 9
+        if: matrix.group == 'slow-gate-codegen-9'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=9
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 10
+        if: matrix.group == 'slow-gate-codegen-10'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 11
+        if: matrix.group == 'slow-gate-codegen-11'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 0
+        if: matrix.group == 'slow-gate-rest-0'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=0 SLOWGATE_SHARDS=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 1
+        if: matrix.group == 'slow-gate-rest-1'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=1 SLOWGATE_SHARDS=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 2
+        if: matrix.group == 'slow-gate-rest-2'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=2 SLOWGATE_SHARDS=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 3
+        if: matrix.group == 'slow-gate-rest-3'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=3 SLOWGATE_SHARDS=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 4
+        if: matrix.group == 'slow-gate-rest-4'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=4 SLOWGATE_SHARDS=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 5
+        if: matrix.group == 'slow-gate-rest-5'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=5 SLOWGATE_SHARDS=6
 
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
       # test/conformance/go/rows, which `go test ./...` never sees because they
