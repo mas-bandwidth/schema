@@ -156,10 +156,10 @@ func TestGoRetainAndWideningStrict(t *testing.T) {
 // TestGoRetainAndWideningStrictNegativeControl plants a fault in the real
 // artifact for each cell and requires the strict read to go red:
 //
-//	- dropping the noFileForm binding on the oversized fixed root WideBlob must
-//	  turn the widening cell's refusal into a read (report/previous_form_wide_blob);
-//	- dropping the markUnknownNodeRefs call must break the retain-unknown cell's
-//	  whole-value read and save (retain/retain_node_index, retain-save/retain_node_index).
+//   - dropping the noFileForm binding on the oversized fixed root WideBlob must
+//     turn the widening cell's refusal into a read (report/previous_form_wide_blob);
+//   - dropping the markUnknownNodeRefs call must break the retain-unknown cell's
+//     whole-value read and save (retain/retain_node_index, retain-save/retain_node_index).
 func TestGoRetainAndWideningStrictNegativeControl(t *testing.T) {
 	root := goConformanceRoot(t)
 	reports, retains := goReportAndRetainRows(t, root)

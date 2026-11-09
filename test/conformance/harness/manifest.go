@@ -240,12 +240,12 @@ func (m Message) Refused() bool { return m.MessageWire == "-" }
 // the announcement as damage, the connection carries no vocabulary, and the
 // leg answers the row absent as a refusal.
 type AnnounceGrown struct {
-	Name      string
-	Message   string // the message row read again
-	Entries   int
-	Repeat    bool // the last entry repeats the first
-	Refused   bool
-	File      string // filled in by the harness once materialised
+	Name    string
+	Message string // the message row read again
+	Entries int
+	Repeat  bool // the last entry repeats the first
+	Refused bool
+	File    string // filled in by the harness once materialised
 }
 
 // AnnouncementMalformed is the diagnostic reason for a message row whose

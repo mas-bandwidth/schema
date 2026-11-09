@@ -38,7 +38,7 @@ func checkJsFixedLoadNeverClamps(decodeBody, runBody string) []string {
 	var faults []string
 	// THE DECODE'S CHECK LOOP AND BOUNDS PASS REFUSE BY NAME.
 	for _, want := range []string{
-		"TableFixedRefusal.WireDamaged",  // a bool or present byte other than 0/1
+		"TableFixedRefusal.WireDamaged",     // a bool or present byte other than 0/1
 		"TableFixedRefusal.LengthOverBound", // a text length past its cap
 		"TableFixedRefusal.CountOverBound",  // a counted-array count past its bound
 		"TableFixedRefusal.OutOfRange",      // a ranged scalar or an ordinal past the set

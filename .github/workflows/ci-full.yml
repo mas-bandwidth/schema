@@ -1859,7 +1859,8 @@ jobs:
   # about the code in the diff, not about the compiler that built it — and it
   # fits the budget now that it is sharded by unit (issue #684): one row per
   # independent piece, so the run pays the longest piece rather than the sum.
-  # The controls keep their own rows, so nothing runs less than it did.
+  # The controls keep their own rows; the reduced host-order checks stay
+  # per-commit and the full corpus battery and control run nightly.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -1890,6 +1891,25 @@ jobs:
       # is the `tables` and `collections` rows and the pair is the same pair
       # whether one job runs them or three. `c-control` is the C twin. They are
       # what prove the matrix can go red.
+      #
+      # PER-COMMIT SMOKE vs NIGHTLY BATTERY (green-be-nightly). The four heavy
+      # rows on the card were control 322 s, tables 282 s, go-control 250 s and
+      # go 136 s. Run 42581682964 at ecc2d21ba, job wall from started_at to
+      # completed_at: tables 46 s, control 44 s, collections 82 s, cook 76 s,
+      # c 85 s, c-control 103 s, go 127 s. The go make step
+      # (conformance-big-endian) was 96 s inside that 127 s job, past the 110 s
+      # row budget, so the full Go harness moves to certify.yml and this go row
+      # runs conformance-big-endian-smoke: three units, host bytes against
+      # qemu-s390x (the matrix entry keeps target: conformance-big-endian for
+      # TestTheBigEndianJobIsShardedByUnit and the make step dispatches
+      # conformance-big-endian-smoke when matrix.leg == 'go'). The full C++
+      # battery and its host-order control stay nightly as
+      # tables-big-endian-tables-full and tables-big-endian-control-full. After
+      # that split the slowest row left here is c-control at 103 s, under the
+      # 110 s budget; the smoke target itself measured 8.7 s on amd-2 with
+      # bin/schema warm (2026-11-09), and the row's floor is checkout, the Go
+      # toolchain and the cache restore. Big-endian reds stay with
+      # green-be-message-form, green-be-control and green-conf-go-big-endian.
       matrix:
         include:
           - leg: tables
@@ -1906,8 +1926,6 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
-          - leg: go-control
-            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1916,8 +1934,9 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache on hosted Linux: `go-test` runs on the self-hosted
+      # fleet, so the `go` row here is the hosted-Linux writer (saving both
+      # host tools and GOOS=linux GOARCH=s390x packages for the next run).
       - name: where this runner keeps the Go build cache
         shell: bash
         run: |
@@ -1933,13 +1952,17 @@ jobs:
       - name: the pinned cross toolchain and emulator
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
-            qemu-user=1:8.2.2+ds-0ubuntu1.18
+          if [ "${{ matrix.leg }}" = "go" ]; then
+            sudo apt-get install -y --no-install-recommends               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          else
+            sudo apt-get install -y --no-install-recommends               g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          fi
 
       - name: what the pins resolved to
         run: |
-          s390x-linux-gnu-g++-13 --version | head -1
+          if [ "${{ matrix.leg }}" != "go" ]; then
+            s390x-linux-gnu-g++-13 --version | head -1
+          fi
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
@@ -1971,7 +1994,15 @@ jobs:
       # package as its table sources, and those import it — hence both siblings
       # above, in every row.
       - name: ${{ matrix.target }}
-        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        env:
+          GOFLAGS: ${{ matrix.leg == 'go' && '-gcflags=all=-l' || '' }}
+        run: make -j"$(nproc)" ${{ matrix.leg == 'go' && 'conformance-big-endian-smoke' || matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.leg == 'go'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:

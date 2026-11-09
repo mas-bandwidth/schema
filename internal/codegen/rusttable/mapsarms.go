@@ -778,10 +778,10 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i5)
 	}
 	fmt.Fprintf(b, "%s*off = eend;\n", i5)
-	fmt.Fprintf(b, "%s}\n", i4) // for
-	fmt.Fprintf(b, "%s}\n", i3) // else ek
-	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
-	fmt.Fprintf(b, "%s}\n", i2) // match
+	fmt.Fprintf(b, "%s}\n", i4)                                 // for
+	fmt.Fprintf(b, "%s}\n", i3)                                 // else ek
+	fmt.Fprintf(b, "%s}\n", i2)                                 // Some(count)
+	fmt.Fprintf(b, "%s}\n", i2)                                 // match
 	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in)
@@ -913,10 +913,10 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s}\n", i5)
 	fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	fmt.Fprintf(b, "%slanded = true;\n", i5)
-	fmt.Fprintf(b, "%s}\n", i4) // for
-	fmt.Fprintf(b, "%s}\n", i3) // else ek
-	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
-	fmt.Fprintf(b, "%s}\n", i2) // match
+	fmt.Fprintf(b, "%s}\n", i4)                                 // for
+	fmt.Fprintf(b, "%s}\n", i3)                                 // else ek
+	fmt.Fprintf(b, "%s}\n", i2)                                 // Some(count)
+	fmt.Fprintf(b, "%s}\n", i2)                                 // match
 	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in) // else kind
