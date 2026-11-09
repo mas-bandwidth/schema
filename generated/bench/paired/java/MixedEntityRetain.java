@@ -116,6 +116,7 @@ public final class MixedEntityRetain {
             }
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
+        TableVariable.settleNonFinite(report);
         if (report.refused) {
             retain.used = 0;
             retain.idUsed = 0;
@@ -133,13 +134,11 @@ public final class MixedEntityRetain {
             retain.nodeKeys.clear();
             return null;
         }
-        nt.from = 1;
         MixedEntityVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
             for (int i = 0; i < nt.recs.length; i++) {
                 TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
-                    nt.from = i + 2;
                     MixedEntityVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, MixedEntityVariable.TYPE_ID, report);
                 }
@@ -147,14 +146,6 @@ public final class MixedEntityRetain {
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
         if (report.damaged || report.refused) {
-            retain.used = 0;
-            retain.idUsed = 0;
-            retain.nodeKeys.clear();
-            return null;
-        }
-        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
-        if (TableVariable.cyclic(nt)) {
-            report.damaged = true;
             retain.used = 0;
             retain.idUsed = 0;
             retain.nodeKeys.clear();
