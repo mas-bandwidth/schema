@@ -123,10 +123,10 @@ func framingVerdictFault(fc FramingCase, strictRule string, got framingOutcome) 
 	if got.err != nil {
 		return fmt.Errorf("oracle infrastructure error: %w", got.err)
 	}
-	want := !(fc.Refused || strictRule != "")
+	want := !fc.Refused && strictRule == ""
 	accepted := got.accepted && !got.report.Refused && got.err == nil
 	if accepted != want {
-		return fmt.Errorf("accepted=%t want=%t: %v", accepted, want, got.err)
+		return fmt.Errorf("accepted=%t want=%t", accepted, want)
 	}
 	return nil
 }

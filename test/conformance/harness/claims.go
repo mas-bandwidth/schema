@@ -401,7 +401,7 @@ func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 //
 // A failure count rides as `x<N>`. Glenn, 2026-10-25: a case a port does not
 // carry yet does not fail the night, and this table is how the gap stays seen.
-func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) {
+func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) error {
 	b := &strings.Builder{}
 	b.WriteString("# Cross-language conformance — coverage\n\n")
 	b.WriteString("Cells: `answered/cases`, then `xN` failed, `!N` claimed by the carries registry and answered ABSENT (red), " +
@@ -474,7 +474,8 @@ func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) 
 		}
 		b.WriteString("\n")
 	}
-	_, _ = io.WriteString(w, b.String())
+	_, err := io.WriteString(w, b.String())
+	return err
 }
 
 func coverageCell(r coverageRow) string {

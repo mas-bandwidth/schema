@@ -40,22 +40,6 @@ func strictDecode(model *tabletext.Model, value *tabletext.Instance, wire []byte
 	return true, nil
 }
 
-func strictDecodeRegion(model *tabletext.Model, value *tabletext.Instance, wire []byte, report *tabletext.Report) (bool, error) {
-	if report == nil {
-		report = &tabletext.Report{}
-	}
-	ok, err := tablewire.DecodeRegion(model, value, wire, report)
-	if err != nil || !ok || !strictReportClean(report) || !strictWireCheckForRoot(value.Def, wire) {
-		model.Clear(value)
-		report.Refused = true
-		if err == nil {
-			err = errors.New("refused")
-		}
-		return false, err
-	}
-	return true, nil
-}
-
 func strictDecodeRetain(model *tabletext.Model, value *tabletext.Instance, wire []byte, retain *tablewire.Retain, report *tabletext.Report) (bool, error) {
 	if report == nil {
 		report = &tabletext.Report{}
@@ -70,42 +54,6 @@ func strictDecodeRetain(model *tabletext.Model, value *tabletext.Instance, wire 
 		return false, err
 	}
 	return true, nil
-}
-
-func strictDecodeRegionRetain(model *tabletext.Model, value *tabletext.Instance, wire []byte, retain *tablewire.Retain, report *tabletext.Report) (bool, error) {
-	if report == nil {
-		report = &tabletext.Report{}
-	}
-	ok, err := tablewire.DecodeRegionRetain(model, value, wire, retain, report)
-	if err != nil || !ok || !strictReportClean(report) || !strictWireCheckForRoot(value.Def, wire) {
-		model.Clear(value)
-		report.Refused = true
-		if err == nil {
-			err = errors.New("refused")
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-func strictDecodeMessages(model *tabletext.Model, values []*tabletext.Instance, wire []byte, vocab *tablewire.Vocabulary, report *tabletext.Report) (int, bool, error) {
-	if report == nil {
-		report = &tabletext.Report{}
-	}
-	n, ok, err := tablewire.DecodeMessages(model, values, wire, vocab, report)
-	if err != nil || !ok || !strictReportClean(report) {
-		for _, v := range values {
-			if v != nil {
-				model.Clear(v)
-			}
-		}
-		report.Refused = true
-		if err == nil {
-			err = errors.New("refused")
-		}
-		return 0, false, err
-	}
-	return n, true, nil
 }
 
 func strictReadJSON(model *tabletext.Model, value *tabletext.Instance, text []byte, report *tabletext.Report) bool {
@@ -139,19 +87,6 @@ func strictWireCheckForRoot(root *ir.Struct, data []byte) bool {
 		data = data[:n]
 	}
 	return strictWireCheckBody(data)
-}
-
-func strictWireCheck(data []byte) bool {
-	if strictWireCheckBody(data) {
-		return true
-	}
-	if len(data) >= 13 {
-		n := len(data) - 4
-		if binary.LittleEndian.Uint32(data[n:]) == crc32.Checksum(data[:n], strictCRC32C) {
-			return strictWireCheckBody(data[:n])
-		}
-	}
-	return false
 }
 
 func strictWireCheckBody(data []byte) bool {
@@ -648,7 +583,7 @@ func strictJSONCheck(data []byte) bool {
 			}
 			if data[i+1] == '*' {
 				i += 2
-				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
+				for i+1 < len(data) && (data[i] != '*' || data[i+1] != '/') {
 					i++
 				}
 				i += 2
