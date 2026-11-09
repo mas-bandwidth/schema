@@ -2416,11 +2416,6 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	if top ~= nil and wireDamage(b, top, fr.ids) then
-		rep.malformed = true
-		rep.reason = "wire_damaged"
-		return nil
-	end
 	local opened = open(b, rep)
 	if opened == nil then
 		rep.reason = "wire_damaged"
@@ -2436,6 +2431,16 @@ local function strictVariable(root: string, bytes: buffer, rep: any, d: any): an
 	if _countRefused then
 		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
 		-- already named it count_over_extent_cap and set refused
+		return nil
+	end
+	-- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
+	-- walk does not judge are declared after the named refusals, so an over-cap
+	-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
+	-- (non_finite_float, §3.3) answer their own names and never fall through to
+	-- wire_damaged.
+	if top ~= nil and wireDamage(b, top, fr.ids) then
+		rep.malformed = true
+		rep.reason = "wire_damaged"
 		return nil
 	end
 	for _, k in REFUSING do
