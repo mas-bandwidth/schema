@@ -22,7 +22,7 @@ func init() {
 		old: "  if (report.damaged) {\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 		new: "  if (false) { // SABOTAGED: the discard is gone\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 	}, {
-		old: "  // THE ONE READ REFUSES THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.5): a\n  // changed kind, a value or a length out of range, a repeated key and a blob\n  // named from two slots hand back nothing; err() names which.\n  if (TableVariableStrictMark(report) !== strictBefore) {\n    report.damaged = carried;\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+		old: "  if (TableVariableStrictMark(report) !== strictBefore) {\n    report.damaged = carried;\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 		new: "  // SABOTAGED: the strict discard is gone\n  if (false) {\n    report.damaged = carried;\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 	}}
 
