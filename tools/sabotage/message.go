@@ -346,8 +346,8 @@ var messageColdReadSabotages = map[string][]edit{
 	// read: narrow to int32 first and a count of 2^31 + 1 is negative, which
 	// passes the signed test against the bound and lands in caller storage.
 	"message-emitter-narrow-count-before-clamp": {{
-		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->clamped++; } else { kept%s = (int32_t) n%s; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
-		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->clamped++; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
+		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; } else { kept%s = (int32_t) n%s; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
+		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
 	}},
 }
 
