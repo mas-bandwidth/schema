@@ -1371,7 +1371,10 @@ jobs:
       # keeps the build job's timestamps, which predate this leg's checkout,
       # so the stamp and the two binaries are touched (bin/schema first,
       # the stamp last) to stand newer than the checked-out sources: make
-      # then builds only this leg's driver, not the shared tree again.
+      # then builds only this leg's driver, not the shared tree again. The
+      # artifact also drops the binaries' executable bit (run 42571699474:
+      # `./bin/schema: Permission denied` in every leg that generates), so
+      # it is restored here.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: conformance-shared
@@ -1379,6 +1382,7 @@ jobs:
 
       - name: stand the shared inputs newer than this checkout
         run: |
+          chmod +x bin/schema build/conformance-harness
           touch bin/schema
           touch build/conformance-harness
           touch build/tables-generated/.stamp
