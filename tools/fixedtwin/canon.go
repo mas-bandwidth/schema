@@ -786,6 +786,28 @@ func hasStrictCountTextScan(s string) bool {
 	return false
 }
 
+// hasStrictCountTextScanCall reports whether s invokes the strict count/text
+// scan and refuses the whole read through it. extractRuntime cuts the C++ slice
+// at the separate integrity runtime (canon.go), before the load body, so the
+// definition alone is not the strict read: a header that keeps
+// TableFixedRefuseScan but drops the call would leave the runtime diff with
+// nothing to compare and pass. The invocation and its refusal return are held
+// in the whole source, past that boundary.
+func hasStrictCountTextScanCall(s string) bool {
+	s = applyIdents(s)
+	s = strings.ReplaceAll(s, "->", ".")
+	s = strings.Join(strings.Fields(s), " ")
+	for _, clause := range []string{
+		"if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) )",
+		"report.refused = true; report.reason = why; return -1;",
+	} {
+		if !strings.Contains(s, clause) {
+			return false
+		}
+	}
+	return true
+}
+
 // strictCountTextScan reports whether fn is the whole count/text bound rule:
 // a count past the plan size and a text length past the plan's unit capacity
 // each refuse by name. The names are mapped first so the C spelling, if it

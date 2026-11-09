@@ -62,6 +62,9 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	if !hasStrictCountTextScan(cppRun) {
 		leftover = append(leftover, "runtime:cpp: the strict count/text pre-scan (TableFixedRefuseScan) is missing or weakened")
 	}
+	if !hasStrictCountTextScanCall(cppSrc) {
+		leftover = append(leftover, "runtime:cpp: the strict count/text pre-scan (TableFixedRefuseScan) is defined but never invoked as the whole-read refusal")
+	}
 	leftover = append(leftover, diffLines("runtime", canonicalize(cRun), canonicalize(cppRun))...)
 
 	cPlan, err := extractArray(cSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")

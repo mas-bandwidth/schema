@@ -110,6 +110,23 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		t.Fatal("a deleted strict read in the real C++ artifact passed the twin gate: the whole count/text scan is gone")
 	}
 
+	// A DEFINITION THAT IS NEVER CALLED IS NOT THE STRICT READ. The scan is
+	// defined before the integrity boundary, but the load body that invokes it
+	// sits after extractRuntime's cut. Dropping only the call leaves the
+	// definition intact and the runtime diff blind, so the gate must name the
+	// missing invocation itself. This fault keeps the surrounding block.
+	const scanCall = "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) )"
+	if !strings.Contains(cppSrc, scanCall) {
+		t.Fatal("the real C++ artifact no longer carries the strict scan invocation")
+	}
+	uncalled := strings.Replace(cppSrc, scanCall, "if ( false )", 1)
+	if uncalled == cppSrc {
+		t.Fatal("the planted C++ fault did not apply: the strict scan invocation was not deleted")
+	}
+	if left := twinLeftover(t, cSrc, uncalled, root); len(left) == 0 {
+		t.Fatal("a deleted strict read invocation in the real C++ artifact passed the twin gate: the scan is defined but never called")
+	}
+
 	cFaults := []struct{ name, from, to string }{
 		{
 			"the C count refusal loses its count",
