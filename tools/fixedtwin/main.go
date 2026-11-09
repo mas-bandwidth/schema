@@ -61,27 +61,39 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	var leftover []string
 	leftover = append(leftover, diffLines("runtime", canonicalize(cRun), canonicalize(cppRun))...)
 
-	cPlan, err := extractArray(cSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")
+	plan, err := compareArraySection(cSrc, cppSrc, "plan", "fixed_table_fixed_plan", "FixedTableFixedPlan")
 	if err != nil {
-		return nil, fmt.Errorf("c plan: %w", err)
+		return nil, err
 	}
-	cppPlan, err := extractArray(cppSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")
-	if err != nil {
-		return nil, fmt.Errorf("cpp plan: %w", err)
-	}
-	leftover = append(leftover, diffLines("plan", canonicalize(cPlan), canonicalize(cppPlan))...)
+	leftover = append(leftover, plan...)
 
-	cLay, err := extractArray(cSrc, "fixed_table_fixed_layout", "FixedTableFixedLayout")
+	layout, err := compareArraySection(cSrc, cppSrc, "layout", "fixed_table_fixed_layout", "FixedTableFixedLayout")
 	if err != nil {
-		return nil, fmt.Errorf("c layout: %w", err)
+		return nil, err
 	}
-	cppLay, err := extractArray(cppSrc, "fixed_table_fixed_layout", "FixedTableFixedLayout")
-	if err != nil {
-		return nil, fmt.Errorf("cpp layout: %w", err)
-	}
-	leftover = append(leftover, diffLines("layout", canonicalize(cLay), canonicalize(cppLay))...)
+	leftover = append(leftover, layout...)
 
 	return leftover, nil
+}
+
+// compareArraySection diffs one identity array section. A header that
+// embeds the twin runtime without a plan or layout of its own (the
+// paired BenchTable.h) has the section on neither leg, and is compared
+// on its runtime alone. A section present on only one leg is a
+// disagreement, reported as an error exactly as a missing array was
+// when every compared header carried one.
+func compareArraySection(cSrc, cppSrc, section, cName, cppName string) ([]string, error) {
+	cArr, cErr := extractArray(cSrc, cName, cppName)
+	cppArr, cppErr := extractArray(cppSrc, cName, cppName)
+	switch {
+	case cErr != nil && cppErr != nil:
+		return nil, nil
+	case cErr != nil:
+		return nil, fmt.Errorf("c %s: %w", section, cErr)
+	case cppErr != nil:
+		return nil, fmt.Errorf("cpp %s: %w", section, cppErr)
+	}
+	return diffLines(section, canonicalize(cArr), canonicalize(cppArr)), nil
 }
 
 func diffLines(section string, c, cpp []string) []string {
