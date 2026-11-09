@@ -197,16 +197,17 @@ table Holder
 }
 `
 
-// TestCountPastTheBoundClampsBeforeReadingElixir pins a wire fuzzer divergence
+// TestCountPastTheBoundRefusesElixir pins a wire fuzzer divergence
 // on clean input (pass count, tabledemo.WideBlob): a bounded array whose count
-// is past its declared bound reads the first bound elements and counts one
-// clamped (docs/SPEC-TABLES.md §4), and the elements past the bound are never
-// asked of the body, so a body holding only the bound's elements is NOT damage.
-// The answer is the oracle's own (internal/tablewire Decode).
+// is past its declared bound refuses the whole load on the one read
+// (docs/SPEC-TABLES.md §4, §6.5), before any element is read, so a body
+// holding only the bound's elements lands no partial value. The answer is
+// the oracle's own (internal/tablewire Decode).
 //
-// THE REVERSED WITNESS reads the whole wire count before clamping, and the
-// probe must go red (the leg then runs off the body and reports malformed).
-func TestCountPastTheBoundClampsBeforeReadingElixir(t *testing.T) {
+// THE REVERSED WITNESS plants the retired clamp back into the generated
+// reader (clamp_count returns the bound instead of refusing), and the
+// probe must go red (the leg then lands the bound's elements).
+func TestCountPastTheBoundRefusesElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	elixirBin := elixirBinary(t)
@@ -229,38 +230,38 @@ func TestCountPastTheBoundClampsBeforeReadingElixir(t *testing.T) {
 	mutant := append([]byte{}, wire...)
 	mutant[at+1] = 100 // the count, past the bound of 2, one LEB byte
 	var orep tabletext.Report
-	if _, err := tablewire.Decode(m, m.New(m.Lookup("Holder")), mutant, &orep); err != nil {
-		t.Fatal(err)
-	}
-	if orep.Refused {
-		t.Fatalf("the oracle does not answer the probe as one clamp on clean input: %+v", orep)
+	if _, err := tablewire.Decode(m, m.New(m.Lookup("Holder")), mutant, &orep); err == nil || !tablewire.ReadRefusal(err) || !orep.Refused {
+		t.Fatalf("the oracle does not refuse a count past the bound: err=%v rep=%+v", err, orep)
 	}
 	probe := fmt.Sprintf(`
-{:ok, v, r} = Blprobe.Table.load("Holder", Base.decode16!(%q, case: :lower))
-if v["samples"] != [1, 2] or v["tail"] != 9 or r.clamped != 1 or r.malformed do
-  IO.puts(:stderr, "FAIL: " <> inspect({v, r}))
-  System.halt(1)
+wire = Base.decode16!(%q, case: :lower)
+store = %%{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
+zero = %%{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
+case Blprobe.Table.load("Holder", wire) do
+  {:error, _reason, %%{reason: reason}} when is_binary(reason) and reason != "" -> :ok
+  other -> IO.puts(:stderr, "FAIL: plain " <> inspect(other)); System.halt(1)
+end
+case Blprobe.Table.load_retain("Holder", wire, store, zero) do
+  {:error, _reason, %%{reason: reason}, %%{records: []}} when is_binary(reason) and reason != "" -> :ok
+  other -> IO.puts(:stderr, "FAIL: retain " <> inspect(other)); System.halt(1)
 end
 IO.puts("ok")
 `, hex.EncodeToString(mutant))
 
 	files := generateElixir(t, u)
 	if out, err := runArmProbe(t, elixirBin, files, probe); err != nil || !strings.Contains(out, "ok") {
-		t.Fatalf("a count past the bound is not clamped before the elements are read: %v\n%s", err, out)
+		t.Fatalf("a count past the bound did not refuse the whole load: %v\n%s", err, out)
 	}
 
-	const clamp = "{n, report} = clamp_count(n, f, report)"
 	planted := map[string][]byte{}
-	k := 0
 	for name, data := range files {
-		k += strings.Count(string(data), clamp)
-		planted[name] = []byte(strings.ReplaceAll(string(data), clamp, "{n, report} = {n, report}"))
+		planted[name] = data
 	}
-	if k == 0 {
-		t.Fatal("the witness found no clamp-before-read in the generated reader")
-	}
+	elixirPatch(t, planted,
+		"defp clamp_count(n, %{max_count: max}, _report) when n > max,\n    do: {max, throw(:wire_damaged)}",
+		"defp clamp_count(n, %{max_count: max}, report) when n > max,\n    do: {max, report}")
 	if out, err := runArmProbe(t, elixirBin, planted, probe); err == nil {
-		t.Fatalf("the reader without its clamp-before-read still passed: the probe does not see the rule\n%s", out)
+		t.Fatalf("the reader with its count refusal planted out still passed: the probe does not see the rule\n%s", out)
 	}
 }
 
