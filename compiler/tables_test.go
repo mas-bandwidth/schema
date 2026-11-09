@@ -459,10 +459,12 @@ func tableHeader(t *testing.T, src string) string {
 // included (docs/SPEC-TABLES.md §16.1), and <cstdlib> is one of the text form's
 // three number-conversion includes rather than the arena's — which is why it
 // left this list when the walk landed.
-// TableRefuseReason IS SANCTIONED and is stripped before the scan: it is the
-// FORM's vocabulary rather than the pointer machinery's, since every unit's
-// cook Open names its refusal in it (docs/SPEC-TABLES.md §7, §11), and
-// `TableRef`, the pointer handle, is a PREFIX of it.
+// THE REFUSAL VOCABULARY IS SANCTIONED and is stripped before the scan: every
+// `TableRefuse*` spelling — the reason enum's type name and the Go-side reason
+// constants its comments cite — is the FORM's vocabulary rather than the pointer
+// machinery's, since every unit's cook Open names its refusal in it
+// (docs/SPEC-TABLES.md §7, §11), and `TableRef`, the pointer handle, is a PREFIX
+// of them all.
 //
 // THE FIXED-CLASS RETAIN REFUSAL is stripped on the same rule (§6.6). It lands
 // in every unit, because a name refused by a missing symbol is not refused by
@@ -472,7 +474,7 @@ func tableHeader(t *testing.T, src string) string {
 // this scan says exactly that, rather than saying it by the absence of the
 // words "template" and "variable", which the refusal's own text carries.
 func TestZeroCostForValueOnlyTables(t *testing.T) {
-	header := strings.ReplaceAll(tableHeader(t, tableSrc), "TableRefuseReason", "")
+	header := strings.ReplaceAll(tableHeader(t, tableSrc), "TableRefuse", "")
 	header = withoutRetainRefusal(t, header)
 	for _, leak := range []string{
 		"TableArena", "TableSlot", "TableWorker", "TableRef", "TableRegion",
