@@ -123,7 +123,7 @@ func Read(corpus, file string) (Expect, error) {
 	if err != nil {
 		return Expect{}, fmt.Errorf("fixedvector: the corpus manifest is not readable: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: Scanner reports read errors
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1<<16), 1<<20)
 	for sc.Scan() {

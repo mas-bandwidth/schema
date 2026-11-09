@@ -46,7 +46,7 @@ func RunSabotaged(t *testing.T, root, pkg, run string, sabotages ...Sabotage) (o
 			t.Fatalf("negative control: %q occurs %d times in %s, want once", s.From, n, s.File)
 		}
 		copyPath := filepath.Join(dir, filepath.Base(s.File)+"."+string(rune('a'+i))+".txt")
-		if err := os.WriteFile(copyPath, []byte(strings.Replace(string(data), s.From, s.To, -1)), 0o600); err != nil {
+		if err := os.WriteFile(copyPath, []byte(strings.ReplaceAll(string(data), s.From, s.To)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		replace[src] = copyPath
