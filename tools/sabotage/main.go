@@ -44,7 +44,7 @@ var sabotages = map[string][]edit{
 	"reference-map-widen-count":    {{old: "if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {", new: "if true { // SABOTAGED: count each widened key twice"}},
 	"reference-list-widen-extent":  {{old: "        if ( !TableKindWidens( wire_kind, elem_kind ) ) { return true; }\n        // Load accepts the widening ladder.", new: "        if ( wire_kind != elem_kind ) { return true; } // SABOTAGED\n        // Load accepts the widening ladder."}},
 	"go-builder-union-refusal":     {{old: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\tg.emitCarveReturn(\"r\", rdr, ind)", new: "g.pf(\"%s%sLoadBody(&%s,&%s)\\n\", ind, v.Type, rdr, expr)\n\t\t// SABOTAGED: inspect payload length before propagating refusal"}},
-	"map-builder-count-oracle":     {{old: "\t\tif count > uint64(math.MaxInt32) {\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)", new: "\t\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\t\tr.off = end\n\t\t\treturn r.collectionCap()\n\t\t}\n\t\tsub := r.subTo(end)"}},
+	"map-builder-count-oracle":     {{old: "err := decodeWalk(m, inst, data, report, rt, readOrder{})", new: "err := decodeWalk(m, inst, data, report, rt, readOrder{wireLast: true}) // SABOTAGED"}, {old: "\tif count > uint64(math.MaxInt32) {\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil", new: "\tif false && count > uint64(math.MaxInt32) { // SABOTAGED\n\t\treturn r.refuse(&CountRefusal{})\n\t}\n\tfv.Entries = nil"}},
 	// Go ownership, managed activation frames, and bounded retention.
 	"go-allocator-original-slice": {
 		{old: ";return b}", new: ";return b[:n] /* SABOTAGED */}"},
