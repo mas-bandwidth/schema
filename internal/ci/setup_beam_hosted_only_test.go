@@ -2,7 +2,6 @@ package ci
 
 import (
 	"fmt"
-	"maps"
 	"sort"
 	"strings"
 	"testing"
@@ -10,9 +9,9 @@ import (
 
 const hostedRunnerCondition = "runner.environment == 'github-hosted'"
 
-// checkEverySetupBeamIsHostedOnly requires every erlef/setup-beam step under
-// .github/workflows to carry the hosted-runner guard. setup-beam maps the
-// target OS from ImageOS, which only a GitHub-hosted runner sets; on the
+// checkEverySetupBeamIsHostedOnly requires every erlef/setup-beam step in
+// the workflows it is given to carry the hosted-runner guard. setup-beam maps
+// the target OS from ImageOS, which only a GitHub-hosted runner sets; on the
 // fleet's schema runners the step dies during setup, before any control or
 // conformance row runs. Those runners already carry OTP and Elixir on PATH,
 // so the guard both fixes the fleet and leaves hosted rows unchanged.
@@ -74,30 +73,37 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 	return errs
 }
 
-// TestEverySetupBeamIsHostedOnly holds the fleet rule across every workflow:
-// an erlef/setup-beam step is never allowed to run on a self-hosted runner.
+// TestEverySetupBeamIsHostedOnly holds the fleet rule in ci-full.yml, the
+// workflow this card may change: every erlef/setup-beam step in it — in
+// particular the conformance and negative-controls jobs, which run on the
+// fleet's self-hosted schema runners — is gated on a hosted runner, so no
+// ci-full job can add an ungated setup-beam again. Other workflows are
+// outside this card's PATHS and are not this gate's to verdict.
 func TestEverySetupBeamIsHostedOnly(t *testing.T) {
 	t.Parallel()
-	wfs := workflows(t, repoRoot(t))
+	all := workflows(t, repoRoot(t))
+	data, ok := all["ci-full.yml"]
+	if !ok {
+		t.Fatal("ci-full.yml is the workflow this gate reads")
+	}
+	wfs := map[string]string{"ci-full.yml": data}
 	steps := 0
-	for _, data := range wfs {
-		for raw := range strings.SplitSeq(data, "\n") {
-			trimmed := strings.TrimSpace(raw)
-			if strings.HasPrefix(trimmed, "#") {
-				continue
-			}
-			if strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")), "uses: erlef/setup-beam@") {
-				steps++
-			}
+	for raw := range strings.SplitSeq(data, "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")), "uses: erlef/setup-beam@") {
+			steps++
 		}
 	}
 	if steps == 0 {
-		t.Fatal("no erlef/setup-beam step under .github/workflows — this gate would pass over an empty set")
+		t.Fatal("no erlef/setup-beam step in ci-full.yml — this gate would pass over an empty set")
 	}
 	for _, err := range checkEverySetupBeamIsHostedOnly(wfs) {
 		t.Error(err)
 	}
-	t.Logf("%d setup-beam steps gated", steps)
+	t.Logf("%d setup-beam steps gated in ci-full.yml", steps)
 }
 
 // TestSetupBeamHostedGateNegativeControls removes the guard from each of
@@ -123,8 +129,7 @@ func TestSetupBeamHostedGateNegativeControls(t *testing.T) {
 			t.Fatalf("%s:%s no longer carries the hosted guard %q", wf, job, gated)
 		}
 		ungated := strings.Replace(body, gated, "        if: matrix.otp != ''\n", 1)
-		mutated := maps.Clone(wfs)
-		mutated[wf] = strings.Replace(base, body, ungated, 1)
+		mutated := map[string]string{wf: strings.Replace(base, body, ungated, 1)}
 		errs := checkEverySetupBeamIsHostedOnly(mutated)
 		if len(errs) != 1 || !strings.Contains(errs[0], wf+":") || !strings.Contains(errs[0], "erlef/setup-beam runs without") {
 			t.Errorf("%s:%s: removing the guard did not report exactly one ungated setup-beam; it reported %v", wf, job, errs)
