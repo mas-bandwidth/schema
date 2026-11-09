@@ -724,12 +724,28 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-2",
+      "name": "cs-alloc-runtime",
       "when": "pull-request",
-      "why": "the C# port's runtime counters: the allocation gate's off-pin runtime refusal, the soak allocation-count control (a short-lived managed allocation per sample, invisible to drift), and the retain control. One half of what was the `cs` group, cut on 2026-10-28 because that group ran 201 s median and 230 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 171 s of control time over 4 controls). Measured about 45 s of control time on run 40684770225 and 36 s on run 40684250024, beside the C# tables tree it now generates for itself.",
+      "why": "the C# allocation gate's off-pin runtime refusal (docs/PORTING.md I14): a pin of a major this machine is not running must be refused, and the escape hatch must observe without certifying. One Release build of test/cs-tables and two runs. Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
       "targets": [
-        "tables-cs-alloc-runtime-negative-control",
-        "tables-cs-soak-negative-control",
+        "tables-cs-alloc-runtime-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-soak",
+      "when": "pull-request",
+      "why": "the C# soak allocation-count control: a short-lived managed allocation per sample, invisible to drift, must turn the count gate red while the managed-heap drift line stays green. Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
+      "targets": [
+        "tables-cs-soak-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables-retain",
+      "when": "pull-request",
+      "why": "the C# table codec's retain control (test/cs-tables/retain-negative-control). Split from cs-2 when that three-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
+      "targets": [
         "tables-cs-retain-negative-control"
       ],
       "dotnet": "pin"
@@ -745,11 +761,19 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-tables-2",
+      "name": "cs-tables-json",
       "when": "pull-request",
-      "why": "the C# table codec's heavier controls: the JSON text differential's planted divergence (slowgate/proof over the cstable package) and M12's byte-order control (one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red, one overlay build and one unit generated). Split from the old cs-tables group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "why": "the C# table codec's JSON text differential: the planted divergence (slowgate/proof over the cstable package, TestCsTextDifferentialNegativeControl). Split from cs-tables-2 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (wall 329 s).",
       "targets": [
-        "tables-cs-json-differential-negative-control",
+        "tables-cs-json-differential-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables-byte-order",
+      "when": "pull-request",
+      "why": "M12's C# byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red, one overlay build and one unit generated. Split from cs-tables-2 when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (wall 329 s).",
+      "targets": [
         "tables-cs-byte-order-negative-control"
       ],
       "dotnet": "pin"
@@ -773,11 +797,19 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-packet-arm-defaults",
+      "when": "pull-request",
+      "why": "the C# arm-defaults constructor-bytes control (make/checks/packet-arm-defaults.mk): one small compile off the generated tree. Split from cs-packet-defaults when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
+      "targets": [
+        "packet-arm-defaults-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-packet-defaults",
       "when": "pull-request",
-      "why": "the C# constructor-bytes packet families: arm defaults (make/checks/packet-arm-defaults.mk) and defaults. Each is one small compile off the generated tree; split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "why": "the C# packet-defaults constructor-bytes control: missing constructor bytes must fail the runtime check, one overlay build and one compile off the generated tree. Split from the pair of that name when that pair was cancelled at the job's 5-minute timeout on run 42572541131 (wall 317 s).",
       "targets": [
-        "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control"
       ],
       "dotnet": "pin"
@@ -834,24 +866,80 @@
     {
       "name": "cs-accessor",
       "when": "pull-request",
-      "why": "the accessor/descriptor agreement controls, scalar and pointer slot: each sabotages one emitter line (codecs.go:826 and :814) through a go build -overlay and requires the agreement gate to go red on its own message. Measured 3.2 s and 3.6 s on the runner.",
+      "why": "the accessor/descriptor agreement's scalar control: one emitter line (codecs.go:826) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.2 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s.",
       "targets": [
-        "tables-cs-accessor-negative-control",
+        "tables-cs-accessor-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-slot",
+      "when": "pull-request",
+      "why": "the accessor/descriptor agreement's pointer-slot control: one emitter line (codecs.go:814) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.6 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s.",
+      "targets": [
         "tables-cs-slot-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-cook",
+      "name": "cs-block-home",
       "when": "pull-request",
-      "why": "the cook-open gates whose instrument is the C# reader, and the two block controls that only compile. Measured 24 s on the runner. With them, the cross-endian refusal's control (the magic made not to refuse, so the refuse verb sees a later guard's reason instead of foreign_order) and the I12 usage control (SceneCook.Open moved out from under docs/USAGE.md's C# example), 3 s and 2 s on amd-1.",
+      "why": "the C# block-home control (docs/SPEC-TABLES.md §19.2): the emitted-for-the-unit home taken out of the block emitter, so a unit whose block runtime has nowhere to land must fail to compile. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
       "targets": [
-        "tables-block-home-negative-control",
-        "tables-block-inline-array-negative-control",
-        "tables-cook-open-cs-lengths-negative-control",
-        "tables-cook-open-cs-root-negative-control",
-        "tables-cook-open-cs-walk-negative-control",
-        "tables-cook-open-cs-order-negative-control",
+        "tables-block-home-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-block-inline",
+      "when": "pull-request",
+      "why": "the C# block inline-array control (docs/SPEC-TABLES.md §2.7): a bounded array inside a nested record projected out of line, so compiling the corpus or Verify() must go red. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
+        "tables-block-inline-array-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cook-lengths",
+      "when": "pull-request",
+      "why": "the C# cook-open lengths control: the length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
+        "tables-cook-open-cs-lengths-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cook-root",
+      "when": "pull-request",
+      "why": "the C# cook-open root control: the root-length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
+        "tables-cook-open-cs-root-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cook-walk",
+      "when": "pull-request",
+      "why": "the C# cook-open walk control: Open made to sum every word of the region, so the open-cost gate must go red on its band. One overlay build and one timed run. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
+        "tables-cook-open-cs-walk-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cook-order",
+      "when": "pull-request",
+      "why": "the C# cross-endian refusal's control: the magic made not to refuse, so the refuse verb sees a later guard's reason instead of foreign_order. 3 s on amd-1. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
+        "tables-cook-open-cs-order-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-usage",
+      "when": "pull-request",
+      "why": "the I12 usage control: SceneCook.Open moved out from under docs/USAGE.md's C# example, so the page must stop compiling and name it. 2 s on amd-1. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "targets": [
         "tables-cs-usage-negative-control"
       ],
       "dotnet": "pin"
@@ -876,8 +964,8 @@
     },
     {
       "name": "cs-block-pitch",
-      "when": "pull-request",
-      "why": "the block pitch control, whose instrument is the C# layout check; 29 s on the runner. Split from the old cs-block-pitch group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the block pitch control, whose instrument is the C# layout check; 29 s on the runner. Split from the old cs-block-pitch group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). It is already one control, so it cannot be split further. On run 42572541131 the row succeeded at 234 s wall, over 110 s, and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "tables-block-pitch-negative-control"
       ],
@@ -885,8 +973,8 @@
     },
     {
       "name": "cs-leg-keyed",
-      "when": "pull-request",
-      "why": "the C# table leg's keyed control (make/cs.mk cs_leg_sabotage): M5's None-only guard planted back (the past-Max key reaches the slot array), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# table leg's keyed control (make/cs.mk cs_leg_sabotage): M5's None-only guard planted back (the past-Max key reaches the slot array), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). It is already one control, so it cannot be split further. On run 42572541131 the row succeeded at 121 s wall, over 110 s, and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "tables-cs-leg-keyed-negative-control"
       ],
@@ -894,8 +982,8 @@
     },
     {
       "name": "cs-leg-identity",
-      "when": "pull-request",
-      "why": "the C# table leg's identity control (make/cs.mk cs_leg_sabotage): M6's identity map made to forget a closed node (list_shared writes a node twice), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# table leg's identity control (make/cs.mk cs_leg_sabotage): M6's identity map made to forget a closed node (list_shared writes a node twice), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). It is already one control, so it cannot be split further. On run 42572541131 the row succeeded at 117 s wall, over 110 s, and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "tables-cs-leg-identity-negative-control"
       ],
@@ -903,8 +991,8 @@
     },
     {
       "name": "cs-leg-allocator",
-      "when": "pull-request",
-      "why": "the C# table leg's allocator control (make/cs.mk cs_leg_sabotage): M10's caller free dropped (the hook pair no longer balances), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# table leg's allocator control (make/cs.mk cs_leg_sabotage): M10's caller free dropped (the hook pair no longer balances), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). It is already one control, so it cannot be split further. On run 42572541131 the row was cancelled at the job's 5-minute timeout (wall 524 s) and cannot fit under 110 s, so it moves here (certify.yml's nightly schedule).",
       "targets": [
         "tables-cs-leg-allocator-negative-control"
       ],
@@ -912,8 +1000,8 @@
     },
     {
       "name": "cs-leg-label",
-      "when": "pull-request",
-      "why": "the C# table leg's label control (make/cs.mk cs_leg_sabotage): M14's &node label never written (list_shared's text reads back as two nodes), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the C# table leg's label control (make/cs.mk cs_leg_sabotage): M14's &node label never written (list_shared's text reads back as two nodes), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). It is already one control, so it cannot be split further. On run 42572541131 the row succeeded at 177 s wall, over 110 s, and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "tables-cs-leg-label-negative-control"
       ],
@@ -956,19 +1044,27 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-5",
+      "name": "cs-leg-discard",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the managed load's discard and the native region load's discard (the retaining load is derived from it) taken out, so a body damaged inside a nested body hands back what the walk decoded. Two per job because each regenerates the 46 units and builds and runs the leg once.",
+      "why": "the C# table leg's managed-load discard (make/cs.mk cs_leg_sabotage, table-cs-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the managed load's discard taken out, so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone.",
       "targets": [
-        "tables-cs-leg-discard-negative-control",
+        "tables-cs-leg-discard-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-region-discard",
+      "when": "pull-request",
+      "why": "the C# table leg's region-load discard (make/cs.mk cs_leg_sabotage2, table-cs-region-discard): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the native region load's discard taken out (the retaining load is derived from it), so a body damaged inside a nested body hands back what the walk decoded. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. One full leg rebuild per job. On run 42554833739 the pair failed in 37 s on its own merits: sabotage table-cs-discard and sabotage table-cs-region-discard each matched 0 times, want exactly 1, \"The emitter moved away from the anchor\" (make/cs.mk:637 and make/cs.mk:639). The target and the sabotage are unchanged. On run 42572541131 the pair succeeded at 162 s wall while still holding both targets, so this one runs alone.",
+      "targets": [
         "tables-cs-leg-region-discard-negative-control"
       ],
       "dotnet": "pin"
     },
     {
       "name": "cs-leg-builder-discard",
-      "when": "pull-request",
-      "why": "the C# table leg's builder-discard control (make/cs.mk cs_leg_sabotage): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the builder load's discard taken out of builderload.go, so a builder load damaged inside a nested body answers true with the decoded root. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule).",
+      "when": "nightly",
+      "why": "the C# table leg's builder-discard control (make/cs.mk cs_leg_sabotage): DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), the builder load's discard taken out of builderload.go, so a builder load damaged inside a nested body answers true with the decoded root. It regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-6 group when that pair of rebuilds ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 139 s wall, both killed at the rule). It is already one control, so it cannot be split further. On run 42572541131 the row was cancelled at the job's 5-minute timeout (wall 319 s) and cannot fit under 110 s, so it moves here (certify.yml's nightly schedule).",
       "targets": [
         "tables-cs-leg-builder-discard-negative-control"
       ],
