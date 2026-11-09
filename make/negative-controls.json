@@ -2207,7 +2207,7 @@
     },
     {
       "target": "conformance-big-endian-negative-control",
-      "reason": "the Go big-endian leg's control (docs/PORTING.md M12, I7): it runs the Go conformance driver cross-built for s390x under qemu-s390x, which the shared negative-control rows do not install. ci-full.yml's big-endian job runs it by name in its own row (go-control), beside the conformance-big-endian row it controls, with the pinned emulator, exactly as the C++ and C big-endian controls run there."
+      "reason": "the Go big-endian leg's control (docs/PORTING.md M12, I7): it runs the Go conformance driver cross-built for s390x under qemu-s390x, which the shared negative-control rows do not install. It measured 250 s on the card, past the 110 s per-commit budget, so it runs nightly in certify.yml's `big-endian` job (go-control row) beside the full conformance-big-endian row it controls, with the pinned emulator. Per commit, ci-full.yml's `big-endian` job keeps only conformance-big-endian-smoke, the three-unit cross-order check."
     },
     {
       "target": "tables-moo-json-negative-controls",
@@ -2251,11 +2251,11 @@
     },
     {
       "target": "tables-big-endian-negative-control",
-      "reason": "the C++ byte-order control, run on every pull request by ci.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only`: issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
+      "reason": "the C++ byte-order control, run on every pull request by ci-full.yml's `big-endian` job in the `control` row as `tables-big-endian-control-only` (with the full corpus battery control in certify.yml's nightly `control-full` row as `tables-big-endian-control-full`): issue #684 sharded that job by unit so the control is its own job rather than the tail of the leg. The control cross-compiles the sabotaged tables battery for s390x and compiles it a second time; this leg does not cross-compile it a second time."
     },
     {
       "target": "tables-c-big-endian-negative-control",
-      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
+      "reason": "the C twin of tables-big-endian-negative-control, run on every pull request by ci-full.yml's `big-endian` job in the `c-control` row: issue #684 sharded that job by unit so the control is a job of its own. It overlay-rebuilds the C emitter, regenerates the soak units and cross-compiles the C soak for s390x so a host-order table_writer_finish fallback turns the golden gate red. This leg does not cross-compile it a second time."
     },
     {
       "target": "schema-shared-hostile-corpus-negative-control",

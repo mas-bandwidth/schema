@@ -3136,9 +3136,9 @@ BE_RUN ?= qemu-s390x
 # for the same reason the sanitized twin shares them (#278): a twin that
 # covers different code is not a twin. -static so the runner needs no sysroot
 # and the emulator invocation is just the binary.
-build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
+build/schema_test_tables_be: build/tables-generated-be/.stamp build/tables-main-be-smoke.cpp
 	@mkdir -p build
-	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-generated-be) -Wno-unused-function build/tables-main-be-smoke.cpp -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
 # wire goldens were written by a LITTLE-ENDIAN build, so a codec that reached
@@ -3289,7 +3289,7 @@ tables-big-endian-negative-control: tables-big-endian
 # ask for; CI asks for the control half in a job of its own, beside the job that
 # runs the leg, and the pair is the same pair.
 .PHONY: tables-big-endian-control-only
-tables-big-endian-control-only:
+tables-big-endian-control-only: build/tables-main-be-control.cpp
 	@mkdir -p build
 	@sed 's|uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) };|uint8_t b[2]; memcpy( b, \&v, 2 ); // SABOTAGED: host order|' \
 		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
@@ -3298,12 +3298,12 @@ tables-big-endian-control-only:
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-host-order.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cpptable-overlay.json
 	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
-	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order
-	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
-	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
-		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
-		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
+	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order/examples
+	@./build/schema-host-order generate --lang cpp --out build/tables-host-order/examples tables/examples
+	@set -e; \
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & \
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & \
+	wait
 	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; cat build/host-order-host.log; exit 1; }
 	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
@@ -7976,3 +7976,101 @@ tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(MAKE) tables-block-zero-cost-c-heavy
 	@$(MAKE) tables-block-zero-cost-c-rest
 	@echo "block zero-cost gate: c Table sources byte-identical with the block form removed"
+
+# ---- Per-commit big-endian smoke and nightly full battery (green-be-nightly) ----
+define be_main_generate
+	@set -e; \
+	$(1) generate --lang cpp --out $(2)/examples tables/examples & \
+	$(1) generate --lang cpp --out $(2)/pointers tables/pointers & \
+	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema & \
+	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema & \
+	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema & \
+	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema & \
+	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema & \
+	$(1) generate --lang cpp --out $(2)/jsonkeys test/tables/JsonKeys.schema & \
+	$(1) generate --lang cpp --out $(2)/scalars tables/scalars & \
+	$(1) generate --lang cpp --out $(2)/f1 test/tables/F1.schema & \
+	wait
+endef
+
+build/tables-generated-be/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/F1.schema
+	@mkdir -p build/tables-generated-be
+	$(call be_main_generate,./bin/schema,build/tables-generated-be)
+	@touch $@
+
+build/tables-main-be-smoke.cpp: test/tables/main.cpp
+	@mkdir -p build
+	@awk '/^#include "(Messages|Stream|Assets|M1|M2|A1|A2|K1|K2|G1|W1|W2|R1|R2)Table\.h"/ { next } /^\/\/ ---- the TEXT form/ { exit } { sub(/const int kIterations = 30000;/, "const int kIterations = 300;"); print }' test/tables/main.cpp > $@
+	@printf 'int main() { test_golden_wire(); test_golden_reload(); test_round_trip(); test_exact_capacity(); test_storage_invariants(); test_bounded_elements(); test_all_default(); test_guard(); test_evolution_old_reader_new_data(); test_evolution_new_reader_old_data(); test_evolution_enum_insert_old_data(); test_evolution_enum_insert_new_data(); test_evolution_union_insert_old_data(); test_evolution_union_insert_new_data(); test_repeated_id_unnameable_variant(); test_repeated_id_unnameable_enum_element(); test_evolution_array_bounds(); test_optional_round_trip(); test_optional_three_way_evolution(); test_keyed_round_trip(); test_keyed_iteration(); test_keyed_none_index_refused(); test_keyed_past_max_index_refused(); test_keyed_evolution_old_data(); test_keyed_evolution_new_data(); test_keyed_versus_positional_is_a_kind_mismatch(); test_keyed_none_key_is_malformed(); test_optional_and_keyed_reflection(); test_keyed_and_optional_in_a_variable_table(); test_keyed_variable_oracle(); test_unnameable_enum_refused(); test_unnameable_enum_element_read(); test_flags_are_positional(); test_wide_extents(); test_clamping(); test_text_clamp_is_bounded(); test_malformed(); test_reflection(); test_cross_file(); test_parallel_shape(); test_pointer_lifecycle(); test_lock_layout_stable(); test_pointer_shared_node(); test_pointer_cycle_refused(); test_pointer_long_chain(); test_builder_grow(); test_builder_workers(); test_pointer_evolution_old_reader_new_data(); test_pointer_evolution_new_reader_old_data(); test_pointer_null_and_empty(); test_pointer_reflection(); test_lock_deterministic_on_dirty_heap(); test_depth_agrees_through_by_value_nesting(); test_descriptors_are_constant(); test_cross_file_pointer_unit(); if ( failures > 0 ) { printf( "tables test: %%d failure(s)\\n", failures ); return 1; } printf( "tables test passed\\n" ); return 0; }\n' >> $@
+
+build/tables-main-be-control.cpp: test/tables/main.cpp
+	@mkdir -p build
+	@awk '/^#include / && !/^#include (<|"TablesTable\.h"|"wirebuilder\.h")/ { next } /^static const (jsonkeys|tblv1)::TableFieldInfo/,/^}/ { next } NR < 150 || (NR >= 3115 && NR <= 3211) || (NR >= 3279 && NR <= 3321) { print }' test/tables/main.cpp > $@
+	@printf 'int main() { static uint8_t b[65536]; static tabledemo::RootConfig r; build_golden_root( r ); int64_t w = tabledemo::RootConfigSave( r, b, sizeof( b ) ); CHECK( w > 0 && w == tabledemo::RootConfigMeasure( r ) ); pin_table_golden( "root_full", b, w ); reload_table_golden( "root_full", tabledemo::RootConfigLoad, tabledemo::RootConfigSave ); return failures > 0 ? 1 : 0; }\n' >> $@
+
+build/schema_test_tables_be_full: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
+	@mkdir -p build
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+
+.PHONY: tables-big-endian-tables-full tables-big-endian-control-full
+tables-big-endian-tables-full: build/schema_test_tables_be_full
+	$(BE_RUN) ./build/schema_test_tables_be_full
+	@echo "big-endian leg (full): the wire crosses the byte order"
+
+tables-big-endian-control-full:
+	@mkdir -p build
+	@sed 's|uint8_t b\[2\] = { uint8_t( v ), uint8_t( v >> 8 ) };|uint8_t b[2]; memcpy( b, \&v, 2 ); // SABOTAGED: host order|' \
+		internal/codegen/cpptable/cpptable.go > build/cpptable-host-order.gotext
+	@cmp -s build/cpptable-host-order.gotext internal/codegen/cpptable/cpptable.go && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/cpptable.go":"%s/build/cpptable-host-order.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/cpptable-overlay.json
+	@go build -overlay=build/cpptable-overlay.json -o build/schema-host-order ./cmd/schema
+	@rm -rf build/tables-host-order && mkdir -p build/tables-host-order
+	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
+	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
+		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
+		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
+	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \
+		{ echo "NEGATIVE CONTROL FAILED: a host-order put16 is visible on a little-endian host — this host is not little-endian, or the sabotage is not the one described"; cat build/host-order-host.log; exit 1; }
+	@echo "negative control: a host-order put16 leaves the LITTLE-ENDIAN leg green"
+	@if $(BE_RUN) ./build/schema_test_tables_host_order_be > build/host-order-be.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a host-order put16 left the BIG-ENDIAN leg green"; exit 1; \
+	fi
+	@grep -q "table wire golden" build/host-order-be.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the big-endian leg went red, but not on a wire golden"; cat build/host-order-be.log; exit 1; }
+	@echo "negative control: the same put16 turns the BIG-ENDIAN leg red, on the wire goldens"
+
+# Per-commit Go big-endian smoke (green-be-nightly). The full harness
+# conformance-big-endian is the nightly row: on run 42581682964 its make
+# step was 96 s inside a 127 s job. These three units still put a uint32,
+# a uint16 and a wstring on the wire, and the host bytes must match qemu-s390x.
+# The target measured 8.7 s on amd-2 with bin/schema warm (2026-11-09).
+.PHONY: conformance-big-endian-smoke
+conformance-big-endian-smoke: bin/schema
+	rm -rf build/be-go-smoke
+	mkdir -p build/be-go-smoke/uint build/be-go-smoke/i16 build/be-go-smoke/wstr
+	./bin/schema generate --lang go --out build/be-go-smoke/uint test/tables/VOLD_uint_widen.schema
+	./bin/schema generate --lang go --out build/be-go-smoke/i16 test/tables/VOLD_int_widen.schema
+	./bin/schema generate --lang go --out build/be-go-smoke/wstr test/tables/VOLD_wstring_grow.schema
+	rm -f build/be-go-smoke/uint/go.mod build/be-go-smoke/i16/go.mod build/be-go-smoke/wstr/go.mod
+	python3 -c 'import base64; open("build/be-go-smoke/main.go","wb").write(base64.b64decode("cGFja2FnZSBtYWluCgppbXBvcnQgKAoJImZtdCIKCSJvcyIKCglpMTYgImdpdGh1Yi5jb20vbWFzLWJhbmR3aWR0aC9zY2hlbWEvdjIvYnVpbGQvYmUtZ28tc21va2UvaTE2IgoJdSAiZ2l0aHViLmNvbS9tYXMtYmFuZHdpZHRoL3NjaGVtYS92Mi9idWlsZC9iZS1nby1zbW9rZS91aW50IgoJdyAiZ2l0aHViLmNvbS9tYXMtYmFuZHdpZHRoL3NjaGVtYS92Mi9idWlsZC9iZS1nby1zbW9rZS93c3RyIgopCgpmdW5jIGZhaWwod2hhdCBzdHJpbmcpIGludCB7CglmbXQuUHJpbnRmKCJGQUlMICVzXG4iLCB3aGF0KQoJcmV0dXJuIDEKfQoKZnVuYyB3cml0ZVVpbnQocGF0aCBzdHJpbmcpIGludCB7Cgl2IDo9ICZ1LlVpbnRXaWRlbnt9Cgl1LlVpbnRXaWRlblJlc2V0KHYpCgl2LkxlYWQgPSAweDAxMDIwMzA0Cgl2LlYgPSAweDAxMDIKCWJ1ZiA6PSBtYWtlKFtdYnl0ZSwgMjU2KQoJbiA6PSB1LlVpbnRXaWRlblNhdmUodiwgYnVmKQoJaWYgbiA8PSAwIHsKCQlyZXR1cm4gZmFpbCgid3JpdGUtdWludCIpCgl9CglpZiBlcnIgOj0gb3MuV3JpdGVGaWxlKHBhdGgsIGJ1Zls6bl0sIDBvNjQ0KTsgZXJyICE9IG5pbCB7CgkJcmV0dXJuIGZhaWwoIndyaXRlLXVpbnQiKQoJfQoJZm10LlByaW50Zigid3JvdGUgdWludCAlZFxuIiwgbikKCXJldHVybiAwCn0KCmZ1bmMgY2hlY2tVaW50KHBhdGggc3RyaW5nKSBpbnQgewoJYiwgZXJyIDo9IG9zLlJlYWRGaWxlKHBhdGgpCglpZiBlcnIgIT0gbmlsIHsKCQlyZXR1cm4gZmFpbCgiY2hlY2stdWludCIpCgl9Cgl2YXIgdiB1LlVpbnRXaWRlbgoJdmFyIHJlcG9ydCB1LlRhYmxlUmVwb3J0CglpZiAhdS5VaW50V2lkZW5Mb2FkKCZ2LCBiLCAmcmVwb3J0KSB8fCB2LkxlYWQgIT0gMHgwMTAyMDMwNCB8fCB2LlYgIT0gMHgwMTAyIHx8IHYuVHJhaWwgIT0gMiB7CgkJcmV0dXJuIGZhaWwoImNoZWNrLXVpbnQiKQoJfQoJZm10LlByaW50ZigiY2hlY2tlZCB1aW50XG4iKQoJcmV0dXJuIDAKfQoKZnVuYyB3cml0ZUkxNihwYXRoIHN0cmluZykgaW50IHsKCXYgOj0gJmkxNi5JbnRXaWRlbnt9CglpMTYuSW50V2lkZW5SZXNldCh2KQoJdi5WID0gMHgwMTAyCglidWYgOj0gbWFrZShbXWJ5dGUsIDI1NikKCW4gOj0gaTE2LkludFdpZGVuU2F2ZSh2LCBidWYpCglpZiBuIDw9IDAgewoJCXJldHVybiBmYWlsKCJ3cml0ZS1pMTYiKQoJfQoJaWYgZXJyIDo9IG9zLldyaXRlRmlsZShwYXRoLCBidWZbOm5dLCAwbzY0NCk7IGVyciAhPSBuaWwgewoJCXJldHVybiBmYWlsKCJ3cml0ZS1pMTYiKQoJfQoJZm10LlByaW50Zigid3JvdGUgaTE2ICVkXG4iLCBuKQoJcmV0dXJuIDAKfQoKZnVuYyBjaGVja0kxNihwYXRoIHN0cmluZykgaW50IHsKCWIsIGVyciA6PSBvcy5SZWFkRmlsZShwYXRoKQoJaWYgZXJyICE9IG5pbCB7CgkJcmV0dXJuIGZhaWwoImNoZWNrLWkxNiIpCgl9Cgl2YXIgdiBpMTYuSW50V2lkZW4KCXZhciByZXBvcnQgaTE2LlRhYmxlUmVwb3J0CglpZiAhaTE2LkludFdpZGVuTG9hZCgmdiwgYiwgJnJlcG9ydCkgfHwgdi5WICE9IDB4MDEwMiB8fCB2LkxlYWQgIT0gMSB8fCB2LlRyYWlsICE9IDIgewoJCXJldHVybiBmYWlsKCJjaGVjay1pMTYiKQoJfQoJZm10LlByaW50ZigiY2hlY2tlZCBpMTZcbiIpCglyZXR1cm4gMAp9CgpmdW5jIHdyaXRlV3N0cihwYXRoIHN0cmluZykgaW50IHsKCXYgOj0gJncuV3N0cmluZ0dyb3d7fQoJdy5Xc3RyaW5nR3Jvd1Jlc2V0KHYpCgl2LlRleHRbMF0gPSAweDAxMDIKCXYuVGV4dExlbmd0aCA9IDEKCWJ1ZiA6PSBtYWtlKFtdYnl0ZSwgMjU2KQoJbiA6PSB3LldzdHJpbmdHcm93U2F2ZSh2LCBidWYpCglpZiBuIDw9IDAgewoJCXJldHVybiBmYWlsKCJ3cml0ZS13c3RyIikKCX0KCWlmIGVyciA6PSBvcy5Xcml0ZUZpbGUocGF0aCwgYnVmWzpuXSwgMG82NDQpOyBlcnIgIT0gbmlsIHsKCQlyZXR1cm4gZmFpbCgid3JpdGUtd3N0ciIpCgl9CglmbXQuUHJpbnRmKCJ3cm90ZSB3c3RyICVkXG4iLCBuKQoJcmV0dXJuIDAKfQoKZnVuYyBjaGVja1dzdHIocGF0aCBzdHJpbmcpIGludCB7CgliLCBlcnIgOj0gb3MuUmVhZEZpbGUocGF0aCkKCWlmIGVyciAhPSBuaWwgewoJCXJldHVybiBmYWlsKCJjaGVjay13c3RyIikKCX0KCXZhciB2IHcuV3N0cmluZ0dyb3cKCXZhciByZXBvcnQgdy5UYWJsZVJlcG9ydAoJaWYgIXcuV3N0cmluZ0dyb3dMb2FkKCZ2LCBiLCAmcmVwb3J0KSB8fCB2LlRleHRMZW5ndGggIT0gMSB8fCB2LlRleHRbMF0gIT0gMHgwMTAyIHx8IHYuTGVhZCAhPSAxIHx8IHYuVHJhaWwgIT0gMiB7CgkJcmV0dXJuIGZhaWwoImNoZWNrLXdzdHIiKQoJfQoJZm10LlByaW50ZigiY2hlY2tlZCB3c3RyXG4iKQoJcmV0dXJuIDAKfQoKZnVuYyBtYWluKCkgewoJaWYgbGVuKG9zLkFyZ3MpICE9IDMgewoJCW9zLkV4aXQoZmFpbCgidXNhZ2UiKSkKCX0KCWNtZCwgcGF0aCA6PSBvcy5BcmdzWzFdLCBvcy5BcmdzWzJdCglzd2l0Y2ggY21kIHsKCWNhc2UgIndyaXRlLXVpbnQiOgoJCW9zLkV4aXQod3JpdGVVaW50KHBhdGgpKQoJY2FzZSAiY2hlY2stdWludCI6CgkJb3MuRXhpdChjaGVja1VpbnQocGF0aCkpCgljYXNlICJ3cml0ZS1pMTYiOgoJCW9zLkV4aXQod3JpdGVJMTYocGF0aCkpCgljYXNlICJjaGVjay1pMTYiOgoJCW9zLkV4aXQoY2hlY2tJMTYocGF0aCkpCgljYXNlICJ3cml0ZS13c3RyIjoKCQlvcy5FeGl0KHdyaXRlV3N0cihwYXRoKSkKCWNhc2UgImNoZWNrLXdzdHIiOgoJCW9zLkV4aXQoY2hlY2tXc3RyKHBhdGgpKQoJZGVmYXVsdDoKCQlvcy5FeGl0KGZhaWwoInVua25vd24gY29tbWFuZCIpKQoJfQp9Cg=="))'
+	cd build/be-go-smoke && go build -mod=readonly -o host .
+	cd build/be-go-smoke && CGO_ENABLED=0 GOOS=linux GOARCH=s390x go build -mod=readonly -o be .
+	./build/be-go-smoke/host write-uint build/be-go-smoke/host-uint.bin
+	./build/be-go-smoke/host write-i16 build/be-go-smoke/host-i16.bin
+	./build/be-go-smoke/host write-wstr build/be-go-smoke/host-wstr.bin
+	$(BE_RUN) ./build/be-go-smoke/be write-uint build/be-go-smoke/be-uint.bin
+	$(BE_RUN) ./build/be-go-smoke/be write-i16 build/be-go-smoke/be-i16.bin
+	$(BE_RUN) ./build/be-go-smoke/be write-wstr build/be-go-smoke/be-wstr.bin
+	cmp build/be-go-smoke/host-uint.bin build/be-go-smoke/be-uint.bin
+	cmp build/be-go-smoke/host-i16.bin build/be-go-smoke/be-i16.bin
+	cmp build/be-go-smoke/host-wstr.bin build/be-go-smoke/be-wstr.bin
+	./build/be-go-smoke/host check-uint build/be-go-smoke/be-uint.bin
+	./build/be-go-smoke/host check-i16 build/be-go-smoke/be-i16.bin
+	./build/be-go-smoke/host check-wstr build/be-go-smoke/be-wstr.bin
+	$(BE_RUN) ./build/be-go-smoke/be check-uint build/be-go-smoke/host-uint.bin
+	$(BE_RUN) ./build/be-go-smoke/be check-i16 build/be-go-smoke/host-i16.bin
+	$(BE_RUN) ./build/be-go-smoke/be check-wstr build/be-go-smoke/host-wstr.bin
+	@echo "big-endian leg (go smoke): three units agree across the byte order"
