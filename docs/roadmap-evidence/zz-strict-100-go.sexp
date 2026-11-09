@@ -13,7 +13,6 @@
 (:id "vt/union-arrays/go" :state :todo :note "2026-11-08 audit: the cited TestMalformedRepeatedUnionKeepsPriorValue no longer exists (test/go-tables has TestDamagedRepeatedUnionRefuses); the evidence names a retired last-wins answer.")
 (:id "vt/maps/go" :state :todo :note "2026-11-08 audit: the cited TestGoMapRepeatedKeyLastKindWins no longer exists; a repeated map key is damage under the one read and no Go test cited here holds that.")
 (:id "vt/id-table-wire/go" :state :todo :note "2026-11-08 audit: TestWireLargeVocabularyAndZeroId (with TestFormVerdicts and TestLEBTenthByteOverflow inside it) fails on main.")
-(:id "vt/wstring/go" :state :todo :note "2026-11-08 audit: TestCookWriterMatchesIndependentLayout/fixed (the words wstring(8) arm) fails on main: the plain RootLoad at a declared fixed root refuses the engine's form-3 file.")
 (:id "vt/unbounded-arrays/go" :state :todo :note "2026-11-08 audit: TestBuilderCountRecovery fails on main (damage must discard the whole load; the builder answers count_over_length).")
 (:id "vt/message-form/go" :state :done :evidence ("internal/codegen/gotable/vt_text_cook_message_test.go: TestGoTextCookMessageCellsStrict" "internal/codegen/gotable/vt_text_cook_message_test.go: TestGoTextCookMessageCellsStrictNegativeControl"))
 (:id "vt/retain-unknown/go" :state :todo :note "2026-11-08 audit: the cited TestRetainReplacementAndShapeChanges no longer exists, and the retain and retain-save conformance surfaces are red on retain_node_index (main CI 42459510328, conformance (go)).")

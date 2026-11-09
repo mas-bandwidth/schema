@@ -128,8 +128,8 @@ func cppRuntimeNames() []Name {
 			"TableRetainWrite64", "kTableRetainDepthMax", "kTableRetainKnown", "kTableRetainKnownIds",
 			"kTableRetainRecordHeader", "kTableRetainSlotBytes", "kTableRetainWalkDepthMax",
 		}},
-		{what: "the text field helpers: UTF-8 and UTF-16 validity, clamping and the float rung (docs/SPEC-TABLES.md §4)", names: []string{
-			"TableAppendText", "TableUtf16Clamp", "TableUtf16Unit", "TableUtf8Clamp",
+		{what: "the text field helpers: UTF-8 validity, clamping and the float rung (docs/SPEC-TABLES.md §4)", names: []string{
+			"TableAppendText", "TableUtf8Clamp",
 		}},
 		{what: "the text form's JSON layer: descriptor classification and raw storage access (§16)", names: []string{
 			"TableJsonCount", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",
@@ -214,7 +214,7 @@ var cppSharedNames = []string{
 	"TableMessageValueBits", "TableOpenBodyStopped", "TableOpenDamaged", "TableOpenOk", "TableOpenRefused",
 	"TableOpenVerdict", "TableRetainIds", "TableRetainIn", "TableRetainOut", "TableRetainPath",
 	"TableRetainStep", "TableStringAt", "TableStringEmplace", "TableStringView", "TableTextFormEdit",
-	"TableUtf16Valid", "TableUtf8Valid", "kTableAlign", "kTableAllocFailed", "kTableAnnounce",
+	"TableUtf8Valid", "kTableAlign", "kTableAllocFailed", "kTableAnnounce",
 	"kTableAnnounceBytes", "kTableBytesTypeId", "kTableFixedBool", "kTableFixedConst", "kTableFixedCopy",
 	"kTableFixedCount", "kTableFixedEntryBytes", "kTableFixedForm", "kTableFixedHashAt",
 	"kTableFixedHeaderBytes", "kTableFixedLayoutHeaderBytes", "kTableFixedMaxDepth", "kTableFixedOrdinal",

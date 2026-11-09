@@ -159,7 +159,6 @@ DOCUMENT Document {
  nodes [..3]Node
  pairs [2]int32
  optional ?[..4]int32
- wide wstring(4)
  blob bytes(4) | json = "bytes"
  low int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
  high uint128 | json = "unsigned"

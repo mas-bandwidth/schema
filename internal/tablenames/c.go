@@ -263,9 +263,6 @@ func init() {
 		Name{Name: "table_json_wide_zero", What: "the C table wide numeric and text runtime"},
 		Name{Name: "table_json_write_w_string", What: "the C table wide numeric and text runtime"},
 		Name{Name: "table_json_write_wide", What: "the C table wide numeric and text runtime"},
-		Name{Name: "table_wire_utf16", What: "the C table wide numeric and text runtime"},
-		Name{Name: "table_wire_utf16_clamp", What: "the C table wide numeric and text runtime"},
-		Name{Name: "table_wire_utf16_unit", What: "the C table wide numeric and text runtime"},
 
 		Name{Name: "table_reader_array_header", What: "the form-1 array header reader"},
 		Name{Name: "table_kind_widens", What: "the form-1 file wire runtime"},

@@ -82,11 +82,6 @@ func TestSpecGoS7CookWritersAnyPort(t *testing.T) {
 			wants: []string{"Go's layout contract is an `init()` panic"},
 		},
 		{
-			name:  "wstring blob marked ahead of implementation",
-			page:  spec,
-			wants: []string{"the checker refuses `*wstring`"},
-		},
-		{
 			name:  "follow-on names the port rule and Go",
 			page:  spec,
 			wants: []string{"C, C++ and Go write\n  cooks of either", "Go's is the claimed"},

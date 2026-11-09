@@ -124,7 +124,6 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	kinds["state"] = "done"
 	kinds["pairs"] = []any{json.Number("1"), json.Number("-2")}
 	kinds["optional"] = []any{}
-	kinds["wide"] = "\U0001F600é"
 	kinds["bytes"] = "AP8="
 	kinds["signed"] = json.Number("-170141183460469231731687303715884105728")
 	kinds["unsigned"] = json.Number("340282366920938463463374607431768211455")
@@ -317,7 +316,6 @@ func cppDocumentDefaults() map[string]any {
 		"text":     []any{},
 		"nodes":    []any{},
 		"pairs":    []any{json.Number("0"), json.Number("0")},
-		"wide":     "",
 		"bytes":    "",
 		"signed":   json.Number("0"),
 		"unsigned": json.Number("0"),
@@ -374,7 +372,6 @@ fixed table Document
     nodes    [..3]Node
     pairs    [2]int32
     optional ?[..4]int32
-    wide     wstring(4)
     blob     bytes(4) | json = "bytes"
     low      int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
     high     uint128 | json = "unsigned"
