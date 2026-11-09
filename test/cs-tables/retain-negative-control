@@ -55,7 +55,7 @@ unsafe class Program
         try
         {
             Schema.NodeLoadRetain((IntPtr)region,need,wire,ref retain,report);
-            if(report.Retained!=9 || report.RetainLost!=2 || report.Malformed)
+            if(report.Retained!=9 || report.RetainLost!=2 || report.Damaged)
             { Console.WriteLine("FAILED RETAIN: framed fields were not captured"); return 1; }
             return 0;
         }
