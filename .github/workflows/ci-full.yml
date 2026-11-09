@@ -1001,6 +1001,14 @@ jobs:
     # driver even under `make -j`. This job keeps the hosted restore the
     # rest of the file uses; the fleet runner's own Go cache is warm, and
     # the legs below restore theirs on fleet as well.
+    #
+    # MEASURED ON THIS BRANCH (16 cores, Go build cache warm): the shared
+    # tree is 9 s (bin/schema, the harness and the C/C++ units), the Go table
+    # tree 10 s parallel instead of 79 s serial, the C and C++ drivers ~15 s
+    # in parallel instead of ~80 s serial, and the remaining leg builds 3 s
+    # to 29 s (Dart 23 s, Java 29 s, the manifest-loop ports 4 s each). The
+    # matrix is discovered AFTER the build, with the harness this job just
+    # built, so a cold Go cache compiles the harness once instead of twice.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
@@ -1033,15 +1041,15 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      - name: build the shared conformance inputs once
+        run: make -j"$(nproc)" conformance-shared
+
       - id: discover
         name: the registry, as a matrix
         run: |
-          matrix=$(go run ./test/conformance/harness matrix)
+          matrix=$(./build/conformance-harness matrix)
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-
-      - name: build the shared conformance inputs once
-        run: make -j"$(nproc)" conformance-shared
 
       - name: hand the shared conformance inputs to every leg
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
