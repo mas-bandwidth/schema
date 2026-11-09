@@ -44,9 +44,9 @@ defmodule Cards.Cards do
   end
 
   # Load reads wire into a Record through the generated codec and the checked
-  # write (tables/cards/cards.go: Load). Failures and malformed wire are errors;
-  # tolerant events ride in the returned report. The wire is kept as-is: a BEAM
-  # binary is immutable, so the record owns its bytes and no generated term
+  # write (tables/cards/cards.go: Load). The strict read returns the whole value
+  # or refuses the whole load; the report rides along. The wire is kept as-is: a
+  # BEAM binary is immutable, so the record owns its bytes and no generated term
   # holds a sub-binary of caller input past the call.
   def load(wire) when is_binary(wire) do
     case Cards.Table.load("Card", wire) do
@@ -62,16 +62,16 @@ defmodule Cards.Cards do
   end
 
   # FromJSON builds a Record from JSON text through the generated codec and the
-  # checked write (tables/cards/cards.go: FromJSON). Unknown, mismatched, clamped
-  # and malformed inputs are refused, as are the customer bounds and any body or
+  # checked write (tables/cards/cards.go: FromJSON). Unknown fields and every
+  # strict-read refusal are refused, as are the customer bounds and any body or
   # element that is not well-formed UTF-8 without NUL. Bytes are published only
   # on complete success.
   def from_json(text) when is_binary(text) do
     case Cards.Table.from_json("Card", text) do
       {:ok, value, report} ->
-        if report.unknown > 0 or report.kind_mismatch > 0 or report.clamped > 0 do
+        if report.unknown > 0 do
           {:error,
-           "cards: JSON has loss events (unknown=#{report.unknown} kindMismatch=#{report.kind_mismatch} clamped=#{report.clamped}): refused, never truncated"}
+           "cards: JSON has #{report.unknown} unknown field(s): refused, never truncated"}
         else
           case check_card(value) do
             :ok ->
@@ -85,7 +85,7 @@ defmodule Cards.Cards do
           end
         end
 
-      {:error, :malformed, _report} ->
+      {:error, _reason, _report} ->
         {:error, "cards: JSON is malformed"}
     end
   end
@@ -724,8 +724,8 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
   # upgrade rewrites wire through the generated retaining path so every field
   # the current declaration cannot name is preserved (docs/SPEC-TABLES.md §6.6;
   # tables/cards/upgrade.go: Upgrade). Unknown, Retained and Widened alone are
-  # not loss. RetainLost, KindMismatch, Clamped, Malformed and any failed call
-  # return no wire and a named error; the input binary is never written.
+  # not loss. RetainLost, a strict refusal and any failed call return no wire
+  # and a named error; the input binary is never written.
   # tla/CardVersioning.tla: NoFieldLost, BodyUnchanged, RefusalKeepsOriginal.
   def upgrade(wire) when is_binary(wire), do: upgrade(wire, @max_retain_bytes, @max_retain_ids)
 
@@ -744,7 +744,7 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
 
         case Cards.Table.load_retain("Card", wire, retain, report) do
           {:error, _reason, report, _retain} ->
-            {:error, "cards: upgrade: wire is malformed", %{report | malformed: true}}
+            {:error, "cards: upgrade: wire is malformed", report}
 
           {:ok, value, report, retain} ->
             retain = drop_one_retained(retain)
@@ -772,7 +772,8 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
   end
 
   # read_strict refuses any data the current declaration cannot support
-  # (docs/SPEC-TABLES.md §4; tables/cards/upgrade.go: ReadStrict). A safe
+  # (docs/SPEC-TABLES.md §4; tables/cards/upgrade.go: ReadStrict). The plain
+  # load is already strict, so only an unknown field needs a second look. A safe
   # Widened event need not refuse. It returns no usable record on rejection.
   def read_strict(wire) when is_binary(wire) do
     case load(wire) do
@@ -780,40 +781,33 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
         {:error, reason}
 
       {:ok, record, report} ->
-        cond do
-          report.unknown > 0 ->
-            {:error, "cards: strict: #{report.unknown} unknown field(s), unsupported data"}
+        unknown = Map.get(report, :unknown, 0)
 
-          report.kind_mismatch > 0 ->
-            {:error, "cards: strict: #{report.kind_mismatch} kind mismatch(es), unsupported data"}
-
-          report.clamped > 0 ->
-            {:error, "cards: strict: #{report.clamped} clamped value(s), unsupported data"}
-
-          report.malformed ->
-            {:error, "cards: strict: malformed wire, unsupported data"}
-
-          true ->
-            {:ok, record}
+        if unknown > 0 do
+          {:error, "cards: strict: #{unknown} unknown field(s), unsupported data"}
+        else
+          {:ok, record}
         end
     end
+  end
+
+  # refused? names a strict refusal already recorded in the report: a refusal
+  # carries a reason and no value (docs/SPEC-TABLES.md §4, §6.5).
+  defp refused?(report) do
+    Map.get(report, :reason, "") != "" or Map.get(report, :missing_required, 0) > 0
   end
 
   # loss_err names the report events that make a rewrite unsafe (§6.6).
   # Unknown, Retained and Widened alone are not loss (§4).
   defp loss_err(report) do
+    retain_lost = Map.get(report, :retain_lost, 0)
+
     cond do
-      Map.get(report, :retain_lost, 0) > 0 ->
-        {:error, "cards: upgrade: #{report.retain_lost} retained field(s) lost, refusing to replace"}
+      retain_lost > 0 ->
+        {:error, "cards: upgrade: #{retain_lost} retained field(s) lost, refusing to replace"}
 
-      Map.get(report, :kind_mismatch, 0) > 0 ->
-        {:error, "cards: upgrade: #{report.kind_mismatch} kind mismatch(es), refusing to replace"}
-
-      Map.get(report, :clamped, 0) > 0 ->
-        {:error, "cards: upgrade: #{report.clamped} clamped value(s), refusing to replace"}
-
-      Map.get(report, :malformed, false) ->
-        {:error, "cards: upgrade: malformed wire, refusing to replace"}
+      refused?(report) ->
+        {:error, "cards: upgrade: refused value, refusing to replace"}
 
       true ->
         :ok
@@ -940,14 +934,11 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
   # rewrite (docs/SPEC-TABLES.md §4, §6.6; tables/cards/edit.go: refuseLossy).
   defp refuse_lossy(report) do
     unknown = Map.get(report, :unknown, 0)
-    kind_mismatch = Map.get(report, :kind_mismatch, 0)
-    clamped = Map.get(report, :clamped, 0)
     retain_lost = Map.get(report, :retain_lost, 0)
-    malformed = Map.get(report, :malformed, false)
 
-    if unknown > 0 or kind_mismatch > 0 or clamped > 0 or retain_lost > 0 or malformed do
+    if unknown > 0 or retain_lost > 0 or refused?(report) do
       {:error,
-       "cards: record has loss events (unknown=#{unknown} kindMismatch=#{kind_mismatch} clamped=#{clamped} retainLost=#{retain_lost} malformed=#{malformed}): refused, never hashed or rewritten"}
+       "cards: record has loss events (unknown=#{unknown} retainLost=#{retain_lost} refused=#{Map.get(report, :reason, "")}): refused, never hashed or rewritten"}
     else
       :ok
     end
@@ -1043,13 +1034,11 @@ defp do_parse([], text, last_header_end, p, _seen, _prose) do
   defp empty_report do
     %{
       unknown: 0,
-      kind_mismatch: 0,
       widened: 0,
-      clamped: 0,
-      malformed: false,
       retained: 0,
       retain_lost: 0,
-      duplicate: 0
+      reason: "",
+      missing_required: 0
     }
   end
 end

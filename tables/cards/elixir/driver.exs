@@ -162,18 +162,20 @@ defmodule Cards.Driver do
     write(outdir, name, "refused", class <> "\n")
   end
 
-  # format_report writes the read report, one Name=value line per counter of the
-  # Go TableReport in declaration order (tables/cards/conformance/FORMAT.md).
+  # format_report writes the read report, one Name=value line per row of
+  # tables/cards/conformance/FORMAT.md. The first four are the Go TableReport
+  # counters. The strict read refuses the retired events instead of counting
+  # them, so an accepted read writes the last four rows as zero and false.
   defp format_report(report) do
     [
       "Retained=#{Map.get(report, :retained, 0)}\n",
       "RetainLost=#{Map.get(report, :retain_lost, 0)}\n",
       "Widened=#{Map.get(report, :widened, 0)}\n",
       "Unknown=#{Map.get(report, :unknown, 0)}\n",
-      "KindMismatch=#{Map.get(report, :kind_mismatch, 0)}\n",
-      "Clamped=#{Map.get(report, :clamped, 0)}\n",
-      "Duplicate=#{Map.get(report, :duplicate, 0)}\n",
-      "Malformed=#{Map.get(report, :malformed, false)}\n"
+      "KindMismatch=0\n",
+      "Clamped=0\n",
+      "Duplicate=0\n",
+      "Malformed=false\n"
     ]
   end
 
