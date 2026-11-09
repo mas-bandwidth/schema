@@ -19,6 +19,7 @@ func init() {
 func TestTargetLuaCarriesRequired(t *testing.T) {
 	t.Parallel()
 	c := New()
+	// Package name avoids colliding with Lobster runtime binding "t".
 	u := unitFromSource(t, "package requiredprobe\ntable Ship\n{\n    name string(32) | required\n}\n")
 	for _, lang := range c.Targets() {
 		files, err := c.Generate(u, lang, nil)
