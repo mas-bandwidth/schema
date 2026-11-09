@@ -161,91 +161,149 @@ local function newReport()
   }
 end
 
-local function reportLine(r)
-  -- a non-finite float is refused by every read (docs/SPEC-TABLES.md §3.3)
-  local verdict = (r.refused > 0 or r.nonFiniteFloat ~= nil) and "refused" or "read"
-  return string.format("%d,%d,%d,%d,%d,%s,%s\n",
-    r.unknown, 0, r.widened, 0,
-    0, tostring(r.damaged), verdict)
+-- One strict read (docs/SPEC-TABLES.md §6.5). A fixed root's file is form 3
+-- through ReadFixed; every other form byte is unknown_form and is not handed
+-- to the variable walk. A variable root is Load, which already refuses every
+-- form byte but 1. Returns the value, or nil and the refusal name.
+local function isFixed(u, name)
+  return u.T.Fixed ~= nil and u.T.Fixed[name] ~= nil
 end
 
----------------------------------------------------------------------------
--- the variable form and the text form (docs/SPEC-TABLES.md §3, §4, §16)
----------------------------------------------------------------------------
-
--- The value half of a report and json-hostile answer (test/conformance/README.md):
--- the §16 text of the value the read left, after its report line.
-local function withValue(u, f, line, v)
-  local json, why = u.json.ToJson(u.T, f[4], v)
-  if json == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
-  return line .. json
+-- A fixed table (table and not variable) is form 3 only. ReadFixed exists
+-- only when the emitter listed the root; a fixed root without it refuses.
+local function fixedClass(u, name)
+  local desc = u.T.Tables[name]
+  if desc ~= nil and desc.table and not desc.variable then return true end
+  return isFixed(u, name)
 end
 
--- report: the report line, then the §16 text of the value when the read reads.
+local function strictRead(u, name, bytes)
+  if fixedClass(u, name) then
+    if #bytes >= 1 and bytes:byte(1) == 3 and isFixed(u, name) then
+      local ok, v = pcall(u.T.ReadFixed, name, bytes)
+      if not ok then return nil, tostring(v) end
+      return v
+    end
+    return nil, "unknown_form"
+  end
+  local r = newReport()
+  local v = u.load.Load(u.T, name, bytes, r)
+  if v == nil then return nil, r.reason or "refused" end
+  return v
+end
+
+-- A framing vector is a form-1 file read as the VARIABLE form even at a fixed
+-- root (docs/LAYERS/1-framing.md). The walk parses a node table only when the
+-- descriptor says variable; the bit is restored before the next row.
+local function loadVariable(u, name, bytes)
+  local desc = u.T.Tables[name]
+  local saved = desc and desc.variable
+  if desc ~= nil then desc.variable = true end
+  local r = newReport()
+  local ok, v = pcall(u.load.Load, u.T, name, bytes, r)
+  if desc ~= nil then desc.variable = saved end
+  if not ok then return nil, tostring(v) end
+  if v == nil then return nil, r.reason or "refused" end
+  return v
+end
+
+-- The root's own writer: form 3 for a fixed root, the variable save otherwise.
+local function canonicalWrite(u, name, v)
+  if isFixed(u, name) then
+    local ok, saved = pcall(u.T.WriteFixed, name, v)
+    if not ok then return nil, tostring(saved) end
+    return saved
+  end
+  return u.save.Save(u.T, name, v)
+end
+
+-- A read's answer (test/conformance/README.md): `refused` alone, or `read`,
+-- the §16 text of the whole value when asked, and beside it <case>.wire.
+-- A refusal writes nothing else. One case that cannot write back leaves no
+-- wire, so the harness fails that case and the surface continues.
+local function answerRead(outdir, name, u, root, v, withValue)
+  if v == nil then
+    writeBytes(outdir .. "/" .. name, "refused\n")
+    return
+  end
+  local saved, why = canonicalWrite(u, root, v)
+  if saved == nil then
+    io.stderr:write("driver: " .. name .. ": write-back refused: " .. tostring(why) .. "\n")
+    writeBytes(outdir .. "/" .. name, "read\n")
+    return
+  end
+  writeBytes(outdir .. "/" .. name .. ".wire", saved)
+  if not withValue then
+    writeBytes(outdir .. "/" .. name, "read\n")
+    return
+  end
+  local json, jwhy = u.json.ToJson(u.T, root, v)
+  if json == nil then
+    io.stderr:write("driver: " .. name .. ": ToJson refused: " .. tostring(jwhy) .. "\n")
+    writeBytes(outdir .. "/" .. name, "read\n")
+    return
+  end
+  writeBytes(outdir .. "/" .. name, "read\n" .. json)
+end
+
+-- report: one strict read, then the verdict and the value.
 local function surfaceReport(all, outdir)
   for _, f in ipairs(kind(all, "report")) do
     local u = unit(f[3])
     if not u then
       absent(outdir, f[2], NOT_GENERATED)
     else
-      local r = newReport()
-      local v = u.load.Load(u.T, f[4], mustRead(f[5]), r)
-      local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
-      if v == nil and not refused then r.damaged = true end
-      local text = reportLine(r)
-      if not refused and not r.damaged then text = withValue(u, f, text, v) end
-      writeBytes(outdir .. "/" .. f[2], text)
+      local v = strictRead(u, f[4], mustRead(f[5]))
+      answerRead(outdir, f[2], u, f[4], v, true)
     end
   end
 end
 
--- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
--- report surface prints it, then the §16 text of the value the read left,
--- unless the row says `no-value` or the read refused or met damage. DAMAGE
--- DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a damaged read owes the
--- report line saying malformed and nothing after it.
+-- THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the same answer, read as
+-- the variable form. A derived line is `framing <case> <unit> <root> <wire>`.
 local function surfaceFraming(all, outdir)
   for _, f in ipairs(kind(all, "framing")) do
     local u = unit(f[3])
     if not u then
       absent(outdir, f[2], NOT_GENERATED)
     else
-      local r = newReport()
-      local v = u.load.Load(u.T, f[4], mustRead(f[5]), r)
-      local text = reportLine(r)
-      local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
-      if v == nil and not refused then
-        r.damaged = true
-        text = reportLine(r)
-      end
-      if f[6] ~= "no-value" and not refused and not r.damaged then
-        local json, why = u.json.ToJson(u.T, f[4], v)
-        if json == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
-        text = text .. json
-      end
-      writeBytes(outdir .. "/" .. f[2], text)
+      local v = loadVariable(u, f[4], mustRead(f[5]))
+      answerRead(outdir, f[2], u, f[4], v, f[6] ~= "no-value")
     end
   end
 end
 
--- The WIRE surface loads a form-1 wire and re-saves it (docs/SPEC-TABLES.md
--- §3). A writer refusal is a NAMED absence (the manifest's refused-by=
--- marker): Save answers nil and the refusal's name, e.g. blob_shared for one
--- blob two slots name (§2.5).
+-- The WIRE surface loads a wire and re-saves it (docs/SPEC-TABLES.md §3).
+-- A blob named from two slots is a named absence (FORMAT.md, wire-refused)
+-- and no bytes. Any other refusal is that one case, not an exit.
+local function wireRefusal(why)
+  return type(why) == "string" and why:find("blob_shared", 1, true) ~= nil
+end
+
 local function surfaceWire(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     local u = unit(f[3])
     if not u then
       absent(outdir, f[2], NOT_GENERATED)
     else
-      local v = u.load.Load(u.T, f[4], mustRead(f[5]), newReport())
-      if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
-      local saved, why = u.save.Save(u.T, f[4], v)
-      if saved == nil then
-        if why == nil then fail(f[2] .. ": Save refused without a name") end
-        writeBytes(outdir .. "/" .. f[2] .. ".absent", why)
+      local v, why = strictRead(u, f[4], mustRead(f[5]))
+      if v == nil then
+        if wireRefusal(why) then
+          absent(outdir, f[2], "blob_shared")
+        else
+          io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
+        end
       else
-        writeBytes(outdir .. "/" .. f[2], saved)
+        local saved, wwhy = canonicalWrite(u, f[4], v)
+        if saved == nil then
+          if wireRefusal(wwhy) then
+            absent(outdir, f[2], "blob_shared")
+          else
+            io.stderr:write("driver: " .. f[2] .. ": Save refused: " .. tostring(wwhy) .. "\n")
+          end
+        else
+          writeBytes(outdir .. "/" .. f[2], saved)
+        end
       end
     end
   end
@@ -255,9 +313,8 @@ local function noText(f)
   return f[6] == "no-text"
 end
 
--- json-read: the TOLERANT text read of the instance's committed text, then
--- Save, the bytes (§16.2). Every leg's json-read and json-hostile call that one
--- entry point, FromJson (test/conformance/README.md).
+-- json-read: the text read of the instance's committed text, then the root's
+-- own writer, the bytes (§16.2).
 local function surfaceJsonRead(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     if not noText(f) then
@@ -266,12 +323,17 @@ local function surfaceJsonRead(all, outdir)
         absent(outdir, f[2], NOT_GENERATED)
       else
         local text = mustRead("testdata/conformance/tables/json/" .. f[2] .. ".json")
-        local r = newReport()
-        local v = u.json.FromJson(u.T, f[4], text, r)
-        if v == nil or r.damaged then fail(f[2] .. ": FromJson refused the text: " .. tostring(r.Reason)) end
-        local saved, why = u.save.Save(u.T, f[4], v)
-        if saved == nil then fail(f[2] .. ": Save refused the value: " .. tostring(why)) end
-        writeBytes(outdir .. "/" .. f[2], saved)
+        local v = u.json.FromJson(u.T, f[4], text, newReport())
+        if v == nil then
+          io.stderr:write("driver: " .. f[2] .. ": FromJson refused the text\n")
+        else
+          local saved, why = canonicalWrite(u, f[4], v)
+          if saved == nil then
+            io.stderr:write("driver: " .. f[2] .. ": Save refused the value: " .. tostring(why) .. "\n")
+          else
+            writeBytes(outdir .. "/" .. f[2], saved)
+          end
+        end
       end
     end
   end
@@ -293,7 +355,7 @@ local function damageText(v, damage)
   end
 end
 
--- json-write: the instance's wire loaded, then ToJson, the text (§16.1).
+-- json-write: the instance's wire loaded strictly, then ToJson, the text (§16.1).
 local function surfaceJsonWrite(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     if not noText(f) then
@@ -301,34 +363,43 @@ local function surfaceJsonWrite(all, outdir)
       if not u then
         absent(outdir, f[2] .. ".json", NOT_GENERATED)
       else
-        local v = u.load.Load(u.T, f[4], mustRead(f[5]), newReport())
-        if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
-        local text, why = u.json.ToJson(u.T, f[4], v)
-        if text == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
-        writeBytes(outdir .. "/" .. f[2] .. ".json", text)
+        local v, why = strictRead(u, f[4], mustRead(f[5]))
+        if v == nil then
+          io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
+        else
+          local text, jwhy = u.json.ToJson(u.T, f[4], v)
+          if text == nil then
+            io.stderr:write("driver: " .. f[2] .. ": ToJson refused the value: " .. tostring(jwhy) .. "\n")
+          else
+            writeBytes(outdir .. "/" .. f[2] .. ".json", text)
+          end
+        end
       end
     end
   end
-  -- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
-  -- then the line's damage put into storage in code, then ToJson, which must
-  -- refuse. The Lua writer has no separate measure: ToJson is the one call.
+  -- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the valid
+  -- wire, then the line's damage put into storage in code, then ToJson, which
+  -- must refuse. The load is the strict read; there is no tolerant twin.
   for _, f in ipairs(kind(all, "json-write-refusal")) do
     local u = unit(f[3])
     if not u then
       absent(outdir, f[2] .. ".json", NOT_GENERATED)
     else
-      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), newReport())
-      if v == nil then fail(f[2] .. ": load refused " .. f[5]) end
-      damageText(v, f[6])
-      local text = u.json.ToJson(u.T, f[4], v)
-      writeBytes(outdir .. "/" .. f[2] .. ".json", text or "refused\n")
+      local v, why = strictRead(u, f[4], mustRead(f[5]))
+      if v == nil then
+        io.stderr:write("driver: " .. f[2] .. ": load refused " .. f[5] .. " (" .. tostring(why) .. ")\n")
+      else
+        damageText(v, f[6])
+        local text = u.json.ToJson(u.T, f[4], v)
+        writeBytes(outdir .. "/" .. f[2] .. ".json", text or "refused\n")
+      end
     end
   end
 end
 
 -- THE JSON-HOSTILE surface (test/conformance/README.md): FromJson of
--- each hostile tree, writing the report line and the §16 text of the value it
--- left, or `refused` when the read refuses (docs/SPEC-TABLES.md §16.2, §16.3, §4).
+-- each hostile tree. `refused` alone, or `read`, the §16 text, and the
+-- write-back wire (docs/SPEC-TABLES.md §16.2, §16.3, §4).
 local function surfaceJsonHostile(all, outdir)
   for _, f in ipairs(kind(all, "json-hostile")) do
     local u = unit(f[3])
@@ -336,18 +407,12 @@ local function surfaceJsonHostile(all, outdir)
       absent(outdir, f[2], NOT_GENERATED)
     else
       local text = mustRead(f[5] .. "/" .. f[4] .. ".json")
-      local r = newReport()
-      local v = u.json.FromJson(u.T, f[4], text, r)
-      if r.damaged or v == nil then
-        writeBytes(outdir .. "/" .. f[2], "refused\n")
-      else
-        writeBytes(outdir .. "/" .. f[2], withValue(u, f, reportLine(r), v))
-      end
+      local v = u.json.FromJson(u.T, f[4], text, newReport())
+      answerRead(outdir, f[2], u, f[4], v, true)
     end
   end
 end
 
----------------------------------------------------------------------------
 -- the message form (docs/SPEC-TABLES.md §3.3)
 ---------------------------------------------------------------------------
 
@@ -428,30 +493,33 @@ local function retainRow(f)
   stores[1] = retainStore(ROOMY, ids)
   if short then
     if u.retain.LoadRetain(u.T, root, wire, stores[1], newReport()) == nil then
-      fail(f[2] .. ": capacity probe refused")
+      return { refused = true }
     end
     stores[1] = retainStore(math.max(0, stores[1].used - 1), ids)
   end
   roots[1] = u.retain.LoadRetain(u.T, root, wire, stores[1], report)
-  if roots[1] == nil or report.damaged then fail(f[2] .. ": retained load refused") end
+  if roots[1] == nil or report.damaged then return { refused = true } end
   local answer = { retained = report.retained, lost = report.retainLost, unknown = report.unknown }
   local save = newReport()
   local parts = {}
   for i, v in ipairs(roots) do
     local size = u.retain.MeasureRetain(u.T, root, v, stores[i])
-    if size == nil then fail(f[2] .. ": retaining measure refused") end
+    if size == nil then return { refused = true } end
     local out = u.retain.SaveRetain(u.T, root, v, stores[i], save)
-    if out == nil then fail(f[2] .. ": retaining save refused") end
-    if #out ~= size then fail(f[2] .. ": the save wrote " .. #out .. " bytes, the measure said " .. size) end
+    if out == nil then return { refused = true } end
+    if #out ~= size then return { refused = true } end
     -- THE SAVE IS REPEATABLE: a second walk with a fresh report writes the
     -- same bytes and answers the same save-side loss (§6.6)
     local again = newReport()
     local second = u.retain.SaveRetain(u.T, root, v, stores[i], again)
-    if second ~= out then fail(f[2] .. ": the save is not repeatable") end
+    if second ~= out then return { refused = true } end
     parts[#parts + 1] = out
   end
   answer.saveLost = save.retainLost
   answer.saved = table.concat(parts)
+  local json, jwhy = u.json.ToJson(u.T, root, roots[1])
+  if json == nil then return { refused = true } end
+  answer.json = json
   return answer
 end
 
@@ -461,11 +529,12 @@ local function surfaceRetain(all, outdir, saves)
       local answer, why = retainRow(f)
       if answer == nil then
         absent(outdir, f[2], why)
+      elseif answer.refused then
+        if not saves then writeBytes(outdir .. "/" .. f[2], "refused\n") end
       elseif saves then
         writeBytes(outdir .. "/" .. f[2], answer.saved)
       else
-        writeBytes(outdir .. "/" .. f[2], string.format("%d,%d,%d %d\n",
-          answer.retained, answer.lost, answer.unknown, answer.saveLost))
+        writeBytes(outdir .. "/" .. f[2], "read\n" .. answer.json)
       end
     end
   end
@@ -806,19 +875,39 @@ local function surfaceCookWrite(all, outdir)
     if not u then
       for _, o in ipairs(ORDERS) do absent(outdir, f[2] .. o[2], NOT_GENERATED) end
     else
-      local v = u.load.Load(u.T, inst[4], mustRead(inst[5]), newReport())
-      if v == nil then fail(f[2] .. ": cook input did not load") end
-      local size, why = u.cookwrite.CookMeasure(u.T, inst[4], v)
-      if size == nil or size < 1 then fail(f[2] .. ": cook measure refused: " .. tostring(why)) end
-      for _, o in ipairs(ORDERS) do
-        local name = f[2] .. o[2]
-        if u.cookwrite.Cook(u.T, inst[4], v, size - 1, o[1]) ~= nil then
-          fail(name .. ": a capacity one short of the measure wrote a cook")
+      -- THE RECIPE'S VALUE (FORMAT.md): the JSON input, or `-` for the
+      -- no-text instance's wire; then the optional shared blob.
+      local v, why
+      if f[3] ~= nil and f[3] ~= "-" then
+        v = u.json.FromJson(u.T, inst[4], mustRead(f[3]), newReport())
+        if v == nil then why = "text read refused" end
+        if v ~= nil and f[4] ~= nil and f[4] ~= "-" then
+          v[f[5]] = v[f[4]]
         end
-        local cooked, cw = u.cookwrite.Cook(u.T, inst[4], v, size, o[1])
-        if cooked == nil then fail(name .. ": cook write refused: " .. tostring(cw)) end
-        if #cooked ~= size then fail(name .. ": the cook is " .. #cooked .. " bytes, the measure said " .. size) end
-        writeBytes(outdir .. "/" .. name, cooked)
+      else
+        v, why = strictRead(u, inst[4], mustRead(inst[5]))
+      end
+      if v == nil then
+        io.stderr:write("driver: " .. f[2] .. ": cook input did not load (" .. tostring(why) .. ")\n")
+      else
+        local size, cwhy = u.cookwrite.CookMeasure(u.T, inst[4], v)
+        if size == nil or size < 1 then
+          io.stderr:write("driver: " .. f[2] .. ": cook measure refused: " .. tostring(cwhy) .. "\n")
+        else
+          for _, o in ipairs(ORDERS) do
+            local name = f[2] .. o[2]
+            if u.cookwrite.Cook(u.T, inst[4], v, size - 1, o[1]) ~= nil then
+              io.stderr:write("driver: " .. name .. ": a capacity one short of the measure wrote a cook\n")
+            else
+              local cooked, cw = u.cookwrite.Cook(u.T, inst[4], v, size, o[1])
+              if cooked == nil or #cooked ~= size then
+                io.stderr:write("driver: " .. name .. ": cook write refused: " .. tostring(cw) .. "\n")
+              else
+                writeBytes(outdir .. "/" .. name, cooked)
+              end
+            end
+          end
+        end
       end
     end
   end

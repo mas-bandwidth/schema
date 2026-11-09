@@ -1911,28 +1911,27 @@ func tableWireSkipValue(r *TableReader, kind uint8) bool {
 	var c tableWireCheck
 	c.ids = len(r.Ids) / 8
 	c.depth = r.Depth
-	if kind == 17 {
-		index, ok := r.Leb()
-		if !ok {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
-		}
-		c.nodes = 0 // tableWireSkipNodes
-		if !c.edge(index) {
-			r.Report.Refuse(c.failed(), "")
-			return false
-		}
-		if c.mark != nil {
-			c.mark(index)
-		}
-		return true
-	}
+	c.nodes = 0 // tableWireSkipNodes
 	at, ok := c.value(*r, kind)
 	if !ok {
 		r.Report.Refuse(c.failed(), "")
 		return false
 	}
 	r.Offset = at
+	return true
+}
+func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
+	var c tableWireCheck
+	c.ids = len(r.Ids) / 8
+	c.depth = r.Depth
+	if arm && (kind == 13 || kind == 14 || kind == 16) {
+		c.depth--
+	}
+	c.nodes = 0 // tableWireSkipNodes
+	if !c.framed(*r, kind) {
+		r.Report.Refuse(c.failed(), "")
+		return false
+	}
 	return true
 }
 
@@ -4233,6 +4232,10 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4834,6 +4837,10 @@ func MixedStatLoadBody(r *TableReader, value *MixedStat) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5089,6 +5096,10 @@ func MixedHitEventLoadBody(r *TableReader, value *MixedHitEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5379,6 +5390,10 @@ func MixedChatEventLoadBody(r *TableReader, value *MixedChatEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5617,6 +5632,10 @@ func MixedPickupEventLoadBody(r *TableReader, value *MixedPickupEvent) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -6399,6 +6418,10 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -6892,6 +6915,9 @@ func BenchMixedLoadBody(r *TableReader, value *BenchMixed) bool {
 						}
 					default:
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&payload37, armKind, true) {
+							return false
+						}
 					}
 				}
 			}

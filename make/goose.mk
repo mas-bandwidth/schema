@@ -138,3 +138,13 @@ tables-goose-damage: toolchain-goose
 tables-goose-damage-negative-control: toolchain-goose
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
+
+# The variable-table wire-fuzz verdict pipe (§4.2, §6.6): both the plain
+# (--builder) and retaining (--builder --retain) arms agree with the Go engine
+# on every mutant's strict read verdict and canonical write-back bytes.
+.PHONY: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
+tables-goose-wire-fuzz-verdict: toolchain-goose
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
+tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
+test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control

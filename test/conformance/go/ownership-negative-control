@@ -7,9 +7,9 @@ mkdir -p "$out"
 test=TestAllocatorOwnershipAndStandaloneWriters
 case "$mode" in
 wire-damage) source=regions.go; sabotage=go-measure-wire-damage; test=TestMeasureRefusalReasons; expected="file reason -1 truncated" ;;
-counted-work) source=read.go; sabotage=go-counted-tail-work; test=TestCountedTailResetWork; expected="counted tail reset work" ;;
-arm-framing) source=read.go; sabotage=go-arm-reference-framing; test=TestPointerArmLengthBeforeResolution; expected="arm framing must precede resolution" ;;
-counted-tail) source=read.go; sabotage=go-counted-tail-reset; test=TestRepeatedArrayTailDefaults; expected="counted tail not reset" ;;
+counted-work) source=codecs.go; sabotage=go-counted-tail-work; test=TestCountedStructTailResetWork; expected="counted tail reset work" ;;
+arm-framing) source=regions.go; sabotage=go-arm-reference-framing; test=TestPointerArmLengthBeforeResolution; expected="arm framing must precede resolution" ;;
+counted-tail) source=codecs.go; sabotage=go-counted-tail-reset; test=TestCountedUnionTailReset; expected="counted tail not reset" ;;
 measure-cycle) source=regions.go; sabotage=go-measure-cycle-reason; test=TestMeasureRefusalReasons; expected="wire cycle:" ;;
 measure-count) source=lists.go; sabotage=go-measure-count-reason; test=TestMeasureRefusalReasons; expected="count 2147483648: size -1 reason count_over_length" ;;
 unknown-node) source=retain.go; sabotage=go-retain-unknown-node; test=TestRetainUnknownNodeRecord; expected="unplaceable node retention" ;;

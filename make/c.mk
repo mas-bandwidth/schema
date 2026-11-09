@@ -1073,7 +1073,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 .PHONY: tables-c-soak-negative-control
 tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
-	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
+	@sed 's|            case_load( \&cases\[i\], codec, value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            case_load( \&cases[i], codec, value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
@@ -1143,7 +1143,7 @@ tables-c-ref-ordinal-negative-control:
 .PHONY: tables-c-strict-load-negative-control
 tables-c-strict-load-negative-control:
 	@rm -rf build/c-strict-load-nc && mkdir -p build/c-strict-load-nc
-	@sed -e 's|    return reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
+	@sed -e 's|    return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
 		internal/codegen/ctable/cook.go > build/c-strict-load-nc/cook.go.txt
 	@grep -q SABOTAGED build/c-strict-load-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
@@ -1630,34 +1630,35 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 test-c: tables-c-wire-fuzz-negative-control
 
 # THE TIMESTAMP KIND SKIPS ITS EIGHT BYTES (docs/SPEC-TABLES.md §3: "Kinds
-# 1-11, 18-29 and 36 skip their fixed width"). A field whose wire kind is 36
-# where the schema declares another kind is a kind mismatch, counted, and the
-# reader steps over the eight-byte payload and reads on. The pinned mutant is
-# the wire fuzzer's root_full kind pass #664 (seed 1): field 15 relabelled kind
-# 36, which the Go engine reads clean (1,1,0,0,0,false,read) and a C reader
-# without the width called damage. The gate replays it against the engine.
+# 1-11, 18-29 and 36 skip their fixed width"). The pinned vector is a
+# featurewitnesses ArrayRoot body with an UNKNOWN field id carrying kind 36 and
+# its eight-byte payload: no declared field claims it, so the reader steps over
+# the payload and reads on (unknown=1, read). The gate replays it against the
+# engine. It is an unknown id rather than a declared field relabelled to 36
+# because the strict read refuses a kind mismatch, while an unknown kind-36
+# field is exactly the skip this control watches.
 .PHONY: tables-c-skip-timestamp-kind
 tables-c-skip-timestamp-kind: build/conformance-harness build/wire-fuzz-c
-	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit tabledemo --root RootConfig
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit featurewitnesses --root ArrayRoot
 
 test-c: tables-c-skip-timestamp-kind
 
 # ITS NEGATIVE CONTROL: kind 36 taken out of the skip table in a scratch copy of
-# the generated units, and the replay must go red on the read report.
+# the generated units, and the replay must go red on the read acceptance.
 .PHONY: tables-c-skip-timestamp-kind-negative-control
 tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf build/c-skip36-sabotage && mkdir -p build/c-skip36-sabotage
 	@cp -R build/tables-generated-c build/c-skip36-sabotage/generated
-	@for f in $$(grep -rl 'case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
-		sed 's|case 23: case 28: case 36: width = 8; break;|case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	@for f in $$(grep -rl 'case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;' build/c-skip36-sabotage/generated); do \
+		sed 's|case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break;|case 5: case 9: case 11: case 23: case 28: width = 8; break; /* SABOTAGED: kind 36 */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -rq 'SABOTAGED: kind 36' build/c-skip36-sabotage/generated || { echo 'NEGATIVE CONTROL FAILED: the sabotage patched nothing'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-skip36-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-skip36-sabotage/driver -lm
-	@if ./build/conformance-harness wire-fuzz --driver ./build/c-skip36-sabotage/driver --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit tabledemo --root RootConfig > build/c-skip36-sabotage/log 2>&1; then \
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-skip36-sabotage/driver --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit featurewitnesses --root ArrayRoot > build/c-skip36-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a C reader without the kind-36 width left the replay green'; exit 1; \
 	fi
-	@grep -q 'the report differs' build/c-skip36-sabotage/log || { cat build/c-skip36-sabotage/log; exit 1; }
+	@grep -q 'read acceptance differs' build/c-skip36-sabotage/log || { cat build/c-skip36-sabotage/log; exit 1; }
 	@echo 'C skip negative control: kind 36 out of the skip table turns the pinned replay red'
 
 test-c: tables-c-skip-timestamp-kind-negative-control

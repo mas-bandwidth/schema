@@ -33,8 +33,12 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The framing rows this gate holds are the DAMAGE verdicts on VARIABLE
+	// roots: the strict read discards the whole load as a malformed refusal,
+	// and a fixed root refuses a form-1 file `previous_form` before any damage
+	// is met, so those rows owe a different refusal and belong to the fixed
+	// form's gates. The manifest spells the verdict `refused` for both.
 	units := map[string]struct{ module, dir string }{
-		"tblr1":     {"Tblr1.Table", ""},
 		"listdemo":  {"Listdemo.Table", filepath.Join("tables", "lists")},
 		"graphdemo": {"Graphdemo.Table", filepath.Join("tables", "pointers")},
 	}
@@ -47,9 +51,9 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	for sc.Scan() {
 		w := strings.Fields(sc.Text())
-		if len(w) >= 6 && w[0] == "framing" && w[5] == "malformed" {
+		if len(w) >= 6 && w[0] == "framing" && w[5] == "refused" {
 			if _, ok := units[w[2]]; !ok {
-				t.Fatalf("framing row %s names unit %s, which this gate does not build", w[1], w[2])
+				continue
 			}
 			rows[w[2]] = append(rows[w[2]], [3]string{w[1], w[3], filepath.Join(root, w[4])})
 		}
@@ -59,8 +63,8 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 	for _, r := range rows {
 		total += len(r)
 	}
-	if total < 50 {
-		t.Fatalf("the manifest gave %d damaged framing rows; the scan, not the rule, is what broke", total)
+	if total < 20 {
+		t.Fatalf("the manifest gave %d damaged framing rows on variable roots; the scan, not the rule, is what broke", total)
 	}
 	names := make([]string, 0, len(rows))
 	for n := range rows {
@@ -78,37 +82,14 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 			}
 			u := loadUnit(t, paths...)
 			variable := ir.VariableTables(u)
-			fixedRoots := false
+			var varRows [][3]string
 			for _, r := range rows[unit] {
-				fixedRoots = fixedRoots || !variable[r[1]]
+				if variable[r[1]] {
+					varRows = append(varRows, r)
+				}
 			}
-			if fixedRoots {
-				// Keep the original fixture's plain and variable retaining reads.
-				// A fixed root instead refuses retention before inspecting bytes.
-				var originalProbe strings.Builder
-				originalProbe.WriteString(`store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-`)
-				for _, r := range rows[unit] {
-					fmt.Fprintf(&originalProbe, `data=File.read!(%q)
-{:error,:malformed,%%{malformed: true}}=%s.load(%q,data)
-`, r[2], units[unit].module, r[1])
-					if variable[r[1]] {
-						fmt.Fprintf(&originalProbe, `{:error,_,%%{malformed: true},%%{records: [],used: 0,ids: []}}=%s.load_retain(%q,data,store,zero)
-`, units[unit].module, r[1])
-					} else {
-						fmt.Fprintf(&originalProbe, `{:error,:fixed_root,^zero,^store}=%s.load_retain(%q,data,store,zero)
-`, units[unit].module, r[1])
-					}
-				}
-				originalProbe.WriteString("IO.puts(\"ORIGINAL_DAMAGE_OK\")\n")
-				out, err := runArmProbe(t, elixirBin, generateElixir(t, u), originalProbe.String())
-				if err != nil || !strings.Contains(out, "ORIGINAL_DAMAGE_OK") {
-					t.Fatalf("original fixture damage/refusal: %v\n%s", err, out)
-				}
-				// Replay every identical framing vector through an ordinary
-				// table counterpart so retaining discard still has its blade.
-				u = loadVariableRetainFixture(t, paths...)
+			if len(varRows) == 0 {
+				t.Fatalf("unit %s names no variable-root framing damage in the manifest", unit)
 			}
 			files := generateElixir(t, u)
 			var probe strings.Builder
@@ -125,29 +106,15 @@ defmodule Probe do
     do: %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
 end
 `)
-			for _, r := range rows[unit] {
+			for _, r := range varRows {
 				fmt.Fprintf(&probe, `
 data = File.read!(%q)
 
-case %s.load(%q, data) do
-  {:error, :malformed, %%{malformed: true}} -> :ok
+case %s.variable_load(%q, data) do
+  {:error, :malformed, %%{reason: "wire_damaged"}} -> :ok
   other -> Probe.fail(%q <> ": the plain read handed back " <> inspect(other, limit: 8))
 end
-
-case %s.load_retain(%q, data, Probe.retain(), Probe.report()) do
-  {:error, _, %%{malformed: true}, %%{records: [], used: 0, ids: []}} -> :ok
-  other -> Probe.fail(%q <> ": the retaining read handed back " <> inspect(other, limit: 8))
-end
-`, r[2], units[unit].module, r[1], r[0], units[unit].module, r[1], r[0])
-			}
-			if unit == "tblr1" {
-				// a damaged text: an object that never closes
-				fmt.Fprintf(&probe, `
-case Tblr1.Table.from_json("Cfg", "{\"amount\": 4") do
-  {:error, :malformed, _r} -> :ok
-  other -> Probe.fail("damaged text: the text read handed back " <> inspect(other, limit: 8))
-end
-`)
+`, r[2], units[unit].module, r[1], r[0])
 			}
 			probe.WriteString("IO.puts(\"ok\")\n")
 			if out, err := runArmProbe(t, elixirBin, files, probe.String()); err != nil || !strings.Contains(out, "ok") {

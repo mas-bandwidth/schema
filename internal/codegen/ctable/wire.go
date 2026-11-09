@@ -390,6 +390,179 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
     }
     if ( !table_reader_has( r, width ) ) { return 0; } r->offset += width; return 1;
 }
+static SCHEMA_UNUSED int table_skip_utf8( const uint8_t * p, uint64_t n )
+{
+    uint64_t i = 0;
+    while ( i < n )
+    {
+        uint8_t b = p[i++]; uint32_t cp; int more, j;
+        if ( b == 0 ) { return 0; } if ( b < 128 ) { continue; }
+        if ( b >= 194 && b <= 223 ) { cp = b & 31; more = 1; }
+        else if ( b >= 224 && b <= 239 ) { cp = b & 15; more = 2; }
+        else if ( b >= 240 && b <= 244 ) { cp = b & 7; more = 3; }
+        else { return 0; }
+        if ( (uint64_t) more > n-i ) { return 0; }
+        for ( j = 0; j < more; j++ ) { b = p[i++]; if ( (b & 192) != 128 ) { return 0; } cp = (cp << 6) | (b & 63); }
+        if ( (more == 2 && cp < 2048) || (more == 3 && cp < 65536) || cp > 1114111 || (cp >= 55296 && cp <= 57343) ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int table_skip_utf16( const uint8_t * p, uint64_t n )
+{
+    uint64_t i;
+    if ( n & 1 ) { return 0; }
+    for ( i = 0; i < n; i += 2 )
+    {
+        uint32_t u = (uint32_t) p[i] | ((uint32_t) p[i+1] << 8);
+        if ( u == 0 || ( u >= 0xdc00 && u <= 0xdfff ) ) { return 0; }
+        if ( u >= 0xd800 && u <= 0xdbff )
+        {
+            uint32_t v;
+            i += 2;
+            if ( i >= n ) { return 0; }
+            v = (uint32_t) p[i] | ((uint32_t) p[i+1] << 8);
+            if ( v < 0xdc00 || v > 0xdfff ) { return 0; }
+        }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_t nodes, int depth );
+static SCHEMA_UNUSED int64_t table_skip_body( TableReader r, int64_t nodes, int depth, int root );
+static SCHEMA_UNUSED int table_skip_array( TableReader * sub, int keyed, int64_t nodes, int depth );
+static SCHEMA_UNUSED int table_skip_framed( TableReader sub, uint8_t kind, int64_t nodes, int depth )
+{
+    switch ( kind )
+    {
+        case 12: return table_skip_utf8( sub.buffer, (uint64_t) sub.size );
+        case 33: return table_skip_utf16( sub.buffer, (uint64_t) sub.size );
+        case 31: return 1;
+        case 32: return sub.size == 0;
+        case 13: return table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 14: case 16:
+        {
+            TableReader rr = sub;
+            return table_skip_array( &rr, kind == 16, nodes, depth );
+        }
+        case 15: case 17: case 30:
+        {
+            TableReader rr = sub;
+            if ( !table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+        default:
+        {
+            TableReader rr = sub;
+            if ( !table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+    }
+}
+static SCHEMA_UNUSED int64_t table_skip_body( TableReader r, int64_t nodes, int depth, int root )
+{
+    uint8_t seen[512];
+    memset( seen, 0, sizeof( seen ) );
+    for ( ;; )
+    {
+        uint64_t ref, id; uint8_t kind;
+        if ( !table_reader_leb( &r, &ref ) ) { return -1; }
+        if ( ref == 0 ) { return r.offset; }
+        if ( ref > r.id_count || ref > 4096 || !table_reader_has( &r, 1 ) ) { return -1; }
+        if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
+        seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
+        id = table_reader_id_at( &r, ref ); kind = table_reader_get8( &r );
+        if ( id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { return -1; }
+        if ( id == 0xffffffffffffffffull )
+        {
+            TableReader payload;
+            if ( !root || kind != 12 || !table_reader_span( &r, &payload ) ) { return -1; }
+            continue;
+        }
+        if ( !table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
+    }
+}
+static SCHEMA_UNUSED int table_skip_array( TableReader * sub, int keyed, int64_t nodes, int depth )
+{
+    uint8_t elem_kind; uint64_t count, i;
+    if ( sub->size < 2 ) { return 0; }
+    elem_kind = table_reader_get8( sub );
+    if ( !table_reader_leb( sub, &count ) ) { return 0; }
+    if ( count > 2147483647ull ) { return 0; }
+    if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
+    if ( !keyed )
+    {
+        for ( i = 0; i < count; i++ ) { if ( !table_skip_value( sub, elem_kind, nodes, depth ) ) { return 0; } }
+        return sub->offset == sub->size;
+    }
+    {
+        uint8_t seen[512];
+        memset( seen, 0, sizeof( seen ) );
+        for ( i = 0; i < count; i++ )
+        {
+            uint64_t key; TableReader elem;
+            if ( !table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
+            seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
+            if ( !table_reader_span( sub, &elem ) ) { return 0; }
+            if ( !table_skip_framed( elem, elem_kind, nodes, depth ) ) { return 0; }
+        }
+        return sub->offset == sub->size;
+    }
+}
+static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_t nodes, int depth )
+{
+    uint64_t n;
+    if ( depth > 128 ) { return 0; }
+    switch ( kind )
+    {
+        case 1: return table_reader_has( r, 1 ) && table_reader_get8( r ) <= 1;
+        case 10: return table_reader_has( r, 4 ) && ( table_reader_get32( r ) & 0x7f800000u ) != 0x7f800000u;
+        case 11: return table_reader_has( r, 8 ) && ( table_reader_get64( r ) & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull;
+        case 17:
+            if ( !table_reader_leb( r, &n ) ) { return 0; }
+            return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
+        case 30:
+            if ( !table_reader_leb( r, &n ) ) { return 0; }
+            return n <= r->id_count;
+        case 15:
+        {
+            uint64_t ref; uint8_t arm_kind; TableReader arm;
+            if ( !table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
+            if ( ref == 0 ) { return 1; }
+            if ( !table_reader_has( r, 1 ) ) { return 0; }
+            arm_kind = table_reader_get8( r );
+            if ( !table_reader_span( r, &arm ) ) { return 0; }
+            return table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+        }
+        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+        {
+            TableReader sub;
+            if ( !table_reader_span( r, &sub ) ) { return 0; }
+            if ( kind == 13 ) { return depth < 128 && table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
+            if ( kind == 14 || kind == 16 ) { return depth < 128 && table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
+            return table_skip_framed( sub, kind, nodes, depth );
+        }
+        default:
+        {
+            int width = 0;
+            switch ( kind )
+            {
+                case 2: case 6: case 20: case 25: width = 1; break;
+                case 3: case 7: case 21: case 26: width = 2; break;
+                case 4: case 8: case 22: case 27: width = 4; break;
+                case 5: case 9: case 23: case 28: case 36: width = 8; break;
+                case 18: case 19: case 24: case 29: width = 16; break;
+                default: return 0;
+            }
+            if ( !table_reader_has( r, width ) ) { return 0; }
+            r->offset += width;
+            return 1;
+        }
+    }
+}
+static SCHEMA_UNUSED int table_reader_skip_checked( TableReader * r, uint8_t kind, int64_t nodes )
+{
+    return table_skip_value( r, kind, nodes, 0 );
+}
 static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
 {
     if ( declared >= 3 && declared <= 5 ) { return kind >= 2 && kind < declared; }

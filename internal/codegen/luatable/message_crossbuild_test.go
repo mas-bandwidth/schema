@@ -65,7 +65,7 @@ fixed table Root {
 }
 `)
 	receiver := load("Receiver", "package receiver\nfixed table Root { z uint32 }\n")
-	if ir.TableMessageRefBits(len(ir.TableVocabulary(sender))) == ir.TableMessageRefBits(len(ir.TableVocabulary(receiver))) {
+	if ir.TableMessageRefBits(len(tablewire.MessageVocabulary(sender))) == ir.TableMessageRefBits(len(tablewire.MessageVocabulary(receiver))) {
 		t.Fatal("fixture does not change reference width")
 	}
 	model := tabletext.NewModel(sender)
@@ -96,8 +96,8 @@ assert(vocab.refBits == %d, "receiver substituted its own reference width")
 local values = T.LoadMessages("Root", vocab, inputs.batch, report)
 assert(not report.damaged and values and #values == 2, "cross-build batch damaged")
 assert(values[1].z == 123456789 and values[2].z == 123456789, "cross-build field lost")
-`, ModuleName(receiver), len(ir.TableVocabulary(sender)), ir.TableMessageRefBits(len(ir.TableVocabulary(sender)))))
-	_, stderr, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"announce": ir.TableAnnouncement(sender), "batch": batch})
+`, ModuleName(receiver), len(tablewire.MessageVocabulary(sender)), ir.TableMessageRefBits(len(tablewire.MessageVocabulary(sender)))))
+	_, stderr, err := luarun.Try(t, dir, "main.lua", map[string][]byte{"announce": tablewire.Announce(sender), "batch": batch})
 	if err != nil {
 		return fmt.Errorf("%v: %s", err, stderr)
 	}

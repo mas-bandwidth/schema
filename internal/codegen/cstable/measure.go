@@ -125,8 +125,10 @@ const tableLoadMeasureSource = `
         if (!DistinctVocabulary(ids)) { return -1; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
         int whole = WireCheck(root.Buffer, ids, false, out _);
-        if (whole == WireCountCap) { reason = "count_over_extent_cap"; return -1; }
         if (whole == WireDamaged) { return -1; }
+        // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+        // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+        if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
         long extent = 0;
         if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
         long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
