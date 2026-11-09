@@ -126,18 +126,40 @@ defmodule AllocAudit do
   # every `instance` whose unit has a <Unit>.Table module at the moment this
   # runs, and whose root that codec loads and saves back (a blob two slots name
   # refuses the save, docs/SPEC-TABLES.md §2.5); the rest are named, not measured
+  @unit_packages %{
+    "scalars" => "scalardemo",
+    "tblscalars2" => "scalardemo2",
+    "widedemo" => "wide",
+    "widelist" => "widelistdemo"
+  }
+
+  defp table_module(unit) do
+    pkg = Map.get(@unit_packages, unit, unit)
+    Module.concat([Macro.camelize(pkg), "Table"])
+  end
+
   defp cases(rows) do
     Enum.reduce(rows, {[], []}, fn [name, unit, root, wire | flags], {cs, sk} ->
-      mod = Module.concat([Macro.camelize(unit), "Table"])
+      mod = table_module(unit)
 
       if Code.ensure_loaded?(mod) and function_exported?(mod, :load, 2) and
            function_exported?(mod, :save, 2) do
         bytes = File.read!(wire)
         json = Path.join("testdata/conformance/tables/json", name <> ".json")
-        text = if flags == [] and File.exists?(json), do: File.read!(json), else: nil
 
         with {:ok, value, _report} <- mod.load(root, bytes),
              {:ok, _saved} <- mod.save(root, value) do
+          text =
+            with true <- flags == [] and File.exists?(json),
+                 raw <- File.read!(json),
+                 {:ok, from_text, _} <- mod.from_json(root, raw),
+                 {:ok, _} <- mod.save(root, from_text),
+                 {:ok, _} <- mod.to_json(root, value) do
+              raw
+            else
+              _ -> nil
+            end
+
           c = %{name: name, mod: mod, root: root, wire: bytes, text: text}
           {cs ++ [c], sk}
         else
