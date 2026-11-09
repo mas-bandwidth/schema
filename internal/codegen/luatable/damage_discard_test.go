@@ -84,13 +84,12 @@ func TestLuaMessageDamageDiscardNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := fmt.Sprintf(`local T = require(%q)
-local M = require("message")
 local inputs = require("inputs")
 local report = { damaged = false, refused = 0 }
 local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
-local values = M.loadMessages(T, "LoginRequest", vocab, inputs.wire, report, false)
+local values = T.LoadMessages("LoginRequest", vocab, inputs.wire, report)
 print(tostring(report.damaged) .. "|" .. tostring(values and #values or 0))
 `, ModuleName(unit))
 	ann := readFile(t, filepath.Join(repo, conn.ann))
