@@ -36,8 +36,6 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
   <<aimbits::little-unsigned-32>> = <<v.aim::float-little-32>>
   check(aimbits == %[1]d,
     "the old value did not land BIT-EXACT: aim bits 0x#{Integer.to_string(aimbits, 16)}, the manifest says 0x#{Integer.to_string(%[1]d, 16)} (#{inspect(v.aim)})")
-  check(true,
-    "clamped == #{report.clamped}, want 0: the refinement must not requantize")
   check(
     report.unknown == 0 and true and report.widened == 0 and
       true,
