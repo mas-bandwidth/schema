@@ -60,12 +60,13 @@ func slowVTWire(t *testing.T, src, text string) []byte {
 	return wire
 }
 
-func slowVTProbe(clean, over, unknown, trunc string) string {
+func slowVTProbe(clean, over, unknown, trunc, dup string) string {
 	return `
 clean = Base.decode16!("` + clean + `", case: :lower)
 over = Base.decode16!("` + over + `", case: :lower)
 unknown = Base.decode16!("` + unknown + `", case: :lower)
 trunc = Base.decode16!("` + trunc + `", case: :lower)
+dup = Base.decode16!("` + dup + `", case: :lower)
 store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
 zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 check = fn
@@ -76,7 +77,7 @@ case Slowvt.Table.load("Root", clean) do
   {:ok, v, r} -> check.(v["n"] == 5 and v["child"]["number"] == 7 and r.unknown == 0 and r.widened == 0, "clean wire did not read whole: " <> inspect({v, r}))
   other -> check.(false, "clean wire refused: " <> inspect(other))
 end
-for {label, wire} <- [{"over", over}, {"trunc", trunc}] do
+for {label, wire} <- [{"over", over}, {"trunc", trunc}, {"dup", dup}] do
   case Slowvt.Table.load("Root", wire) do
     {:error, reason, report} when is_atom(reason) -> check.(report.reason != "", label <> " refusal carries no reason")
     other -> check.(false, label <> " landed a partial value: " <> inspect(other))
@@ -95,7 +96,7 @@ IO.puts("SLOW_VT_STRICT_OK")
 `
 }
 
-func slowVTWires(t *testing.T) (clean, over, unknown, trunc []byte) {
+func slowVTWires(t *testing.T) (clean, over, unknown, trunc, dup []byte) {
 	t.Helper()
 	clean = slowVTWire(t, slowVTReaderSchema, `{"n":5,"child":{"flag":true,"number":7}}`)
 	over = slowVTWire(t, slowVTWriterSchema, `{"n":99,"child":{"flag":true,"number":7}}`)
@@ -117,13 +118,24 @@ func slowVTWires(t *testing.T) (clean, over, unknown, trunc []byte) {
 	if ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("truncated nested fixture: ok=%v err=%v report=%+v", ok, err, report)
 	}
-	return clean, over, unknown, wire
+	// The same field id twice in one body is damage (SPEC-TABLES §3, §4):
+	// each occurrence reads cleanly on its own, and the pair must still
+	// refuse the whole load in both readers.
+	dup = []byte{1, 1, 4, 5, 0, 0, 0, 1, 4, 6, 0, 0, 0, 0}
+	dup = binary.LittleEndian.AppendUint64(dup, ir.TableWireId("n"))
+	dup = binary.LittleEndian.AppendUint64(dup, 1)
+	var dupReport tabletext.Report
+	dupOK, dupErr := tablewire.Decode(m, m.New(u.Tables["Root"]), dup, &dupReport)
+	if dupOK || !tablewire.ReadRefusal(dupErr) {
+		t.Fatalf("duplicate field fixture: ok=%v err=%v report=%+v", dupOK, dupErr, dupReport)
+	}
+	return clean, over, unknown, wire, dup
 }
 
 func TestElixirVariableSlowTestsStrict(t *testing.T) {
 	slowtest.Gate(t, "the Elixir toolchain")
-	clean, over, unknown, trunc := slowVTWires(t)
-	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc))
+	clean, over, unknown, trunc, dup := slowVTWires(t)
+	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc), hex.EncodeToString(dup))
 	u := unitFrom(t, slowVTReaderSchema)
 	out, err := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)
 	if err != nil || !strings.Contains(out, "SLOW_VT_STRICT_OK") || strings.Contains(out, "warning:") {
@@ -138,8 +150,8 @@ func TestElixirVariableSlowTestsStrict(t *testing.T) {
 // actually runs, not in a mock or in the test's expectations.
 func TestElixirVariableSlowTestsStrictNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the Elixir toolchain")
-	clean, over, unknown, trunc := slowVTWires(t)
-	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc))
+	clean, over, unknown, trunc, dup := slowVTWires(t)
+	probe := slowVTProbe(hex.EncodeToString(clean), hex.EncodeToString(over), hex.EncodeToString(unknown), hex.EncodeToString(trunc), hex.EncodeToString(dup))
 	u := unitFrom(t, slowVTReaderSchema)
 	files := generateElixir(t, u)
 	elixirPatch(t, files, "do: {hi, throw(:wire_damaged)}", "do: {hi, _report}")

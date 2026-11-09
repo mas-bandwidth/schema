@@ -2038,6 +2038,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids, terminated) do
+    # the same field id twice in one body is damage (§3, §4): no field
+    # lands, however well each occurrence would read on its own
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report} =
       Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
                                                                        {_status, value, report} ->
@@ -6245,6 +6250,9 @@ const variableRetainSource = `
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
   defp decode_retain(desc, fields, nodes, ids, retain, report, path, terminated) do
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report, retain} =
       Enum.reduce_while(fields, {:cont, Map.new(), report, retain}, fn {id, kind, payload},
                                                                        {_status, value, report,

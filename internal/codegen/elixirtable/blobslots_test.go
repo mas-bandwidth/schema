@@ -75,6 +75,33 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, c.wire, &report)
 		if e != nil || !ok || report.Refused {
+			if strings.Contains(report.Reason, "the same field id twice") {
+				// A field id twice in one body is damage (SPEC-TABLES
+				// §3, §4): both Elixir readers refuse the whole load.
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ check.(elem(result,0)==:error and elem(result,2).reason=="wire_damaged",%q<>inspect(result))
+end
+`, hex.EncodeToString(c.wire), c.name+" strict refusal ")
+				continue
+			}
+			if strings.Contains(report.Reason, "blob_shared") {
+				// One blob named from two slots: the Elixir load lands
+				// the value and counts the sharing, and its writer
+				// refuses the save by name (§2.5).
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ check.(elem(result,0)==:ok and elem(result,2).blob_shared==%d,%q<>inspect(result))
+ written=if tuple_size(result)==4,do: T.save_retain("Catalog",elem(result,1),elem(result,3),zero),else: T.save("Catalog",elem(result,1))
+ check.(elem(written,0)==:error and elem(written,1)==:blob_shared,%q<>inspect(written))
+end
+`, hex.EncodeToString(c.wire), c.shared, c.name+" shared load ", c.name+" shared refusal ")
+				continue
+			}
 			t.Fatalf("%s independent slot count: %v %v %+v", c.name, ok, e, report)
 		}
 		want, e := tablewire.Encode(m, value)
