@@ -81,6 +81,12 @@ func TestSchemaSharedHostileCorpusReasons(t *testing.T) {
 	}
 	have := map[string]bool{}
 	for _, c := range cases {
+		if c.Carrier == "packet" {
+			if c.Verdict != hostilecorpus.Refuse || c.Reason != "packet_refused" || c.Digest != hostilecorpus.NoReason {
+				t.Errorf("%s: packet row is %s %s %s, want refuse packet_refused -", c.Name, c.Verdict, c.Reason, c.Digest)
+			}
+			continue
+		}
 		if c.Verdict == hostilecorpus.Accept {
 			if c.Reason != hostilecorpus.NoReason {
 				t.Errorf("%s: accept carries reason %q", c.Name, c.Reason)
