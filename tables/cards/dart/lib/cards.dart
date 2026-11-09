@@ -88,7 +88,7 @@ Record load(Uint8List wire) {
     throw CardException('cards: wire is not a card');
   }
   final card = cardWireLoad(wire, report);
-  if (report.malformed || report.refused) {
+  if (report.refused) {
     throw CardException('cards: wire is malformed');
   }
   checkCard(card);
@@ -96,9 +96,9 @@ Record load(Uint8List wire) {
 }
 
 // fromJson builds a Record from JSON text through the generated text read and
-// the generated save (§16). Unknown, mismatched, clamped and malformed inputs
-// are refused, as are the customer bounds. Bytes are published only on complete
-// success; a refused write leaves no destination and mutates nothing.
+// the generated save (§16). Unknown fields and every read the generated parse
+// refuses are refused, as are the customer bounds. Bytes are published only on
+// complete success; a refused write leaves no destination and mutates nothing.
 Record fromJson(String text) {
   final report = TableTextReport();
   Card card;
@@ -111,10 +111,12 @@ Record fromJson(String text) {
   } on FormatException {
     throw CardException('cards: JSON is malformed');
   }
-  if (report.unknown > 0 || report.kindMismatch > 0 || report.clamped > 0) {
+  if (report.refused) {
+    throw CardException('cards: JSON is refused: ${report.reason}');
+  }
+  if (report.unknown > 0) {
     throw CardException(
-      'cards: JSON has loss events (unknown=${report.unknown} '
-      'kindMismatch=${report.kindMismatch} clamped=${report.clamped}): '
+      'cards: JSON has ${report.unknown} unknown field(s): '
       'refused, never truncated',
     );
   }
@@ -872,9 +874,6 @@ UpgradeResult upgradeWithStorage(
   final retain = TableRetain(retainBytes, List<int>.filled(retainIds, 0));
   final card = cardWireLoadRetain(input, retain, report);
   if (report.refused) {
-    throw CardException('cards: upgrade: wire is not a card');
-  }
-  if (report.malformed) {
     throw CardException('cards: upgrade: wire is malformed');
   }
   checkCard(card);
@@ -883,32 +882,25 @@ UpgradeResult upgradeWithStorage(
   return UpgradeResult(out, report);
 }
 
-// _lossErr names the report events that make a rewrite unsafe (§6.6):
-// RetainLost, KindMismatch, Clamped or Malformed refuse with no output.
+// _lossErr names the report events that make a rewrite unsafe (§6.6): any
+// retained field that could not be kept, or a refusal. Unknown, Retained and
+// Widened alone are not loss (§4).
 void _lossErr(TableWireReport report) {
   if (report.retainLost > 0) {
     throw CardException(
       'cards: upgrade: ${report.retainLost} retained field(s) lost, refusing to replace',
     );
   }
-  if (report.kindMismatch > 0) {
+  if (report.refused) {
     throw CardException(
-      'cards: upgrade: ${report.kindMismatch} kind mismatch(es), refusing to replace',
+      'cards: upgrade: ${report.reason}, refusing to replace',
     );
-  }
-  if (report.clamped > 0) {
-    throw CardException(
-      'cards: upgrade: ${report.clamped} clamped value(s), refusing to replace',
-    );
-  }
-  if (report.malformed) {
-    throw CardException('cards: upgrade: malformed wire, refusing to replace');
   }
 }
 
 // readStrict reads wire and refuses any data the current declaration cannot
-// support: Unknown, KindMismatch, Clamped, Malformed and every load failure
-// (docs/SPEC-TABLES.md §4).
+// support: Unknown fields and every load refusal (docs/SPEC-TABLES.md §4). A
+// safe Widened event need not refuse.
 Record readStrict(Uint8List wire) {
   final rec = load(wire);
   final r = rec.report;
@@ -916,19 +908,6 @@ Record readStrict(Uint8List wire) {
     throw CardException(
       'cards: strict: ${r.unknown} unknown field(s), unsupported data',
     );
-  }
-  if (r.kindMismatch > 0) {
-    throw CardException(
-      'cards: strict: ${r.kindMismatch} kind mismatch(es), unsupported data',
-    );
-  }
-  if (r.clamped > 0) {
-    throw CardException(
-      'cards: strict: ${r.clamped} clamped value(s), unsupported data',
-    );
-  }
-  if (r.malformed) {
-    throw CardException('cards: strict: malformed wire, unsupported data');
   }
   return rec;
 }
@@ -938,13 +917,9 @@ Record readStrict(Uint8List wire) {
 // _refuseLossy names the read events that make a record unsafe to hash or
 // rewrite (§4, §6.6; tla/CardHops.tla: EditDropsUnknown reversed witness).
 void _refuseLossy(TableWireReport rep) {
-  if (rep.unknown > 0 ||
-      rep.kindMismatch > 0 ||
-      rep.clamped > 0 ||
-      rep.retainLost > 0 ||
-      rep.malformed) {
+  if (rep.unknown > 0 || rep.retainLost > 0 || rep.refused) {
     throw CardException(
-      'cards: record has loss events (unknown=${rep.unknown} kindMismatch=${rep.kindMismatch} clamped=${rep.clamped} retainLost=${rep.retainLost} malformed=${rep.malformed}): refused, never hashed or rewritten',
+      'cards: record has loss events (unknown=${rep.unknown} retainLost=${rep.retainLost} refused=${rep.reason}): refused, never hashed or rewritten',
     );
   }
 }
