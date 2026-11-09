@@ -128,8 +128,8 @@ name: CI fast
 # and `systemctl --user start 'nova-runner-schema-*'` to bring it back.
 
 on:
+  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
-    branches: [ main, dev, fixed-table-form ]
   workflow_dispatch:
 
 # A superseded push cancels its predecessor: this lane is for the tip of a
