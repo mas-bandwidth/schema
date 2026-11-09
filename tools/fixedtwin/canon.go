@@ -802,15 +802,7 @@ func hasStrictCountTextScanCall(s string) bool {
 	s = applyIdents(s)
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.Join(strings.Fields(s), " ")
-	for _, clause := range []string{
-		"if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) )",
-		"report.refused = true; report.reason = why; return -1;",
-	} {
-		if !strings.Contains(s, clause) {
-			return false
-		}
-	}
-	return true
+	return strings.Contains(s, "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) ) { report.refused = true; report.reason = why; return -1; }")
 }
 
 // strictCountTextScan reports whether fn is the whole count/text bound rule:

@@ -64,9 +64,22 @@ func TestCAndCppTwinHeadersAgree(t *testing.T) {
 // before any destination byte); the C leg answers the same rule in its read
 // loop. Each planted C++ fault keeps the function's shape, so the gate cannot
 // red merely because a whole block disappeared.
+func twinLeftoverFromPlainC(t *testing.T, cPlain, cppSrc string) []string {
+	t.Helper()
+	left, err := compareHeaders(cPlain, cppSrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return left
+}
+
 func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	cSrc, cppSrc, root := readTwinHeaders(t)
-	if left := twinLeftover(t, cSrc, cppSrc, root); len(left) != 0 {
+	cPlain, err := dequalifyC(cSrc, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left := twinLeftoverFromPlainC(t, cPlain, cppSrc); len(left) != 0 {
 		t.Fatalf("the real artifact is not green before the fault is planted:\n%s", strings.Join(left, "\n"))
 	}
 
@@ -95,7 +108,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		if broken == cppSrc {
 			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
 		}
-		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+		if left := twinLeftoverFromPlainC(t, cPlain, broken); len(left) == 0 {
 			t.Fatalf("a weakened strict read in the real C++ artifact passed the twin gate: %s", fault.name)
 		}
 	}
@@ -106,7 +119,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	if deleted == cppSrc {
 		t.Fatal("the planted C++ fault did not apply: the whole strict scan was not deleted")
 	}
-	if left := twinLeftover(t, cSrc, deleted, root); len(left) == 0 {
+	if left := twinLeftoverFromPlainC(t, cPlain, deleted); len(left) == 0 {
 		t.Fatal("a deleted strict read in the real C++ artifact passed the twin gate: the whole count/text scan is gone")
 	}
 
@@ -123,7 +136,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	if uncalled == cppSrc {
 		t.Fatal("the planted C++ fault did not apply: the strict scan invocation was not deleted")
 	}
-	if left := twinLeftover(t, cSrc, uncalled, root); len(left) == 0 {
+	if left := twinLeftoverFromPlainC(t, cPlain, uncalled); len(left) == 0 {
 		t.Fatal("a deleted strict read invocation in the real C++ artifact passed the twin gate: the scan is defined but never called")
 	}
 
@@ -151,7 +164,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		if broken == cppSrc {
 			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
 		}
-		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+		if left := twinLeftoverFromPlainC(t, cPlain, broken); len(left) == 0 {
 			t.Fatalf("a strict read hidden in a comment or #if 0 passed the twin gate: %s", fault.name)
 		}
 	}
@@ -173,7 +186,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		if broken == cppSrc {
 			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
 		}
-		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+		if left := twinLeftoverFromPlainC(t, cPlain, broken); len(left) == 0 {
 			t.Fatalf("a strict read hidden in a comment or #if 0 passed the twin gate: %s", fault.name)
 		}
 	}
