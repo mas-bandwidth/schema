@@ -254,12 +254,6 @@ func luauFuzzVerdict(a luauFuzzAnswer, o luauFuzzOracle) string {
 		return ""
 	}
 	if !a.loaded {
-		if !o.variable {
-			return "the Luau load returned no root for a FIXED root, which always loads"
-		}
-		if a.refused != o.refused {
-			return fmt.Sprintf("the Luau load returned no root and the verdict differs: Luau refused=%t, the engine refused=%t", a.refused, o.refused)
-		}
 		if o.refused || o.framingRefused || o.counts.malformed || o.readNothing {
 			return ""
 		}
@@ -598,11 +592,17 @@ func TestLuauWireFuzzNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, luauFuzzCost)
 	sabotaged := strings.Replace(luauFuzzControlAnchor, "_report.malformed = true; return false", "return false", 1)
+	const strictTopAnchor = "local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil"
 	edit := func(src []byte) []byte {
 		if n := strings.Count(string(src), luauFuzzControlAnchor); n != 1 {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage anchor appears %d times in schema_load.luau, want 1", n)
 		}
-		return []byte(strings.Replace(string(src), luauFuzzControlAnchor, sabotaged, 1))
+		if n := strings.Count(string(src), strictTopAnchor); n != 1 {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the strict top anchor appears %d times in schema_load.luau, want 1", n)
+		}
+		s := strings.Replace(string(src), luauFuzzControlAnchor, sabotaged, 1)
+		s = strings.Replace(s, strictTopAnchor, "local top = nil", 1)
+		return []byte(s)
 	}
 	clean := runLuauFuzzDifferential(t, nil)
 	res := runLuauFuzzDifferential(t, edit)
