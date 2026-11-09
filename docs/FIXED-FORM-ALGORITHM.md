@@ -222,7 +222,7 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
-**Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
+**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
 and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
 and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count

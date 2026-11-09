@@ -2466,7 +2466,7 @@ a caller can hold that the declaration does not admit:
 | 6 | a union tag outside its arm set | refused |
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte, a `wstring` with an unpaired surrogate or a zero unit | refused |
-| 9 | a `flags` value with a bit no variant names | refused |
+| 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (`invalid_value` on write; `out_of_range` on read) |
 
 **The mechanism is the language's own, and it decides the build.** A language
@@ -2526,8 +2526,10 @@ across languages.
 | Goose | 1–8 and 10 every build; 9 not audited |
 | Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
 
-The other writers, over rows 1–8 and 10 (row 9 is not audited there; the message
-form masks a `flags` value to its declared width on purpose, SPEC-TABLES §3.3).
+The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
+read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
+and the message form refuses a mask above its declared width rather than
+truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
 finite value off its range, and no writer quantizes one into it
 (docs/plans/strict-only.md, decision 8).

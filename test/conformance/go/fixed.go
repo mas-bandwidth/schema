@@ -68,6 +68,8 @@ func fixedForm[T any, R any, E any](
 ) codec {
 	plan := make([]E, fixedPlanCapacity)
 	c.variableLoad = c.load
+	c.variableMeasure = c.measure
+	c.variableSave = c.save
 	c.load = func(value any, wire []byte, rep *report) bool {
 		var inner R
 		n := load(unsafe.Slice(value.(*T), 1), wire, plan, &inner)
@@ -87,6 +89,8 @@ func fixedForm[T any, R any, E any](
 // saved, while variableLoad keeps the form-1 read for surfaceFraming alone.
 func noFileForm(c codec) codec {
 	c.variableLoad = c.load
+	c.variableMeasure = c.measure
+	c.variableSave = c.save
 	c.load = func(value any, wire []byte, rep *report) bool {
 		*rep = report{refused: true}
 		return false
