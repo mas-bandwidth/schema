@@ -61,7 +61,9 @@ static partial class Program
     {
         byte[] wire=Fixture(new byte[]{1,14,8,13,1,5,2,1,1,0,0,0},"rows","future");
         long need=Listdemo.Schema.SheetLoadMeasure(wire);
-        Check(need>=0,"damaged list element can be sized"); if(need<0) { return; }
+        // the wire-alone walk finds the damage before anything is sized
+        Check(need<0,"a damaged list element refuses the measure");
+        need=4096;
         byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(need+64),64);
         byte* bytes=stackalloc byte[512]; Listdemo.TableRetain.Id* ids=stackalloc Listdemo.TableRetain.Id[16];
         var store=new Listdemo.TableRetain { Bytes=bytes,Capacity=512,Ids=ids,IdCapacity=16 };
