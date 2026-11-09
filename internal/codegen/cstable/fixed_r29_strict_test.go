@@ -17,6 +17,7 @@ package cstable
 // TestFixedRoadmapCSharpT12PlansVersions/cs/R29 under SCHEMA_REQUIRE_CORPUS.
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
@@ -161,22 +162,13 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 	if faults := csFixedR29StrictFaults(src); len(faults) != 0 {
 		t.Fatalf("NEGATIVE CONTROL setup: the real artifact is already red before sabotage:\n  %s", strings.Join(faults, "\n  "))
 	}
-	hasFault := func(faults []string, want string) bool {
-		for _, f := range faults {
-			if f == want {
-				return true
-			}
-		}
-		return false
-	}
-
 	const bound = "if (value.N < 0 || value.N > 100) { clamped++; }"
 	clamped, ok := csFixedR29ReplaceInWriterClamp(src, bound,
 		"if (value.N < 0) { value.N = 0; } else if (value.N > 100) { value.N = 100; }")
 	if !ok {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the writer-bound check %q is not in the real artifact", bound)
 	}
-	if faults := csFixedR29StrictFaults(clamped); !hasFault(faults, "the writer-bound pass clamps the value instead of refusing it") {
+	if faults := csFixedR29StrictFaults(clamped); !slices.Contains(faults, "the writer-bound pass clamps the value instead of refusing it") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: clamping to the writer's bound left the check GREEN: %v", faults)
 	}
 
@@ -186,7 +178,7 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 	if !ok {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the writer-bound refusal %q is not in the real artifact", refusal)
 	}
-	if faults := csFixedR29StrictFaults(unrefused); !hasFault(faults, "a value past the writer's bound does not refuse out_of_range") {
+	if faults := csFixedR29StrictFaults(unrefused); !slices.Contains(faults, "a value past the writer's bound does not refuse out_of_range") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: dropping the writer-bound refusal left the check GREEN: %v", faults)
 	}
 
@@ -200,7 +192,7 @@ func TestCSharpFixedR29StrictNegativeControl(t *testing.T) {
 	if noReset == src {
 		t.Fatalf("NEGATIVE CONTROL FAILED: could not splice the dropped reset back into the real artifact")
 	}
-	if faults := csFixedR29StrictFaults(noReset); !hasFault(faults, "a writer-bound refusal does not reset values[0..k] and return -1 (the read is not whole-or-refusal)") {
+	if faults := csFixedR29StrictFaults(noReset); !slices.Contains(faults, "a writer-bound refusal does not reset values[0..k] and return -1 (the read is not whole-or-refusal)") {
 		t.Fatalf("NEGATIVE CONTROL FAILED: dropping the refusal reset left the check GREEN: %v", faults)
 	}
 }

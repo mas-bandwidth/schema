@@ -33,7 +33,7 @@ print("case " + ((v != null && !report.stopped) ? "loaded" : "stopped") + "," + 
   report.bodyDamaged + "\n");
 `
 
-// mutant 54031: mapdemo.Docs's map announces 2^31 entries
+// mutant 54031: mapdemo.Docs's map announces 2^31 entries.
 const countStopWire = "01010e180d808080800808020c01610311020008020c016203110200040c09010506736861726564009f76486aa7da01abec105b36194ac93dea0ce83094fde47cffffffffffffffff58fcaffad8e04b700500000000000000"
 
 func runCountStop(t *testing.T, load string) (got, want string) {

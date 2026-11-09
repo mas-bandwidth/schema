@@ -44,6 +44,11 @@ type Group struct {
 	Name string `json:"name"`
 	// When is the tier this group runs in: pull-request or nightly.
 	When string `json:"when"`
+	// Seconds is this row's recorded time, in seconds. Zero means unrecorded.
+	// A pull-request row that records a time must be at most the two-minute
+	// per-commit cap. A nightly row may record more: that tier is the schedule
+	// the cap names. matrix() does not copy this field.
+	Seconds float64 `json:"seconds,omitempty"`
 	// Why says what this row's controls have in common, for a reader of the
 	// plan who is not reading the workflow. A nightly row's why line carries
 	// the measurement that put it there.

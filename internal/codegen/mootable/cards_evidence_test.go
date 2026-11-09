@@ -36,7 +36,7 @@ func TestMooCardsRowNamesEverySurface(t *testing.T) {
 	}
 
 	var row string
-	for _, line := range strings.Split(string(evidence), "\n") {
+	for line := range strings.SplitSeq(string(evidence), "\n") {
 		if strings.HasPrefix(line, `(:id "port/moo/vt/cards" `) {
 			row = line
 			break

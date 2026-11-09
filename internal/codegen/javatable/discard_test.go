@@ -305,7 +305,7 @@ func runDiscardJava(t *testing.T, edit func(map[string][]byte) int) (string, err
 		b, err := exec.Command(java, jargs...).CombinedOutput()
 		fmt.Fprintf(&out, "== %s\n%s", run.u.Package, b)
 		if err != nil && failed == nil {
-			failed = fmt.Errorf("%s: %v", run.u.Package, err)
+			failed = fmt.Errorf("%s: %w", run.u.Package, err)
 		}
 	}
 	if edit != nil && edited == 0 {

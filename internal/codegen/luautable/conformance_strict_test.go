@@ -39,8 +39,8 @@ func luauDriverSource(t *testing.T) string {
 // wire surface through retain, before the accelerator COOK WRITE section.
 func luauReadThenWrite(src string) string {
 	const marker = "-- ---- the COOK WRITE surface"
-	if i := strings.Index(src, marker); i >= 0 {
-		return src[:i]
+	if before, _, ok := strings.Cut(src, marker); ok {
+		return before
 	}
 	return src
 }
@@ -96,11 +96,11 @@ func TestLuauDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
 
 	src := luauDriverSource(t)
 	const anchor = "u.load.load("
-	at := strings.Index(src, anchor)
-	if at < 0 {
+	before, after, ok := strings.Cut(src, anchor)
+	if !ok {
 		t.Fatal("NEGATIVE CONTROL FAILED: the real driver has no strict Load to plant over")
 	}
-	planted := src[:at] + "u.load.loadWalk(" + src[at+len(anchor):]
+	planted := before + "u.load.loadWalk(" + after
 	if planted == src {
 		t.Fatal("NEGATIVE CONTROL FAILED: planting the walk did not change the real driver")
 	}
@@ -110,11 +110,11 @@ func TestLuauDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
 
 	fresh := luauDriverSource(t)
 	const jAnchor = "u.json.FromJson("
-	jAt := strings.Index(fresh, jAnchor)
-	if jAt < 0 {
+	before0, after0, ok0 := strings.Cut(fresh, jAnchor)
+	if !ok0 {
 		t.Fatal("NEGATIVE CONTROL FAILED: the real driver has no strict FromJson to plant over")
 	}
-	plantedJ := fresh[:jAt] + "u.json.fromJsonWalk(" + fresh[jAt+len(jAnchor):]
+	plantedJ := before0 + "u.json.fromJsonWalk(" + after0
 	if plantedJ == fresh {
 		t.Fatal("NEGATIVE CONTROL FAILED: planting fromJsonWalk did not change the real driver")
 	}

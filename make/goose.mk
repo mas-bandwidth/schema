@@ -76,7 +76,11 @@ update-goldens-goose: ;
 # fixed-form files and requires the Goose reader to refuse each by its reason
 # and the oracle comparison to see the planted byte. It runs under
 # SCHEMA_REQUIRE_CORPUS=1, so a missing corpus is a failure, never a pass.
-.PHONY: tables-goose-fixedform-negative-control
+\.PHONY: tables-goose-fixedform tables-goose-fixedform-negative-control
+tables-goose-fixedform: build/fixedform-corpus/.stamp
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 600s -run "^(TestGooseFixedFormAgreesWithTheByteOracle|TestGooseFixedProofSuiteStrict|TestGooseFixedProofSuiteStrictNegativeControl)$$" ./internal/codegen/goosetable/
+
 tables-goose-fixedform-negative-control: build/fixedform-corpus/.stamp
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestGooseFixedFormNegativeControl$$' ./internal/codegen/goosetable/

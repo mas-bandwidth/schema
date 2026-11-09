@@ -42,10 +42,10 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	load.WriteString("    end\n")
 	load.WriteString("  end\n\n")
 	for _, st := range roots {
-		load.WriteString(fmt.Sprintf("  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name))
+		fmt.Fprintf(&load, "  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name)
 	}
 	for _, st := range noFile {
-		load.WriteString(fmt.Sprintf("  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name))
+		fmt.Fprintf(&load, "  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name)
 	}
 	load.WriteString("  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)\n\n")
 	load.WriteString(strictHelpers)
@@ -116,29 +116,232 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
 
   defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
 
-  defp strict_reachable!(records, root) do
-    all = Map.put(records, 1, root)
-    seen = strict_reach([1], all, MapSet.new())
+  # A node record no pointer reaches is damage (§3, §4): the reach is
+  # syntactic, over the wire's own pointer payloads in the root body and in
+  # every reached node's body, known and unknown fields alike, so a node
+  # named only by a skipped field still counts as reached and a node named
+  # by no payload at all refuses the whole load.
+  defp strict_wire_reachable!(fields, node_fields, nodes, ids) do
+    node_indices =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.flat_map(fn {node, idx} ->
+        if match?({:table, _, _}, node) or match?({:blob, _, _}, node),
+          do: [idx],
+          else: []
+      end)
 
-    if Enum.any?(Map.keys(all), fn idx -> not MapSet.member?(seen, idx) end),
+    bodies = Map.put(node_fields, 1, fields)
+    seen = wire_reach([1], bodies, MapSet.new(), ids)
+
+    if Enum.any?(node_indices, fn idx -> not MapSet.member?(seen, idx) end),
       do: throw(:wire_damaged)
 
     :ok
   end
 
-  defp strict_reach([], _all, seen), do: seen
+  defp wire_reach([], _bodies, seen, _ids), do: seen
 
-  defp strict_reach([idx | rest], all, seen) do
+  defp wire_reach([idx | rest], bodies, seen, ids) do
     if MapSet.member?(seen, idx) do
-      strict_reach(rest, all, seen)
+      wire_reach(rest, bodies, seen, ids)
     else
       refs =
-        case Map.fetch(all, idx) do
-          {:ok, value} -> stored_references(value, [])
+        case Map.fetch(bodies, idx) do
+          {:ok, fields} -> wire_field_refs(fields, ids)
           :error -> []
         end
 
-      strict_reach(refs ++ rest, all, MapSet.put(seen, idx))
+      wire_reach(refs ++ rest, bodies, MapSet.put(seen, idx), ids)
+    end
+  end
+
+  defp wire_field_refs(fields, ids) do
+    Enum.flat_map(fields, fn
+      {_id, kind, payload} when is_binary(payload) -> wire_payload_refs(kind, payload, ids)
+      _ -> []
+    end)
+  end
+
+  defp wire_payload_refs(17, payload, _ids) do
+    case leb(payload) do
+      {idx, _rest} -> [idx]
+      :error -> []
+    end
+  end
+
+  defp wire_payload_refs(13, payload, ids) do
+    case leb(payload) do
+      {len, body} when byte_size(body) >= len -> wire_body_refs(binary_part(body, 0, len), ids)
+      _ -> []
+    end
+  end
+
+  defp wire_payload_refs(14, payload, ids), do: wire_array_refs(payload, false, ids)
+
+  defp wire_payload_refs(16, payload, ids), do: wire_array_refs(payload, true, ids)
+
+  defp wire_payload_refs(15, payload, ids) do
+    case leb(payload) do
+      {0, _rest} ->
+        []
+
+      {_arm, <<kind, rest::binary>>} ->
+        case leb(rest) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            wire_payload_refs(kind, arm_payload, ids)
+
+          _ ->
+            []
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  defp wire_payload_refs(_kind, _payload, _ids), do: []
+
+  defp wire_array_refs(payload, keyed, ids) do
+    with {_len, body} <- leb(payload),
+         <<elem_kind, rest::binary>> <- body,
+         {n, elems} <- leb(rest) do
+      wire_elem_refs(elem_kind, elems, n, keyed, ids, [])
+    else
+      _ -> []
+    end
+  end
+
+  defp wire_elem_refs(_kind, _rest, 0, _keyed, _ids, acc), do: Enum.reverse(acc)
+
+  defp wire_elem_refs(kind, rest, n, true, ids, acc) when n > 0 do
+    with {_key, r1} <- leb(rest),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      after_elem = binary_part(r2, l, byte_size(r2) - l)
+
+      refs =
+        if kind == 13 do
+          wire_body_refs(elem, ids)
+        else
+          case wire_one_elem_refs(kind, elem, ids) do
+            {r, _} -> r
+            :error -> []
+          end
+        end
+
+      wire_elem_refs(kind, after_elem, n - 1, true, ids, refs ++ acc)
+    else
+      _ -> Enum.reverse(acc)
+    end
+  end
+
+  defp wire_elem_refs(kind, rest, n, false, ids, acc) when n > 0 do
+    case wire_one_elem_refs(kind, rest, ids) do
+      {refs, after_elem} -> wire_elem_refs(kind, after_elem, n - 1, false, ids, refs ++ acc)
+      :error -> Enum.reverse(acc)
+    end
+  end
+
+  defp wire_elem_refs(_kind, _rest, _n, _keyed, _ids, acc), do: Enum.reverse(acc)
+
+  defp wire_one_elem_refs(17, rest, _ids) do
+    case leb(rest) do
+      {idx, after_elem} -> {[idx], after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(13, rest, ids) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        {wire_body_refs(binary_part(body, 0, len), ids),
+         binary_part(body, len, byte_size(body) - len)}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp wire_one_elem_refs(15, rest, ids) do
+    case leb(rest) do
+      {0, after_elem} ->
+        {[], after_elem}
+
+      {_arm, <<kind, after_kind::binary>>} ->
+        case leb(after_kind) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(after_kind, 0, byte_size(after_kind) - byte_size(content) + l)
+            after_elem = binary_part(content, l, byte_size(content) - l)
+            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            {wire_payload_refs(kind, arm_payload, ids), after_elem}
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, ids) when kind in [12, 13, 14, 16, 31, 32, 33] do
+    case body(rest) do
+      {:ok, payload, after_elem} -> {wire_payload_refs(kind, payload, ids), after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, _ids) when kind in [30] do
+    case leb(rest) do
+      {_idx, after_elem} -> {[], after_elem}
+      :error -> :error
+    end
+  end
+
+  defp wire_one_elem_refs(kind, rest, _ids) do
+    w = kind_width(kind)
+
+    if w > 0 and byte_size(rest) >= w do
+      {[], binary_part(rest, w, byte_size(rest) - w)}
+    else
+      :error
+    end
+  end
+
+  defp wire_body_refs(bin, ids), do: wire_body_refs(bin, ids, MapSet.new())
+
+  defp wire_body_refs(<<>>, _ids, _seen), do: []
+
+  defp wire_body_refs(bin, ids, seen) do
+    case leb(bin) do
+      {0, _rest} ->
+        []
+
+      {ref, rest} ->
+        _ = seen
+
+        case rest do
+          <<kind, rest2::binary>> ->
+            case slice(rest2, kind) do
+              {:ok, payload, rest3} ->
+                wire_payload_refs(kind, payload, ids) ++
+                  wire_body_refs(rest3, ids, MapSet.put(seen, ref))
+
+              :error ->
+                []
+            end
+
+          _ ->
+            []
+        end
+
+      :error ->
+        []
     end
   end
 

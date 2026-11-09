@@ -49,7 +49,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
 	// §5): the message form's narrow fields never clamp or truncate one.
 	for _, inst := range insts {
-		if err := m.CheckValue(inst); err != nil {
+		if err := m.CheckBinaryValue(inst); err != nil {
 			return nil, err
 		}
 	}
@@ -74,6 +74,11 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 			// is the closure's whole entry set by construction (§3.3)
 			return nil, fmt.Errorf("the unit's vocabulary names no slot for %s, and the message form's vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", e.missing)
 		}
+	}
+	if w.over {
+		// A VALUE OUTSIDE ITS DOMAIN IS REFUSED, NEVER MASKED (docs/SPEC-TABLES.md
+		// §22.6): nothing is written for the batch
+		return nil, &MessageRefusal{Reason: ReasonInvalidValue}
 	}
 	w.align() // THE FINAL FLUSH ZERO-FILLS to the next byte boundary
 	out := append([]byte{ir.TableWireMessageForm}, w.b...)
@@ -168,6 +173,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			return nil
 		}
 		e.ref(w, entry)
+		overMax(w, len(fv.Cell.Str), shape)
 		w.put(uint64(len(fv.Cell.Str)), ir.TableMessageBitsRequired(0, shape.Max))
 		w.align() // a string ALIGNS before its bytes, which buys a memcpy
 		w.bytes(fv.Cell.Str)
@@ -181,6 +187,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			return nil
 		}
 		e.ref(w, entry)
+		overMax(w, len(fv.Cell.Units), shape)
 		w.put(uint64(len(fv.Cell.Units)), ir.TableMessageBitsRequired(0, shape.Max))
 		for _, u := range fv.Cell.Units {
 			w.put(uint64(u), 16)
@@ -192,6 +199,7 @@ func encodeBitField(e *bitEncoder, w *bitWriter, fv *tabletext.Field) error {
 			return nil
 		}
 		e.ref(w, entry)
+		overMax(w, len(fv.Cell.Str), shape)
 		w.put(uint64(len(fv.Cell.Str)), ir.TableMessageCountBits(shape))
 		w.align() // an array of element kind 6 aligns before its bytes
 		w.bytes(fv.Cell.Str)
@@ -291,6 +299,10 @@ func encodeBitArray(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.T
 	if bits := ir.TableMessageCountBits(shape); bits > 0 {
 		// the count rides as its OFFSET from the announced minimum, which is
 		// what a ranged integer over [min, max] is (§3.3)
+		if int64(count) < shape.Min {
+			w.over = true
+		}
+		overMax(w, count, shape)
 		w.put(uint64(count)-uint64(shape.Min), bits)
 	}
 	if ir.TableMessageAligns(entry.Kind, shape) {
@@ -385,9 +397,33 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 			w.putBig(new(big.Int).Sub(raw, base), bits)
 			return nil
 		}
+		if fl, isFlags := f.Type.Ref.(*ir.Flags); isFlags && f.Type.Kind == ir.TNamed && fl != nil {
+			// A MASK RIDES AT ITS DECLARED WIDTH, and bits a newer build
+			// appended past it are dropped by width, the one row of §4 this
+			// form moves (docs/SPEC-TABLES.md §3.3): masked here on purpose
+			w.put(cell.U&lowBits(bits), bits)
+			return nil
+		}
+		if f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			// A RANGED INTEGER OFF ITS BOUNDS IS REFUSED (§22.6): the offset
+			// can fit the width and still name a value past max
+			v := new(big.Int).SetUint64(cell.U)
+			if f.Type.Signed {
+				v = big.NewInt(cell.I)
+			}
+			if v.Cmp(f.IntMin) < 0 || v.Cmp(f.IntMax) > 0 {
+				w.over = true
+			}
+		}
 		if f.Type.Kind == ir.TInt && f.Type.Signed {
+			if cell.I < base.Int64() {
+				w.over = true
+			}
 			w.put(uint64(cell.I-base.Int64()), bits)
 			return nil
+		}
+		if f.Type.Kind == ir.TInt && cell.U < base.Uint64() {
+			w.over = true
 		}
 		w.put(cell.U-base.Uint64(), bits) // an unsigned base spans the whole domain, 2^63 and above included
 		return nil
@@ -397,11 +433,34 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 		return nil
 	}
 	if f.Type.Kind == ir.TInt && f.Type.Signed {
-		w.put(uint64(cell.I), bits)
+		// two's complement at the storage width: the value must fit it signed,
+		// and then its low bits are the whole value
+		if bits < 64 {
+			if top := cell.I >> uint(bits-1); top != 0 && top != -1 {
+				w.over = true
+			}
+		}
+		w.put(uint64(cell.I)&lowBits(bits), bits)
 		return nil
 	}
 	w.put(cell.U, bits)
 	return nil
+}
+
+// lowBits is the mask of the low n bits, n between zero and 64.
+func lowBits(n int) uint64 {
+	if n >= 64 {
+		return ^uint64(0)
+	}
+	return uint64(1)<<uint(n) - 1
+}
+
+// overMax marks the writer over when a count or a length passes the bound
+// its shape announces (§22.6): a value can fit the width and still pass max.
+func overMax(w *bitWriter, n int, shape ir.TableMessageShape) {
+	if shape.Max > 0 && int64(n) > shape.Max {
+		w.over = true
+	}
 }
 
 // encodeBitArm writes one union ARM: its NAME's reference and then the payload

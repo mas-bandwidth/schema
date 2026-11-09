@@ -70,12 +70,13 @@ func TestDartRetainedInlineReplacement(t *testing.T) {
 				}
 				payload := []byte{ek, byte(count)}
 				for i := range count {
-					if strings.HasPrefix(shape, "keyed_") {
+					switch {
+					case strings.HasPrefix(shape, "keyed_"):
 						payload = append(payload, byte(9+i))
 						payload = append(payload, framed(b)...)
-					} else if union {
+					case union:
 						payload = append(payload, b...)
-					} else {
+					default:
 						payload = append(payload, framed(b)...)
 					}
 				}

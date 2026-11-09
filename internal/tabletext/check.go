@@ -1,6 +1,7 @@
 package tabletext
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/big"
@@ -41,16 +42,28 @@ func (m *Model) CheckValue(inst *Instance) error {
 // carry a flags mask whole as a u64 (docs/SPEC-TABLES.md §3, §3.4): a mask
 // bit above the declared variants is kept, as the read keeps it (§4, A TABLE
 // LOAD DOES NOT JUDGE A MASK AGAINST A RANGE), so a file an older build read
-// writes back byte for byte.
+// writes back byte for byte. A FILE writer also refuses a zero byte or unit
+// (docs/SPEC.md §5.1 row 8): its reader calls that text_ill_formed, so a
+// writer never produces bytes its own reader refuses.
 func (m *Model) CheckFileValue(inst *Instance) error {
-	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true})
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true, binaryText: true})
 }
 
-// checkWalk is one CheckValue walk: the instances already asked, and whether
-// the writer carries a flags mask whole.
+// CheckBinaryValue is CheckValue for the binary writers that do not carry a
+// file's flags mask, which is the message form: a zero byte or unit is
+// ill-formed text there too (docs/SPEC.md §5.1 row 8), while the TEXT writer
+// alone spells it `\u0000`.
+func (m *Model) CheckBinaryValue(inst *Instance) error {
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, binaryText: true})
+}
+
+// checkWalk is one CheckValue walk: the instances already asked, whether the
+// writer carries a flags mask whole, and whether a zero byte or unit is
+// ill-formed text for this writer.
 type checkWalk struct {
 	seen       map[*Instance]bool
 	wholeMasks bool
+	binaryText bool
 }
 
 func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
@@ -169,6 +182,9 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 		if !utf8.Valid(cell.Str) {
 			return bad("ill-formed UTF-8 text")
 		}
+		if seen.binaryText && bytes.IndexByte(cell.Str, 0) >= 0 {
+			return bad("ill-formed UTF-8 text (a zero byte)")
+		}
 		if !f.Type.Unbounded && f.Type.Size > 0 && int64(len(cell.Str)) > f.Type.Size {
 			return bad("length %d past its bound %d", len(cell.Str), f.Type.Size)
 		}
@@ -176,6 +192,13 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 	case ir.TWString:
 		if !wellFormedUTF16(cell.Units) {
 			return bad("ill-formed UTF-16 text (a lone surrogate)")
+		}
+		if seen.binaryText {
+			for _, u := range cell.Units {
+				if u == 0 {
+					return bad("ill-formed UTF-16 text (a zero unit)")
+				}
+			}
 		}
 		if f.Type.Size > 0 && int64(len(cell.Units)) > f.Type.Size {
 			return bad("length %d past its bound %d", len(cell.Units), f.Type.Size)

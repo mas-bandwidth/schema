@@ -101,10 +101,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 `
@@ -341,7 +353,7 @@ func (g *tableGen) emitScalarClamps(f *ir.Field, width int, signed bool, ind str
 		low, high := tableClampEnds(f, width)
 		if low {
 			lo := tableIntLit(rlo, signed, width)
-			g.pf("%sif ( decoded_v < %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, lo, lo)
+			g.pf("%[1]sif ( decoded_v < %[2]s )\n%[1]s{\n%[1]s    decoded_v = %[3]s;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = out_of_range;\n%[1]s}\n", ind, lo, lo)
 		}
 		if high {
 			hi := tableIntLit(rhi, signed, width)
@@ -349,12 +361,12 @@ func (g *tableGen) emitScalarClamps(f *ir.Field, width int, signed bool, ind str
 			if low {
 				lead = "else if"
 			}
-			g.pf("%s%s ( decoded_v > %s ) { decoded_v = %s; r.report->refused = true; r.report->refuse_reason = out_of_range; }\n", ind, lead, hi, hi)
+			g.pf("%[1]s%[2]s ( decoded_v > %[3]s )\n%[1]s{\n%[1]s    decoded_v = %[4]s;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = out_of_range;\n%[1]s}\n", ind, lead, hi, hi)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( decoded_v > %dull ) { decoded_v = %dull; r.report->refused = true; r.report->refuse_reason = out_of_range; } // bits(%d) width clamp\n", ind, maxv, maxv, f.Type.Width)
+		g.pf("%[1]sif ( decoded_v > %[2]dull )\n%[1]s{\n%[1]s    decoded_v = %[3]dull;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = out_of_range;\n%[1]s} // bits(%[4]d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 	}
 }
 
@@ -371,7 +383,7 @@ func (g *tableGen) emitArmWiden(v ir.UnionVariant, base, armKindExpr, rdr, tag, 
 	g.pf("%sif ( TableKindWidens( %s, %d ) )\n%s{\n", ind, armKindExpr, declared, ind)
 	g.pf("%s    // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L\n", ind)
 	g.pf("%s    // that is not that width is the arm's own framing damage (§3)\n", ind)
-	g.pf("%s    if ( %s.size != TableKindWidth( %s ) ) { %s = %s; r.report->damaged = true; break; }\n", ind, rdr, armKindExpr, tag, none)
+	g.pf("%[1]s    if ( %[2]s.size != TableKindWidth( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s = %[5]s;\n%[1]s        r.report->damaged = true;\n%[1]s        break;\n%[1]s    }\n", ind, rdr, armKindExpr, tag, none)
 	g.establishArm(v, base, ind+"    ")
 	g.emitWidenedScalar(v.F, declared, armKindExpr, armValue(base, v), ind+"    ", rdr,
 		fmt.Sprintf("%s = %s;", tag, none), "r.report->damaged = true;", "break;")
@@ -408,19 +420,19 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 	g.pf("%s    for ( uint64_t i = 0; i < count; i++ )\n%s    {\n", ind, ind)
 	g.pf("%s        uint64_t key_ref = 0;\n", ind)
-	g.pf("%s        if ( !sub.getleb( key_ref ) ) { r.report->damaged = true; break; }\n", ind)
+	g.pf("%[1]s        if ( !sub.getleb( key_ref ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        if ( key_ref == 0 )\n%s        {\n", ind, ind)
 	g.pf("%s            // None is the NULL KEY, and a stored key reference of 0 names\n", ind)
 	g.pf("%s            // no id at all, so a body carrying one is DAMAGED rather than\n", ind)
 	g.pf("%s            // merely foreign, and damage discards the whole load (§3.2,\n", ind)
 	g.pf("%s            // §4).\n", ind)
 	g.pf("%s            r.report->damaged = true;\n%s            break;\n%s        }\n", ind, ind, ind)
-	g.pf("%s        if ( key_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; break; }\n", ind)
+	g.pf("%[1]s        if ( key_ref > (uint64_t) r.ids->count )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        uint64_t elem_len = 0;\n", ind)
-	g.pf("%s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }\n", ind)
+	g.pf("%[1]s        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )\n%[1]s        {\n%[1]s            r.report->damaged = true;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        %s slot = %s::None;\n", ind, f.KeyEnum, f.KeyEnum)
 	g.pf("%s        if ( !TableEnumValue( r.ids->at( key_ref ), slot ) )\n%s        {\n", ind, ind)
-	g.pf("%s            r.report->unknown++;%s // a slot this reader cannot name\n", ind, g.retainLostInline())
+	g.pf("%[1]s            r.report->unknown++;\n%[1]s            %[2]s // a slot this reader cannot name\n", ind, g.retainLostInline())
 	g.pf("%s            sub.offset += (int64_t) elem_len;\n%s            continue;\n%s        }\n", ind, ind, ind)
 	g.pf("%s        {\n%s            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );\n", ind, ind)
 	// the key k lives at STORAGE INDEX k-1 (docs/SPEC-TABLES.md §2.4)
@@ -433,7 +445,7 @@ func (g *tableGen) emitKeyedTriples(f *ir.Field, kind int, ind string, widened b
 		g.inStep("int32_t( slot ) - 1", func() {
 			g.pf("%s            %s;\n", ind, g.loadCall(f, f.Type.Name, "elem", slot))
 			g.emitLoadRefusal(f.Type.Name, ind+"            ")
-			g.pf("%s            if ( elem.offset != elem.size ) { r.report->damaged = true; %sReset( %s ); }\n", ind, f.Type.Name, slot)
+			g.pf("%[1]s            if ( elem.offset != elem.size )\n%[1]s            {\n%[1]s                r.report->damaged = true;\n%[1]s                %[2]sReset( %[3]s );\n%[1]s            }\n", ind, f.Type.Name, slot)
 		})
 	case kind == tkEnum:
 		g.emitEnumRefLoad(f, slot, ind+"            ", "elem", strings.Join(onTrunc, " "))

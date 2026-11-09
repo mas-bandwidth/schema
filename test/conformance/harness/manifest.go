@@ -240,12 +240,12 @@ func (m Message) Refused() bool { return m.MessageWire == "-" }
 // the announcement as damage, the connection carries no vocabulary, and the
 // leg answers the row absent as a refusal.
 type AnnounceGrown struct {
-	Name      string
-	Message   string // the message row read again
-	Entries   int
-	Repeat    bool // the last entry repeats the first
-	Refused   bool
-	File      string // filled in by the harness once materialised
+	Name    string
+	Message string // the message row read again
+	Entries int
+	Repeat  bool // the last entry repeats the first
+	Refused bool
+	File    string // filled in by the harness once materialised
 }
 
 // AnnouncementMalformed is the diagnostic reason for a message row whose
@@ -318,6 +318,7 @@ type Manifest struct {
 	Grown       []AnnounceGrown
 	Reports     []ReportCase
 	Framings    []FramingCase
+	Rewrites    []RewriteCase
 	Hostiles    []Hostile
 	Retains     []RetainCase
 	Cooks       []Cook
@@ -327,6 +328,55 @@ type Manifest struct {
 	// JSONWriteRefusals are the json-write rows whose answer is the writer's
 	// refusal (docs/SPEC-TABLES.md §16.14, W0).
 	JSONWriteRefusals []JSONWriteRefusal
+	// WriteRefusals is the write contract's battery (docs/SPEC.md §5.1): one
+	// value per row that breaks its declaration, or the lawful value at the
+	// same boundary, handed to the writer the row's form names.
+	WriteRefusals []WriteRefusal
+}
+
+// WriteRefusal is one row of the `write-refusal` surface (docs/SPEC.md §5.1):
+// load Wire as Root, set the field at Path by Kind to Value, and save. Verdict
+// is what the save owes: `refused` for a value the declaration does not admit,
+// and `wrote` for the lawful value beside it, which is what keeps a driver
+// that refuses everything from passing.
+//
+// Path is dotted field names with `[i]` element indexes, from the root.
+// Kind says what the value sets: `int` an integer (a ranged scalar or bits),
+// `count` the used count of the array at Path (new elements are copies of
+// element 0), `length` the used length of the text at Path (filled with `a`),
+// `ordinal` an enum by its raw ordinal, `tag` a union by its raw tag, `float`
+// one of nan, inf or -inf, `bytes` a narrow text's exact bytes in hex, and
+// `units` a wide text's exact UTF-16 units, four hex digits each.
+type WriteRefusal struct {
+	// Form is the writer the row drives, and the line kind and surface it
+	// travels under: "" the variable-form Save (`write-refusal`), "fixed" the
+	// fixed form's FixedSave (`write-refusal-fixed`), "message" SaveMessages
+	// against the connection named in Unit (`write-refusal-message`), and
+	// "json" the text writer (`write-refusal-json`).
+	Form    string
+	Name    string
+	Unit    string
+	Root    string
+	Wire    string
+	Path    string
+	Kind    string
+	Value   string
+	Verdict string
+}
+
+// writeRefusalKinds is the closed set a row's Kind is drawn from.
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true}
+
+// writeRefusalForms maps each write-refusal line kind, which is also its
+// surface, to the writer it drives.
+var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json"}
+
+// Surface is the surface, and the manifest line kind, a row travels under.
+func (wr WriteRefusal) Surface() string {
+	if wr.Form == "" {
+		return "write-refusal"
+	}
+	return "write-refusal-" + wr.Form
 }
 
 // JSONWriteRefusal is one value the text writer must REFUSE (docs/SPEC-TABLES.md
@@ -596,6 +646,18 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				Value: ReportValue(jsonDir, f[1]),
 				Save:  SaveWire(jsonDir, f[1]),
 			})
+		case "rewrite":
+			// rewrite <case> <unit> <root> <wire>: an input every leg reads and
+			// writes back, held to the canonical bytes (docs/SPEC-TABLES.md §22)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: rewrite takes case, unit, root, wire", where)
+			}
+			for _, rw := range m.Rewrites {
+				if rw.Name == f[1] {
+					return nil, fmt.Errorf("%s: rewrite %s is named twice", where, f[1])
+				}
+			}
+			m.Rewrites = append(m.Rewrites, RewriteCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Canonical: RewriteCanonical(jsonDir, f[1])})
 		case "framing":
 			// framing <case> <unit> <root> <wire> <read|refused> <value|->
 			if len(f) != 7 {
@@ -683,6 +745,24 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
 			}
 			m.Blocks = append(m.Blocks, Block{Name: f[1], Unit: f[2], File: f[3], Dump: f[4]})
+		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+			// write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+			// (a message row's <unit> is a connection key)
+			// The DERIVED manifest carries the line without its verdict.
+			if len(f) != 9 && len(f) != 8 {
+				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire, path, kind, value, verdict", where)
+			}
+			if !writeRefusalKinds[f[6]] {
+				return nil, fmt.Errorf("%s: %q is not a write-refusal kind", where, f[6])
+			}
+			wr := WriteRefusal{Form: writeRefusalForms[f[0]], Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
+			if len(f) == 9 {
+				if f[8] != "refused" && f[8] != "wrote" {
+					return nil, fmt.Errorf("%s: %q is not a write verdict: a save is `refused` or `wrote`", where, f[8])
+				}
+				wr.Verdict = f[8]
+			}
+			m.WriteRefusals = append(m.WriteRefusals, wr)
 		case "forgery":
 			if len(f) < 12 {
 				return nil, fmt.Errorf("%s: forgery takes name, kind, subject, base, pointer, offset, width, value, extent, verdict, label", where)

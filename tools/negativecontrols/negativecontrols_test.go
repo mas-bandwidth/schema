@@ -759,3 +759,258 @@ func TestAToolBoundGroupInstallsItsTool(t *testing.T) {
 		}
 	}
 }
+
+// perCommitCapSeconds is the fleet rule a runner enforces by killing a
+// per-commit job (exit 137): two minutes. GitHub's timeout-minutes is a
+// larger bound and does not enforce it.
+const perCommitCapSeconds = 120
+
+// recordedRowOverCap reports a pull-request row whose recorded time is past
+// the cap. Zero seconds is unrecorded and is not judged. A nightly row may
+// record a time past the cap.
+func recordedRowOverCap(g Group) string {
+	if g.Seconds == 0 || g.When != whenPullRequest {
+		return ""
+	}
+	if g.Seconds > perCommitCapSeconds {
+		return fmt.Sprintf("%s records %.0f s on %s, past the %d s per-commit cap", g.Name, g.Seconds, g.When, perCommitCapSeconds)
+	}
+	return ""
+}
+
+// TestRecordedRowTimeFitsTheCap refuses a pull-request row whose recorded
+// time is past two minutes. The two rows this card measured past the cap
+// (base-c-foreign at 256 s, python-toolchain at 140 s) are nightly, where a
+// recorded time past the cap is allowed. The check reads the recorded field.
+// It does not time a make, and it does not parse a why line: historical why
+// lines name numbers that are not this row's time.
+func TestRecordedRowTimeFitsTheCap(t *testing.T) {
+	planted := Group{Name: "planted-over-cap", When: whenPullRequest, Seconds: 256}
+	if recordedRowOverCap(planted) == "" {
+		t.Fatal("PLANTED: a pull-request row recorded at 256 s must fail the cap")
+	}
+	nightly := Group{Name: "planted-nightly", When: whenNightly, Seconds: 256}
+	if msg := recordedRowOverCap(nightly); msg != "" {
+		t.Fatalf("PLANTED: a nightly row may record 256 s, got %s", msg)
+	}
+	unrecorded := Group{Name: "planted-unrecorded", When: whenPullRequest}
+	if msg := recordedRowOverCap(unrecorded); msg != "" {
+		t.Fatalf("PLANTED: an unrecorded pull-request row is not judged, got %s", msg)
+	}
+
+	m, err := loadManifest(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Group{}
+	for _, g := range m.Groups {
+		byName[g.Name] = g
+		if msg := recordedRowOverCap(g); msg != "" {
+			t.Error(msg)
+		}
+	}
+	for _, name := range []string{"base-c-foreign", "python-toolchain"} {
+		g, ok := byName[name]
+		if !ok {
+			t.Errorf("group %s is missing from the plan", name)
+			continue
+		}
+		if g.When != whenNightly {
+			t.Errorf("group %s is %s: its recorded time is past the per-commit cap, so it runs on the nightly tier", name, g.When)
+		}
+		if g.Seconds <= perCommitCapSeconds {
+			t.Errorf("group %s records %.0f s: the measurement that put it on the nightly tier is missing", name, g.Seconds)
+		}
+	}
+	if g := byName["python-toolchain"]; g.Python != "pin" {
+		t.Errorf("python-toolchain python field is %q, want pin", g.Python)
+	}
+	for _, when := range []string{whenPullRequest, whenNightly} {
+		out, err := m.matrix(when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(out), `"seconds"`) {
+			t.Errorf("the %s matrix carries seconds: that field is a record for this test, not a workflow input", when)
+		}
+	}
+}
+
+// TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap holds the split of the
+// seventeen base-* (non-C) rows that were killed at two minutes on runs
+// 42556155793 and 42554833739 (green-fit-negctl-base): every one of the 114
+// targets from those rows stays in exactly one base-* (non-C) group (never in
+// exclude), no pull-request base-* (non-C) group exceeds the per-row target
+// ceiling, and the controls whose single-target or uncached prerequisite cost
+// exceeded ~75 s of control time on loaded runners ride the nightly tier with
+// an explicit reason.
+func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
+	m, err := loadManifest(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantTargets := []string{
+		"build-version-elemkind-negative-control",
+		"check-zero-range-negative-control",
+		"conformance-go-rows-negative-control",
+		"conformance-negative-control",
+		"conformance-negative-control-absent",
+		"conformance-negative-control-block-dump",
+		"conformance-negative-control-cpp",
+		"conformance-negative-control-go",
+		"conformance-negative-control-go-cycle",
+		"conformance-negative-control-go-framing",
+		"conformance-negative-control-go-key-order",
+		"conformance-negative-control-go-text-refusal",
+		"conformance-negative-control-go-walk",
+		"conformance-negative-control-reference-surface",
+		"message-form-fixed-only-lock-negative-control",
+		"packet-arm-defaults-c-negative-control",
+		"packet-arm-defaults-cpp-negative-control",
+		"packet-arm-defaults-go-negative-control",
+		"packet-defaults-c-negative-control",
+		"packet-defaults-go-negative-control",
+		"packet-finite-go-negative-control",
+		"packet-utf8-c-negative-control",
+		"packet-utf8-go-negative-control",
+		"packet-void-c-read-negative-control",
+		"packet-void-c-write-negative-control",
+		"packet-void-cpp-read-negative-control",
+		"packet-void-cpp-write-negative-control",
+		"packet-wide-c-negative-control",
+		"packet-wide-go-negative-control",
+		"projection-union-arm-order-negative-control",
+		"projection-variant-order-negative-control",
+		"projection-wire-law-negative-control",
+		"proof-negative-control",
+		"schema-cpp-runs-hostile-corpus-negative-control",
+		"tables-accessor-negative-control",
+		"tables-arms-array-framing-negative-control",
+		"tables-arms-cook-arm-negative-control",
+		"tables-arms-cook-check-negative-control",
+		"tables-arms-list-edge-negative-control",
+		"tables-arms-negative-controls",
+		"tables-arms-nested-union-negative-control",
+		"tables-arms-reachable-negative-control",
+		"tables-arms-slot-index-negative-control",
+		"tables-block-const-negative-control",
+		"tables-block-fill-refuser-negative-control",
+		"tables-block-race-negative-control",
+		"tables-block-zero-cost-negative-control",
+		"tables-c-accessor-negative-control",
+		"tables-c-ref-ordinal-negative-control",
+		"tables-c-text-differential-negative-control",
+		"tables-c-two-units-negative-controls",
+		"tables-clamp-limits-negative-control",
+		"tables-cook-fuzz-negative-control",
+		"tables-cook-open-lengths-negative-control",
+		"tables-cook-open-root-negative-control",
+		"tables-cook-open-walk-negative-control",
+		"tables-cook-write-hooks-negative-control",
+		"tables-cook-write-negative-control",
+		"tables-cpp-names-negative-control",
+		"tables-cpp-runtime-home-bytes-negative-control",
+		"tables-cpp-runtime-home-negative-control",
+		"tables-cpp-soak-negative-control",
+		"tables-cpp-text-differential-negative-control",
+		"tables-cpp-usage-negative-control",
+		"tables-doctags-negative-controls",
+		"tables-fixed-twin-negative-control",
+		"tables-fixedform-run-copy-negative-control",
+		"tables-flat-wire-negative-control",
+		"tables-go-fuzz-extent-negative-control",
+		"tables-go-fuzz-maximum-negative-control",
+		"tables-go-wire-fuzz-negative-control",
+		"tables-json-clamp-prefix-negative-control",
+		"tables-json-keyed-dup-negative-control",
+		"tables-json-list-walk-negative-controls",
+		"tables-json-map-walk-negative-controls",
+		"tables-json-negative-control",
+		"tables-json-write-refusal-negative-control",
+		"tables-keyed-iteration-negative-control",
+		"tables-keyed-max-refusal-negative-control",
+		"tables-keyed-none-refusal-negative-control",
+		"tables-keyed-shift-negative-control",
+		"tables-maps-depth-negative-control",
+		"tables-maps-duplicate-negative-control",
+		"tables-maps-entry-node-negative-control",
+		"tables-maps-fit-negative-control",
+		"tables-maps-key-domain-negative-control",
+		"tables-maps-key-identity-negative-control",
+		"tables-maps-key-kind-negative-control",
+		"tables-maps-key-length-negative-control",
+		"tables-maps-place-failure-negative-control",
+		"tables-maps-sort-negative-control",
+		"tables-maps-text-order-negative-control",
+		"tables-maps-unreached-negative-control",
+		"tables-maps-value-reset-negative-control",
+		"tables-ref-ordinal-negative-control",
+		"tables-ref-ordinal-shared-negative-control",
+		"tables-retain-fixed-class-negative-control",
+		"tables-runtime-home-negative-control",
+		"tables-shared-node-negative-control",
+		"tables-slot-negative-control",
+		"tables-view-containment-negative-control",
+		"tables-was-negative-control",
+		"tables-wasrows-negative-control",
+		"tables-wire-text-total-negative-control",
+		"tables-zero-cost-negative-control",
+		"toolchain-negative-control",
+		"wide-no-align-negative-control",
+		"wide-surrogate-negative-control",
+		"wide-table-byte-length-negative-control",
+		"wide-table-odd-length-negative-control",
+		"wide-table-surrogate-negative-control",
+		"wide-table-zero-unit-negative-control",
+		"wide-terminator-negative-control",
+		"wide-utf8-read-negative-control",
+	}
+
+	groupOf := map[string][]string{}
+	tierOf := map[string]string{}
+	for _, g := range m.Groups {
+		if strings.HasPrefix(g.Name, "base-") && !strings.HasPrefix(g.Name, "base-c") {
+			if strings.TrimSpace(g.Why) == "" {
+				t.Errorf("group %q has no why field", g.Name)
+			}
+			if g.When == whenPullRequest && len(g.Targets) > 15 {
+				t.Errorf("pull-request group %q carries %d targets (want <= 15 so each base-* row stays under ~75 s of control time)", g.Name, len(g.Targets))
+			}
+		}
+		for _, target := range g.Targets {
+			groupOf[target] = append(groupOf[target], g.Name)
+			tierOf[target] = g.When
+		}
+	}
+
+	for _, target := range wantTargets {
+		groups := groupOf[target]
+		if len(groups) != 1 {
+			t.Errorf("target %q appears in %d groups (%v); want exactly 1", target, len(groups), groups)
+			continue
+		}
+		if !strings.HasPrefix(groups[0], "base-") || strings.HasPrefix(groups[0], "base-c-") || groups[0] == "base-c" {
+			t.Errorf("target %q is in group %q; want a base-* (non-C) group", target, groups[0])
+		}
+	}
+
+	for _, target := range []string{
+		"conformance-negative-control",
+		"conformance-negative-control-absent",
+		"conformance-negative-control-cpp",
+		"schema-cpp-runs-hostile-corpus-negative-control",
+		"tables-arms-negative-controls",
+		"tables-cpp-soak-negative-control",
+		"tables-keyed-iteration-negative-control",
+		"tables-keyed-shift-negative-control",
+		"tables-maps-depth-negative-control",
+		"tables-maps-key-domain-negative-control",
+		"tables-maps-place-failure-negative-control",
+		"tables-shared-node-negative-control",
+	} {
+		if tierOf[target] != whenNightly {
+			t.Errorf("target %q is in tier %q; want %q because a single run exceeded ~75 s of control time on loaded runners", target, tierOf[target], whenNightly)
+		}
+	}
+}

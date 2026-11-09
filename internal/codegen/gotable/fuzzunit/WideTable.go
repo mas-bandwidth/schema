@@ -392,6 +392,9 @@ func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !WideBlobLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		WideBlobReset(value)
 		return false

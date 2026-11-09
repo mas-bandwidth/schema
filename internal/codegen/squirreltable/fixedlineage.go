@@ -115,90 +115,6 @@ func generateLineage(handed []FixedLineageEntry, own FixedLineageEntry) ([]Fixed
 	return entries, floor
 }
 
-// fixedFieldPlan is one destination field's row of a lineage entry's plan: the
-// source offset the older writer put the field at, its source width, and
-// whether the value moves unchanged or widens. A field the older layout does
-// not carry has no row and keeps the constructor's declared default
-// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3 step 8, §4.2).
-type fixedFieldPlan struct {
-	field   *ir.Field
-	srcAt   int64
-	srcSize int64
-	exact   bool
-	widen   bool
-}
-
-// fixedPlanFor walks an older entry's layout against the reader's own field
-// tree and answers the plan FixedLoad runs for that entry. COMPILE lays the
-// plan down at build time and LOAD selects it by hash; nothing here parses a
-// file (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3).
-func fixedPlanFor(st *ir.Struct, layout []byte) []fixedFieldPlan {
-	old, ok := fixedLayoutEntries(layout)
-	if !ok || len(old) == 0 {
-		return nil
-	}
-	cur := fixedWalkRoot(st).entries
-	oldTop := fixedTopFields(old)
-	curTop := fixedTopFields(cur)
-	byID := make(map[uint64]fixedTopField, len(oldTop))
-	for _, e := range oldTop {
-		if _, seen := byID[e.entry.id]; !seen {
-			byID[e.entry.id] = e
-		}
-	}
-	var plan []fixedFieldPlan
-	for i, f := range st.Fields {
-		if i >= len(curTop) {
-			break
-		}
-		ce := curTop[i]
-		oe, found := byID[ce.entry.id]
-		if !found || f.Type.Optional {
-			continue
-		}
-		switch {
-		case oe.entry.kind == ce.entry.kind && oe.entry.size == ce.entry.size:
-			plan = append(plan, fixedFieldPlan{field: f, srcAt: oe.at, srcSize: oe.entry.size, exact: true})
-		case fixedPlanWidens(oe.entry.kind, ce.entry.kind) && oe.entry.size <= ce.entry.size:
-			plan = append(plan, fixedFieldPlan{field: f, srcAt: oe.at, srcSize: oe.entry.size, widen: true})
-		}
-	}
-	return plan
-}
-
-// fixedTopField is one ROOT-LEVEL entry of a layout and the body offset it sits
-// at, so a plan names the older writer's offset and never the reader's.
-type fixedTopField struct {
-	entry fixedLayoutEntry
-	at    int64
-}
-
-func fixedTopFields(entries []fixedLayoutEntry) []fixedTopField {
-	if len(entries) == 0 {
-		return nil
-	}
-	out := make([]fixedTopField, 0, entries[0].children)
-	at := int64(0)
-	for i := 1; i < len(entries) && len(out) < entries[0].children; {
-		e := entries[i]
-		out = append(out, fixedTopField{entry: e, at: at})
-		at += e.size
-		i += fixedSubtree(entries, i)
-	}
-	return out
-}
-
-func fixedSubtree(entries []fixedLayoutEntry, i int) int {
-	pending, n, at := int64(1), 0, i
-	for pending > 0 && at < len(entries) {
-		pending--
-		n++
-		pending += int64(entries[at].children)
-		at++
-	}
-	return n
-}
-
 // fixedLayoutEntries parses a lock's layout bytes — a u32 count and a run of
 // seventeen-byte entries — into the same rows the walk wrote (§1, §5.2).
 func fixedLayoutEntries(b []byte) ([]fixedLayoutEntry, bool) {
@@ -268,7 +184,7 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		}
 		e := entries[i]
 		i++
-		if !((e.kind >= 1 && e.kind <= 16) || (e.kind >= 18 && e.kind <= 30) || e.kind == 32 || e.kind == 33 || e.kind == fixedKindOptional || e.kind == 36) {
+		if (e.kind < 1 || e.kind > 16) && (e.kind < 18 || e.kind > 30) && e.kind != 32 && e.kind != 33 && e.kind != fixedKindOptional && e.kind != 36 {
 			return nil
 		}
 		n := &fixedLayoutNode{

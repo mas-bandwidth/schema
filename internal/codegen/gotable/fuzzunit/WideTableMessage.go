@@ -26,6 +26,39 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			if value.LabelLength < 0 || value.LabelLength > 70000 {
 				return false
 			}
+			{
+				n := int(value.LabelLength)
+				var hi, z uint64
+				p := value.Label[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.Label[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Label[:n]) {
+					return false
+				}
+			}
 			w.Put(uint64(value.LabelLength), 17)
 			w.Raw(value.Label[:value.LabelLength])
 		}
