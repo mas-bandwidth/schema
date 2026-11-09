@@ -36,8 +36,8 @@ var cppDiscardControls = []cppDiscardControl{
 		group:  "base-cpp-discard",
 		source: "internal/codegen/cpptable/codecs.go",
 		anchors: []cppDiscardAnchor{{
-			recipe: "if ( to->damaged )",
-			source: "if ( to->damaged )",
+			recipe: "if ( to->damaged )\\\\n    {\\\\n        %\\[1\\]sReset( value );\\\\n        return TableOpenDamaged;",
+			source: "if ( to->damaged )\\n    {\\n        %[1]sReset( value );\\n        return TableOpenDamaged;",
 		}},
 		message: "fixed: the report does not say malformed",
 		retired: []string{"to->malformed", "LoadTolerant"},
@@ -225,9 +225,10 @@ func TestCppDiscardControlsCurrentNamesNegativeControl(t *testing.T) {
 
 	// THE MAKEFILE: put the retired verdict back in the value read's anchor.
 	planted := a
+	discardAnchor := cppDiscardControls[0].anchors[0]
 	planted.makefile = strings.Replace(a.makefile,
-		"if ( to->damaged )",
-		"if ( to->malformed )", 1)
+		discardAnchor.recipe,
+		strings.Replace(discardAnchor.recipe, "to->damaged", "to->malformed", 1), 1)
 	if planted.makefile == a.makefile {
 		t.Fatal("the Makefile plant patched nothing")
 	}
@@ -243,8 +244,8 @@ func TestCppDiscardControlsCurrentNamesNegativeControl(t *testing.T) {
 		planted.sources[name] = source
 	}
 	planted.sources["internal/codegen/cpptable/codecs.go"] = strings.Replace(a.sources["internal/codegen/cpptable/codecs.go"],
-		"if ( to->damaged )",
-		"if ( to->malformed )", 1)
+		discardAnchor.source,
+		strings.Replace(discardAnchor.source, "to->damaged", "to->malformed", 1), 1)
 	if got := planted.findings(); !cppDiscardHas(got, "codecs.go no longer carries") {
 		t.Fatalf("the gate did not flag the retired verdict planted in the real emitter: %v", got)
 	}
