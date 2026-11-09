@@ -21,7 +21,7 @@ import (
 // The driver is the reference leg's command (test/conformance/cpp/driver unless
 // --driver names another); its `cook-write` surface writes <instance> and
 // <instance>-be into the work directory.
-func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string) (bool, error) {
+func cookDifferential(w io.Writer, m *Manifest, driverCmd, work string) (bool, error) {
 	if driverCmd == "" {
 		driverCmd = filepath.ToSlash(filepath.Join(defaultDriversDir, referenceLang, "driver"))
 	}
@@ -32,8 +32,14 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return false, err
 	}
+	// the reference is a driver: it reads the DERIVED manifest, the same
+	// normalized form every leg reads, never the corpus manifest
+	derived := filepath.Join(work, "manifest.txt")
+	if err := deriveManifest(m, derived); err != nil {
+		return false, err
+	}
 	d := driver{lang: referenceLang, argv: strings.Fields(driverCmd)}
-	code, stderr, err := runDriver(d, manifest, "cook-write", out)
+	code, stderr, err := runDriver(d, derived, "cook-write", out)
 	if err != nil {
 		return false, err
 	}
