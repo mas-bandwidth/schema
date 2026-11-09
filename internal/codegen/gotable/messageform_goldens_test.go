@@ -298,7 +298,7 @@ func TestGolden(t *testing.T) {
 	}
 	var want @ROOT@
 	var fileReport TableReport
-	if len(fileWire) > 0 && fileWire[0] == 3 {
+	if len(fileWire) > 0 && fileWire[0] == TableFixedForm {
 		// The corpus's positive file form for a fixed root is form 3, which
 		// <T>Load does not read (it is the variable form's entry point). Read
 		// it through the fixed entry point, as the C++ reference's own message
