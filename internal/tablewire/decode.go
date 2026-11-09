@@ -313,8 +313,7 @@ func (r *wireReader) lengthOf() (int, bool) {
 // check has already judged every byte it steps over (wirecheck.go), so the
 // skip only has to frame.
 func (r *wireReader) skip(kind uint8) bool {
-	switch {
-	case fixedWidthKind(int(kind)):
+	if fixedWidthKind(int(kind)) {
 		w := ir.TableKindWidth(int(kind))
 		if !r.has(w) {
 			return false
