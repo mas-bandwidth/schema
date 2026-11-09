@@ -17497,7 +17497,7 @@ per entry: the entry's key as the member's key, and the entry's value as
 An integer key is written as its decimal spelling (W10) inside quotes; a
 string key is written by W8. Enum, `bool`, `wstring`, float and compound keys
 are refused at declaration (§2.8), so no other order exists to choose. **No
-map holds a key twice**: the text read is last-wins and the wire read refuses
+map holds a key twice**: the text read refuses a repeated key and the wire read refuses
 an entry out of ascending order (§2.8), so no read produces two equal keys,
 and a backend whose map storage is kept in key order may write the entries in
 storage order. KEY ORDER is the order the wire writes the same entries in.
