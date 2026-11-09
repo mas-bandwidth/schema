@@ -39,8 +39,12 @@ fixed table Root {
 	schema.WriteString("leaf Leaf | was = \"oldLeaf\"\nleaves [..2]Leaf\nslots [Choice]Leaf\n}\n")
 	fill.WriteString("    value.leaf.choice = CHOICE_CURRENT;\n    value.leaves_count = 2;\n    value.leaves[0].choice = CHOICE_SECOND;\n    value.leaves[1].choice = CHOICE_CURRENT;\n    value.slots[0].choice = CHOICE_SECOND;\n")
 	u := unitFromSource(t, schema.String())
-	model := tabletext.NewModel(u)
-	value := model.New(u.Tables["Root"])
+	// the C root_save/root_load under test are the form-1 file codecs, so
+	// the oracle is the same declaration as a variable table: Encode of a
+	// fixed root writes form 3 instead (docs/SPEC-TABLES.md §3.4)
+	twin := unitFromSource(t, strings.Replace(schema.String(), "fixed table Root", "table Root", 1))
+	model := tabletext.NewModel(twin)
+	value := model.New(twin.Tables["Root"])
 	for i := range 127 {
 		value.Fields[i].Cell.U = 1
 	}
