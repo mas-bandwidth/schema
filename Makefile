@@ -658,8 +658,8 @@ tables-doctags: bin/schema test/tables/doctags_main.cpp
 tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@rm -rf build/doctags-null && mkdir -p build/doctags-null
 	./bin/schema generate --lang cpp --out build/doctags-null tables/examples
-	@sed -i.bak 's|", TableDocNone, 0, NULL, false }|", NULL, 0, NULL, false }|' build/doctags-null/TablesTable.h
-	@grep -q '", NULL, 0, NULL, false }' build/doctags-null/TablesTable.h || \
+	@sed -i.bak 's|", TableDocNone, 0, NULL, false, false, 0, 0, false }|", NULL, 0, NULL, false, false, 0, 0, false }|' build/doctags-null/TablesTable.h
+	@grep -q '", NULL, 0, NULL, false, false, 0, 0, false }' build/doctags-null/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the NULL-doc sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-null -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/doctags_main.cpp build/doctags-null/TablesTable.cpp build/doctags-null/TabledemoView.cpp -o build/schema_test_doctags_null
@@ -669,8 +669,8 @@ tables-doctags-negative-controls: bin/schema test/tables/doctags_main.cpp
 	@echo "doc/tags negative control 1: a NULL doc column takes the gate down"
 	@rm -rf build/doctags-inline && mkdir -p build/doctags-inline
 	./bin/schema generate --lang cpp --out build/doctags-inline tables/examples
-	@sed -i.bak 's|, TableDocNone, 0, NULL, false }|, "", 0, NULL, false }|' build/doctags-inline/TablesTable.h
-	@grep -q ', "", 0, NULL, false }' build/doctags-inline/TablesTable.h || \
+	@sed -i.bak 's|, TableDocNone, 0, NULL, false, false, 0, 0, false }|, "", 0, NULL, false, false, 0, 0, false }|' build/doctags-inline/TablesTable.h
+	@grep -q ', "", 0, NULL, false, false, 0, 0, false }' build/doctags-inline/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the inline-empty sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -Ibuild/doctags-inline -DVIEW_HEADER='"TabledemoView.h"' -DVIEW_NAMESPACE=tabledemo \
 		test/tables/doctags_main.cpp build/doctags-inline/TablesTable.cpp build/doctags-inline/TabledemoView.cpp -o build/schema_test_doctags_inline
@@ -2211,8 +2211,8 @@ tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-c
 tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_negative_main.cpp
 	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
 	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
-	@sed -i.bak -e 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed;; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no refusal */ }|' \
-		-e 's|if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed;; }|if ( repeated ) { /* sabotaged: no refusal */ }|' build/json-dup-sabotage/KeyedTable.cpp
+	@sed -i.bak -e 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no refusal */ }|' \
+		-e 's|if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed; }|if ( repeated ) { /* sabotaged: no refusal */ }|' build/json-dup-sabotage/KeyedTable.cpp
 	@[ "$$(grep -c 'sabotaged: no refusal' build/json-dup-sabotage/KeyedTable.cpp)" -ge 2 ] || { echo "NEGATIVE CONTROL: the sabotage did not apply to both the key-spelling and the slot check"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
@@ -2243,7 +2243,7 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
 	./bin/schema generate --lang cpp --out build/json-clamp-sabotage tables/examples
-	@sed -i.bak 's|else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range;; }|else if ( oor_flag ) { /* SABOTAGED: no refusal */ }|' build/json-clamp-sabotage/TablesTable.cpp
+	@sed -i.bak 's|else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }|else if ( oor_flag ) { /* SABOTAGED: no refusal */ }|' build/json-clamp-sabotage/TablesTable.cpp
 	@grep -q 'SABOTAGED' build/json-clamp-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
