@@ -669,14 +669,29 @@ func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (str
 	if !ok {
 		return "", false
 	}
+	if writerOnly {
+		// THE PLAN CARRIES ir.TableFixedWriterRanges, so the writer's decision
+		// reads that same list: a shape or width it leaves out bounds nothing,
+		// and a compressed float never appears in it (schema#1164 ruling B).
+		for _, r := range ir.TableFixedWriterRanges(st) {
+			if r.Name != name {
+				continue
+			}
+			lo, hi := big.NewInt(r.Lo), big.NewInt(r.Hi)
+			switch {
+			case n.Cmp(hi) > 0:
+				return hi.String(), true
+			case n.Cmp(lo) < 0:
+				return lo.String(), true
+			}
+		}
+		return "", false
+	}
 	for _, f := range st.Fields {
 		if f.Name != name {
 			continue
 		}
 		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
-			if writerOnly {
-				return "", false
-			}
 			v := math.Float32frombits(uint32(n.Uint64()))
 			switch {
 			case float64(v) > f.FMax:
