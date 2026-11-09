@@ -27,6 +27,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -176,9 +177,7 @@ func wideningLadderFaults(t *testing.T, patch func(string) string) (map[string]s
 			cells = append(cells, wideningCell{fmt.Sprintf("kind %d", w.kind), lobsterOneFieldWire("value", w.kind, lobsterLadderPayload(w.kind))})
 		}
 		f, n := lobsterWidening(t, decl.decl, cells, patch)
-		for k, v := range f {
-			faults[k] = v
-		}
+		maps.Copy(faults, f)
 		widened += n
 	}
 	return faults, widened

@@ -101,7 +101,7 @@ func batchCases(t *testing.T, g *loadUnit, rows []messageRow) []batchCase {
 				out = append(out, batchCase{row: r, label: fmt.Sprintf("capacity %d", capacity), data: wire, capacity: capacity})
 			}
 		}
-		for n := 0; n < len(wire); n++ {
+		for n := range len(wire) {
 			out = append(out, batchCase{row: r, label: fmt.Sprintf("truncated to %d", n), data: wire[:n], capacity: tablewire.TableMessageBatchMax})
 		}
 		for _, b := range []byte{0x00, 0xff} {
