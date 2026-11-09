@@ -3075,7 +3075,7 @@ TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -
 # content (docs/SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
 # compiles the generated <Base>Table.cpp, and one that never does compiles
 # nothing for it. Expanded in the recipe because these are build-time output.
-TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
+TABLES_JSON_SOURCES = $$(for d in $(PINS_WIRE_TABLES_DIRS); do ls build/tables-generated/$$d/*Table.cpp; done)
 
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
@@ -3138,7 +3138,7 @@ BE_RUN ?= qemu-s390x
 # and the emulator invocation is just the binary.
 build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
 # wire goldens were written by a LITTLE-ENDIAN build, so a codec that reached
