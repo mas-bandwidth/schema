@@ -340,10 +340,10 @@ func runDartVariableCellsProbe(t *testing.T, edit func(name string, data []byte)
 
 	dir := t.TempDir()
 	writeFiles(t, dir, files)
-	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "vtcells_main.dart"), []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	cmd := exec.Command(dartBinary(t), "--enable-asserts", "vtcells_main.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
