@@ -39,7 +39,7 @@ func TestRangeAssertWideStorageComparesIn64Bits(t *testing.T) {
 			t.Errorf("WideWire.h: want %q in\n%s", want, w)
 		}
 	}
-	for _, bad := range []string{"int32_t( value.id )", "int32_t( value.span )", "int32_t( value.count )"} {
+	for _, bad := range []string{" int32_t( value.id )", " int32_t( value.span )", " int32_t( value.count )"} {
 		if strings.Contains(w, bad) {
 			t.Errorf("WideWire.h narrows a 64-bit field in its range assert (%q)", bad)
 		}
@@ -108,7 +108,18 @@ func TestCppRangeAssertWideStorage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "serialize.h"), []byte(packetDefaultsSerialize), 0o600); err != nil {
+	// the defaults stub reads ints into int32_t storage only; these fields are 64-bit
+	stub := packetDefaultsSerialize
+	for from, to := range map[string]string{
+		"bool ReadInt( int32_t & value,":              "template <typename T>\n    bool ReadInt( T & value,",
+		"value = int32_t( uint64_t( minimum ) + raw );": "value = T( int32_t( uint64_t( minimum ) + raw ) );",
+	} {
+		if strings.Count(stub, from) != 1 {
+			t.Fatalf("the serialize stub no longer carries %q once", from)
+		}
+		stub = strings.Replace(stub, from, to, 1)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "serialize.h"), []byte(stub), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	probe := filepath.Join(dir, "probe.cpp")
