@@ -1970,12 +1970,26 @@
     {
       "name": "goose-wire",
       "when": "pull-request",
-      "why": "the Goose leg's hostile wire and integrity controls (make/goose-fuzz.mk), each installing the pinned Goose compiler itself (make dist-goose); Go and the host C compiler, nothing else: the wire-fuzz differential's two load sabotages (a non-minimal LEB128 accepted, every text taken as well-formed), the retaining binary protocol controls (each changes only its retention counter while saved bytes stay identical, 24 s together on hetzner1), and the integrity controls (a wrong-polynomial CRC-32C table and a crc32c that never returns on the 30 s stall watchdog, about 45 s together on vision, 2026-11-02). Split from the single `goose-wire` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739.",
+      "why": "the Goose wire-fuzz differential controls (make/goose-fuzz.mk). tables-goose-wire-fuzz-leb-negative-control sabotages the load so a non-minimal LEB128 is accepted. tables-goose-wire-fuzz-utf8-negative-control sabotages the load so every text is taken as well-formed UTF-8. tables-goose-wire-fuzz-negative-control has no recipe of its own; it runs those two. Measured serially on intel on 2026-11-09, each exit 0. The recipes print no control-step duration (the harness line is a mutant count, FAILED after N mutants), so these are make walls from time -p real: leb 11.13 s, which includes the fresh schema-goose-fuzz build and the conformance-harness build; the aggregate target 9.71 s, which rebuilds schema-goose-fuzz and runs both controls with the harness already built; utf8 3.76 s, which rebuilds schema-goose-fuzz and runs the utf8 control. The sum of those three make walls is 24.60 s, under about 75 s, so they stay one pull-request row. GOOSE was /opt/goose-v2026.2/goose, so dist-goose did not run. Go and the host C compiler.",
       "targets": [
         "tables-goose-wire-fuzz-leb-negative-control",
         "tables-goose-wire-fuzz-negative-control",
-        "tables-goose-wire-fuzz-utf8-negative-control",
-        "tables-goose-retain-fuzz-negative-control",
+        "tables-goose-wire-fuzz-utf8-negative-control"
+      ]
+    },
+    {
+      "name": "goose-retain",
+      "when": "pull-request",
+      "why": "the Goose retaining binary protocol control (make/goose-fuzz.mk, tables-goose-retain-fuzz-negative-control). Not remeasured. The existing citation stands: each changes only its retention counter while saved bytes stay identical, 24 s together on hetzner1. 24 s is under 75 s, so this row stays on the pull request. Split out of goose-wire so that row's measured time covers only the three wire-fuzz targets.",
+      "targets": [
+        "tables-goose-retain-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "goose-integrity",
+      "when": "pull-request",
+      "why": "the Goose integrity control (make/goose-fuzz.mk, tables-goose-integrity-negative-control). Not remeasured. The existing citation stands: a wrong-polynomial CRC-32C table and a crc32c that never returns on the 30 s stall watchdog, about 45 s together on vision, 2026-11-02. 45 s is under 75 s, so this row stays on the pull request. Split out of goose-wire so that row's measured time covers only the three wire-fuzz targets.",
+      "targets": [
         "tables-goose-integrity-negative-control"
       ]
     },
@@ -1991,7 +2005,7 @@
     {
       "name": "goose-wire-verdict",
       "when": "pull-request",
-      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk) was defined and in no group, so the plan test was red. It is one target with no measured wall.",
+      "why": "The Goose variable-table wire-fuzz verdict control (make/goose.mk), one target, tables-goose-wire-fuzz-verdict-negative-control. The recipe does not say what it sabotages. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 5.27 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/goosetable 3.899s. 5.27 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-goose-wire-fuzz-verdict-negative-control"
       ]
@@ -1999,7 +2013,7 @@
     {
       "name": "lobster-wire-verdict",
       "when": "pull-request",
-      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk) was defined and in no group, so the plan test was red. It is one target with no measured wall.",
+      "why": "The Lobster variable-table wire-fuzz verdict control (make/lobster-fuzz.mk), one target, tables-lobster-wire-fuzz-verdict-negative-control. The recipe says the negative control plants its fault in the generated artifact the VM compiles and does not name that fault. Measured on intel on 2026-11-09, exit 0. The recipe prints no control-step duration, so this row uses the make wall (time -p real), 2.91 s. The same log's go test line is ok github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable 1.396s. 2.91 s is under 110 s, so the row stays on the pull request.",
       "targets": [
         "tables-lobster-wire-fuzz-verdict-negative-control"
       ],
