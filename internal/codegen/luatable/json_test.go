@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // jsonRow is one instance or json-hostile row of MANIFEST.txt, with the
@@ -72,15 +71,15 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local r1 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v1 = J.fromJsonWalk(T, "` + root + `", inputs.text, r1)
-local saved = save.Save(T, "` + root + `", v1)
-local r2 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v2 = load.loadWalk(T, "` + root + `", inputs.wire, r2)
-local text = J.ToJson(T, "` + root + `", v2)
+local r1 = {}
+local v1 = J.FromJson(T, "` + root + `", inputs.text, r1)
+local saved = v1 and save.Save(T, "` + root + `", v1) or nil
+local r2 = {}
+local v2 = load.Load(T, "` + root + `", inputs.wire, r2)
+local text = v2 and J.ToJson(T, "` + root + `", v2) or nil
 print(hex(saved))
 print(hex(text))
-print((r1.damaged and "1" or "0") .. (r2.damaged and "1" or "0"))
+print(((v1 == nil or r1.damaged or (r1.refused or 0) ~= 0) and "1" or "0") .. ((v2 == nil or r2.damaged or (r2.refused or 0) ~= 0) and "1" or "0"))
 `
 }
 
@@ -94,14 +93,14 @@ local function hex(s)
   if s == nil then return "nil" end
   return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end))
 end
-local r1 = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v1 = J.fromJsonWalk(T, "` + root + `", inputs.text, r1)
-local saved = T.FixedSave("` + root + `", { v1 })
+local r1 = {}
+local v1 = J.FromJson(T, "` + root + `", inputs.text, r1)
+local saved = v1 and T.FixedSave("` + root + `", { v1 }) or nil
 local v2 = T.ReadFixed("` + root + `", inputs.wire)
-local text = J.ToJson(T, "` + root + `", v2)
+local text = v2 and J.ToJson(T, "` + root + `", v2) or nil
 print(hex(saved))
 print(hex(text))
-print((r1.damaged and "1" or "0") .. "0")
+print(((v1 == nil or r1.damaged or (r1.refused or 0) ~= 0) and "1" or "0") .. (v2 == nil and "1" or "0"))
 `
 }
 
@@ -185,11 +184,6 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
-		if len(ir.TableWideFields(u)) > 0 {
-			refused[row.unit] = "carries the wide kinds; the JSON corpus row is not this card's"
-			skipped++
-			continue
-		}
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
 			skipped++
@@ -251,10 +245,6 @@ func TestLuaJsonAgreesWithTheCorpus(t *testing.T) {
 			continue
 		}
 		u := luarun.LoadUnit(t, paths...)
-		if len(ir.TableWideFields(u)) > 0 {
-			hostileSkipped++
-			continue
-		}
 		if _, err := Generate(u); err != nil {
 			refused[row.unit] = err.Error()
 			hostileSkipped++
@@ -323,8 +313,8 @@ table F { v float32 }
 		return `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v = J.fromJsonWalk(T, "F", inputs.text, report)
+local report = {}
+local v = J.FromJson(T, "F", inputs.text, report)
 local text = J.ToJson(T, "F", v)
 if text == nil then print("nil") else print((text:gsub(".", function(c) return string.format("%02x", c:byte()) end))) end
 `
@@ -417,8 +407,8 @@ table N
 	probe := `local T = require("` + module + `")
 local J = require("json")
 local inputs = require("inputs")
-local report = { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
-local v = J.fromJsonWalk(T, "N", inputs.text, report)
+local report = {}
+local v = J.FromJson(T, "N", inputs.text, report)
 local has = v ~= nil and v.blobs[7] == false and v.blobs[8] ~= nil and v.blobs[8].value == "\1\2"
 local arm = v ~= nil and v.body.tag == 1 and v.body.data == nil
 print(string.format("km=%d entries=%s arm=%s", report.kindChanged, tostring(has), tostring(arm)))
