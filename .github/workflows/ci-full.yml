@@ -2163,17 +2163,20 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
-  # one nightly group. `go run ./tools/negativecontrols check` prints the
-  # count, so it is one command rather than a number to keep in step by hand.
+  # branch's own pull-request runs. As of the base-* split below (runs
+  # 42556155793 and 42554833739), the plan holds 180 groups: 156 pull-request
+  # groups (672 targets) and 24 nightly groups (44 targets); 742 controls are
+  # defined in all (`go run ./tools/negativecontrols check` prints that count,
+  # so it is one command rather than a number to keep in step by hand).
   #
-  # The base toolchain carries 134 of them and takes twenty-eight jobs rather
-  # than one: the map gate alone is 17 controls at 4 s each on the author's
-  # machine and about 2x that on the runner, and the conformance driver's two
-  # sabotage rebuilds are 45 s and 47 s of runner time on their own. The
-  # tolerant-wire family is one control per job: each rebuilds the compiler
-  # under a source overlay and then fuzzes the sabotaged wire, 55 s to 80 s
-  # each, so no two of them fit together.
+  # The base-* (non-C) toolchain carries 192 targets in 61 groups: 43
+  # pull-request groups (157 targets) and 18 nightly groups (35 targets),
+  # rather than one job: the map gate alone is 17 controls at 4 s each on the
+  # author's machine and about 2x that on the runner, and the conformance
+  # driver's two sabotage rebuilds are 45 s and 47 s of runner time on their
+  # own. The tolerant-wire family is one control per job: each rebuilds the
+  # compiler under a source overlay and then fuzzes the sabotaged wire, 55 s
+  # to 80 s each, so no two of them fit together.
   #
   # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
   # was inside the rule but eight of them sat between 100 s and 111 s, which is
@@ -2182,14 +2185,38 @@ jobs:
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
-  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
-  # instead: tables-message-form-negative-control drives 49 sabotage rows one
-  # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
-  # the plan, certify.yml runs that tier on the schedule it carries, and
+  # CONTROLS THAT DO NOT FIT THE RULE AT ANY GROUP SIZE run nightly instead
+  # (the nightly tier in certify.yml, on the schedule it carries), and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
-  # control cannot leave this file without landing on that one. The message
-  # form's other blades stay here. The group keeps its name at one target,
-  # because it is where the next control that outgrows the rule lands.
+  # control cannot leave this file without landing on that one. The oldest is
+  # tables-message-form-negative-control (49 sabotage rows one submake each at
+  # 124 s, against a 120 s rule); its other blades stay here.
+  #
+  # The base-* (non-C) rows that moved to nightly on runs 42556155793 and
+  # 42554833739 did so because a single target, or the compile it cannot run
+  # without, already exceeds the ~75 s per-commit control ceiling (117-140 s
+  # wall, killed at 2m), so no pull-request grouping can hold them:
+  # base-conformance-1 (>107 s control, 131 s wall: all C++ CONFORMANCE_SOURCES
+  # compiled twice), base-conformance-reference (>77 s for build/conformance-cpp
+  # alone, killed at 136 s wall), base-conformance-2-1, base-conformance-2-2
+  # and base-conformance-2-3 (86 s, >88 s loaded, for the
+  # build/tables-generated-go/.stamp prerequisite before any control runs),
+  # base-conformance-go-rows (39-88 s plus 49 s of stamps before 45 rows),
+  # base-conformance-cpp (82 s control/104 s wall; >84 s, killed at 140 s wall
+  # loaded), base-conformance-absence (>106 s/129 s wall and >111 s/130 s wall,
+  # killed both times), base-maps-depth (84 s for depth alone, killed at 135 s
+  # wall), base-maps-keys (81 s for key-domain alone, killed at 135-140 s wall),
+  # base-maps-order (86 s for place-failure alone, killed at 137 s wall),
+  # base-arms-all (>83 s control, killed at 136 s wall; the seven leaves stay
+  # per-commit in base-arms-1/-2/-3, only the serial umbrella moves),
+  # base-shared-node-1 (stamp 39 s/72 s wall quiet, >99 s killed at 134 s wall
+  # loaded), base-shared-node-2 (>113 s/136 s wall and >106 s/129 s wall,
+  # killed), base-cpp-soak (67 s quiet, >85 s in g++ killed at 138 s wall
+  # loaded), base-keyed-iteration (>81 s/140 s wall and >111 s/128 s wall,
+  # killed), base-keyed-shift (>104 s/129 s wall and >63 s in g++ at 137 s wall,
+  # killed) and base-cpp-hostile-corpus (68 s/90 s wall quiet, >93 s killed at
+  # 138 s wall loaded). The per-group `why` lines in
+  # make/negative-controls.json carry the same numbers beside their targets.
   #
   # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control
   # carries no recipe: it names the retain oracle and the retain class leaves,
