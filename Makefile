@@ -5771,12 +5771,12 @@ ENGINE_CYCLE_NC := build/engine-cycle-nc
 .PHONY: tables-engine-cycle-negative-control
 tables-engine-cycle-negative-control:
 	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
-	@sed -e 's|return true // a pointer to an OPEN node: a cycle|continue // NEGATIVE CONTROL: cycles read clean|' \
-		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_NC)/decodenodes.go.txt && \
+	@sed -e 's|return c.damage("a pointer to a node whose descent is still open: a cycle")|continue // NEGATIVE CONTROL: cycles read clean|' \
+		internal/tablewire/wirecheck.go > $(ENGINE_CYCLE_NC)/wirecheck.go.txt
+	@cmp -s internal/tablewire/wirecheck.go $(ENGINE_CYCLE_NC)/wirecheck.go.txt && \
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
+	@sed '/case markOpen:/{n;s/return false/continue/;}' test/conformance/harness/strictcheck.go > $(ENGINE_CYCLE_NC)/strictcheck.go.txt && printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(ENGINE_CYCLE_NC)/strictcheck.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
 	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
@@ -5796,11 +5796,11 @@ ENGINE_CYCLE_LINEAR_NC := build/engine-cycle-linear-nc
 .PHONY: tables-engine-cycle-linear-negative-control
 tables-engine-cycle-linear-negative-control:
 	@rm -rf $(ENGINE_CYCLE_LINEAR_NC) && mkdir -p $(ENGINE_CYCLE_LINEAR_NC)
-	@sed -e 's|continue // a pointer to a CLOSED node: a share, never re-entered|// NEGATIVE CONTROL: a share is re-entered|' \
-		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt && \
+	@sed -e 's|case markClosed:|case 99: // NEGATIVE CONTROL: a share is re-entered|' \
+		internal/tablewire/wirecheck.go > $(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt
+	@cmp -s internal/tablewire/wirecheck.go $(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt && \
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
 	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
