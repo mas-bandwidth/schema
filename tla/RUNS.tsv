@@ -45,3 +45,8 @@ MCPGroupNoGraceKill.cfg	PGroup	counterexample	StopEnds	74	38	5	13	21.0.12.1	2.19
 MCWireCheckEdges.cfg	WireCheckEdges	exhaustive	-	3020658	313344	19	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCWireCheckEdgesFirstOffByOne.cfg	WireCheckEdges	counterexample	RangesHoldTheNodes	2290	1870	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCWireCheckEdgesStaleTail.cfg	WireCheckEdges	counterexample	NamesCountThisFile	2290	1870	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFixedBatch.cfg	FixedBatch	exhaustive	-	379	299	10	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFixedBatchLandDuringDecode.cfg	FixedBatch	counterexample	OneVerdict	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFixedBatchCommitShort.cfg	FixedBatch	counterexample	OneVerdict	282	228	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFixedBatchStrideOff.cfg	FixedBatch	counterexample	ReadsValueBytes	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCFixedBatchNoTailCheck.cfg	FixedBatch	counterexample	OneVerdict	242	242	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)

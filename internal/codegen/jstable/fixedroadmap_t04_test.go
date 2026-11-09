@@ -183,23 +183,21 @@ func t04R21(t *testing.T) {
 }
 
 // t04R29: "the band case: the widening across the 65536 ceiling, and the bounds
-// pass clamping to the writer's bounds" [owed]. The record-size ceiling is the
+// pass holding the writer's bounds" [owed]. The record-size ceiling is the
 // one number 65536 (SPEC-TABLES §1.1 rule 6, FIXED-FORM-ALGORITHM §5.2's
-// TableFixedRecordMaxBytes), and the bounds pass clamps an array's live count
-// to the writer's declared bound and a string's length to its cap, counting one
-// clamped each (FIXED-FORM-ALGORITHM §5.2).
+// TableFixedRecordMaxBytes), and the count and text ops refuse by name
+// (count_over_bound / length_over_bound) past the writer's declared bound
+// (FIXED-FORM-ALGORITHM §4.5).
 func t04R29(t *testing.T) {
 	src := t04Source(t)
 	n := t04Norm(src)
 	t04Has(t, n, "export const TableFixedRecordMaxBytes = 65536;", "R29 the band's ceiling is 65536")
 	t04Has(t, n, "if (size > TableFixedRecordMaxBytes) { TableFixedFail(b, TableFixedRefusal.LayoutRecordTooLarge); return 0; }",
 		"R29 a record past the ceiling is refused by name")
-	t04Has(t, n, "if (v < 0) { v = 0; report.oor++; }",
-		"R29 a live count below the writer's floor clamps to it and counts")
-	t04Has(t, n, "else if (v > size) { v = size; report.oor++; }",
-		"R29 a live count past the writer's bound clamps to it and counts")
-	t04Has(t, n, "else if (v > cap) { v = cap; report.oor++; }",
-		"R29 a text length past the writer's cap clamps to it and counts")
+	t04Has(t, n, "if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }",
+		"R29 a live count past the writer's bound refuses count_over_bound")
+	t04Has(t, n, "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }",
+		"R29 a text length past the writer's cap refuses length_over_bound")
 }
 
 // t04E5: "?T vs plain nesting" [verify]. An optional is the wrapper kind 35 —

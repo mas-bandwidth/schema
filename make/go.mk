@@ -62,7 +62,7 @@ tables-go-sibling-runtime: deps
 	@test -f "$(SERIALIZE_GO)/go.mod" || { echo "tables Go sibling runtime: make deps did not provision $(SERIALIZE_GO)" >&2; exit 1; }
 tables-go-fixedform: tables-fixedform-corpus tables-go-sibling-runtime
 	sh test/slowgate/proof tables-go-fixedform \
-		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormClampLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
+		'TestFixedFormCountAndLengthOverBoundRefuseByName TestFixedFormRoundTrip TestFixedFormHostileBoolByte TestFixedFormHostileUnionTag TestFixedFormArgLaneOldEncodingControl TestFixedFormBoundsLiveCount TestFixedFormRecordBound TestFixedFormIdentityEqualsCompiled TestFixedFormZeroBehindNarrowerArm TestFixedPlanMaxCoversEveryLineagePlan TestTimestampKindInGo TestFixedLoadAllocatesNothingPerCall TestFixedLoadNamesEveryRefusal TestFixedFormWriteSideRefusesInEveryGoBuild TestGoTableWritersRefuseWhatTheirReadersRefuse TestFixedLoadUnknownHashIsLayoutUnknown' \
 		./internal/codegen/gotable -run 'TestFixedForm|TestFixedPlanMaxCoversEveryLineagePlan|TestTimestampKindInGo|TestFixedLoadAllocatesNothingPerCall|TestFixedFormCountAndLengthOverBoundRefuseByName|TestFixedLoadNamesEveryRefusal|TestFixedFormWriteSideRefusesInEveryGoBuild|TestGoTableWritersRefuseWhatTheirReadersRefuse|TestFixedLoadUnknownHashIsLayoutUnknown' -count=1
 test-go: tables-go-fixedform
 
@@ -891,7 +891,7 @@ test-go: tables-go-block-build tables-go-block-fill-refuser
 .PHONY: tables-go-retain
 tables-go-retain:
 	sh test/slowgate/proof tables-go-retain \
-		'TestRetainMatchesIndependentRewrite TestRetainReplacementAndShapeChanges TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
+		'TestRetainMatchesIndependentRewrite TestRetainFileCapacityBeforeExpansion TestRetainUnknownNodeRecord' \
 		./internal/codegen/gotable -run '^TestRetain' -count=1
 test-go: tables-go-retain
 

@@ -118,6 +118,24 @@ fn cook_put_bytes(b: u8[:], at: i64, src: const u8[:]) {
     }
 }
 
+// cook_put_wide writes a 128-bit lane pair in the order the cook is FOR.
+fn cook_put_wide(b: u8[:], at: i64, v: Int128, big: bool) {
+    let first = if !big { v.lo } else { v.hi };
+    let second = if !big { v.hi } else { v.lo };
+    cook_put(b, at, first, 8, big);
+    cook_put(b, at + 8, second, 8, big);
+}
+
+// cook_put_wtext writes a wstring's used code units in the order the cook is FOR.
+fn cook_put_wtext(b: u8[:], at: i64, src: const u16[:], big: bool) {
+    if b.len == 0 { return; }
+    var i: i64 = 0;
+    while i < src.len {
+        cook_put(b, at + 2 * i, src[i], 2, big);
+        i += 1;
+    }
+}
+
 // cook_begin zeroes the whole extent — EVERY BYTE NO FIELD COVERS IS ZERO
 // (§7.2), one zeroing rather than a rule per padding site — and writes the
 // header (§7.1): the magic and every word after it in the target's order, the
@@ -141,17 +159,17 @@ fn cook_begin(b: u8[:], build: u64, data: i64, nodes: i64, align: i64, big: bool
 // field i of a record, element k of a collection, a union's payload slot —
 // each -1 where the load made no slot — and a value's bits, count and text.
 fn cook_loaded_field(vals: const LoadVal[:], rec: i64, i: i64) -> i64 {
-    if rec < 0 || !vals[rec].made || i >= vals[rec].count { return -1; }
+    if rec < 0 || vals[rec].state == ValAbsent || !vals[rec].made || i >= vals[rec].count { return -1; }
     return vals[rec].first + i;
 }
 
 fn cook_loaded_elem(vals: const LoadVal[:], s: i64, k: i64) -> i64 {
-    if s < 0 || !vals[s].made || k >= vals[s].count { return -1; }
+    if s < 0 || vals[s].state == ValAbsent || !vals[s].made || k >= vals[s].count { return -1; }
     return vals[s].first + k;
 }
 
 fn cook_loaded_payload(vals: const LoadVal[:], s: i64) -> i64 {
-    if s < 0 || !vals[s].made { return -1; }
+    if s < 0 || vals[s].state == ValAbsent || !vals[s].made { return -1; }
     return vals[s].first;
 }
 
@@ -160,6 +178,8 @@ fn cook_loaded_rode(vals: const LoadVal[:], s: i64) -> bool {
 }
 
 fn cook_loaded_bits(vals: const LoadVal[:], s: i64) -> u64 { return vals[s].bits.lo; }
+
+fn cook_loaded_wide(vals: const LoadVal[:], s: i64) -> Int128 { return vals[s].bits; }
 
 fn cook_loaded_count(vals: const LoadVal[:], s: i64, bound: i64) -> i32 {
     var n = vals[s].len;
@@ -178,6 +198,23 @@ fn cook_loaded_text(data: const u8[:], vals: const LoadVal[:], s: i64, dst: u8[:
     var i: i64 = 0;
     while i < n {
         dst[i] = data[off + i];
+        i += 1;
+    }
+    return n as! i32;
+}
+
+// cook_loaded_wtext copies a wide text value's UTF-16LE code units out of the
+// input into the record's buffer and answers the used length in code units.
+fn cook_loaded_wtext(data: const u8[:], vals: const LoadVal[:], s: i64, dst: u16[:]) -> i32 {
+    var n = vals[s].len / 2;
+    if n > dst.len { n = dst.len; }
+    if n < 0 { n = 0; }
+    let off = vals[s].off;
+    var i: i64 = 0;
+    while i < n {
+        let lo = data[off + 2 * i] as! u16;
+        let hi = data[off + 2 * i + 1] as! u16;
+        dst[i] = lo | (hi << 8);
         i += 1;
     }
     return n as! i32;

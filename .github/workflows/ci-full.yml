@@ -870,9 +870,46 @@ jobs:
     # the file; carrying no job-level `if:` makes all of these unrepresentable to
     # skip. The one condition is the fleet's fork guard: a fork's pull request
     # never reaches our runners.
+    #
+    # THE BYTE-IDENTITY HALF IS A ROW PER LANGUAGE. Run 42556155793 (runner
+    # vision-6) killed this job at 121s, exit 137, "per-commit jobs finish in
+    # 2m". The tree half was 5s (generated-tree-negative-controls) plus 18s
+    # (test/generated-tree/verify). `make tables-block-zero-cost` then spent
+    # 13s generating C++, 8s generating C# and 42s generating C into the
+    # symbol-grep stamps, 18s on the block-less `go build -overlay`, and was
+    # killed 8s into a second C++ pass: the byte comparison had not started.
+    # Those stamps are the same macros the comparison runs again. Each
+    # language is now its own row (tables-block-zero-cost-cpp, -cs, and the
+    # two C rows below), grepping and comparing a fresh arm, with units that
+    # do not share an --out directory running in parallel inside the row.
+    # The tree check stays the `tree` row. Nothing moved to certify.yml.
+    # `make tables-block-zero-cost` still runs all three languages, for
+    # `make test` and ci-fast.yml's block-gate.
+    #
+    # C WAS STILL OVER. Run 42571846331, job generated (zero-cost-c), 153s
+    # from start to complete, 140s of log, the make step 148s. Both arms ran
+    # the whole language one after the other. block, blockhome, messages and
+    # examples are now the heavy row (tables-block-zero-cost-c-heavy) and
+    # the other units are tables-block-zero-cost-c-rest. Each row runs its
+    # two arms together.
+    name: generated (${{ matrix.row }})
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: tree
+            target: generated-tree
+          - row: zero-cost-cpp
+            target: tables-block-zero-cost-cpp
+          - row: zero-cost-cs
+            target: tables-block-zero-cost-cs
+          - row: zero-cost-c-heavy
+            target: tables-block-zero-cost-c-heavy
+          - row: zero-cost-c-rest
+            target: tables-block-zero-cost-c-rest
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -885,17 +922,20 @@ jobs:
           cache: false
 
       - name: the gate's own negative control
+        if: matrix.row == 'tree'
         run: make generated-tree-negative-controls
 
       - name: the committed generated/ tree is what this compiler emits, from an empty directory
+        if: matrix.row == 'tree'
         run: |
           test/generated-tree/verify || {
             echo "::error::the committed generated/ tree is not what the compiler at this sha emits. The lists above name every file: regenerate with 'make test' (or ./bin/schema generate --lang <lang> --out generated/<dir> <corpus>) and commit them, 'git rm' the ones it no longer emits, or name tracked build wiring in test/generated-tree/not-emitted."
             exit 1
           }
 
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make tables-block-zero-cost
+      - name: block zero-cost byte-identity (${{ matrix.row }})
+        if: matrix.row != 'tree'
+        run: make ${{ matrix.target }}
 
   # THE PINS ARE CURRENT (issue #461). The job above asks this question of
   # generated/ and asks it of nothing under testdata/, so a pin regenerated
@@ -937,6 +977,20 @@ jobs:
   # paragraph above still names the real remedy: that closing `go test ./...`
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
+  # SHARDED BY PIN FAMILY FOR THE 2-MINUTE FLEET RULE. On main, the single
+  # `pins` job was killed at the 120s per-commit fleet cap (133s wall: 24s on
+  # `make dist-lua` plus Luau/Goose/Lobster installs, then 85s capped / 302s
+  # uncapped nightly in `make -j conformance-pin update-goldens`, exit 137).
+  # Those four language-toolchain installs and `update-goldens`'s closing
+  # `go test ./...` existed only for that duplicate `go test ./...`, which
+  # `go-test` already runs across its matrix rows. The pin writers themselves
+  # now fan out across five parallel rows (`pins-source`, `pins-wire-packet`,
+  # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
+  # generating and compiling only the units its writer touches in parallel and
+  # diffing `testdata/` against HEAD in ~10-25s wall. Nothing is dropped from
+  # per-commit; `make conformance-pin update-goldens` remains the local
+  # single-command entry point, and `nightly-conformance.yml` also runs the
+  # full C++ reference corpus check nightly.
   pins:
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
@@ -946,33 +1000,42 @@ jobs:
     # skipped before it can reach the fleet runners.
     #
     # THE FLEET'S RUNNERS (standing rule, 2026-10-21: every CI job on fleet
-    # runners, never GitHub-hosted). On a hosted two-core runner the re-pin
-    # reached the 15-minute timeout; the timeout is not raised to fit that
-    # runner. The setup steps below run only on a hosted fallback.
+    # runners, never GitHub-hosted). The setup steps below run only on a
+    # hosted fallback.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # on a hetzner runner sharing its host with a second job the re-pin
-    # runs 12-15 minutes, so the bound is 25
-    timeout-minutes: 25
+    name: pins (${{ matrix.row }})
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - row: source
+            target: pins-source
+          - row: wire-packet
+            target: pins-wire-packet
+          - row: wire-tables
+            target: pins-wire-tables
+          - row: wire-tables-forms
+            target: pins-wire-tables-forms
+          - row: conformance
+            target: pins-conformance
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
+      - name: Check out the C++ serialize runtime (pinned release)
+        if: matrix.row != 'source'
         run: |
           set -euo pipefail
           cd ..
           # A self-hosted runner's workspace PARENT persists between runs: the
-          # previous run's clones are removed and re-cloned at the pinned tag
+          # previous run's clone is removed and re-cloned at the pinned tag
           # every time, never reused (as go-test does).
-          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs
+          rm -rf serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
-          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
 
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -998,39 +1061,13 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      # update-goldens ends in `go test ./...`, which runs the Lua packages
-      # under the pinned interpreter (make/lua.mk's dist-lua)
-      - name: install the Lua pin
-        run: make dist-lua
-
-      # THE LUAU PIN: update-goldens runs the Luau type-wire golden tests, which
-      # run generated Luau under the pinned interpreter and fail, never skip,
-      # without it (internal/codegen/luau/luaurun; make/luau.mk dist-luau).
-      - name: install the Luau pin
-        run: make dist-luau
-
-      # update-goldens ends in `go test ./...`, which runs the Goose packages
-      # under the pinned compiler (make/goose.mk's dist-goose)
-      - name: install the Goose pin
-        run: make dist-goose
-      # and the Lobster packages under the pinned compiler (make/lobster.mk's
-      # dist-lobster).
-      - name: install the Lobster pin
-        run: |
-          set -euo pipefail
-          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          fi
-          make dist-lobster
-
-      - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+      - name: rewrite pin family (${{ matrix.row }}) under testdata/ from the reference
+        run: make -j"$(nproc)" "${{ matrix.target }}"
 
       - name: the pins are current
         run: |
           git diff --exit-code -- testdata/ || {
-            echo "::error::a pin under testdata/ is stale: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
+            echo "::error::a pin under testdata/ is stale in row ${{ matrix.row }}: the current compiler and the C++ reference write different bytes. Run 'make conformance-pin update-goldens' and commit what changes."
             exit 1
           }
           untracked=$(git status --porcelain testdata/)
