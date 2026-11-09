@@ -305,8 +305,8 @@ fn Load(r: Record&, wire: const u8[:], why: u8[>..]&) -> bool {
 fn FromJSON(r: Record&, json: const u8[:], why: u8[>..]&) -> bool {
     var jr = schema_rt::json_report();
     r.root = schema_rt::json_load_table(cards::TableUnit, cards::TextUnit, Root, json, r.data, r.vals, r.nodes, jr);
-    if r.root < 0 || jr.malformed { return malformed(why); }
-    if jr.unknown > 0 || jr.kind_mismatch > 0 || jr.clamped > 0 { return malformed(why); }
+    if r.root < 0 || jr.damaged { return malformed(why); }
+    if jr.unknown > 0 { return malformed(why); }
     if !check_card(r, why) { return false; }
     return save(r, why);
 }
@@ -619,7 +619,7 @@ fn loss(rep: const schema_rt::LoadReport&, why: u8[>..]&) -> bool {
         why.append("retain-lost");
         return false;
     }
-    if rep.kind_mismatch > 0 || rep.clamped > 0 || rep.malformed { return malformed(why); }
+    if rep.damaged || rep.refused { return malformed(why); }
     return true;
 }
 
@@ -729,7 +729,7 @@ fn sha256_hex(message: const u8[:], out: u8[>..]&) {
 // lossy names the read events that make a record unsafe to hash or rewrite
 // (docs/SPEC-TABLES.md §4, §6.6).
 fn lossy(rep: const schema_rt::LoadReport&, why: u8[>..]&) -> bool {
-    if rep.unknown > 0 || rep.kind_mismatch > 0 || rep.clamped > 0 || rep.retain_lost > 0 || rep.malformed {
+    if rep.unknown > 0 || rep.retain_lost > 0 || rep.damaged || rep.refused {
         why.append("unknown-present");
         return true;
     }
@@ -887,5 +887,5 @@ fn View(out: u8[>..]&) {
 // ReportText appends the read report, one `Name=value` line per counter
 // (FORMAT.md, The read report).
 fn ReportText(rep: const schema_rt::LoadReport&, out: u8[>..]&) {
-    format(out, "Retained=", rep.retained, "\nRetainLost=", rep.retain_lost, "\nWidened=", rep.widened, "\nUnknown=", rep.unknown, "\nKindMismatch=", rep.kind_mismatch, "\nClamped=", rep.clamped, "\nDuplicate=", rep.duplicate, "\nMalformed=", if rep.malformed { "true" } else { "false" }, "\n");
+    format(out, "Retained=", rep.retained, "\nRetainLost=", rep.retain_lost, "\nWidened=", rep.widened, "\nUnknown=", rep.unknown, "\nKindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n");
 }

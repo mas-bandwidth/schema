@@ -41,16 +41,17 @@ import (
 const VariableTableModule = "Table"
 
 // generateVariableForm emits <ns>.Table: the id-table wire's load and save for
-// every table the unit's closure holds, driven by the descriptors below and
-// the shared engine in variableRuntimeSource. Nil when that closure holds no
-// table. A fixed-only unit still emits it (docs/SPEC-TABLES.md §2.3, §3): the
-// conformance wire is form byte 1, and an optional and a by-value nest are one
-// framing, so tblp1 and tblp3 answer that byte instead of writing <case>.absent.
+// every variable root, driven by the descriptors below and the shared engine
+// in variableRuntimeSource. Nil when that closure holds no table. A fixed-only
+// unit still emits it, so a nested body and a variable root that holds a fixed
+// table stay on this codec. A declared fixed root does not: withFixedClassWire
+// puts form 3 ahead of these clauses (docs/SPEC-TABLES.md §3, §3.4), one record
+// or a refusal.
 func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	// The descriptors cover the WHOLE table closure (docs/SPEC-TABLES.md §3.1):
-	// a variable root reaches a fixed table by value and by pointer, and a
-	// fixed-only unit's own form-1 body is the same codec. Optional absence is
-	// the absence of the field, not a kind (§2.3), so ?T and T share it.
+	// a variable root reaches a fixed table by value and by pointer, and that
+	// body is this codec. A declared fixed root's own file is form 3. Optional
+	// absence is the absence of the field, not a kind (§2.3), so ?T and T share it.
 	closure := ir.TableClosure(u)
 	names := make([]string, 0, len(closure))
 	for name := range closure {
@@ -68,11 +69,12 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.%s do\n", ns, VariableTableModule)
 	b.WriteString("  @moduledoc \"\"\"\n")
-	b.WriteString("  The VARIABLE FORM's wire (docs/SPEC-TABLES.md §3), form byte 1: the\n")
-	b.WriteString("  id-table file a table round-trips byte for byte as the Go, C, C++ and C#\n")
-	b.WriteString("  backends do. `save/2` writes one value; `load/2` reads one strictly and\n")
-	b.WriteString("  reports the unknown and widened events (§4). Identity is the\n")
-	b.WriteString("  name hash and `was` (§5).\n")
+	b.WriteString("  The VARIABLE FORM's wire (docs/SPEC-TABLES.md §3), form byte 1, for a\n")
+	b.WriteString("  variable root: the id-table file it round-trips as the Go, C, C++ and C#\n")
+	b.WriteString("  backends do. A declared fixed root's save and load are form 3, one\n")
+	b.WriteString("  record or a refusal, and sit ahead of this codec. `load/2` reads one\n")
+	b.WriteString("  value strictly and reports unknown and widened events (§4). Identity\n")
+	b.WriteString("  is the name hash and `was` (§5).\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
 	fmt.Fprintf(&b, "  @node_id 0x%016X\n", ir.TableNodeWireId)
@@ -208,6 +210,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	retainAttrs, retain := restrictRetainRoots(u, names, retain)
 	b.WriteString(retainAttrs)
 	attrs, runtime, cook := restrictFormRuntime(u, names, runtime, cook)
+	runtime = withFixedClassWire(u, ns, runtime)
 	b.WriteString(attrs)
 	b.WriteString(runtime)
 	// the formatter keeps a blank line between the runtime's last `end` and

@@ -56,7 +56,7 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 	if err := messageRoot(m, insts[0].Def); err != nil {
 		return nil, err
 	}
-	vocabulary := ir.TableVocabulary(m.Unit)
+	vocabulary := MessageVocabulary(m.Unit)
 	slots := make(map[string]uint64, len(vocabulary))
 	for i, e := range vocabulary {
 		slots[e.Key()] = uint64(i + 1)
