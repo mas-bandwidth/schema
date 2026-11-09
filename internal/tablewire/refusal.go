@@ -86,8 +86,10 @@ func refuseReport(report *tabletext.Report, err error) {
 // where the refusal names a field or a framing fault, and the reason name
 // alone where it names nothing more.
 func reportReason(err error) string {
-	switch err.(type) {
-	case *Refusal, *NonFiniteRefusal, *tabletext.MissingRequired:
+	var refusal *Refusal
+	var nonFinite *NonFiniteRefusal
+	var missing *tabletext.MissingRequired
+	if errors.As(err, &refusal) || errors.As(err, &nonFinite) || errors.As(err, &missing) {
 		return err.Error()
 	}
 	if reason := RefusalReason(err); reason != "" {

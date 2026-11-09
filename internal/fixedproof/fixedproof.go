@@ -1624,9 +1624,10 @@ func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
 			if !ok {
 				continue
 			}
-			if k == "file" {
+			switch k {
+			case "file":
 				file = v
-			} else if k == "records" {
+			case "records":
 				n, _ = strconv.Atoi(v)
 			}
 		}

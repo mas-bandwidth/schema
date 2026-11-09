@@ -90,8 +90,11 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 			return fmt.Errorf("%s: source JSON refuses: %+v", inst.Name, report)
 		}
 		canonical, err := model.Write(value)
-		if err != nil || !bytes.Equal(oneText(canonical), oneText(text)) {
-			return fmt.Errorf("%s: source JSON is not complete canonical text: %v", inst.Name, err)
+		if err != nil {
+			return fmt.Errorf("%s: source JSON is not complete canonical text: %w", inst.Name, err)
+		}
+		if !bytes.Equal(oneText(canonical), oneText(text)) {
+			return fmt.Errorf("%s: source JSON is not complete canonical text", inst.Name)
 		}
 		wire, err := tablewire.Encode(model, value)
 		if err != nil {
@@ -102,12 +105,18 @@ func migrateFixed(m *Manifest, manifest, jsonDir string) error {
 		}
 		back := model.New(root)
 		ok, err := tablewire.Decode(model, back, wire, &report)
-		if err != nil || !ok || report.Refused {
-			return fmt.Errorf("%s: new wire refuses: %v", inst.Name, err)
+		if err != nil {
+			return fmt.Errorf("%s: new wire refuses: %w", inst.Name, err)
+		}
+		if !ok || report.Refused {
+			return fmt.Errorf("%s: new wire refuses", inst.Name)
 		}
 		textBack, err := model.Write(back)
-		if err != nil || !bytes.Equal(oneText(textBack), oneText(text)) {
-			return fmt.Errorf("%s: new wire changed a value: %v", inst.Name, err)
+		if err != nil {
+			return fmt.Errorf("%s: new wire changed a value: %w", inst.Name, err)
+		}
+		if !bytes.Equal(oneText(textBack), oneText(text)) {
+			return fmt.Errorf("%s: new wire changed a value", inst.Name)
 		}
 		out := filepath.Join(filepath.Dir(jsonDir), "wire", inst.Name+".bin")
 		if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
