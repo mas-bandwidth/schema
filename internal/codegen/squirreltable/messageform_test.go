@@ -451,9 +451,9 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		}
 		inputs["wide_string_ann"] = announcementWithChangedEntry(units["backenddemo"], sku, peerSKU)
 		inputs["wide_string_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(len(ir.TableVocabulary(units["backenddemo"]))), uint64(skuSlot), strings.Repeat("x", 33), 40)
-		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==1 && rr.oor==1 && !rr.bodyDamaged) print("wide_string_clamp:ok\n"); else print("wide_string_clamp:fail:"+n+":"+rr.oor+":"+rr.bodyDamaged+"\n"); }
+		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==-1 && rr.refused && rr.reason=="length_over_bound" && !rr.bodyDamaged && out[0].Sku=="") print("wide_string_refused:ok\n"); else print("wide_string_refused:fail:"+n+":"+rr.reason+":"+rr.bodyDamaged+"\n"); }
 `)
-		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && rr.mismatch==0 && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.mismatch+\":\"+rr.bodyDamaged+\"\\n\"); } }\n")
+		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && !rr.refused && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.reason+\":\"+rr.bodyDamaged+\"\\n\"); } }\n")
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["backend_ann"],ar); local storage=[T.Envelope(),T.Envelope(),T.Envelope()]; local rr={}; local n=T.EnvelopeLoadMessages(storage,v,I["damaged"],rr); if(n==0 && rr.bodyDamaged && storage[0].Payload.Type==0 && storage[1].Payload.Type==0) { print("damage:ok\n"); } else { print("damage:bad:"+n+"\n"); } }
 `)
 	}
@@ -532,8 +532,8 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 	if !strings.Contains(out, "changed_shape:ok") {
 		t.Errorf("known field was not decoded by its changed peer shape: %s", out)
 	}
-	if !strings.Contains(out, "wide_string_clamp:ok") {
-		t.Errorf("widened string bound was not clamped and reported: %s", out)
+	if !strings.Contains(out, "wide_string_refused:ok") {
+		t.Errorf("a string past the reader's bound did not refuse the batch length_over_bound: %s", out)
 	}
 	if !strings.Contains(out, "reserved_node:ok") {
 		t.Errorf("reserved node ID was accepted as a body field: %s", out)
@@ -671,7 +671,7 @@ func TestSquirrelMessageWidensAndSignExtends(t *testing.T) {
 	ann := announcementWithEntries(u, changed)
 	refBits := ir.TableMessageRefBits(len(entries))
 	batch := messageBatchScalar(refBits, smallSlot, 0xfe, 8)
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].SmallA==-2&&rr.widened==1&&rr.mismatch==0&&!rr.bodyDamaged)print("widen:ok\n");else print("widen:fail:"+n+":"+out[0].SmallA+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].SmallA==-2&&rr.widened==1&&!rr.refused)print("widen:ok\n");else print("widen:fail:"+n+":"+out[0].SmallA+":"+rr.widened+":"+rr.reason+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen:ok") {
@@ -724,7 +724,7 @@ func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
 			if tc.field == "u64_low" {
 				field = "U64Low"
 			}
-			script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("u64range:announce_fail\n");return;}local out=[T.RangedUnsigned()];local rr={};local n=T.RangedUnsignedLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].%s==1&&rr.oor==0&&!rr.bodyDamaged)print("u64range:ok\n");else print("u64range:fail:"+n+":"+out[0].%s+":"+rr.oor+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u), field, field)
+			script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("u64range:announce_fail\n");return;}local out=[T.RangedUnsigned()];local rr={};local n=T.RangedUnsignedLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].%s==1&&!rr.refused)print("u64range:ok\n");else print("u64range:fail:"+n+":"+out[0].%s+":"+rr.reason+"\n");`, squirreltable.ModuleName(u), field, field)
 			writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 			out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 			if !strings.Contains(out, "u64range:ok") {
@@ -798,7 +798,7 @@ func TestSquirrelMessageWidenFloat32ToFloat64(t *testing.T) {
 	peer := ir.TableVocabularyEntry{Id: target.Id, Kind: ir.TableKindF32, Shape: ir.TableMessageShape{Packing: ir.TableMessageRaw}}
 	ann := announcementWithChangedEntry(u, target, peer)
 	batch := messageBatchScalar(ir.TableMessageRefBits(len(entries)), slot, 0x3fa00000, 32)
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-float:announce_fail\n");return;}local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Precision==1.25&&rr.widened==1&&rr.mismatch==0&&!rr.bodyDamaged)print("widen-float:ok\n");else print("widen-float:fail:"+n+":"+out[0].Precision+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-float:announce_fail\n");return;}local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Precision==1.25&&rr.widened==1&&!rr.refused)print("widen-float:ok\n");else print("widen-float:fail:"+n+":"+out[0].Precision+":"+rr.widened+":"+rr.reason+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen-float:ok") {
@@ -834,7 +834,7 @@ func TestSquirrelMessageWidenArrayElements(t *testing.T) {
 	}
 	ann := announcementWithEntries(u, changed)
 	batch := messageBatchArrayElements(ir.TableMessageRefBits(len(entries)), slot, []uint64{5, 7})
-	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-array:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Few.len()==2&&out[0].Few[0]==5&&out[0].Few[1]==7&&rr.widened==2&&rr.mismatch==0&&!rr.bodyDamaged)print("widen-array:ok\n");else print("widen-array:fail:"+n+":"+out[0].Few.len()+":"+rr.widened+":"+rr.mismatch+":"+rr.bodyDamaged+"\n");`, squirreltable.ModuleName(u))
+	script := fmt.Sprintf(`local I=dofile("inputs.nut",true);local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,I.peerann,ar)){print("widen-array:announce_fail\n");return;}local out=[T.Bases()];local rr={};local n=T.BasesLoadMessages(out,v,I.batch,rr);if(n==1&&out[0].Few.len()==2&&out[0].Few[0]==5&&out[0].Few[1]==7&&rr.widened==1&&!rr.refused)print("widen-array:ok\n");else print("widen-array:fail:"+n+":"+out[0].Few.len()+":"+rr.widened+":"+rr.reason+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
 	out := string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"peerann": ann, "batch": batch}))
 	if !strings.Contains(out, "widen-array:ok") {
