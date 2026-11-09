@@ -768,7 +768,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Array == ir.ArrayFixed:
 		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound)
+		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound, "TableFixedRefusal.CountOverBound")
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity copies the whole
 		// array into the image; this loop is the pass both paths share.
@@ -776,19 +776,19 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	case f.Type.Kind == ir.TString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TBytes:
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	case f.Type.Kind == ir.TWString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
@@ -798,25 +798,23 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 }
 
 // emitDecodeCount is §3.4's `count` op, inline: a count or a length is read out
-// of the image and CLAMPED to THIS reader's own bound, counting one `oor`
-// if it fired.
+// of the image and refused by name when it lies past THIS reader's own bound.
 //
 // THE COMPILED PLAN'S OWN count op has already done this — OP_COUNT and
-// OP_TEXT clamp on the way into the image — so on that path this is a
+// OP_TEXT refuse on the way into the image — so on that path this is a
 // no-op and no counter moves twice. It is here for the IDENTITY path, which
 // is ONE OP_COPY of the whole body: a record under this build's own hash
 // still arrives from a writer this reader cannot vouch for, and a count or a
 // length it carries is a number the consumer would otherwise index the
 // reader's own storage by. The bound is the reader's, never the record's.
-// This is the twin of javatable/fixedform.go's emitScatterCount and of
-// rusttable/fixedform.go's emitFixedScatterCount.
-func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
-	// THE COUNT OR LENGTH WAS ALREADY HELD BY THE CHECK LOOP (§5.3 step 11):
-	// a value past the bound refused count_over_bound / length_over_bound before
-	// a destination byte was written, so here it is read and landed as-is,
-	// never clamped.
+// It is also the only guard for a count or length inside a union arm, which
+// has no check loop of its own. This is the twin of javatable/fixedform.go's
+// emitScatterCount and of rusttable/fixedform.go's emitFixedScatterCount.
+func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64, refusal string) {
 	g.pf("%s{\n", ind)
-	g.pf("%s  %s = view.getInt32(%s, true);\n", ind, dst, at)
+	g.pf("%s  let n = view.getInt32(%s, true);\n", ind, at)
+	g.pf("%s  if (n < 0 || n > %d) { report.refused = %s; return; }\n", ind, bound, refusal)
+	g.pf("%s  %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
 }
 
