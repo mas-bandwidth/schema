@@ -108,7 +108,14 @@ func TestRegionClosureElixir(t *testing.T) {
 				t.Fatalf("%s cooked region=%d want=%d", row.Name, len(cooked)-64, row.Region)
 			}
 		}
-		fmt.Fprintf(&goProbe, "{b,_:=hex.DecodeString(%q); got:=%sLoadMeasure(b); if got!=%d {t.Errorf(%q,got)}}\n", row.Wire, row.Root, row.Region, row.Name+" Go region=%d")
+		measure := row.Region
+		switch row.Name {
+		case "map_truncated_entry", "keyed_unknown_key", "keyed_truncated_entry", "union_unknown_arm", "union_truncated_arm":
+			// The strict Go measure refuses these whole; the Elixir
+			// extent measure still answers the framed region.
+			measure = -1
+		}
+		fmt.Fprintf(&goProbe, "{b,_:=hex.DecodeString(%q); got:=%sLoadMeasure(b); if got!=%d {t.Errorf(%q,got)}}\n", row.Wire, row.Root, measure, row.Name+" Go region=%d")
 		fmt.Fprintf(&native, "{%q,%q,%q,%d},\n", row.Name, row.Root, row.Wire, row.Region)
 	}
 	native.WriteString(`] do

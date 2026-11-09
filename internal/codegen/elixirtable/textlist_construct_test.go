@@ -37,7 +37,7 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 `)
 	for _, row := range []struct{ root, input string }{
 		{"Lists", `{}`},
@@ -70,12 +70,12 @@ zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retain
 		fmt.Fprintf(&p, `name=%q
 want=Base.decode16!(%q,case: :lower)
 {:ok,v,r}=T.from_json(name,%q)
-P.ok(r.kind_mismatch==0 and r.clamped==0 and true,"text list JSON report "<>name)
+P.ok(r.reason=="" and true,"text list JSON report "<>name)
 {:ok,text}=T.to_json(name,v)
 P.ok(text==%q,"text list canonical "<>name<>" "<>text)
 {:ok,^want}=T.save(name,v)
 {:ok,back,r}=T.load(name,want)
-P.ok(r.kind_mismatch==0 and r.clamped==0 and true,"text list wire report")
+P.ok(r.reason=="" and true,"text list wire report")
 {:ok,^want}=T.save(name,back)
 {:ok,rv,rr,ret}=T.load_retain(name,want,store,zero)
 {:ok,^want,_,_}=T.save_retain(name,rv,ret,rr)
@@ -107,7 +107,7 @@ IO.puts("TEXT_LIST_OK")
 }
 
 func TestTextListClampsAndDamageElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir text-list UTF8 count clamps and malformed-data refusals")
+	slowtest.Gate(t, "Elixir text-list UTF8 count over-bound and malformed-data refusals")
 	u := unitFrom(t, elixirTextListSource)
 	wide := unitFrom(t, strings.ReplaceAll(strings.ReplaceAll(elixirTextListSource, "string(5)", "string(16)"), "[..3]", "[..8]"))
 	m := tabletext.NewModel(wide)
@@ -128,24 +128,20 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
-# the text counts every element past [..N] (§16.2), two in each of a and b,
-# where the wire counts each list's count clamp once (§2.13)
-for {result,count}<-[{T.load("Lists",wire),6},{T.from_json("Lists",%q),8}] do
- {:ok,v,r}=result
- expected=%%{"a"=>["éé","a","z"],"b"=>[nil,"éé","abc"],"c"=>["éé","a","z"],"d"=>[nil,"éé","abc","x"]}
- actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)
- P.ok(actual==expected and r.clamped==count and true,"UTF8/count clamps "<>inspect({actual,r}))
- {:ok,_}=T.save("Lists",v)
+# Over-bound text/count input refuses the whole load under the strict
+# contract: no clamped prefix value is returned (§16.2, §2.13).
+for result<-[T.load("Lists",wire),T.from_json("Lists",%q)] do
+ P.ok(match?({:error,a,%%{reason: reason}} when a == :malformed or (is_binary(reason) and reason != ""),result),"UTF8/count over-bound refusal "<>inspect(result))
 end
 for field<-["a","b","c","d"] do
  {:error,:malformed,r}=T.from_json("Lists","{\""<>field<>"\":[\"x\\u0000y\"]}")
- P.ok(r.malformed,"JSON zero refusal")
+ P.ok(not Map.has_key?(r,:clamped) and not Map.has_key?(r,:kind_mismatch) and not Map.has_key?(r,:malformed),"JSON zero refusal")
  {:ok,wire}=T.save("Lists",%%{field=>[%%{"value"=>"xyz"}]})
  {at,3}=:binary.match(wire,"xyz")
  <<head::binary-size(^at),_old,tail::binary>>=wire
  for byte<-[0,255] do
   {:error,:malformed,r}=T.load("Lists",<<head::binary,byte,tail::binary>>)
-  P.ok(r.malformed,"wire damaged text")
+  P.ok(not Map.has_key?(r,:clamped) and not Map.has_key?(r,:kind_mismatch) and not Map.has_key?(r,:malformed),"wire damaged text")
  end
 end
 for path<-Path.wildcard("*.ex") do

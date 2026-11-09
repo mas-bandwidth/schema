@@ -12,7 +12,7 @@ import (
 )
 
 func TestTextTotalConstructElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir text-list total prefix and streaming discarded tail")
+	slowtest.Gate(t, "Elixir text-list total over-bound and discarded-tail refusals")
 	source := elixirTextListSource + `
  table Totals {
  a [..3]string(5) | total=5
@@ -42,7 +42,7 @@ end
 alias ProbeCheck,as: P
 alias Probe.Table,as: T
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for field<-["a","b","c","d"] do
  bad=%%{field=>[%%{"value"=>"abc"},%%{"value"=>"abc"}]}
  P.ok(T.save("Totals",bad)=={:error,:invalid_value},"total wire refusal "<>field)
@@ -50,20 +50,15 @@ for field<-["a","b","c","d"] do
  P.ok(T.cook_measure("Totals",bad)==-1,"total cook refusal "<>field)
 end
 wire=Base.decode16!(%q,case: :lower)
-for {result,count}<-[{T.load("Totals",wire),10},{T.from_json("Totals",%q),10}] do
- {:ok,v,r}=result
- expected=%%{"a"=>["éé","a"],"b"=>[nil,"éé"],"c"=>["éé","a"],"d"=>[nil,"éé"]}
- actual=Map.new(expected,fn {key,_}->{key,Enum.map(v[key],& &1["value"])} end)
- P.ok(actual==expected and r.clamped==count and true,"total clamp order "<>inspect({actual,r}))
- {:ok,saved}=T.save("Totals",v)
- {:ok,back,_}=T.load("Totals",saved)
- {:ok,^saved}=T.save("Totals",back)
+# Over-total input refuses the whole load under the strict contract:
+# no clamped prefix value is returned, plain or retaining.
+for result<-[T.load("Totals",wire),T.from_json("Totals",%q)] do
+ P.ok(match?({:error,a,%%{reason: reason}} when a == :malformed or (is_binary(reason) and reason != ""),result),"total over-bound refusal "<>inspect(result))
 end
-{:ok,v,r,ret}=T.load_retain("Totals",wire,store,zero)
-P.ok(r.clamped==10 and true,"total retaining clamps")
-{:ok,saved,_,_}=T.save_retain("Totals",v,ret,r)
-{:ok,plain,_}=T.load("Totals",wire)
-{:ok,^saved}=T.save("Totals",plain)
+case T.load_retain("Totals",wire,store,zero) do
+ {:error,a,r,ret} -> P.ok((a == :malformed or r.reason != "") and ret.records==[] and ret.used==0,"total retaining refusal "<>inspect({r,ret}))
+ other -> P.ok(false,"total retaining refusal "<>inspect(other))
+end
 `, hex.EncodeToString(wire), input)
 	for _, field := range []string{"a", "b", "c", "d"} {
 		v := m.New(wide.Tables["Lists"])
@@ -81,26 +76,38 @@ P.ok(r.clamped==10 and true,"total retaining clamps")
 			t.Fatal("tail marker")
 		}
 		wire[at] = 255
-		fmt.Fprintf(&p, `{:ok,v,r}=T.from_json("Totals",%q)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1,"ignored overbound tail")
+		fmt.Fprintf(&p, `case T.from_json("Totals",%q) do
+ {:error,a,r} -> P.ok(a == :malformed or r.reason != "","overbound tail refusal %s")
+ other -> P.ok(false,"overbound tail refusal %s "<>inspect(other))
+end
 wire=Base.decode16!(%q,case: :lower)
-{:ok,v,r}=T.load("Totals",wire)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored malformed discarded tail")
-{:ok,v,r,_}=T.load_retain("Totals",wire,store,zero)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"retaining ignored tail")
-`, input, field, hex.EncodeToString(wire), field, field)
-		fmt.Fprintf(&p, `{:ok,v,r}=T.from_json("Totals",%q)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored JSON NUL tail")
-`, strings.Replace(input, "toolong", `\u0000`, 1), field)
+case T.load("Totals",wire) do
+ {:error,a,r} -> P.ok(a == :malformed or r.reason != "","malformed discarded tail refusal %s")
+ other -> P.ok(false,"malformed discarded tail refusal %s "<>inspect(other))
+end
+case T.load_retain("Totals",wire,store,zero) do
+ {:error,a,r,ret} -> P.ok((a == :malformed or r.reason != "") and ret.records==[] and ret.used==0,"retaining tail refusal %s")
+ other -> P.ok(false,"retaining tail refusal %s "<>inspect(other))
+end
+`, input, field, field, hex.EncodeToString(wire), field, field, field, field)
+		fmt.Fprintf(&p, `case T.from_json("Totals",%q) do
+ {:error,a,r} -> P.ok(a == :malformed or r.reason != "","JSON NUL tail refusal %s")
+ other -> P.ok(false,"JSON NUL tail refusal %s "<>inspect(other))
+end
+`, strings.Replace(input, "toolong", `\u0000`, 1), field, field)
 		if field == "b" || field == "d" {
 			wire[at] = 't'
 			wire[at+len("toolong")] = 255
 			fmt.Fprintf(&p, `wire=Base.decode16!(%q,case: :lower)
-{:ok,v,r}=T.load("Totals",wire)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"ignored damaged optional body")
-{:ok,v,r,_}=T.load_retain("Totals",wire,store,zero)
-P.ok(Enum.map(v[%q],& &1["value"])==["abcde"] and r.clamped==1 and true,"retaining ignored damaged optional body")
-`, hex.EncodeToString(wire), field, field)
+case T.load("Totals",wire) do
+ {:error,a,r} -> P.ok(a == :malformed or r.reason != "","damaged optional body refusal %s")
+ other -> P.ok(false,"damaged optional body refusal %s "<>inspect(other))
+end
+case T.load_retain("Totals",wire,store,zero) do
+ {:error,a,r,ret} -> P.ok((a == :malformed or r.reason != "") and ret.records==[] and ret.used==0,"retaining damaged optional body refusal %s")
+ other -> P.ok(false,"retaining damaged optional body refusal %s "<>inspect(other))
+end
+`, hex.EncodeToString(wire), field, field, field, field)
 		}
 	}
 	p.WriteString("IO.puts(\"TEXT_TOTAL_OK\")\n")

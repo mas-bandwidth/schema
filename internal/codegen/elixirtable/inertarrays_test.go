@@ -1,7 +1,6 @@
 package elixirtable
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -47,32 +46,32 @@ check=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failure
 			wire = append(wire, 0)
 			wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(f.name))
 			wire = binary.LittleEndian.AppendUint64(wire, 1)
-			wantMismatch := 0
-			if len(body) == 2 {
-				wantMismatch = 1
-			}
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if e != nil || !ok || report.Refused {
+			if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 				t.Fatalf("%s/%x oracle: %v %v %+v", f.name, body, ok, e, report)
 			}
-			text, e := m.Write(v)
+			text, e := m.Write(m.New(u.Tables["Root"]))
 			if e != nil {
 				t.Fatal(e)
 			}
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  report=elem(result,2)
- check.(elem(result,0)==:ok and true and report.kind_mismatch==%d,%q<>inspect(result))
- if elem(result,0)==:ok do
-  {:ok,text}=T.to_json("Root",elem(result,1))
-  check.(text==%q,"inert values "<>text)
+ if %t do
+  check.(elem(result,0)==:error and report.reason != "",%q<>inspect(result))
+ else
+  check.(elem(result,0)==:ok and report.reason == "",%q<>inspect(result))
+  if elem(result,0)==:ok do
+   {:ok,text}=T.to_json("Root",elem(result,1))
+   check.(text==%q,"inert values "<>text)
+  end
  end
 end
-`, hex.EncodeToString(wire), wantMismatch, fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
+`, hex.EncodeToString(wire), len(body) == 2, fmt.Sprintf("%s/%x ", f.name, body), fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
 		}
 	}
 	probe.WriteString(`case Process.get(:failures) do
@@ -103,7 +102,7 @@ func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("future"))
 		return binary.LittleEndian.AppendUint64(wire, 2)
 	}
-	want := finish(field)
+	_ = finish(field)
 	var probe strings.Builder
 	probe.WriteString("alias Inertretain.Table,as: T\n")
 	for _, tail := range [][]byte{{0}, {1, 13}, {1, 255}} {
@@ -112,23 +111,19 @@ func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
 		wire := finish(fields)
 		v := m.New(u.Tables["Root"])
 		store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
-		var load, save tabletext.Report
+		var load tabletext.Report
 		ok, e := tablewire.DecodeRetain(m, v, wire, &store, &load)
-		if e != nil || !ok || load.Unknown != 1 || load.Retained != 1 || load.Refused {
+		if ok || !tablewire.ReadRefusal(e) || !load.Refused || load.Reason == "" {
 			t.Fatalf("inert occurrence oracle: %v %v %+v", ok, e, load)
-		}
-		encoded, e := tablewire.EncodeRetain(m, v, &store, &save)
-		if e != nil || !bytes.Equal(encoded, want) || save.RetainLost != 0 {
-			t.Fatalf("literal retained occurrence changed: %x want %x %v %+v", encoded, want, e, save)
 		}
 		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:ok,value,report,store}=T.load_retain("Root",wire,store,zero)
-unless report.unknown==1 and report.retained==1 and report.kind_mismatch==0 and true,do: raise("inert occurrence load "<>inspect(report))
-{:ok,bytes,report,_}=T.save_retain("Root",value,store,zero)
-unless Base.encode16(bytes,case: :lower)==%q and report.retain_lost==0,do: raise("inert occurrence save "<>inspect({bytes,report}))
-`, hex.EncodeToString(wire), hex.EncodeToString(want))
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+case T.load_retain("Root",wire,store,zero) do
+ {:error,_reason,report,_store}->unless report.reason != "",do: raise("inert occurrence load "<>inspect(report))
+ other->raise("inert occurrence load "<>inspect(other))
+end
+`, hex.EncodeToString(wire))
 	}
 	probe.WriteString("IO.puts(\"INERT_RETAINED_OCCURRENCE_OK\")\n")
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe.String())
@@ -148,24 +143,18 @@ func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
 	v := m.New(u.Tables["Feed"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
-	if e != nil || !ok || report.Refused {
+	if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 		t.Fatalf("stream inert oracle: %v %v %+v", ok, e, report)
-	}
-	want, e := tablewire.Encode(m, v)
-	if e != nil {
-		t.Fatal(e)
 	}
 	probe := fmt.Sprintf(`alias Streamdemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Feed",wire),T.load_retain("Feed",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).kind_mismatch==1,do: raise("stream inert report "<>inspect(result))
- {:ok,bytes}=T.save("Feed",elem(result,1))
- unless Base.encode16(bytes,case: :lower)==%q,do: raise("stream inert values "<>inspect(bytes))
+ unless elem(result,0)==:error and elem(result,2).reason != "",do: raise("stream inert report "<>inspect(result))
 end
 IO.puts("PINNED_INERT_BYTES_OK")
-`, hex.EncodeToString(wire), hex.EncodeToString(want))
+`, hex.EncodeToString(wire))
 	out := runCompleteUnitProbe(t, u, probe)
 	if !strings.Contains(out, "PINNED_INERT_BYTES_OK") {
 		t.Fatalf("native inert bytes pin: %s", out)

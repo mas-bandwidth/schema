@@ -384,7 +384,7 @@ var messageTextSabotages = map[string][]edit{
 	// reads with. The content rule first: the emitted reader stops calling
 	// TableUtf8Valid and stores whatever arrived.
 	"message-emitter-text-accepts-ill-formed": {{
-		old: "\t\tg.pf(\"%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->malformed = true; return false; }\\n\", ind, sfx, sfx)\n",
+		old: "\t\tg.pf(\"%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->damaged = true; return false; }\\n\", ind, sfx, sfx)\n",
 		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
 	}},
 
