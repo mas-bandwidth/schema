@@ -556,10 +556,7 @@ func fixedCopySegments(e ir.TableFixedLeaf, intervals []fixedSrcInterval) ([]ir.
 		if match == nil || match.elem <= 0 {
 			return nil, nil, false
 		}
-		end := match.hi
-		if end > e.Src+e.Size {
-			end = e.Src + e.Size
-		}
+		end := min(match.hi, e.Src+e.Size)
 		sub := e
 		sub.Src = pos
 		sub.Dst = e.Dst + (pos - e.Src)
