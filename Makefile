@@ -5277,6 +5277,19 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
+#
+# THE BUILD IS PARALLEL, AND IT HAS TO BE. A conformance leg's generation is
+# one `bin/schema generate` per unit and its C/C++ driver is one translation
+# unit per table; both were serial inside a single recipe, so `make -j` could
+# not shorten either. The Go emitter costs ~2 s on a unit of any size, which
+# made the Go table tree alone ~79 s, and the C++ driver is ~56 translation
+# units at ~1.5 s each, ~80 s: either one, plus the rest of a leg, is a
+# per-commit job past the 110 s wall on a loaded fleet runner (the family was
+# killed at 129-150 s). The units write disjoint directories, so both run
+# under xargs -P below. The default is the host's core count; a caller may
+# lower it to share a busy host.
+CONFORMANCE_GENERATE_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
+CONFORMANCE_BUILD_JOBS ?= $(CONFORMANCE_GENERATE_JOBS)
 CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/widelist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
@@ -5309,10 +5322,16 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 	@mkdir -p build
 	go build -o $@ ./test/conformance/harness
 
+# Each source compiles to its own object in parallel, then one link. The
+# include paths and flags are the single-invocation recipe's, so what is
+# compiled is the same program it was; only its wall changed (about 80 s to
+# about 15 s on a 16-core host). The object directory is rebuilt each time
+# because the recipe, not make's file graph, owns these objects.
 build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_SOURCES) -o $@
+	@rm -rf build/conformance-cpp-obj && mkdir -p build/conformance-cpp-obj
+	@printf '%s\n' $(CONFORMANCE_SOURCES) test/conformance/cpp/main.cpp | \
+		xargs -P $(CONFORMANCE_BUILD_JOBS) -L 1 sh -c 'set -e; obj=build/conformance-cpp-obj/$$(printf "%s" "$$1" | tr / _).o; $(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c "$$1" -o "$$obj"' _
+	@$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-obj/*.o -o $@
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
@@ -6540,12 +6559,17 @@ conformance-bom-entry: $(CONFORMANCE_BOM_HARNESS)
 	sh test/conformance/bom-entry "$(CONFORMANCE_BOM_LANG)" "$(CONFORMANCE_BOM_HARNESS)" "$(CONFORMANCE_BOM_OUT)"
 
 # THE SHARED CONFORMANCE INPUTS (ci-full.yml's conformance legs): the
-# compiler, the harness and the generated tables tree every leg builds
-# from. Built once by the conformance-matrix job and handed to the legs
-# as an artifact, so a leg builds only its own driver; `make
-# conformance-shared` locally is the same tree. The legs touch
-# bin/schema, then the harness, then the stamp after downloading, so
-# make sees the shared tree as newer than a fresh checkout.
+# compiler and the harness every leg builds from, plus the C/C++ generated
+# tables tree (`build/tables-generated`, which the c and cpp legs share).
+# Built once by the conformance-matrix job and handed to the legs as an
+# artifact, so a leg does not rebuild the compiler, the harness, or the
+# C/C++ units; `make conformance-shared` locally is the same tree. Each
+# port still generates its own language's units, but those recipes run the
+# per-unit invocations in parallel (CONFORMANCE_GENERATE_JOBS) and compile
+# their drivers in parallel (CONFORMANCE_BUILD_JOBS), so `make -j` is not
+# defeated by a serial recipe. The legs touch bin/schema, then the
+# harness, then the stamp after downloading, so make sees the shared tree
+# as newer than a fresh checkout.
 .PHONY: conformance-shared
 conformance-shared: bin/schema build/conformance-harness build/tables-generated/.stamp
 	@echo "conformance-shared: bin/schema, build/conformance-harness and build/tables-generated are built"

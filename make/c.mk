@@ -223,9 +223,14 @@ C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
 
+# Each source compiles to its own object in parallel, then one link, on the
+# C++ driver's reasoning (Makefile: CONFORMANCE_BUILD_JOBS). The flags and
+# include paths are the single-invocation recipe's.
 build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
-	@mkdir -p build
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+	@rm -rf build/conformance-c-obj && mkdir -p build/conformance-c-obj
+	@printf '%s\n' $(C_CONFORMANCE_SOURCES) | \
+		xargs -P $(CONFORMANCE_BUILD_JOBS) -L 1 sh -c 'set -e; obj=build/conformance-c-obj/$$(printf "%s" "$$1" | tr / _).o; $(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c "$$1" -o "$$obj"' _
+	@$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) build/conformance-c-obj/*.o -o $@ -lm
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
 # in its by-value closure must pay NOTHING for the pointer machinery — no

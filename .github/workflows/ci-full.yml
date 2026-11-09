@@ -991,10 +991,16 @@ jobs:
     # and build/tables-generated from a wiped build/ (117 s of the go leg's
     # 129-150 s kills at the 120 s fleet cap, 303 s uncapped in nightly
     # 42458071627): the time was the build, not the run. `make
-    # conformance-shared` builds that tree once here; the legs below
-    # download it and build only their own driver, in parallel. The Go
-    # build cache is restored here on fleet runners too (not only
-    # hosted), so an ephemeral fleet runner starts warm.
+    # conformance-shared` builds the compiler, the harness and the C/C++
+    # tables tree once here; the legs below download it and build only
+    # their own language's units and driver. Those per-leg builds are
+    # parallel too (the Makefile's CONFORMANCE_GENERATE_JOBS and
+    # CONFORMANCE_BUILD_JOBS): a port's units are one `schema generate`
+    # each and the C/C++ drivers are one translation unit each, so the
+    # serial recipes were ~79 s for the Go tree and ~80 s for the C++
+    # driver even under `make -j`. This job keeps the hosted restore the
+    # rest of the file uses; the fleet runner's own Go cache is warm, and
+    # the legs below restore theirs on fleet as well.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10

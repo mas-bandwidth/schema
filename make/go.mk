@@ -149,57 +149,68 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
+#
+# GENERATION IS EMITTER-BOUND, SO IT RUNS IN PARALLEL. The Go emitter takes
+# ~2 s on a unit of any size, so this tree's ~34 units were ~79 s one after
+# another — the single largest item in the Go conformance leg's build, and
+# enough on its own to put a loaded fleet runner past the per-commit 110 s
+# wall (the family was killed at 129-150 s). Each invocation writes a
+# disjoint directory, so the pairs run under xargs -P. The go.mod writes
+# follow once every directory exists.
+GO_TABLE_UNITS := \
+	examples:tables/examples \
+	pointers:tables/pointers \
+	block:tables/block \
+	blockhome:tables/blockhome \
+	v1:test/tables/V1.schema \
+	v2:test/tables/V2.schema \
+	p1:test/tables/P1.schema \
+	p3:test/tables/P3.schema \
+	p2:test/tables/P2.schema \
+	w1:test/tables/W1.schema \
+	w2:test/tables/W2.schema \
+	g1:test/tables/G1.schema \
+	m1:test/tables/M1.schema \
+	m2:test/tables/M2.schema \
+	a1:test/tables/A1.schema \
+	a2:test/tables/A2.schema \
+	k1:test/tables/K1.schema \
+	k2:test/tables/K2.schema \
+	r1:test/tables/R1.schema \
+	r2:test/tables/R2.schema \
+	scalars:tables/scalars \
+	scalars2:test/tables/Scalars2.schema \
+	wide:examples-wide \
+	messages:tables/messages \
+	stream:tables/stream \
+	blobs:tables/blobs \
+	lists:tables/lists \
+	widelist:tables/widelist \
+	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
+	maps:tables/maps \
+	backend:tables/backend \
+	vocab:tables/vocab \
+	vocab9:tables/vocab9 \
+	rt1:test/tables/RT1.schema
+
 build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
-	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
-	# The pointer corpus exercises the wire, region and cook read surfaces.
-	./bin/schema generate --lang go --out build/tables-generated-go/pointers tables/pointers
-	./bin/schema generate --lang go --out build/tables-generated-go/block tables/block
-	./bin/schema generate --lang go --out build/tables-generated-go/blockhome tables/blockhome
-	./bin/schema generate --lang go --out build/tables-generated-go/v1 test/tables/V1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/v2 test/tables/V2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p1 test/tables/P1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p3 test/tables/P3.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/p2 test/tables/P2.schema
+	@printf '%s\n' $(foreach u,$(GO_TABLE_UNITS),"$(subst :, ,$(u))") | \
+		xargs -P $(CONFORMANCE_GENERATE_JOBS) -L 1 sh -c 'set -e; ./bin/schema generate --lang go --out build/tables-generated-go/$$1 $$2' _
 	$(call go_table_module,p2,tblp2)
-	./bin/schema generate --lang go --out build/tables-generated-go/w1 test/tables/W1.schema
 	$(call go_table_module,w1,tblw1)
-	./bin/schema generate --lang go --out build/tables-generated-go/w2 test/tables/W2.schema
 	$(call go_table_module,w2,tblw2)
-	./bin/schema generate --lang go --out build/tables-generated-go/g1 test/tables/G1.schema
 	$(call go_table_module,g1,tblg1)
-	./bin/schema generate --lang go --out build/tables-generated-go/m1 test/tables/M1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/m2 test/tables/M2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a1 test/tables/A1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
-	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang go --out build/tables-generated-go/wide examples-wide
 	$(call go_table_module,wide,widedemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/messages tables/messages
-	./bin/schema generate --lang go --out build/tables-generated-go/stream tables/stream
 	$(call go_table_module,stream,streamdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/blobs tables/blobs
 	$(call go_table_module,blobs,blobdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/lists tables/lists
 	$(call go_table_module,lists,listdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
 	$(call go_table_module,widelist,widelistdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(call go_table_module,featurewitnesses,featurewitnesses)
-	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
 	$(call go_table_module,backend,backenddemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab tables/vocab
 	$(call go_table_module,vocab,vocabdemo)
-	./bin/schema generate --lang go --out build/tables-generated-go/vocab9 tables/vocab9
 	$(call go_table_module,vocab9,vocab9demo)
-	./bin/schema generate --lang go --out build/tables-generated-go/rt1 test/tables/RT1.schema
 	$(call go_table_module,rt1,tblrt1)
 	$(call go_table_module,messages,messagedemo)
 	$(call go_table_module,examples,tabledemo)
