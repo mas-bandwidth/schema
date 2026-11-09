@@ -21,6 +21,7 @@ import (
 // was written for. The toolchain's own word for it is IgnoredGoFiles, so the
 // gate asks `go list` for that list and reads each file's leading lines.
 func TestNoGoFileIsIgnoredByItsNameAlone(t *testing.T) {
+	t.Parallel()
 	root := repoRoot(t)
 
 	// Text, not JSON: `go list -json` prints a concatenated stream of objects,

@@ -439,7 +439,7 @@ func (c *strictWireChecker) content(b []byte, kind int) bool {
 	case kind == ir.TableKindNoPayload:
 		return len(b) == 0
 	case kind == ir.TableKindTable, kind == ir.TableKindArray, kind == ir.TableKindKeyed:
-		if c.depth >= 64 {
+		if c.depth >= ir.TableBinaryMaxDepth {
 			return false
 		}
 		c.depth++
@@ -548,7 +548,7 @@ func (c *strictWireChecker) union(buf []byte, off int) (int, bool) {
 	}
 	end := after + int(n)
 	if kind == ir.TableKindTable || kind == ir.TableKindArray || kind == ir.TableKindKeyed || kind == ir.TableKindUnion {
-		if c.depth >= 64 {
+		if c.depth >= ir.TableBinaryMaxDepth {
 			return off, false
 		}
 		c.depth++
@@ -706,4 +706,216 @@ func strictScanJSONString(data []byte, start int) (string, int, bool) {
 		}
 	}
 	return "", i, false
+}
+
+const strictMessageSkipMaxDepth = 128
+
+type strictBitReader struct {
+	buf []byte
+	off int
+	n   int
+}
+
+func newStrictBitReader(buf []byte) *strictBitReader {
+	return &strictBitReader{buf: buf, n: len(buf) * 8}
+}
+
+func (r *strictBitReader) get(bits int) (uint64, bool) {
+	if bits < 0 || bits > 64 || r.off+bits > r.n {
+		return 0, false
+	}
+	var out uint64
+	for i := range bits {
+		pos := r.off + i
+		if r.buf[pos/8]&(1<<uint(pos%8)) != 0 {
+			out |= 1 << uint(i)
+		}
+	}
+	r.off += bits
+	return out, true
+}
+
+func (r *strictBitReader) skip(bits int) bool {
+	if bits < 0 || r.off+bits > r.n {
+		return false
+	}
+	r.off += bits
+	return true
+}
+
+func (r *strictBitReader) align() bool {
+	for r.off%8 != 0 {
+		b, ok := r.get(1)
+		if !ok || b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func strictElementRunBits(kind, elem uint8, inner ir.TableMessageShape) int64 {
+	if int(kind) != ir.TableKindArray {
+		return -1
+	}
+	switch int(elem) {
+	case ir.TableKindTable, ir.TableKindUnion, ir.TableKindEnum, ir.TableKindPointer:
+		return -1
+	case 0, ir.TableKindNoPayload:
+		return 0
+	}
+	return ir.TableMessageValueBits(elem, inner)
+}
+
+func strictSkipRun(r *strictBitReader, n uint64, width int64) bool {
+	if width == 0 {
+		return true
+	}
+	if n > uint64(math.MaxInt64)/uint64(width) {
+		return false
+	}
+	return r.skip(int(n * uint64(width)))
+}
+
+func strictSkipMessageAt(r *strictBitReader, entries []ir.TableVocabularyEntry, refBits int, entry ir.TableVocabularyEntry, depth int) bool {
+	if depth > strictMessageSkipMaxDepth {
+		return false
+	}
+	shape := entry.Shape
+	switch int(entry.Kind) {
+	case 0, ir.TableKindNoPayload:
+		return true
+	case ir.TableKindEnum:
+		ref, ok := r.get(refBits)
+		if !ok || ref > uint64(len(entries)) {
+			return false
+		}
+		return true
+	case ir.TableKindUnion:
+		ref, ok := r.get(refBits)
+		if !ok || ref > uint64(len(entries)) {
+			return false
+		}
+		if ref == 0 {
+			return true
+		}
+		return strictSkipMessageAt(r, entries, refBits, entries[ref-1], depth+1)
+	case ir.TableKindTable:
+		return strictSkipMessageBody(r, entries, refBits, depth+1)
+	case ir.TableKindPointer:
+		return false
+	case ir.TableKindString:
+		n, ok := r.get(ir.TableMessageBitsRequired(0, shape.Max))
+		if !ok || !r.align() {
+			return false
+		}
+		return r.skip(int(n) * 8)
+	case ir.TableKindWstring:
+		n, ok := r.get(ir.TableMessageBitsRequired(0, shape.Max))
+		if !ok {
+			return false
+		}
+		return r.skip(int(n) * 16)
+	case ir.TableKindEscape:
+		if !r.align() {
+			return false
+		}
+		n, ok := r.get(32)
+		if !ok {
+			return false
+		}
+		return r.skip(int(n) * 8)
+	case ir.TableKindArray, ir.TableKindKeyed:
+		n := uint64(shape.Min)
+		width := ir.TableMessageCountBits(shape)
+		if entry.Kind == ir.TableKindKeyed {
+			width, n = ir.TableMessageBitsRequired(0, shape.Max), 0
+		}
+		if width > 0 {
+			raw, ok := r.get(width)
+			if !ok {
+				return false
+			}
+			n = raw
+			if entry.Kind == ir.TableKindArray {
+				n += uint64(shape.Min)
+			}
+		}
+		if ir.TableMessageAligns(entry.Kind, shape) && !r.align() {
+			return false
+		}
+		inner := ir.TableMessageShape{}
+		if shape.Inner != nil {
+			inner = *shape.Inner
+		}
+		if run := strictElementRunBits(entry.Kind, shape.Elem, inner); run >= 0 {
+			return strictSkipRun(r, n, run)
+		}
+		for i := uint64(0); i < n; i++ {
+			at := r.off
+			if entry.Kind == ir.TableKindKeyed {
+				if _, ok := r.get(refBits); !ok {
+					return false
+				}
+			}
+			if !strictSkipMessageAt(r, entries, refBits, ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}, depth+1) {
+				return false
+			}
+			if r.off == at {
+				return true
+			}
+		}
+		return true
+	}
+	width := int(ir.TableMessageValueBits(entry.Kind, shape))
+	if width < 0 {
+		return false
+	}
+	return r.skip(width)
+}
+
+func strictSkipMessageBody(r *strictBitReader, entries []ir.TableVocabularyEntry, refBits int, depth int) bool {
+	if depth > strictMessageSkipMaxDepth {
+		return false
+	}
+	for {
+		ref, ok := r.get(refBits)
+		if !ok {
+			return false
+		}
+		if ref == 0 {
+			return true
+		}
+		if ref > uint64(len(entries)) {
+			return false
+		}
+		if !strictSkipMessageAt(r, entries, refBits, entries[ref-1], depth) {
+			return false
+		}
+	}
+}
+
+func strictMessageSkipDepthOK(root *ir.Struct, v *tablewire.Vocabulary, data []byte) bool {
+	if len(data) < 1 || data[0] != ir.TableWireMessageForm || v == nil || !v.Announced() {
+		return false
+	}
+	if root != nil && root.Integrity != "" {
+		if root.Integrity != "crc32c" || len(data) < 5 {
+			return false
+		}
+		data = data[:len(data)-4]
+	}
+	r := newStrictBitReader(data[1:])
+	raw, ok := r.get(8)
+	if !ok {
+		return false
+	}
+	count := int(raw) + 1
+	entries := v.Entries()
+	refBits := v.RefBits()
+	for range count {
+		if !strictSkipMessageBody(r, entries, refBits, 0) {
+			return false
+		}
+	}
+	return true
 }

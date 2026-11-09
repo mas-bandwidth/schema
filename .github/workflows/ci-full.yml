@@ -97,6 +97,7 @@ on:
     # runs the whole of this file. Feature branches do not: their pull request
     # already ran it on the same head (2026-10-29).
     branches: [ main, dev, fixed-table-form ]
+  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
     # A pull request runs this file only when it carries the `full-ci` label —
     # every job below is gated on that, except `generated`, `pins` and
@@ -104,7 +105,6 @@ on:
     # near the hot paths, or anything that moves the C++ emitters, asks for the
     # whole suite before merging; `gh workflow run ci-full.yml --ref <branch>`
     # is the other way, and needs no label.
-    branches: [ main, dev, fixed-table-form ]
     types: [ opened, synchronize, reopened, labeled ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
@@ -131,6 +131,7 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
+  PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -199,9 +200,14 @@ jobs:
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
     #   unit-elixir     — go test internal/codegen/elixirtable, alone
-    #   slow-gate-codegen — the slowtest accounting (schema#988) over the
-    #                     emitter packages
-    #   slow-gate-rest  — the same accounting over every other package
+    #   slow-gate-codegen-0..25 — the slowtest accounting (schema#988) over
+    #                     the emitter packages, one gated package per row
+    #                     (Makefile SLOWGATE_SHARD/SLOWGATE_SHARDS)
+    #   slow-gate-rest-0..9 — the same accounting over every other gated
+    #                     package, one per row. The unsharded halves were
+    #                     killed at 120 s on main (130 s / 136 s); each shard
+    #                     row must finish under 110 s. Together the rows
+    #                     read exactly the gated packages the halves read.
     #   versioning-conformance-a / -b — the Go conformance rows, split in two:
     #                     one row ran 116 s alone (the go-test versioning row
     #                     was killed at 120 s, exit 137, run 42556155793), so
@@ -244,7 +250,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -376,7 +382,7 @@ jobs:
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
         run: make dist-luau
 
       - name: go vet
@@ -389,7 +395,7 @@ jobs:
       # skip, without it. make/lua.mk's dist-lua builds it from source at the
       # sha256 it names, into dist/lua-<version>/, which is the LUA default.
       - name: install the Lua pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest' || matrix.group == 'slow-gate-codegen' || matrix.group == 'slow-gate-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-rest'
         run: make dist-lua
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
@@ -431,7 +437,7 @@ jobs:
       # under SCHEMA_SLOW=1 fails, never skips, without them (make/moo.mk;
       # .github/actions/moo builds the pin once per runner image and caches it).
       - uses: ./.github/actions/moo
-        if: matrix.group == 'unit-codegen' || matrix.group == 'slow-gate-codegen'
+        if: matrix.group == 'unit-codegen'
 
       # THE LOBSTER PIN for the emitter row: internal/codegen/lobster and
       # internal/codegen/lobstertable run generated Lobster under the pinned
@@ -518,16 +524,165 @@ jobs:
       # make target that sets the variable, run only by the two steps above, or
       # run by NOBODY. The third bucket fails the job. The table is uploaded as
       # build/slowgate/coverage.tsv so the accounting is read, not believed.
-      # TWO ROWS, ONE VERDICT: the accounting is per skip, so the emitter
-      # packages and the rest, each read on its own row, reach the verdict one
-      # plain `go test ./...` would, at half the wall time each.
-      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages
-        if: matrix.group == 'slow-gate-codegen'
-        run: make slow-gate-coverage-codegen
+      # No Lua, Luau or Moo pin on these rows: the gated-only -run pattern
+      # reaches the gate (or a runner's Enabled check) and skips before any
+      # interpreter is resolved, as the Squirrel pin note already records
+      # for its pin. The pins were 13-46 s a row here and a network fetch
+      # that can 504; the unit rows still install every pin.
+      # THIRTY-SIX ROWS, ONE VERDICT: the accounting is per skip, so
+      # each shard of the emitter packages and of the rest, read on its
+      # own row, reaches the verdict one plain `go test ./...` would for
+      # its skips. The two unsharded halves were killed at 120 s (130 s /
+      # 136 s on main), and twelve shards over every package still left a
+      # row at 257 s in its step (run 42595533414): each row now runs ONE
+      # gated package (`slowgatescan -emit-shard-packages`, assigned by
+      # gated-test count), and a package with no gated test is not
+      # compiled here at all. tools/slowgatescan's
+      # TestSlowGateCoverageShardsCoverAllShards holds the shard indices
+      # below to exactly 0..SLOWGATE_SHARDS-1 per half.
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 0
+        if: matrix.group == 'slow-gate-codegen-0'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=0
 
-      - name: every slowtest gate is run by somebody, by name (schema#988), every other package
-        if: matrix.group == 'slow-gate-rest'
-        run: make slow-gate-coverage-rest
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 1
+        if: matrix.group == 'slow-gate-codegen-1'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=1
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 2
+        if: matrix.group == 'slow-gate-codegen-2'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=2
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 3
+        if: matrix.group == 'slow-gate-codegen-3'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=3
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 4
+        if: matrix.group == 'slow-gate-codegen-4'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=4
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 5
+        if: matrix.group == 'slow-gate-codegen-5'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=5
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 6
+        if: matrix.group == 'slow-gate-codegen-6'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=6
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 7
+        if: matrix.group == 'slow-gate-codegen-7'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=7
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 8
+        if: matrix.group == 'slow-gate-codegen-8'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=8
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 9
+        if: matrix.group == 'slow-gate-codegen-9'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=9
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 10
+        if: matrix.group == 'slow-gate-codegen-10'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 11
+        if: matrix.group == 'slow-gate-codegen-11'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=11
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 12
+        if: matrix.group == 'slow-gate-codegen-12'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=12
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 13
+        if: matrix.group == 'slow-gate-codegen-13'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=13
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 14
+        if: matrix.group == 'slow-gate-codegen-14'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=14
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 15
+        if: matrix.group == 'slow-gate-codegen-15'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=15
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 16
+        if: matrix.group == 'slow-gate-codegen-16'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=16
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 17
+        if: matrix.group == 'slow-gate-codegen-17'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=17
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 18
+        if: matrix.group == 'slow-gate-codegen-18'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=18
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 19
+        if: matrix.group == 'slow-gate-codegen-19'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=19
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 20
+        if: matrix.group == 'slow-gate-codegen-20'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=20
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 21
+        if: matrix.group == 'slow-gate-codegen-21'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=21
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 22
+        if: matrix.group == 'slow-gate-codegen-22'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=22
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 23
+        if: matrix.group == 'slow-gate-codegen-23'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=23
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 24
+        if: matrix.group == 'slow-gate-codegen-24'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=24
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), emitter packages shard 25
+        if: matrix.group == 'slow-gate-codegen-25'
+        run: make slow-gate-coverage-codegen SLOWGATE_SHARD=25
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 0
+        if: matrix.group == 'slow-gate-rest-0'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=0 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 1
+        if: matrix.group == 'slow-gate-rest-1'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=1 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 2
+        if: matrix.group == 'slow-gate-rest-2'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=2 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 3
+        if: matrix.group == 'slow-gate-rest-3'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=3 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 4
+        if: matrix.group == 'slow-gate-rest-4'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=4 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 5
+        if: matrix.group == 'slow-gate-rest-5'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=5 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 6
+        if: matrix.group == 'slow-gate-rest-6'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=6 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 7
+        if: matrix.group == 'slow-gate-rest-7'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=7 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 8
+        if: matrix.group == 'slow-gate-rest-8'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=8 SLOWGATE_SHARDS=10
+
+      - name: every slowtest gate is run by somebody, by name (schema#988), every other package shard 9
+        if: matrix.group == 'slow-gate-rest-9'
+        run: make slow-gate-coverage-rest SLOWGATE_SHARD=9 SLOWGATE_SHARDS=10
 
       # THE GO CONFORMANCE ROWS (docs/SPEC-CARD-CONTRACT.md): the rows in
       # test/conformance/go/rows, which `go test ./...` never sees because they
@@ -783,13 +938,15 @@ jobs:
     name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
         group: [ moo-compiler, moo-table, goose ]
+    env:
+      PGROUP_WALL: ''
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1090,9 +1247,19 @@ jobs:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
+    #
+    # THIS JOB ALSO BUILDS THE SHARED CONFORMANCE INPUTS ONCE. Every
+    # conformance leg used to rebuild bin/schema, build/conformance-harness
+    # and build/tables-generated from a wiped build/ (117 s of the go leg's
+    # 129-150 s kills at the 120 s fleet cap, 303 s uncapped in nightly
+    # 42458071627): the time was the build, not the run. `make
+    # conformance-shared` builds that tree once here; the legs below
+    # download it and build only their own driver, in parallel. The Go
+    # build cache is restored here on fleet runners too (not only
+    # hosted), so an ephemeral fleet runner starts warm.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1106,17 +1273,19 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored on fleet runners as well as hosted
+      # ones, so a cold fleet runner does not recompile the compiler and
+      # the harness from nothing. Restore only here — a save of the whole
+      # cache took longer than the build it would warm (measured on run
+      # 42569158490: the save ran past this job's then 5-minute cap and
+      # the artifact upload behind it was skipped); `go-test` remains
+      # the writer. See the block on that job.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1128,6 +1297,20 @@ jobs:
           matrix=$(go run ./test/conformance/harness matrix)
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+      - name: build the shared conformance inputs once
+        run: make -j"$(nproc)" conformance-shared
+
+      - name: hand the shared conformance inputs to every leg
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-shared
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated
+          retention-days: 1
+          if-no-files-found: error
 
   conformance:
     # Runs on a pull request only when it carries the `full-ci` label; on a
@@ -1170,20 +1353,39 @@ jobs:
           cache: false
 
       # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # Restored on fleet runners too, so the leg's own Go work (its driver
+      # where it has one) does not start from a cold cache.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE SHARED INPUTS, built once by conformance-matrix: bin/schema,
+      # build/conformance-harness and build/tables-generated. The artifact
+      # keeps the build job's timestamps, which predate this leg's checkout,
+      # so the stamp and the two binaries are touched (bin/schema first,
+      # the stamp last) to stand newer than the checked-out sources: make
+      # then builds only this leg's driver, not the shared tree again. The
+      # artifact also drops the binaries' executable bit (run 42571699474:
+      # `./bin/schema: Permission denied` in every leg that generates), so
+      # it is restored here.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: conformance-shared
+          path: .
+
+      - name: stand the shared inputs newer than this checkout
+        run: |
+          chmod +x bin/schema build/conformance-harness
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated/.stamp
 
       # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
       # same release archive, the same sha256 refused before it is unpacked,
@@ -1285,9 +1487,11 @@ jobs:
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
-      # PATH rather than in dist/, cargo not in a homebrew keg.
-      - name: build the harness and the ${{ matrix.lang }} driver
-        run: make ${{ matrix.targets }} ${{ matrix.env }}
+      # PATH rather than in dist/, cargo not in a homebrew keg. The shared
+      # inputs above are already built, so this builds only the leg's own
+      # driver (and its base64 row where it has one), in parallel.
+      - name: build the ${{ matrix.lang }} driver
+        run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
@@ -1655,7 +1859,8 @@ jobs:
   # about the code in the diff, not about the compiler that built it — and it
   # fits the budget now that it is sharded by unit (issue #684): one row per
   # independent piece, so the run pays the longest piece rather than the sum.
-  # The controls keep their own rows, so nothing runs less than it did.
+  # The controls keep their own rows; the reduced host-order checks stay
+  # per-commit and the full corpus battery and control run nightly.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -1686,6 +1891,25 @@ jobs:
       # is the `tables` and `collections` rows and the pair is the same pair
       # whether one job runs them or three. `c-control` is the C twin. They are
       # what prove the matrix can go red.
+      #
+      # PER-COMMIT SMOKE vs NIGHTLY BATTERY (green-be-nightly). The four heavy
+      # rows on the card were control 322 s, tables 282 s, go-control 250 s and
+      # go 136 s. Run 42581682964 at ecc2d21ba, job wall from started_at to
+      # completed_at: tables 46 s, control 44 s, collections 82 s, cook 76 s,
+      # c 85 s, c-control 103 s, go 127 s. The go make step
+      # (conformance-big-endian) was 96 s inside that 127 s job, past the 110 s
+      # row budget, so the full Go harness moves to certify.yml and this go row
+      # runs conformance-big-endian-smoke: three units, host bytes against
+      # qemu-s390x (the matrix entry keeps target: conformance-big-endian for
+      # TestTheBigEndianJobIsShardedByUnit and the make step dispatches
+      # conformance-big-endian-smoke when matrix.leg == 'go'). The full C++
+      # battery and its host-order control stay nightly as
+      # tables-big-endian-tables-full and tables-big-endian-control-full. After
+      # that split the slowest row left here is c-control at 103 s, under the
+      # 110 s budget; the smoke target itself measured 8.7 s on amd-2 with
+      # bin/schema warm (2026-11-09), and the row's floor is checkout, the Go
+      # toolchain and the cache restore. Big-endian reds stay with
+      # green-be-message-form, green-be-control and green-conf-go-big-endian.
       matrix:
         include:
           - leg: tables
@@ -1702,8 +1926,6 @@ jobs:
             target: tables-c-big-endian-negative-control
           - leg: go
             target: conformance-big-endian
-          - leg: go-control
-            target: conformance-big-endian-negative-control
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1712,8 +1934,9 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache on hosted Linux: `go-test` runs on the self-hosted
+      # fleet, so the `go` row here is the hosted-Linux writer (saving both
+      # host tools and GOOS=linux GOARCH=s390x packages for the next run).
       - name: where this runner keeps the Go build cache
         shell: bash
         run: |
@@ -1729,13 +1952,17 @@ jobs:
       - name: the pinned cross toolchain and emulator
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
-            qemu-user=1:8.2.2+ds-0ubuntu1.18
+          if [ "${{ matrix.leg }}" = "go" ]; then
+            sudo apt-get install -y --no-install-recommends               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          else
+            sudo apt-get install -y --no-install-recommends               g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1               qemu-user=1:8.2.2+ds-0ubuntu1.18
+          fi
 
       - name: what the pins resolved to
         run: |
-          s390x-linux-gnu-g++-13 --version | head -1
+          if [ "${{ matrix.leg }}" != "go" ]; then
+            s390x-linux-gnu-g++-13 --version | head -1
+          fi
           qemu-s390x --version | head -1
           dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
@@ -1767,7 +1994,15 @@ jobs:
       # package as its table sources, and those import it — hence both siblings
       # above, in every row.
       - name: ${{ matrix.target }}
-        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        env:
+          GOFLAGS: ${{ matrix.leg == 'go' && '-gcflags=all=-l' || '' }}
+        run: make -j"$(nproc)" ${{ matrix.leg == 'go' && 'conformance-big-endian-smoke' || matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.leg == 'go'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
@@ -1826,6 +2061,18 @@ jobs:
       # SHA and no tool runs `@latest`, and every csproj's TargetFramework
       # matches the one .NET SDK pin. It is a Go test, so `go test ./...` and
       # `make test` carry it too; this step is where the verdict is named.
+      #
+      # THIS STEP RUNS internal/ci'S FAST HALF ONLY. The package also holds
+      # functional tests that build or run toolchains, which skip at
+      # internal/slowtest.Gate without SCHEMA_SLOW=1 and would blow this
+      # per-commit job's two-minute rule: the -run pattern gate
+      # (TestEveryRunPatternMatchesATest) measured 116 s alone (2026-11-09),
+      # the wide-scalar probe (TestWideScalarProbeModuleBoundary) builds
+      # cmd/schema and runs make (20 s), and the resource-bounds and
+      # hostile-corpus runners are interpreter-bound.
+      # They all ride ci-full.yml's unit-rest row, which sets SCHEMA_SLOW=1 and
+      # runs on the merge and nightly triggers, so nothing is checked less than
+      # before — it moved down this lane, not out of it.
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
       - name: golangci-lint
@@ -2283,17 +2530,26 @@ jobs:
   #
   # MEASURED, 2026-09-07 on the author's machine (arm64 macOS, one target per
   # make invocation, off one warm build) and then on the runner, on this
-  # branch's own pull-request runs. 203 controls, 40 pull-request groups and
-  # one nightly group. `go run ./tools/negativecontrols check` prints the
-  # count, so it is one command rather than a number to keep in step by hand.
+  # branch's own pull-request runs. As of the base-* split below (runs
+  # 42556155793 and 42554833739), the plan held 180 groups: 156 pull-request
+  # groups (672 targets) and 24 nightly groups (44 targets), with 742 controls
+  # defined in all; after the subsequent leg splits on main it holds 212
+  # groups: 146 pull-request groups (615 targets) and 66 nightly groups (107
+  # targets), with 748 controls defined in all (`go run ./tools/negativecontrols
+  # check` prints that count, so it is one command rather than a number to keep
+  # in step by hand).
   #
-  # The base toolchain carries 134 of them and takes twenty-eight jobs rather
-  # than one: the map gate alone is 17 controls at 4 s each on the author's
-  # machine and about 2x that on the runner, and the conformance driver's two
-  # sabotage rebuilds are 45 s and 47 s of runner time on their own. The
-  # tolerant-wire family is one control per job: each rebuilds the compiler
-  # under a source overlay and then fuzzes the sabotaged wire, 55 s to 80 s
-  # each, so no two of them fit together.
+  # The base-* (non-C) toolchain carries 170 targets in 47 groups from this
+  # split: 29 pull-request groups (135 targets) and 18 nightly groups (35
+  # targets) — 173 targets in 48 groups (30 pull-request groups / 138 targets
+  # and 18 nightly groups / 35 targets) with base-cpp-discard (3 pull-request
+  # targets) —
+  # rather than one job: the map gate alone is 17 controls at 4 s each on the
+  # author's machine and about 2x that on the runner, and the conformance
+  # driver's two sabotage rebuilds are 45 s and 47 s of runner time on their
+  # own. The tolerant-wire family is one control per job: each rebuilds the
+  # compiler under a source overlay and then fuzzes the sabotaged wire, 55 s
+  # to 80 s each, so no two of them fit together.
   #
   # THE FIRST CUT WAS MEASURED AND CUT AGAIN. On run 34115675206 every group
   # was inside the rule but eight of them sat between 100 s and 111 s, which is
@@ -2302,14 +2558,38 @@ jobs:
   # make/negative-controls.json's `why` lines, next to the targets they are
   # about.
   #
-  # ONE CONTROL DOES NOT FIT THE RULE AT ANY GROUP SIZE, and it runs nightly
-  # instead: tables-message-form-negative-control drives 49 sabotage rows one
-  # submake each at 124 s, against a 120 s rule. It is the `nightly` group in
-  # the plan, certify.yml runs that tier on the schedule it carries, and
+  # CONTROLS THAT DO NOT FIT THE RULE AT ANY GROUP SIZE run nightly instead
+  # (the nightly tier in certify.yml, on the schedule it carries), and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
-  # control cannot leave this file without landing on that one. The message
-  # form's other blades stay here. The group keeps its name at one target,
-  # because it is where the next control that outgrows the rule lands.
+  # control cannot leave this file without landing on that one. The oldest is
+  # tables-message-form-negative-control (49 sabotage rows one submake each at
+  # 124 s, against a 120 s rule); its other blades stay here.
+  #
+  # The base-* (non-C) rows that moved to nightly on runs 42556155793 and
+  # 42554833739 did so because a single target, or the compile it cannot run
+  # without, already exceeds the ~75 s per-commit control ceiling (117-140 s
+  # wall, killed at 2m), so no pull-request grouping can hold them:
+  # base-conformance-1 (>107 s control, 131 s wall: all C++ CONFORMANCE_SOURCES
+  # compiled twice), base-conformance-reference (>77 s for build/conformance-cpp
+  # alone, killed at 136 s wall), base-conformance-2-1, base-conformance-2-2
+  # and base-conformance-2-3 (86 s, >88 s loaded, for the
+  # build/tables-generated-go/.stamp prerequisite before any control runs),
+  # base-conformance-go-rows (39-88 s plus 49 s of stamps before 45 rows),
+  # base-conformance-cpp (82 s control/104 s wall; >84 s, killed at 140 s wall
+  # loaded), base-conformance-absence (>106 s/129 s wall and >111 s/130 s wall,
+  # killed both times), base-maps-depth (84 s for depth alone, killed at 135 s
+  # wall), base-maps-keys (81 s for key-domain alone, killed at 135-140 s wall),
+  # base-maps-order (86 s for place-failure alone, killed at 137 s wall),
+  # base-arms-all (>83 s control, killed at 136 s wall; the seven leaves stay
+  # per-commit in base-arms-1/-2/-3, only the serial umbrella moves),
+  # base-shared-node-1 (stamp 39 s/72 s wall quiet, >99 s killed at 134 s wall
+  # loaded), base-shared-node-2 (>113 s/136 s wall and >106 s/129 s wall,
+  # killed), base-cpp-soak (67 s quiet, >85 s in g++ killed at 138 s wall
+  # loaded), base-keyed-iteration (>81 s/140 s wall and >111 s/128 s wall,
+  # killed), base-keyed-shift (>104 s/129 s wall and >63 s in g++ at 137 s wall,
+  # killed) and base-cpp-hostile-corpus (68 s/90 s wall quiet, >93 s killed at
+  # 138 s wall loaded). The per-group `why` lines in
+  # make/negative-controls.json carry the same numbers beside their targets.
   #
   # AN UMBRELLA TARGET IS NOT A CONTROL. tables-wire-fuzz-retain-negative-control
   # carries no recipe: it names the retain oracle and the retain class leaves,
@@ -2377,6 +2657,8 @@ jobs:
     # top, so five minutes is generous and a row that reaches it is a row that
     # left the rule. A ceiling wide enough to hide that is not a timeout.
     timeout-minutes: 5
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

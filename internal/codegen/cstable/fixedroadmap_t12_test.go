@@ -415,10 +415,12 @@ static class ProbeMain
 	}
 }
 
-// t12R29 holds cs/R29's second half: the bounds pass clamping to the WRITER's
+// t12R29 holds cs/R29's second half: the bounds pass refusing to the WRITER's
 // bounds. The writer carries its ranged leaves in the lineage entry; the
 // compiled lane's bounds pass holds an endpoint to what IT declared and never to
-// this reader's wider own (§4.6, bill §12.5, TableFixedClampKnownRanges).
+// this reader's wider own (§4.6, bill §12.5, TableFixedClampKnownRanges). A
+// value past the writer's bound refuses out_of_range and lands no partial
+// value; it is never clamped to the writer's end.
 func t12R29(t *testing.T) {
 	writer := unitFrom(t, "package wband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 100\n}\n")
 	reader := unitFrom(t, "package rband\n\nfixed table Band\n{\n    n int32 = 0 | min = 0, max = 200\n}\n")
@@ -454,8 +456,10 @@ func t12R29(t *testing.T) {
 
 // t12R29ForgedBody writes the older writer's own file, forges the bounded field
 // to a value inside the reader's range but past the writer's bound, and reads
-// it back: the writer's 100 and one clamp, never the reader's 200. The negative
-// control is the reader's own wider range leaving the same value whole.
+// it back: the writer's 0..100 refuses the whole value out_of_range, never
+// clamping to the writer's end and never landing the reader's wider 200. The
+// negative control is the reader's own wider range leaving the same value whole
+// on the identity lane.
 const t12R29ForgedBody = `
             var w = new @W@.Band();
             w.N = 50;
@@ -467,10 +471,11 @@ const t12R29ForgedBody = `
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.BandFixedLoad(back, wbuf, plan, r);
-            if (n != 1) { bad += ProbeLog.Fail(@NAME@, "the forged record did not read back: n=" + n + " " + r.Reason); }
-            if (back.N != 100) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range but past the writer's bound did not land the writer's 100: " + back.N); }
+            if (n != -1) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range but past the writer's bound did not refuse the whole read: n=" + n + " " + r.Reason); }
             if (!r.Refused) { bad += ProbeLog.Fail(@NAME@, "a value past the writer-bound did not refuse: " + r.Reason); }
-            if (r.Refused || r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a clean forged read refused or malformed: " + r.Reason); }
+            if (r.Reason != "out_of_range") { bad += ProbeLog.Fail(@NAME@, "a value past the writer's bound did not refuse out_of_range: " + r.Reason); }
+            if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, "a refusal by name also set damage: " + r.Reason); }
+            if (back.N != 0) { bad += ProbeLog.Fail(@NAME@, "a refused forged read left a partial value: " + back.N); }
             var own = new Band();
             own.N = 150;
             byte[] rbuf = new byte[Schema.BandFixedMeasure(1)];
@@ -481,6 +486,7 @@ const t12R29ForgedBody = `
             if (n2 != 1) { bad += ProbeLog.Fail(@NAME@, "the reader's own file did not read back: n=" + n2 + " " + r2.Reason); }
             if (back2.N != 150) { bad += ProbeLog.Fail(@NAME@, "the reader's own 0..200 did not leave 150 whole: " + back2.N); }
             if (r2.Refused) { bad += ProbeLog.Fail(@NAME@, "a value inside the reader's range refused on the identity read: " + r2.Reason); }
+            if (r2.Damaged) { bad += ProbeLog.Fail(@NAME@, "a clean identity read was malformed: " + r2.Reason); }
 `
 
 // t12R29Forged builds the writer and reader into one assembly and runs the

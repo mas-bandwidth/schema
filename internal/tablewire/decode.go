@@ -42,6 +42,14 @@ func Decode(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *t
 	return decodeWith(m, inst, data, report, nil)
 }
 
+// DecodeVariable is the VARIABLE-form read whatever the root's declared class:
+// form 1 even at a declared fixed root, which Decode reads as form 3. It exists
+// for the write contract's conformance surface, whose rows load the corpus wire
+// and then hand the value to a chosen writer.
+func DecodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report) (bool, error) {
+	return decodeWithOrder(m, inst, data, report, nil, readOrder{variable: true})
+}
+
 // DecodeRegion is the region read. It refuses exactly what Decode refuses and
 // returns the same value where it accepts (docs/SPEC-TABLES.md §6.5, "EVERY
 // PATH AGREES ON THE OUTCOME").
@@ -54,10 +62,14 @@ func DecodeRegion(m *tabletext.Model, inst *tabletext.Instance, data []byte, rep
 // is ADDITIVE: nothing below reads a byte differently or decides a verdict
 // differently because retention is on.
 func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState) (bool, error) {
+	return decodeWithOrder(m, inst, data, report, rt, readOrder{})
+}
+
+func decodeWithOrder(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, order readOrder) (bool, error) {
 	if report == nil {
 		report = &tabletext.Report{}
 	}
-	err := decodeWalk(m, inst, data, report, rt, readOrder{})
+	err := decodeWalk(m, inst, data, report, rt, order)
 	if err != nil {
 		// NOTHING THE READ PRODUCED IS DEFINED (§6.5): the instance returns to
 		// its declared defaults, the retention store to empty, and the report
@@ -83,10 +95,13 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 type readOrder struct {
 	wireLast bool              // the declaration's conditions before the wire-alone ones
 	records  func(n int) []int // the order pass two decodes the node records in
+	// variable reads form 1 even at a declared fixed root; DecodeVariable sets
+	// it for the write contract's load, whose wire is the corpus's form 1.
+	variable bool
 }
 
 func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, order readOrder) error {
-	if FixedRoot(m, inst.Def) {
+	if FixedRoot(m, inst.Def) && !order.variable {
 		// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY
 		// NAME (docs/SPEC-TABLES.md §3.4): form 3 is read, and a form-1 file
 		// is previous_form with nothing decoded

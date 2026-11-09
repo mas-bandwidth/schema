@@ -1277,6 +1277,17 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		return false
 	}
 	in.pos++ // the opening bracket
+	// A duplicate key in a skipped object is malformed, exactly as in a
+	// read object (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): the strict read refuses the
+	// whole value rather than guessing which occurrence wins. Decoded keys
+	// are kept in a stack arena so the common case allocates nothing; a
+	// key or object past the arena falls back to a map of decoded keys.
+	var keyArena [4096]byte
+	arenaLen := 0
+	var keyOff [64]int
+	var keyLen [64]int
+	keyCount := 0
+	var overflow map[string]struct{}
 	for {
 		c := in.peek()
 		if c == closing {
@@ -1288,8 +1299,68 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			if _, ok := in.scanString(nil); !ok {
+			_ = in.peek()
+			keyStart := in.pos
+			decodedLen, ok := in.scanString(nil)
+			if !ok {
 				return false
+			}
+			in.pos = keyStart
+			if overflow == nil && decodedLen <= int32(len(keyArena)-arenaLen) && keyCount < len(keyOff) {
+				n, ok := in.scanKey(keyArena[arenaLen : arenaLen+int(decodedLen)])
+				if !ok {
+					return false
+				}
+				key := keyArena[arenaLen : arenaLen+int(n)]
+				dup := false
+				for i := 0; i < keyCount; i++ {
+					if keyLen[i] != len(key) {
+						continue
+					}
+					same := true
+					for j := range key {
+						if keyArena[keyOff[i]+j] != key[j] {
+							same = false
+							break
+						}
+					}
+					if same {
+						dup = true
+						break
+					}
+				}
+				if dup {
+					if in.report != nil {
+						in.report.Refuse(TableRefuseMalformed, "")
+					}
+					in.bad = true
+					return false
+				}
+				keyOff[keyCount] = arenaLen
+				keyLen[keyCount] = len(key)
+				keyCount++
+				arenaLen += len(key)
+			} else {
+				if overflow == nil {
+					overflow = make(map[string]struct{}, keyCount+1)
+					for i := 0; i < keyCount; i++ {
+						overflow[string(keyArena[keyOff[i]:keyOff[i]+keyLen[i]])] = struct{}{}
+					}
+				}
+				buf := make([]byte, decodedLen)
+				n, ok := in.scanKey(buf)
+				if !ok {
+					return false
+				}
+				key := string(buf[:n])
+				if _, dup := overflow[key]; dup {
+					if in.report != nil {
+						in.report.Refuse(TableRefuseMalformed, "")
+					}
+					in.bad = true
+					return false
+				}
+				overflow[key] = struct{}{}
 			}
 			if in.peek() != ':' {
 				in.bad = true

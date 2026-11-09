@@ -22,6 +22,7 @@ static partial class Program
 
     static void TestFixedForm()
     {
+        TestFixedValidDataRows();
         TestFixedLittleEndianCopies();
         TestFixedFxCase();
         // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). Both cases are ENTIRELY
@@ -146,7 +147,7 @@ static partial class Program
         one.BlobLength = 4;
         one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
 
-        byte[] w1 = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        byte[] w1 = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
         Check(FX1.Schema.FxRootFixedSave(one, w1) == w1.Length, "FX1 save");
 
         // 1. SAME SCHEMA — the identity plan
@@ -226,7 +227,7 @@ static partial class Program
             two.Extra.Y = 66;
             two.BlobLength = 4;
             two.Blob[0] = 0xCA; two.Blob[1] = 0xFE; two.Blob[2] = 0xBA; two.Blob[3] = 0xBE;
-            byte[] w2 = new byte[FX2.Schema.FxRootFixedMeasure(1)];
+            byte[] w2 = new byte[(int)FX2.Schema.FxRootFixedMeasure(1)];
             Check(FX2.Schema.FxRootFixedSave(two, w2) == w2.Length, "FX2 save");
 
             FX1.FxRoot back = new FX1.FxRoot();
@@ -263,7 +264,7 @@ static partial class Program
         one.TierPresent = true;
         one.Tier = 77;
 
-        byte[] w = new byte[V1.Schema.CfgFixedMeasure(1)];
+        byte[] w = new byte[(int)V1.Schema.CfgFixedMeasure(1)];
         Check(V1.Schema.CfgFixedSave(one, w) == w.Length, "V1 save");
 
         V2.Cfg back = new V2.Cfg();
@@ -293,7 +294,7 @@ static partial class Program
         one.NameLength = 5;
         one.Link.Value = 500;
 
-        byte[] w = new byte[P1.Schema.ChainFixedMeasure(1)];
+        byte[] w = new byte[(int)P1.Schema.ChainFixedMeasure(1)];
         Check(P1.Schema.ChainFixedSave(one, w) == w.Length, "P1 save");
 
         P3.Chain back = new P3.Chain();
@@ -320,7 +321,7 @@ static partial class Program
         two.Added = 909;
         two.Nested.A = 33;
         two.Nested.B = 44;
-        byte[] w2 = new byte[FX2.Schema.FxRootFixedMeasure(1)];
+        byte[] w2 = new byte[(int)FX2.Schema.FxRootFixedMeasure(1)];
         FX2.Schema.FxRootFixedSave(two, w2);
         ReadOnlySpan<byte> body = w2.AsSpan(FX2.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX2.Schema.FxRootFixedLayoutBytes + 8);
 
@@ -402,7 +403,7 @@ static partial class Program
         fixture.Gone = 654;
         fixture.Nested.A = 111;
         fixture.Nested.B = 222;
-        byte[] valid = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        byte[] valid = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
         Check(FX1.Schema.FxRootFixedSave(fixture, valid) == valid.Length,
               "header probes: a valid form-3 fixture writes");
 
@@ -592,7 +593,7 @@ static partial class Program
         s.SeedsCount = 1;
         s.Seeds[0] = 9999999999999999999UL;
 
-        byte[] buf = new byte[S2.Schema.SimStateFixedMeasure(1)];
+        byte[] buf = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
         long saved = S2.Schema.SimStateFixedSave(s, buf);
         Check(saved == buf.Length, "SimState save");
 
@@ -627,7 +628,7 @@ static partial class Program
         S2.Schema.TableReset(s);
         s.Position = MinRaw;
 
-        byte[] buf = new byte[S2.Schema.SimStateFixedMeasure(1)];
+        byte[] buf = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
         long saved = S2.Schema.SimStateFixedSave(s, buf);
         Check(saved == buf.Length, "signed fixed low end: save");
 
@@ -711,7 +712,7 @@ static partial class Program
             lc.Podium[1] = TD.Grade.Silver;
             lc.Podium[2] = TD.Grade.Bronze;
 
-            byte[] buf = new byte[TD.Schema.LoadoutConfigFixedMeasure(1)];
+            byte[] buf = new byte[(int)TD.Schema.LoadoutConfigFixedMeasure(1)];
             long saved = TD.Schema.LoadoutConfigFixedSave(lc, buf);
             Check(saved == buf.Length, "LoadoutConfig save");
 
@@ -739,7 +740,7 @@ static partial class Program
             rs.Edges[2] = 33;
             rs.Edges[3] = 44;
 
-            byte[] buf = new byte[TD.Schema.RangedSignedFixedMeasure(1)];
+            byte[] buf = new byte[(int)TD.Schema.RangedSignedFixedMeasure(1)];
             long saved = TD.Schema.RangedSignedFixedSave(rs, buf);
             Check(saved == buf.Length, "RangedSigned save");
 
@@ -790,7 +791,7 @@ static partial class Program
             se.Hardpoints[2] = 3;
             se.Hardpoints[3] = 4;
 
-            byte[] buf = new byte[TD.Schema.ShipEntryFixedMeasure(1)];
+            byte[] buf = new byte[(int)TD.Schema.ShipEntryFixedMeasure(1)];
             long saved = TD.Schema.ShipEntryFixedSave(se, buf);
             Check(saved == buf.Length, "ShipEntry save");
 
@@ -818,7 +819,7 @@ static partial class Program
         root.Pick.B.M = m;
         root.Tail = tail;
 
-        byte[] wire = new byte[UT.Schema.UtRootFixedMeasure(1)];
+        byte[] wire = new byte[(int)UT.Schema.UtRootFixedMeasure(1)];
         Check(UT.Schema.UtRootFixedSave(root, wire) == wire.Length, "arm text: save fills what measure says");
         return wire;
     }
@@ -851,8 +852,8 @@ static partial class Program
 
     static bool UtSame(UT.UtRoot x, UT.UtRoot y)
     {
-        byte[] a = new byte[UT.Schema.UtRootFixedMeasure(1)];
-        byte[] b = new byte[UT.Schema.UtRootFixedMeasure(1)];
+        byte[] a = new byte[(int)UT.Schema.UtRootFixedMeasure(1)];
+        byte[] b = new byte[(int)UT.Schema.UtRootFixedMeasure(1)];
         UT.Schema.UtRootFixedSave(x, a);
         UT.Schema.UtRootFixedSave(y, b);
         return a.AsSpan().SequenceEqual(b);
@@ -974,7 +975,7 @@ static partial class Program
         Check(v.Label[2] == 0xAA, "CONTROL: the text slack really is stained in storage");
         Check(v.Marks[1] == unchecked((int)0x5A5A5A5A), "CONTROL: the array slack really is stained in storage");
 
-        byte[] file = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        byte[] file = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
         Check(FX1.Schema.FxRootFixedSave(v, file) == file.Length, "slack: the record saves");
         int bodyAt = FX1.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX1.Schema.FxRootFixedLayoutBytes + 8;
         ReadOnlySpan<byte> body = file.AsSpan(bodyAt, (int)FX1.Schema.FxRootFixedBodyBytes);
@@ -1089,7 +1090,7 @@ static partial class Program
         // the layout this reader ACCEPTS, which every case below breaks once
         FX2.FxRoot two = new FX2.FxRoot();
         FX2.Schema.TableReset(two);
-        byte[] good = new byte[FX2.Schema.FxRootFixedMeasure(1)];
+        byte[] good = new byte[(int)FX2.Schema.FxRootFixedMeasure(1)];
         Check(FX2.Schema.FxRootFixedSave(two, good) == good.Length, "layout validation: the unbroken file saves");
 
         int layoutAt = FX1.Schema.TableFixedWire.HeaderBytes + 4;
@@ -1192,7 +1193,7 @@ static partial class Program
         TD.Schema.TableReset(wc);
         wc.Homing = false;
 
-        byte[] buf = new byte[TD.Schema.WeaponConfigFixedMeasure(1)];
+        byte[] buf = new byte[(int)TD.Schema.WeaponConfigFixedMeasure(1)];
         long saved = TD.Schema.WeaponConfigFixedSave(wc, buf);
         Check(saved == buf.Length, "hostile bool: initial save");
 
@@ -1228,7 +1229,7 @@ static partial class Program
         v.Link.TagLength = 5;
         Check(v.Link.Tag[0] == 0x5A, "CONTROL: the absent payload really is stained in storage");
 
-        byte[] w = new byte[P3.Schema.ChainFixedMeasure(1)];
+        byte[] w = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
         Check(P3.Schema.ChainFixedSave(v, w) == w.Length, "absent optional: the record saves");
         int bodyOffset = P3.Schema.TableFixedWire.HeaderBytes + 4 + (int)P3.Schema.ChainFixedLayoutBytes + 8;
         int bodyBytes = (int)P3.Schema.ChainFixedBodyBytes;
@@ -1262,7 +1263,7 @@ static partial class Program
             present.Link.Value = 0x5A5A5A;
             Array.Fill(present.Link.Tag, (byte)0x5A);
             present.Link.TagLength = 4;
-            byte[] pw = new byte[P3.Schema.ChainFixedMeasure(1)];
+            byte[] pw = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
             Check(P3.Schema.ChainFixedSave(present, pw) == pw.Length,
                   "absent optional: the present twin saves");
             Span<byte> pbody = pw.AsSpan(bodyOffset, bodyBytes);
@@ -1270,5 +1271,496 @@ static partial class Program
                   "absent optional: the present twin puts the bytes on the wire");
         }
     }
-}
+    // The sixteen valid-data rows. Each one writes a value and reads it back
+    // through the strict public FixedLoad. The names are the evidence the
+    // roadmap cells cite.
+    static void TestFixedValidDataRows()
+    {
+        TestFixedValidDataBool();
+        TestFixedValidDataSigned128();
+        TestFixedValidDataUnsigned128();
+        TestFixedValidDataRangedIntegers();
+        TestFixedValidDataSignedFixedPoint();
+        TestFixedValidDataUnsignedFixedPoint();
+        TestFixedValidDataEnums();
+        TestFixedValidDataUtf8();
+        TestFixedValidDataByteBuffers();
+        TestFixedValidDataNested();
+        TestFixedValidDataFixedArrays();
+        TestFixedValidDataCountedArrays();
+        TestFixedValidDataUnions();
+        TestFixedValidDataOptionalNesting();
+        TestFixedValidDataFileRoundtrip();
+        TestFixedValidDataRecordMeasurement();
+    }
 
+    static void TestFixedValidDataBool()
+    {
+        const string id = "bool-values/cs/valid-data";
+        const bool validDataBoolExpect = true;
+
+        TD.WeaponConfig one = new TD.WeaponConfig();
+        TD.Schema.TableReset(one);
+        one.Homing = true;
+        byte[] saved = new byte[(int)TD.Schema.WeaponConfigFixedMeasure(1)];
+        Check(TD.Schema.WeaponConfigFixedSave(one, saved) == saved.Length, id + ": true saves");
+
+        TD.WeaponConfig back = new TD.WeaponConfig();
+        TD.Schema.TableReset(back);
+        back.Homing = false;
+        TD.TableReport report = new TD.TableReport();
+        long n = TD.Schema.WeaponConfigFixedLoad(back, saved, new TD.TableFixedEntry[64], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": true loads clean");
+        Check(back.Homing == validDataBoolExpect, id + ": true reads back true");
+
+        TD.WeaponConfig zero = new TD.WeaponConfig();
+        TD.Schema.TableReset(zero);
+        zero.Homing = false;
+        byte[] zsaved = new byte[(int)TD.Schema.WeaponConfigFixedMeasure(1)];
+        Check(TD.Schema.WeaponConfigFixedSave(zero, zsaved) == zsaved.Length, id + ": false saves");
+
+        TD.WeaponConfig zback = new TD.WeaponConfig();
+        TD.Schema.TableReset(zback);
+        zback.Homing = true;
+        TD.TableReport zreport = new TD.TableReport();
+        long zn = TD.Schema.WeaponConfigFixedLoad(zback, zsaved, new TD.TableFixedEntry[64], zreport);
+        Check(zn == 1 && zreport.Unknown == 0 && !zreport.Refused && zreport.Widened == 0 && !zreport.Damaged,
+              id + ": false loads clean");
+        Check(zback.Homing == false, id + ": false reads back false");
+    }
+
+    static void TestFixedValidDataSigned128()
+    {
+        const string id = "signed-128/cs/valid-data";
+        S2.SimState one = new S2.SimState();
+        S2.Schema.TableReset(one);
+        one.Energy = -1234567890L;
+        byte[] saved = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
+        Check(S2.Schema.SimStateFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        S2.SimState back = new S2.SimState();
+        S2.Schema.TableReset(back);
+        back.Energy = 0;
+        S2.TableReport report = new S2.TableReport();
+        long n = S2.Schema.SimStateFixedLoad(back, saved, new S2.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.Energy == -1234567890L, id + ": int128 reads back");
+    }
+
+    static void TestFixedValidDataUnsigned128()
+    {
+        const string id = "unsigned-128/cs/valid-data";
+        S2.SimState one = new S2.SimState();
+        S2.Schema.TableReset(one);
+        one.SeedsCount = 2;
+        one.Seeds[0] = 1;
+        one.Seeds[1] = 9999999999999999999UL;
+        byte[] saved = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
+        Check(S2.Schema.SimStateFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        S2.SimState back = new S2.SimState();
+        S2.Schema.TableReset(back);
+        back.SeedsCount = 0;
+        back.Seeds[0] = 0;
+        back.Seeds[1] = 0;
+        S2.TableReport report = new S2.TableReport();
+        long n = S2.Schema.SimStateFixedLoad(back, saved, new S2.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.SeedsCount == 2 && back.Seeds[0] == 1 && back.Seeds[1] == 9999999999999999999UL,
+              id + ": uint128 reads back");
+    }
+
+    static void TestFixedValidDataRangedIntegers()
+    {
+        const string id = "ranged-integers/cs/valid-data";
+        TD.RangedSigned one = new TD.RangedSigned();
+        TD.Schema.TableReset(one);
+        one.I8Inside = 5;
+        one.I16Inside = -100;
+        one.I32Inside = 42;
+        one.I64Inside = -1000L;
+        byte[] saved = new byte[(int)TD.Schema.RangedSignedFixedMeasure(1)];
+        Check(TD.Schema.RangedSignedFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        TD.RangedSigned back = new TD.RangedSigned();
+        TD.Schema.TableReset(back);
+        back.I8Inside = 0;
+        back.I16Inside = 0;
+        back.I32Inside = 0;
+        back.I64Inside = 0;
+        TD.TableReport report = new TD.TableReport();
+        long n = TD.Schema.RangedSignedFixedLoad(back, saved, new TD.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.I8Inside == 5 && back.I16Inside == -100 && back.I32Inside == 42 && back.I64Inside == -1000L,
+              id + ": in-range integers read back");
+    }
+
+    static void TestFixedValidDataSignedFixedPoint()
+    {
+        const string id = "signed-fixed-point/cs/valid-data";
+        S2.SimState one = new S2.SimState();
+        S2.Schema.TableReset(one);
+        one.Tilt = 16;
+        one.Position = 1L << 16;
+        one.Reach = -42;
+        byte[] saved = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
+        Check(S2.Schema.SimStateFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        S2.SimState back = new S2.SimState();
+        S2.Schema.TableReset(back);
+        back.Tilt = 0;
+        back.Position = 0;
+        back.Reach = 0;
+        S2.TableReport report = new S2.TableReport();
+        long n = S2.Schema.SimStateFixedLoad(back, saved, new S2.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.Tilt == 16 && back.Position == (1L << 16) && back.Reach == -42,
+              id + ": raw fixed values read back");
+    }
+
+    static void TestFixedValidDataUnsignedFixedPoint()
+    {
+        const string id = "unsigned-fixed-point/cs/valid-data";
+        S2.SimState one = new S2.SimState();
+        S2.Schema.TableReset(one);
+        one.Ratio = 16;
+        one.Speed = 2u << 16;
+        one.Mass = 100;
+        byte[] saved = new byte[(int)S2.Schema.SimStateFixedMeasure(1)];
+        Check(S2.Schema.SimStateFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        S2.SimState back = new S2.SimState();
+        S2.Schema.TableReset(back);
+        back.Ratio = 0;
+        back.Speed = 0;
+        back.Mass = 0;
+        S2.TableReport report = new S2.TableReport();
+        long n = S2.Schema.SimStateFixedLoad(back, saved, new S2.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.Ratio == 16 && back.Speed == (2u << 16) && back.Mass == 100,
+              id + ": raw ufixed values read back");
+    }
+
+    static void TestFixedValidDataEnums()
+    {
+        const string id = "enum-values/cs/valid-data";
+
+        TD.LoadoutConfig none = new TD.LoadoutConfig();
+        TD.Schema.TableReset(none);
+        none.Grade = TD.Grade.None;
+        byte[] noneSaved = new byte[(int)TD.Schema.LoadoutConfigFixedMeasure(1)];
+        Check(TD.Schema.LoadoutConfigFixedSave(none, noneSaved) == noneSaved.Length, id + ": None saves");
+        TD.LoadoutConfig noneBack = new TD.LoadoutConfig();
+        TD.Schema.TableReset(noneBack);
+        noneBack.Grade = TD.Grade.Gold;
+        TD.TableReport noneReport = new TD.TableReport();
+        long nn = TD.Schema.LoadoutConfigFixedLoad(noneBack, noneSaved, new TD.TableFixedEntry[256], noneReport);
+        Check(nn == 1 && noneReport.Unknown == 0 && !noneReport.Refused && noneReport.Widened == 0 && !noneReport.Damaged,
+              id + ": None loads clean");
+        Check(noneBack.Grade == TD.Grade.None, id + ": None reads back");
+
+        TD.LoadoutConfig gold = new TD.LoadoutConfig();
+        TD.Schema.TableReset(gold);
+        gold.Grade = TD.Grade.Gold;
+        byte[] goldSaved = new byte[(int)TD.Schema.LoadoutConfigFixedMeasure(1)];
+        Check(TD.Schema.LoadoutConfigFixedSave(gold, goldSaved) == goldSaved.Length, id + ": Gold saves");
+        TD.LoadoutConfig goldBack = new TD.LoadoutConfig();
+        TD.Schema.TableReset(goldBack);
+        goldBack.Grade = TD.Grade.None;
+        TD.TableReport goldReport = new TD.TableReport();
+        long gn = TD.Schema.LoadoutConfigFixedLoad(goldBack, goldSaved, new TD.TableFixedEntry[256], goldReport);
+        Check(gn == 1 && goldReport.Unknown == 0 && !goldReport.Refused && goldReport.Widened == 0 && !goldReport.Damaged,
+              id + ": Gold loads clean");
+        Check(goldBack.Grade == TD.Grade.Gold, id + ": Gold reads back");
+    }
+
+    static void TestFixedValidDataUtf8()
+    {
+        const string id = "utf8-values/cs/valid-data";
+        byte[] label = new byte[] { 0x63, 0x61, 0x66, 0xC3, 0xA9 };
+        FX1.FxRoot one = new FX1.FxRoot();
+        FX1.Schema.TableReset(one);
+        label.CopyTo(one.Label.AsSpan());
+        one.LabelLength = label.Length;
+        byte[] saved = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        FX1.FxRoot back = new FX1.FxRoot();
+        FX1.Schema.TableReset(back);
+        Array.Fill(back.Label, (byte)0xFF);
+        back.LabelLength = 0;
+        FX1.TableReport report = new FX1.TableReport();
+        long n = FX1.Schema.FxRootFixedLoad(back, saved, new FX1.TableFixedEntry[1024], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.LabelLength == label.Length && back.Label.AsSpan(0, label.Length).SequenceEqual(label),
+              id + ": utf-8 bytes read back");
+        Check(Encoding.UTF8.GetString(back.Label.AsSpan(0, back.LabelLength)) == "caf\u00e9",
+              id + ": utf-8 decodes");
+    }
+
+    static void TestFixedValidDataByteBuffers()
+    {
+        const string id = "byte-buffers/cs/valid-data";
+        byte[] blob = new byte[] { 1, 2, 3, 4, 5, 6 };
+        FX1.FxRoot one = new FX1.FxRoot();
+        FX1.Schema.TableReset(one);
+        blob.CopyTo(one.Blob.AsSpan());
+        one.BlobLength = blob.Length;
+        byte[] saved = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        FX1.FxRoot back = new FX1.FxRoot();
+        FX1.Schema.TableReset(back);
+        Array.Fill(back.Blob, (byte)0xFF);
+        back.BlobLength = 0;
+        FX1.TableReport report = new FX1.TableReport();
+        long n = FX1.Schema.FxRootFixedLoad(back, saved, new FX1.TableFixedEntry[1024], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.BlobLength == 6 && back.Blob.AsSpan(0, 6).SequenceEqual(blob),
+              id + ": the six bytes read back");
+    }
+
+    static void TestFixedValidDataNested()
+    {
+        const string id = "nested-fixed-tables/cs/valid-data";
+        FX1.FxRoot one = new FX1.FxRoot();
+        FX1.Schema.TableReset(one);
+        one.Nested.A = 111;
+        one.Nested.B = 222;
+        byte[] saved = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        FX1.FxRoot back = new FX1.FxRoot();
+        FX1.Schema.TableReset(back);
+        back.Nested.A = 0;
+        back.Nested.B = 0;
+        FX1.TableReport report = new FX1.TableReport();
+        long n = FX1.Schema.FxRootFixedLoad(back, saved, new FX1.TableFixedEntry[1024], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.Nested.A == 111 && back.Nested.B == 222, id + ": the nested fields read back");
+    }
+
+    static void TestFixedValidDataFixedArrays()
+    {
+        const string id = "fixed-arrays/cs/valid-data";
+        TD.LoadoutConfig one = new TD.LoadoutConfig();
+        TD.Schema.TableReset(one);
+        one.Podium[0] = TD.Grade.Gold;
+        one.Podium[1] = TD.Grade.Silver;
+        one.Podium[2] = TD.Grade.Bronze;
+        byte[] saved = new byte[(int)TD.Schema.LoadoutConfigFixedMeasure(1)];
+        Check(TD.Schema.LoadoutConfigFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        TD.LoadoutConfig back = new TD.LoadoutConfig();
+        TD.Schema.TableReset(back);
+        back.Podium[0] = TD.Grade.None;
+        back.Podium[1] = TD.Grade.None;
+        back.Podium[2] = TD.Grade.None;
+        TD.TableReport report = new TD.TableReport();
+        long n = TD.Schema.LoadoutConfigFixedLoad(back, saved, new TD.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.Podium[0] == TD.Grade.Gold && back.Podium[1] == TD.Grade.Silver && back.Podium[2] == TD.Grade.Bronze,
+              id + ": the fixed array reads back");
+    }
+
+    static void TestFixedValidDataCountedArrays()
+    {
+        const string id = "counted-arrays/cs/valid-data";
+        TD.LoadoutConfig one = new TD.LoadoutConfig();
+        TD.Schema.TableReset(one);
+        one.GradesCount = 3;
+        one.Grades[0] = TD.Grade.Bronze;
+        one.Grades[1] = TD.Grade.Gold;
+        one.Grades[2] = TD.Grade.Silver;
+        byte[] saved = new byte[(int)TD.Schema.LoadoutConfigFixedMeasure(1)];
+        Check(TD.Schema.LoadoutConfigFixedSave(one, saved) == saved.Length, id + ": saves");
+
+        TD.LoadoutConfig back = new TD.LoadoutConfig();
+        TD.Schema.TableReset(back);
+        back.GradesCount = 0;
+        back.Grades[0] = TD.Grade.None;
+        back.Grades[1] = TD.Grade.None;
+        back.Grades[2] = TD.Grade.None;
+        TD.TableReport report = new TD.TableReport();
+        long n = TD.Schema.LoadoutConfigFixedLoad(back, saved, new TD.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": loads clean");
+        Check(back.GradesCount == 3 && back.Grades[0] == TD.Grade.Bronze && back.Grades[1] == TD.Grade.Gold && back.Grades[2] == TD.Grade.Silver,
+              id + ": the counted array reads back");
+    }
+
+    static void TestFixedValidDataUnions()
+    {
+        const string id = "union-values/cs/valid-data";
+
+        UT.UtRoot armB = new UT.UtRoot();
+        UT.Schema.TableReset(armB);
+        armB.Pick.Type = UT.UtPickType.B;
+        byte[] label = Encoding.UTF8.GetBytes("hello");
+        label.CopyTo(armB.Pick.B.Label.AsSpan());
+        armB.Pick.B.LabelLength = label.Length;
+        armB.Pick.B.Grade = UT.UtGrade.gold;
+        armB.Pick.B.M = 42;
+        armB.Tail = 11;
+        byte[] savedB = new byte[(int)UT.Schema.UtRootFixedMeasure(1)];
+        Check(UT.Schema.UtRootFixedSave(armB, savedB) == savedB.Length, id + ": arm B saves");
+        UT.UtRoot backB = new UT.UtRoot();
+        UT.Schema.TableReset(backB);
+        backB.Pick.Type = UT.UtPickType.None;
+        backB.Tail = 0;
+        UT.TableReport reportB = new UT.TableReport();
+        long nb = UT.Schema.UtRootFixedLoad(backB, savedB, new UT.TableFixedEntry[512], reportB);
+        Check(nb == 1 && reportB.Unknown == 0 && !reportB.Refused && reportB.Widened == 0 && !reportB.Damaged,
+              id + ": arm B loads clean");
+        Check(backB.Pick.Type == UT.UtPickType.B && backB.Pick.B.Grade == UT.UtGrade.gold && backB.Pick.B.M == 42 && backB.Tail == 11,
+              id + ": arm B reads back");
+        Check(backB.Pick.B.LabelLength == label.Length && backB.Pick.B.Label.AsSpan(0, label.Length).SequenceEqual(label),
+              id + ": arm B text reads back");
+
+        UT.UtRoot armA = new UT.UtRoot();
+        UT.Schema.TableReset(armA);
+        armA.Pick.Type = UT.UtPickType.A;
+        armA.Pick.A.N = 11;
+        armA.Tail = 9;
+        byte[] savedA = new byte[(int)UT.Schema.UtRootFixedMeasure(1)];
+        Check(UT.Schema.UtRootFixedSave(armA, savedA) == savedA.Length, id + ": arm A saves");
+        UT.UtRoot backA = new UT.UtRoot();
+        UT.Schema.TableReset(backA);
+        backA.Pick.Type = UT.UtPickType.B;
+        backA.Pick.A.N = 0;
+        backA.Tail = 0;
+        UT.TableReport reportA = new UT.TableReport();
+        long na = UT.Schema.UtRootFixedLoad(backA, savedA, new UT.TableFixedEntry[512], reportA);
+        Check(na == 1 && reportA.Unknown == 0 && !reportA.Refused && reportA.Widened == 0 && !reportA.Damaged,
+              id + ": arm A loads clean");
+        Check(backA.Pick.Type == UT.UtPickType.A && backA.Pick.A.N == 11 && backA.Tail == 9,
+              id + ": arm A reads back");
+    }
+
+    static void TestFixedValidDataOptionalNesting()
+    {
+        const string id = "optional-nesting/cs/valid-data";
+        byte[] name = Encoding.UTF8.GetBytes("chain");
+        byte[] tag = Encoding.UTF8.GetBytes("nest");
+
+        P3.Chain present = new P3.Chain();
+        P3.Schema.TableReset(present);
+        name.CopyTo(present.Name.AsSpan());
+        present.NameLength = name.Length;
+        present.LinkPresent = true;
+        present.Link.Value = 321;
+        tag.CopyTo(present.Link.Tag.AsSpan());
+        present.Link.TagLength = tag.Length;
+        byte[] saved = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
+        Check(P3.Schema.ChainFixedSave(present, saved) == saved.Length, id + ": present saves");
+
+        P3.Chain back = new P3.Chain();
+        P3.Schema.TableReset(back);
+        back.LinkPresent = false;
+        back.Link.Value = 999;
+        back.NameLength = 0;
+        P3.TableReport report = new P3.TableReport();
+        long n = P3.Schema.ChainFixedLoad(back, saved, new P3.TableFixedEntry[256], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": present loads clean");
+        Check(back.LinkPresent && back.Link.Value == 321 && back.Link.TagLength == tag.Length
+              && back.Link.Tag.AsSpan(0, tag.Length).SequenceEqual(tag)
+              && back.NameLength == name.Length && back.Name.AsSpan(0, name.Length).SequenceEqual(name),
+              id + ": the present link reads back");
+
+        P3.Chain absent = new P3.Chain();
+        P3.Schema.TableReset(absent);
+        name.CopyTo(absent.Name.AsSpan());
+        absent.NameLength = name.Length;
+        absent.LinkPresent = false;
+        byte[] asaved = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
+        Check(P3.Schema.ChainFixedSave(absent, asaved) == asaved.Length, id + ": absent saves");
+        P3.Chain aback = new P3.Chain();
+        P3.Schema.TableReset(aback);
+        aback.LinkPresent = true;
+        aback.Link.Value = 7;
+        P3.TableReport areport = new P3.TableReport();
+        long an = P3.Schema.ChainFixedLoad(aback, asaved, new P3.TableFixedEntry[256], areport);
+        Check(an == 1 && areport.Unknown == 0 && !areport.Refused && areport.Widened == 0 && !areport.Damaged,
+              id + ": absent loads clean");
+        Check(!aback.LinkPresent, id + ": an absent link reads back absent");
+    }
+
+    static void TestFixedValidDataFileRoundtrip()
+    {
+        const string id = "fixed-file-roundtrip/cs/valid-data";
+        FX1.FxRoot one = new FX1.FxRoot();
+        FX1.Schema.TableReset(one);
+        one.Keep = 4242u;
+        one.Narrow = 40000;
+        one.Renamed = 321;
+        one.Gone = 654;
+        one.Nested.A = 111;
+        one.Nested.B = 222;
+        byte[] label = Encoding.UTF8.GetBytes("round");
+        label.CopyTo(one.Label.AsSpan());
+        one.LabelLength = label.Length;
+        one.MarksCount = 2;
+        one.Marks[0] = 7;
+        one.Marks[1] = 8;
+        one.BlobLength = 3;
+        one.Blob[0] = 0xDE;
+        one.Blob[1] = 0xAD;
+        one.Blob[2] = 0xBE;
+
+        byte[] first = new byte[(int)FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(one, first) == first.Length, id + ": the first save fills the measure");
+
+        FX1.FxRoot back = new FX1.FxRoot();
+        FX1.Schema.TableReset(back);
+        FX1.TableReport report = new FX1.TableReport();
+        long n = FX1.Schema.FxRootFixedLoad(back, first, new FX1.TableFixedEntry[1024], report);
+        Check(n == 1 && report.Unknown == 0 && !report.Refused && report.Widened == 0 && !report.Damaged,
+              id + ": the load is clean");
+        Check(back.Keep == 4242u && back.Narrow == 40000 && back.Renamed == 321 && back.Gone == 654
+              && back.Nested.A == 111 && back.Nested.B == 222
+              && back.LabelLength == label.Length && back.MarksCount == 2 && back.Marks[0] == 7 && back.Marks[1] == 8
+              && back.BlobLength == 3 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE,
+              id + ": the fields read back");
+
+        byte[] second = new byte[first.Length];
+        Check(FX1.Schema.FxRootFixedSave(back, second) == second.Length, id + ": the second save fills the measure");
+        Check(first.AsSpan().SequenceEqual(second), id + ": save, load, save produces the same bytes");
+    }
+
+    static void TestFixedValidDataRecordMeasurement()
+    {
+        const string id = "record-measurement/cs/valid-data";
+        long m0 = FX1.Schema.FxRootFixedMeasure(0);
+        long m1 = FX1.Schema.FxRootFixedMeasure(1);
+        long m2 = FX1.Schema.FxRootFixedMeasure(2);
+        Check(m1 > m0 && m2 > m1, id + ": measure grows with the record count");
+        Check(m1 - m0 == m2 - m1, id + ": each record adds the same number of bytes");
+        Check(m1 - m0 == FX1.Schema.FxRootFixedRecordBytes, id + ": the step is the record size");
+        Check(FX1.Schema.FxRootFixedRecordBytes == 8 + FX1.Schema.FxRootFixedBodyBytes, id + ": the record is the header word plus the body");
+        Check(FX1.Schema.FxRootFixedBodyBytes > 0, id + ": the body has a size");
+
+        FX1.FxRoot a = new FX1.FxRoot();
+        FX1.Schema.TableReset(a);
+        a.Keep = 1u;
+        FX1.FxRoot b = new FX1.FxRoot();
+        FX1.Schema.TableReset(b);
+        b.Keep = 2u;
+        byte[] wa = new byte[(int)m1];
+        byte[] wb = new byte[(int)m1];
+        Check(FX1.Schema.FxRootFixedSave(a, wa) == m1, id + ": one record saves to measure(1)");
+        Check(FX1.Schema.FxRootFixedSave(b, wb) == m1, id + ": a different record saves to the same measure(1)");
+        Check(!wa.AsSpan().SequenceEqual(wb), id + ": the two records are not the same bytes");
+    }
+
+}

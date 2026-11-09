@@ -1375,3 +1375,153 @@ report previous_form_r1_cfg tblr1 Cfg testdata/wire/tables/r1_cfg.bin
 report previous_form_r1_ping tblr1 Cfg testdata/wire/tables/r1_ping.bin
 report previous_form_r2_cfg tblr2 Cfg testdata/wire/tables/r2_cfg.bin
 report previous_form_text_float32_double_round tabledemo ProfileConfig testdata/wire/tables/text_float32_double_round.bin
+
+# THE REWRITE ROWS (docs/SPEC-TABLES.md §22, test/conformance/README.md): every
+# corpus input that READS, read by every leg and written back. The canonical
+# bytes are rewrite/<case>.bin, the oracle's write of the value the read leaves.
+# Every report row and framing row that reads has a row here, and the harness
+# test TestEveryReadingRowIsARewriteRow holds that.
+rewrite p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+rewrite w1_fleet_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet.bin
+rewrite w2_fleet_as_w1 tblw1 Fleet testdata/wire/tables/w2_fleet.bin
+rewrite w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.bin
+rewrite map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
+rewrite frame_empty_table tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin
+rewrite frame_unreferenced_entry tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin
+rewrite frame_entries_4096 tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin
+rewrite frame_ref_last_slot tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin
+rewrite frame_unknown_id_fixed_width tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin
+rewrite frame_unknown_id_union tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union.bin
+rewrite frame_unknown_id_union_empty tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin
+rewrite nested_L_exact tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin
+rewrite nested_unknown_id_inside tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin
+rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
+rewrite array_count_at_bound tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin
+rewrite keyed_unknown_key tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin
+rewrite union_arm_width_exact tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin
+rewrite union_void_arm tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin
+rewrite union_unknown_arm tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin
+rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite node_clean graphdemo ListNode testdata/wire/tables/framing/node_clean.bin
+rewrite node_diamond_chain graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin
+rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin
+# THE HAND-BUILT NON-CANONICAL SPELLINGS (docs/SPEC-TABLES.md §22): each is a
+# legal wire no conforming writer produces, so the leg that reads it must write
+# the canonical bytes back. Fields out of declaration order with the id table
+# no longer in first-use order; and the id table reversed and every reference
+# renumbered. A repeated field (rewrite_field_twice.bin) is refused under the
+# strict-only read (§3).
+rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
+rewrite rewrite_ids_reversed    tblw1 Fleet testdata/wire/tables/rewrite_ids_reversed.bin
+
+# THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
+# freedom a writer has, each a trap for one wrong implementation of it. Map keys
+# whose byte order and whose UTF-16 or signed order disagree, keys at their
+# default (which elide inside the entry), a nested map value that is empty;
+# uint16 keys whose little-endian bytes sort the other way; an unbounded string
+# key past 127 bytes beside its prefix; a pointer DIAMOND and a list chain the
+# depth-first walk numbers before the tree a breadth-first walk would reach
+# first; and a union arm that reaches nodes before the pointer fields declared
+# after it name them again.
+rewrite edge_map_keys      mapdemo          Fleet   testdata/wire/tables/edge_map_keys.bin
+rewrite edge_text_keys     mapdemo          Text    testdata/wire/tables/edge_text_keys.bin
+rewrite edge_by_name       featurewitnesses Root    testdata/wire/tables/edge_by_name.bin
+rewrite edge_graph_diamond graphdemo        Scene   testdata/wire/tables/edge_graph_diamond.bin
+rewrite edge_stream_union  streamdemo       Feed    testdata/wire/tables/edge_stream_union.bin
+rewrite edge_u64_keys      mapdemo          EdgeRow testdata/wire/tables/edge_u64_keys.bin
+
+# THE WRITE CONTRACT (docs/SPEC.md §5.1): every writer refuses a value its
+# declaration does not admit. Each row loads the wire, sets ONE field to the
+# value, and saves through the variable-form Save; the verdict is what the save
+# owes. Every refused row has a lawful twin at the same boundary that must be
+# written, so a driver that refused everything would fail half the battery.
+# An assert leg (C, C++, C#, Rust, Java, Dart) answers from its DEBUG build,
+# where the check is active; every other leg refuses in every build.
+#
+#   write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+write-refusal wref_range_high      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     11  refused
+write-refusal wref_range_high_ok   tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     10  wrote
+write-refusal wref_range_low       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     -1  refused
+write-refusal wref_range_low_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     0   wrote
+write-refusal wref_bits_wide       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     64  refused
+write-refusal wref_bits_wide_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     63  wrote
+write-refusal wref_count           tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   9   refused
+write-refusal wref_count_ok        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   8   wrote
+write-refusal wref_length          tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  17  refused
+write-refusal wref_length_ok       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  16  wrote
+write-refusal wref_enum            tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 4   refused
+write-refusal wref_enum_ok         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 3   wrote
+write-refusal wref_union_tag       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     3   refused
+write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     2   wrote
+write-refusal wref_non_finite      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   nan refused
+write-refusal wref_infinite        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   inf refused
+
+# ILL-FORMED TEXT HELD IN STORAGE (docs/SPEC.md §5.1 row 8): what no wire can
+# deliver and a program can build. A narrow string holding 61 FF 62 and a wide
+# string holding 0061 D800 0062 (a lone high surrogate) are refused, writing
+# nothing; the well-formed twins beside them are written. A leg whose string
+# type cannot hold the value answers `unrepresentable`; a leg with no wide text
+# answers the wide rows absent.
+write-refusal wref_text_illformed  tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 61FF62           refused
+write-refusal wref_text_wellformed tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 61C3A962         wrote
+write-refusal wref_wide_unpaired   widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D8000062     refused
+write-refusal wref_wide_paired     widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D83DDE000062 wrote
+# A zero byte or unit in variable-form text (docs/SPEC.md §5.1 row 8): the
+# binary reader calls it ill-formed, so the variable writer refuses it too;
+# only the text writer below spells it `\u0000`.
+write-refusal wref_text_zero       tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 610062           refused
+write-refusal wref_wide_zero       widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 006100000062     refused
+
+# THE SAME CONTRACT THROUGH THE FIXED FORM'S FixedSave (docs/SPEC.md §5.1): the
+# row loads the wire as the variable form does, sets the one field, and saves
+# the one value as a fixed batch of one. An assert leg answers from its debug
+# build.
+write-refusal-fixed fref_range_high      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     11               refused
+write-refusal-fixed fref_range_high_ok   tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     10               wrote
+write-refusal-fixed fref_range_low       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     -1               refused
+write-refusal-fixed fref_range_low_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     0                wrote
+write-refusal-fixed fref_bits_wide       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     64               refused
+write-refusal-fixed fref_bits_wide_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     63               wrote
+write-refusal-fixed fref_count           tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   9                refused
+write-refusal-fixed fref_count_ok        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   8                wrote
+write-refusal-fixed fref_length          tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  17               refused
+write-refusal-fixed fref_length_ok       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  16               wrote
+write-refusal-fixed fref_enum            tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 4                refused
+write-refusal-fixed fref_enum_ok         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 3                wrote
+write-refusal-fixed fref_union_tag       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     3                refused
+write-refusal-fixed fref_union_tag_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     2                wrote
+write-refusal-fixed fref_non_finite      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   nan              refused
+write-refusal-fixed fref_infinite        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   inf              refused
+write-refusal-fixed fref_text_illformed  tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   61FF62           refused
+write-refusal-fixed fref_text_wellformed tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   61C3A962         wrote
+write-refusal-fixed fref_wide_unpaired   widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D8000062     refused
+write-refusal-fixed fref_wide_paired     widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D83DDE000062 wrote
+# A zero byte or unit in fixed text: the fixed reader refuses it as
+# text_ill_formed, so the fixed writer refuses it too and never writes a record
+# its own reader would refuse.
+write-refusal-fixed fref_text_zero       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   610062           refused
+write-refusal-fixed fref_wide_zero       widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   006100000062     refused
+
+# AND THROUGH THE MESSAGE FORM'S SaveMessages (docs/SPEC-TABLES.md §3.3, §22.6):
+# <unit> is the CONNECTION whose announced vocabulary the batch of one is
+# written against. A ranged value off its bounds is refused, never masked,
+# wrapped or clamped into the field's width.
+write-refusal-message mref_range_high      backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     100      refused
+write-refusal-message mref_range_high_ok   backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     99       wrote
+write-refusal-message mref_range_low       backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     0        refused
+write-refusal-message mref_range_low_ok    backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     1        wrote
+write-refusal-message mref_element         backend_conn MatchResult   testdata/wire/tables/match_full.bin players[0].score  int     100001   refused
+write-refusal-message mref_element_ok      backend_conn MatchResult   testdata/wire/tables/match_full.bin players[0].score  int     100000   wrote
+write-refusal-message mref_length          backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               length  33       refused
+write-refusal-message mref_length_ok       backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               length  32       wrote
+write-refusal-message mref_enum            backend_conn StorePurchase testdata/wire/tables/store_full.bin currency          ordinal 5        refused
+write-refusal-message mref_enum_ok         backend_conn StorePurchase testdata/wire/tables/store_full.bin currency          ordinal 4        wrote
+write-refusal-message mref_text_illformed  backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61FF62   refused
+write-refusal-message mref_text_wellformed backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61C3A962 wrote
+write-refusal-message mref_text_zero       backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   610062   refused
+
+# THE TEXT WRITER WRITES A ZERO BYTE OR UNIT (docs/SPEC-TABLES.md §16.3): it
+# spells it `\u0000`, it does not refuse it. The driver answers `wrote` when
+# the text holds `\u0000` at that field, and `refused` when the writer refused.
+write-refusal-json jref_zero_byte tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 610062       wrote
+write-refusal-json jref_zero_unit widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 006100000062 wrote

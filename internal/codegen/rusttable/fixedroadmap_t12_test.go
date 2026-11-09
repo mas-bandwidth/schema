@@ -343,7 +343,7 @@ func t12R27(t *testing.T, corpus string) {
 // does) and asserts `the_hostile_sweep`'s verdict line.
 func t12P3(t *testing.T, corpus string) {
 	out := t12FixedFormRun(t, corpus)
-	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1445 malformed=35 landed=854, three answers never a fourth"
+	const wantSweep = "P3 hostile sweep: 2334 mutations over 389 bytes — refused=1625 malformed=35 landed=674, three answers never a fourth"
 	if strings.Contains(out, "FAIL:") {
 		t.Fatalf("rust/P3: test/rust-fixedform reported a failure:\n%s", out)
 	}

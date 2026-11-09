@@ -89,6 +89,15 @@ func goBuildDriver(t *testing.T, root, overlayPath string) string {
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = filepath.Join(root, "test", "conformance", "go")
 	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
+		goEnsureGeneratedTables(t, root)
+		retry := exec.CommandContext(ctx, "go", args...)
+		retry.Dir = cmd.Dir
+		if out2, err2 := retry.CombinedOutput(); err2 == nil {
+			return bin
+		} else {
+			out, err = out2, err2
+		}
 		t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
 	return bin
@@ -333,8 +342,8 @@ func TestGoDriverReportAndRetainNegativeControl(t *testing.T) {
 			t,
 			root,
 			"test/conformance/go/retain.go",
-			`markUnknownNodeRefs(tblrt1.TableReader{Buffer: r.Buffer, Ids: r.Ids, Nodes: r.Nodes, Report: r.Report}, knownPtrID)`,
-			`// SABOTAGED: unknown nested kind-17 pointers do not mark target nodes`,
+			`r.Nodes.Mark(index)`,
+			`if r.Nested && index > 0 && int(index) <= len(r.Nodes.Entries) { r.Nodes.Entries[index-1].Offset &^= 1 << 63 } // SABOTAGED: unknown nested kind-17 pointers do not mark target nodes`,
 		)
 		wrong := goDriverCheckAll(t, root, bin, reports, retains)
 		want := []string{

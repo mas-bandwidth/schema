@@ -13,6 +13,10 @@ type messageCodec struct {
 	unit, root  string
 	run         func([]byte, []byte, bool) ([]byte, report, bool)
 	loadMeasure func([]byte) int64
+	// saveOne writes the one value through this root's SaveMessages and answers
+	// the byte length, or -1 refused. The write-refusal surface takes it after
+	// loading and mutating the row's value (docs/SPEC.md §5.1).
+	saveOne func(value any) int64
 }
 
 func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T, *R) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
@@ -63,7 +67,24 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 			return nil, rep, false
 		}
 		return out, rep, ok
-	}}
+	},
+		saveOne: func(value any) int64 {
+			v, ok := value.(*T)
+			if !ok {
+				return -1
+			}
+			var r R
+			n := measure([]*T{v}, &r)
+			if n < 0 {
+				return -1
+			}
+			buffer := make([]byte, n)
+			if save([]*T{v}, buffer, &r) != n {
+				return -1
+			}
+			return n
+		},
+	}
 }
 func findMessageCodec(unit, root string) *messageCodec {
 	for i := range messageCodecs {

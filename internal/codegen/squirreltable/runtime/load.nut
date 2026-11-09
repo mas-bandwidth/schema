@@ -1932,7 +1932,22 @@ local loadFixed = function(T, c, bytes, report, trailerChecked) {
 // table, the node table's records first, then every record's body, then the
 // root body, then the one numbering's resolution. It keeps the recovered value
 // and its counters; the plain name is the strict read (§6.5).
+local retainClear = function(retain, report, reason, refused = false) {
+  if (retain != null) {
+    retain.recs <- [];
+    retain.used <- 0;
+    report.retained = 0;
+    report.retainLost = 0;
+    if (report.getdelegate() == null) {
+      if (refused) report.refused = true;
+      if (reason != null) report.reason <- reason;
+    }
+  }
+  return null;
+};
+
 _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecked = false) {
+  if (report.getdelegate() == null) _M.report(report);
   if (report.unknown == null) report.unknown <- 0;
   if (report.mismatch == null) report.mismatch <- 0;
   if (report.widened == null) report.widened <- 0;
@@ -1951,9 +1966,15 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
   else if (!report.rawin("missingRequired")) report.missingRequired = false;
 
   local c = tableDesc(T, rootName);
-  if (c.fixed) return loadFixed(T, c, bytes, report, trailerChecked);
-  if (bytes.len() < 1) { report.bodyDamaged = true; return null; }
-  if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
+  if (c.fixed) {
+    if (retain != null) return retainClear(retain, report, "retention_requires_variable_region_root", true);
+    return loadFixed(T, c, bytes, report, trailerChecked);
+  }
+  if (bytes.len() < 1) { report.bodyDamaged = true; return retainClear(retain, report, "wire_damaged"); }
+  if ((bytes[0] & 0xff) != FORM_VARIABLE) {
+    report.refused = true;
+    return retainClear(retain, report, (bytes[0] & 0xff) == 2 ? "message_form_as_file" : "newer_form", true);
+  }
   // an integrity root's trailer is checked and stripped before any field is
   // decoded (docs/SPEC-TABLES.md §2.14): a mismatch is the whole-file damage,
   // and the rest reads as §3's file. ReadStrict has already opened it and
@@ -1961,23 +1982,23 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
   // order without stripping twice.
   if (!trailerChecked && ("integrity" in c) && c.integrity != null && c.integrity != "") {
     local body = integrityOpen(bytes);
-    if (body == null) { report.bodyDamaged = true; return null; }
+    if (body == null) { report.bodyDamaged = true; return retainClear(retain, report, "integrity_mismatch"); }
     bytes = body;
   }
-  if (bytes.len() < 9) { report.bodyDamaged = true; return null; }
+  if (bytes.len() < 9) { report.bodyDamaged = true; return retainClear(retain, report, "wire_damaged"); }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
   // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file),
   // and THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK;
   // ir.TableWireIdTableBound): a table above it is malformed on the
   // whole-wire rule, whatever the buffer would hold
-  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) { report.bodyDamaged = true; return null; }
+  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) { report.bodyDamaged = true; return retainClear(retain, report, "wire_damaged"); }
   local end = bytes.len() - 8 - count * 8;
   local table = [];
   local seen = {};
   for (local i = 0; i < count; i++) {
     local id = u64At(bytes, end + i * 8);
-    if (id in seen) { report.bodyDamaged = true; return null; }
+    if (id in seen) { report.bodyDamaged = true; return retainClear(retain, report, "wire_damaged"); }
     seen[id] <- true;
     table.append(id);
   }
@@ -1988,7 +2009,7 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     local ref = leb(w);
     if (w.bad) break;
     if (ref == 0) {
-      if (w.at != w.end) { report.bodyDamaged = true; return null; }
+      if (w.at != w.end) { report.bodyDamaged = true; return retainClear(retain, report, "wire_damaged"); }
       break;
     }
     if (ref > table.len()) break;
@@ -2049,7 +2070,7 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
       report.refused = true;
       report.reason <- "count_over_extent_cap";
     }
-    return null;
+    return retainClear(retain, report, "count_over_extent_cap", true);
   }
   resolve(st, c, report);
   // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
@@ -2072,6 +2093,7 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
   // strict caller (ReadStrict, refusal.nut) reads the name off its own
   // report and answers non_finite_float with that field.
   if (st.nonFinite != null) {
+    retainClear(retain, report, null, true);
     if (report.getdelegate() == null) {
       report.refused = true;
       report.nonFiniteFloat = st.nonFinite;
@@ -2081,6 +2103,9 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     local strict = ::getstackinfos(2);
     if (strict != null && ("_strictFrame" in strict.locals)) strict.locals.report.nonFiniteFloat <- st.nonFinite;
     return null;
+  }
+  if (retain != null && report.bodyDamaged) {
+    return retainClear(retain, report, report.missingRequired ? "missing_required" : "malformed");
   }
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that met
   // damage returns nothing; the report says malformed and the caller discards
@@ -2102,20 +2127,20 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
   // field missing) answers the walk's own name and field.
   local walkRefused = report.oor > 0 || report.mismatch > 0 || report.missingRequired;
   local check = walkRefused ? { fail = null, nonFinite = false } : wireCheck(bytes, 1, end, table, false);
-  if (check.fail == "damage") { report.bodyDamaged = true; return null; }
+  if (check.fail == "damage") { report.bodyDamaged = true; return retainClear(retain, report, "malformed"); }
   if (check.fail == "count") {
     report.countRefusal = true;
     if (report.getdelegate() == null) {
       report.refused = true;
       report.reason <- "count_over_extent_cap";
     }
-    return null;
+    return retainClear(retain, report, "count_over_extent_cap", true);
   }
   if (check.fail == "blob_shared") {
     if (report.getdelegate() == null) {
       report.sharedBlob <- 1;
       report.reason <- "blob_shared";
-      return null;
+      return retainClear(retain, report, "blob_shared", true);
     }
     local shared = ::getstackinfos(2);
     if (shared != null && ("_strictFrame" in shared.locals)) {
@@ -2126,6 +2151,7 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
   }
   if (check.nonFinite) {
     local unnamed = "a float the wire carries";
+    retainClear(retain, report, null, true);
     if (report.getdelegate() == null) {
       report.refused = true;
       report.nonFiniteFloat = unnamed;
@@ -2141,6 +2167,10 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     if (st.sharedBlob > 0 && !report.bodyDamaged && !report.countRefusal) {
       report.reason <- "blob_shared";
       report.field <- st.blobField;
+      if (retain != null) return retainClear(retain, report, "blob_shared", true);
+    }
+    if (retain != null && (report.oor > 0 || report.mismatch > 0)) {
+      return retainClear(retain, report, report.oor > 0 ? "out_of_range" : "kind_mismatch", true);
     }
     return v;
   }

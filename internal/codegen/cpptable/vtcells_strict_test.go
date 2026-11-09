@@ -82,7 +82,7 @@ var cppVarCellAnchors = map[string]struct {
 		src: "Makefile",
 		want: []string{
 			"tables-doctags-negative-controls:",
-			`s|", TableDocNone, 0, NULL, false }|", NULL, 0, NULL, false }|`,
+			`s|", TableDocNone, 0, NULL, false, false, 0, 0, false }|", NULL, 0, NULL, false, false, 0, 0, false }|`,
 			"NEGATIVE CONTROL FAILED: a NULL doc column did not take the gate down",
 		},
 	},
@@ -92,7 +92,7 @@ var cppVarCellAnchors = map[string]struct {
 	"vt/maps/cpp": {
 		src: "internal/codegen/cpptable/maps.go",
 		want: []string{
-			"if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }",
+			`if ( order == 0 )\n%[1]s        {\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = malformed;\n%[1]s        }`,
 		},
 	},
 	// vt/unbounded-arrays: a list read under a changed element kind refuses the
@@ -101,7 +101,7 @@ var cppVarCellAnchors = map[string]struct {
 	"vt/unbounded-arrays/cpp": {
 		src: "internal/codegen/cpptable/lists.go",
 		want: []string{
-			"else if ( elem_kind != %d ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }",
+			`else if ( elem_kind != %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = kind_mismatch;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }`,
 		},
 	},
 	// vt/id-table-wire: the conformance driver's form-1 framing walk refuses a

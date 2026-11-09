@@ -81,11 +81,17 @@ type codec struct {
 	fresh       func() any
 	load        func(value any, wire []byte, rep *report) bool
 	// variableLoad is a fixed root's VARIABLE-form read (fixed.go): the framing
-	// vectors alone take it; nil for a variable root, whose load is that read
-	variableLoad  func(value any, wire []byte, rep *report) bool
-	measure       func(value any) int64
-	measureReason func(value any) (int64, error)
-	save          func(value any, buffer []byte) int64
+	// vectors and the write-refusal battery alone take it; nil for a variable
+	// root, whose load is that read
+	variableLoad func(value any, wire []byte, rep *report) bool
+	measure      func(value any) int64
+	// variableMeasure and variableSave are a fixed root's VARIABLE-form write
+	// (fixed.go): the write-refusal surface takes it; nil for a variable root,
+	// whose measure and save are that write
+	variableMeasure func(value any) int64
+	variableSave    func(value any, buffer []byte) int64
+	measureReason   func(value any) (int64, error)
+	save            func(value any, buffer []byte) int64
 	// the TEXT form (docs/SPEC-TABLES.md §16); nil where a backend has none
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64
@@ -727,6 +733,9 @@ func main() {
 		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
+	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+		surface := surface
+		run = func(lines []line, out string) error { return surfaceWriteRefusal(surface, lines, out) }
 	default:
 		os.Exit(2)
 	}

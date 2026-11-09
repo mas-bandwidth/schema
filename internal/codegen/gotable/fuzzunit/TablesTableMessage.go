@@ -26,6 +26,39 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 			if value.VersionNoteLength < 0 || value.VersionNoteLength > 16 {
 				return false
 			}
+			{
+				n := int(value.VersionNoteLength)
+				var hi, z uint64
+				p := value.VersionNote[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.VersionNote[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.VersionNote[:n]) {
+					return false
+				}
+			}
 			w.Put(uint64(value.VersionNoteLength), 5)
 			w.Raw(value.VersionNote[:value.VersionNoteLength])
 		}
@@ -1317,6 +1350,39 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			w.Put(38, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 32 {
 				return false
+			}
+			{
+				n := int(value.NameLength)
+				var hi, z uint64
+				p := value.Name[:n]
+				for len(p) >= 16 {
+					x, y := tableUTF8Word(p), tableUTF8Word(p[8:])
+					hi |= x | y
+					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
+					p = p[16:]
+				}
+				if len(p) >= 8 {
+					x := tableUTF8Word(p)
+					hi |= x
+					z |= (x - 0x0101010101010101) &^ x
+					p = p[8:]
+				}
+				if len(p) > 0 {
+					if n >= 8 {
+						x := tableUTF8Word(value.Name[n-8:])
+						hi |= x
+						z |= (x - 0x0101010101010101) &^ x
+					} else {
+						for _, c := range p {
+							x := uint64(c)
+							hi |= x
+							z |= (x - 1) &^ x
+						}
+					}
+				}
+				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(value.Name[:n]) {
+					return false
+				}
 			}
 			w.Put(uint64(value.NameLength), 6)
 			w.Raw(value.Name[:value.NameLength])
