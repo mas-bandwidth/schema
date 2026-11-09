@@ -1,29 +1,33 @@
 package mootable_test
 
-// WIDENING ON READ (docs/SPEC-TABLES.md §3, §3.3, §4) for moo, the gates the
-// Go leg's cell names (gotable wire_test.go, maps_test.go), each held to the
-// Go leg's pinned answers and to the reference engine's read
-// (internal/tablewire Decode), which shares no code with the moo runtime:
+// WIDENING ON READ (docs/SPEC-TABLES.md §3, §3.3, §4) for moo under the one
+// strict read, the gates the Go leg's cell names (gotable wire_test.go,
+// maps_test.go), each held to the reference engine's read (internal/tablewire
+// Decode), which shares no code with the moo runtime. THE VERDICT IS THE
+// CONTRACT: the read answers the whole value or refuses, and a refusal defines
+// nothing else; no reason name is compared (docs/rulings.json
+// refusal-verdict-only). Where both answer the value, widened (an evolution
+// diagnostic) and the saved bytes are the reference's:
 //
 //	TestMooWireSignalingNaNWideningAndLEBOverflow  a float32 payload under a
 //	    float64 field: a NaN (signaling or quiet, any payload) or an infinity
-//	    refuses the read as non_finite_float and lands nothing; a finite one
-//	    (a subnormal and a negative zero included) widens EXACTLY, counts one
-//	    widened, and saves to the reference's bytes. A LEB128 whose tenth byte
-//	    carries a bit past 2^64 is refused (table_values.moo V.leb)
+//	    refuses the read; a finite one (a subnormal and a negative zero
+//	    included) widens EXACTLY, counts one widened, and saves to the
+//	    reference's bytes. A LEB128 whose tenth byte carries a bit past 2^64
+//	    is refused (table_values.moo V.leb)
 //	TestMooWideningLadder  every wire scalar kind under every declared scalar
-//	    kind (the 12 x 10 grid): the load's widened, kind_mismatch and clamped
-//	    are the reference's, and what it landed saves to the reference's bytes
-//	TestMooMapReadReports  a map's widened key counts once per map, a
-//	    repeated key counts duplicate, a descending key is damage that discards
-//	    the whole load, and a key of another kind empties the map for one
-//	    kind_mismatch
+//	    kind (the 12 x 10 grid): a widening (same signedness, wider, or f32
+//	    into f64) loads with the reference's widened and saves to its bytes;
+//	    every other cell refuses the whole read, as the reference does
+//	TestMooMapReadReports  a map's widened key counts once per map; a
+//	    descending or repeated key, and a key of another kind, refuse the
+//	    whole read
 //
 // TestMooFloat32WidensBitForBit (float_widen_test.go) holds the float rung's
-// bit surgery to the hardware over 40000 patterns; the refusal reasons are
-// refusalreasons_test.go's. TestMooWideningNegativeControl breaks the float
-// rung, the LEB's tenth-byte clause and the map's once-per-map widened count,
-// and requires each to turn its own gate red.
+// bit surgery to the hardware over 40000 patterns. TestMooWideningNegativeControl
+// breaks the float rung, the LEB's tenth-byte clause, the map's once-per-map
+// widened count and the load's kind_mismatch refusal, and requires each to
+// turn its own gate red.
 
 import (
 	"bytes"
@@ -42,16 +46,17 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// wideningResult is one load the probe printed.
+// wideningResult is one load the probe printed: the verdict, and for an
+// answered value its widened count and saved bytes.
 type wideningResult struct {
-	loaded, malformed                   bool
-	widened, mismatch, duplicate, clamp int64
-	reason                              string
-	saved                               []byte
+	loaded  bool
+	widened int64
+	saved   []byte
 }
 
-// wideningProbe loads each input at Root through loadTolerant and saves what
-// landed; leb adds the tenth-byte sweep of table_values.moo's V.leb.
+// wideningProbe loads each input at Root through the one strict read and
+// saves what it answered; leb adds the tenth-byte sweep of table_values.moo's
+// V.leb.
 const wideningProbe = `local inputs = require("./inputs")
 local load = require("./table_load")
 local save = require("./table_save")
@@ -73,9 +78,7 @@ local function probe(name: string)
 			saved = "x" .. table.concat(parts)
 		end
 	end
-	local reason = if rep.reason == nil then "-" else string.split(tostring(rep.reason), ":")[1]
-	print(string.format("%s %d %d %d %d %d %d %s %s", name, if v ~= nil then 1 else 0, if rep.damaged then 1 else 0,
-		rep.widened, 0, 0, 0, reason, saved))
+	print(string.format("%s %d %d %s", name, if v ~= nil then 1 else 0, rep.widened, saved))
 end
 local function lebTenth()
 	-- one spelling only: a tenth byte of 1 is 2^63, 0 is non-minimal, and
@@ -123,22 +126,18 @@ func wideningRun(t *testing.T, schema string, wires map[string][]byte, leb bool,
 			lebRed = append(lebRed, line)
 			continue
 		}
-		if len(f) != 9 {
+		if len(f) != 4 {
 			t.Fatalf("the probe printed %q", line)
 		}
-		n := make([]int64, 6)
-		for i := range 6 {
-			v, err := strconv.ParseInt(f[i+1], 10, 64)
-			if err != nil {
-				t.Fatalf("%s: %q is not a count", f[0], f[i+1])
-			}
-			n[i] = v
+		widened, err := strconv.ParseInt(f[2], 10, 64)
+		if err != nil {
+			t.Fatalf("%s: %q is not a count", f[0], f[2])
 		}
-		r := wideningResult{loaded: n[0] == 1, malformed: n[1] == 1, widened: n[2], mismatch: n[3], duplicate: n[4], clamp: n[5], reason: f[7]}
-		if f[8] != "-" {
-			saved, err := hex.DecodeString(strings.TrimPrefix(f[8], "x"))
+		r := wideningResult{loaded: f[1] == "1", widened: widened}
+		if f[3] != "-" {
+			saved, err := hex.DecodeString(strings.TrimPrefix(f[3], "x"))
 			if err != nil {
-				t.Fatalf("%s: %q is not hex", f[0], f[8])
+				t.Fatalf("%s: %q is not hex", f[0], f[3])
 			}
 			r.saved = saved
 		}
@@ -192,8 +191,11 @@ func signalingNaN(t *testing.T, mutate func(*testing.T, map[string][]byte)) []st
 	}
 	for _, bits := range refused {
 		g := got[fmt.Sprintf("f%08x", bits)]
-		if g.loaded || g.reason != "non_finite_float" {
-			bad = append(bad, fmt.Sprintf("float %#x: loaded %v, reason %q; want refused as non_finite_float", bits, g.loaded, g.reason))
+		if r, _ := referenceRead(t, schema, wires[fmt.Sprintf("f%08x", bits)]); !r.Refused {
+			t.Fatalf("the reference answers a value for %#x: %+v", bits, r)
+		}
+		if g.loaded || g.saved != nil {
+			bad = append(bad, fmt.Sprintf("float %#x: loaded %v; want the whole read refused, as the reference refuses it", bits, g.loaded))
 		}
 	}
 	for _, bits := range widened {
@@ -206,7 +208,7 @@ func signalingNaN(t *testing.T, mutate func(*testing.T, map[string][]byte)) []st
 		if exact := binary.LittleEndian.AppendUint64(nil, math.Float64bits(float64(math.Float32frombits(bits)))); !bytes.Contains(want, exact) {
 			t.Fatalf("the reference's save of %#x does not carry its exact widening", bits)
 		}
-		if !g.loaded || g.malformed || g.widened != 1 || !bytes.Equal(g.saved, want) {
+		if !g.loaded || g.widened != 1 || !bytes.Equal(g.saved, want) {
 			bad = append(bad, fmt.Sprintf("float %#x: loaded %v, widened %d, saved %x; want widened once, saved %x", bits, g.loaded, g.widened, g.saved, want))
 		}
 	}
@@ -247,11 +249,12 @@ func ladderPayload(kind byte) []byte {
 	return p
 }
 
-// wideningLadder is the grid gate's red list.
+// wideningLadder is the grid gate's red list, verdict first against the
+// reference: both answer the value or both refuse the whole read.
 func wideningLadder(t *testing.T, mutate func(*testing.T, map[string][]byte)) []string {
 	t.Helper()
 	var bad []string
-	widened, mismatched := 0, 0
+	widened, refused := 0, 0
 	for _, decl := range ladderKinds {
 		schema := fmt.Sprintf("package probe\ntable Root { value %s }\n", decl.decl)
 		wires := map[string][]byte{}
@@ -263,31 +266,32 @@ func wideningLadder(t *testing.T, mutate func(*testing.T, map[string][]byte)) []
 			name := fmt.Sprintf("k%d", w.kind)
 			g := got[name]
 			r, want := referenceRead(t, schema, wires[name])
-			if want == nil {
-				t.Fatalf("the reference refuses %s under %s: %+v", name, decl.decl, r)
-			}
 			at := fmt.Sprintf("kind %d under %s", w.kind, decl.decl)
-			if !g.loaded || g.malformed || g.widened != int64(r.Widened) || g.mismatch != int64(0) || g.clamp != int64(0) {
-				bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d, kind_mismatch %d, clamped %d; the reference %d, %d, %d",
-					at, g.loaded, g.widened, g.mismatch, g.clamp, r.Widened, 0, 0))
+			if r.Refused {
+				refused++
+				if g.loaded || g.saved != nil {
+					bad = append(bad, fmt.Sprintf("%s: moo answered a value (widened %d, saved %x); the reference refuses the whole read", at, g.widened, g.saved))
+				}
+				continue
+			}
+			if !g.loaded || g.widened != int64(r.Widened) {
+				bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d; the reference answers the value, widened %d", at, g.loaded, g.widened, r.Widened))
 				continue
 			}
 			if !bytes.Equal(g.saved, want) {
-				bad = append(bad, fmt.Sprintf("%s: what landed saves to %x, the reference's value to %x", at, g.saved, want))
+				bad = append(bad, fmt.Sprintf("%s: what loaded saves to %x, the reference's value to %x", at, g.saved, want))
 			}
 			widened += r.Widened
-			mismatched += 0
 		}
 	}
-	if widened == 0 || mismatched == 0 {
-		t.Fatalf("the grid exercised %d widenings and %d mismatches; it must exercise both", widened, mismatched)
+	if widened == 0 || refused == 0 {
+		t.Fatalf("the grid exercised %d widenings and %d refusals; it must exercise both", widened, refused)
 	}
-	t.Logf("12 declarations x 10 wire kinds: %d widened, %d kind mismatches", widened, mismatched)
+	t.Logf("12 declarations x 10 wire kinds: %d widened, %d refused", widened, refused)
 	return bad
 }
 
 func TestMooWideningLadder(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range wideningLadder(t, nil) {
@@ -316,20 +320,21 @@ func mapWire(keys, kinds []byte) []byte {
 	return binary.LittleEndian.AppendUint64(b, uint64(len(ids)))
 }
 
-// mapReports is the map gate's red list.
+// mapReports is the map gate's red list, verdict first against the
+// reference.
 func mapReports(t *testing.T, mutate func(*testing.T, map[string][]byte)) []string {
 	t.Helper()
 	const schema = "package probe\ntable Root { entries map[int32]int32\n past int32 }\n"
 	cases := []struct {
-		name                 string
-		keys, kinds          []byte
-		widen, dup, mismatch int64
-		damaged              bool
+		name        string
+		keys, kinds []byte
+		widen       int64
+		refused     bool
 	}{
-		{"ascending_widened", []byte{253, 2}, []byte{2, 2}, 3, 0, 0, false},
-		{"descending", []byte{2, 253}, []byte{2, 2}, 2, 0, 0, true},
-		{"repeated", []byte{2, 2}, []byte{2, 2}, 3, 1, 0, false},
-		{"key_kind_mismatch", []byte{253, 2}, []byte{2, 6}, 2, 0, 1, false},
+		{"ascending_widened", []byte{253, 2}, []byte{2, 2}, 3, false},
+		{"descending", []byte{2, 253}, []byte{2, 2}, 0, true},
+		{"repeated", []byte{2, 2}, []byte{2, 2}, 0, true},
+		{"key_kind_mismatch", []byte{253, 2}, []byte{2, 6}, 0, true},
 	}
 	wires := map[string][]byte{}
 	for _, c := range cases {
@@ -340,25 +345,24 @@ func mapReports(t *testing.T, mutate func(*testing.T, map[string][]byte)) []stri
 	for _, c := range cases {
 		g := got[c.name]
 		r, want := referenceRead(t, schema, wires[c.name])
-		if r.Refused != c.damaged || int64(r.Widened) != c.widen || int64(0) != c.dup || int64(0) != c.mismatch {
-			t.Fatalf("%s: the reference reads %+v, which is not the Go leg's pin", c.name, r)
+		if r.Refused != c.refused || (!c.refused && int64(r.Widened) != c.widen) {
+			t.Fatalf("%s: the reference reads %+v, which is not the pin", c.name, r)
 		}
-		if c.damaged {
-			if g.loaded || !g.malformed || g.widened != c.widen {
-				bad = append(bad, fmt.Sprintf("%s: loaded %v, malformed %v, widened %d; damage discards the whole load, widened %d", c.name, g.loaded, g.malformed, g.widened, c.widen))
+		if c.refused {
+			if g.loaded || g.saved != nil {
+				bad = append(bad, fmt.Sprintf("%s: moo answered a value (widened %d); the reference refuses the whole read", c.name, g.widened))
 			}
 			continue
 		}
-		if !g.loaded || g.malformed || g.widened != c.widen || g.duplicate != c.dup || g.mismatch != c.mismatch || !bytes.Equal(g.saved, want) {
-			bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d, duplicate %d, kind_mismatch %d, saved %x; want %d, %d, %d, saved %x",
-				c.name, g.loaded, g.widened, g.duplicate, g.mismatch, g.saved, c.widen, c.dup, c.mismatch, want))
+		if !g.loaded || g.widened != c.widen || !bytes.Equal(g.saved, want) {
+			bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d, saved %x; want widened %d, saved %x",
+				c.name, g.loaded, g.widened, g.saved, c.widen, want))
 		}
 	}
 	return bad
 }
 
 func TestMooMapReadReports(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range mapReports(t, nil) {
@@ -372,7 +376,10 @@ func TestMooMapReadReports(t *testing.T) {
 //     float gate's finite rows and the grid go red;
 //   - the LEB loses its tenth-byte clause: the float gate's LEB rows go red;
 //   - a map counts a widened key per entry, not once per map: the map gate
-//     goes red.
+//     goes red;
+//   - the load no longer refuses a kind mismatch: the grid's narrowing and
+//     cross-signedness cells and the map's key of another kind answer a
+//     value, and both gates go red.
 func TestMooWideningNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
@@ -391,16 +398,17 @@ func TestMooWideningNegativeControl(t *testing.T) {
 		gates  []func(*testing.T, func(*testing.T, map[string][]byte)) []string
 	}{
 		{"float-rung", plant("table_values.moo", "\tif declared == 11 then\n\t\treturn kind == 10\n\tend\n", ""),
-			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN}},
+			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN, wideningLadder}},
 		{"leb-tenth", plant("table_values.moo", "\t\tif i == 9 and x > 1 then\n\t\t\treturn nil, at\n\t\tend\n", ""),
 			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{signalingNaN}},
 		{"map-key-once", plant("table_load.moo", "\t\t\tif entryWidened and not widened then\n", "\t\t\tif entryWidened then\n"),
 			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{mapReports}},
+		{"kind-mismatch", plant("table_load.moo",
+			`local REFUSING = { "missingRequired", "bodyDamaged", "blobShared", "outOfRange", "kindChanged" }`,
+			`local REFUSING = { "missingRequired", "bodyDamaged", "blobShared", "outOfRange" }`),
+			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{wideningLadder, mapReports}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
-			if ctl.name == "map-key-once" {
-				t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
-			}
 			t.Parallel()
 			for i, gate := range ctl.gates {
 				bad := gate(t, ctl.mutate)

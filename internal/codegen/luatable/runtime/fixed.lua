@@ -250,7 +250,7 @@ encode_table = function(T, name, v)
   if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
   v = v or {}
   local parts = {}
-  for i, f in ipairs(desc.fields) do
+  for _, f in ipairs(desc.fields) do
     local fs = f.fixed_size
     if f.optional then
       local present = v[f.name .. "_present"] == true
@@ -300,7 +300,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     -- a bits(N) field past its mask refuses (§4.6); a declared range on the
     -- same field already held it
-    if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 and type(v) == "number" and v > (1 << d.bits) - 1 then
+    if d.lo == nil and d.bits ~= nil and d.bits > 0 and d.bits < w * 8
+      and type(v) == "number" and v > (1 << d.bits) - 1 then
       refuse_out_of_range()
     end
     return v, pos + w
@@ -429,7 +430,7 @@ decode_table = function(T, name, buf, pos, writerSize)
   if desc == nil then error("fixed: no descriptor for table " .. tostring(name)) end
   local v = T["New" .. name]()
   local cursor = pos
-  for i, f in ipairs(desc.fields) do
+  for _, f in ipairs(desc.fields) do
     local fs = f.fixed_size
     if cursor - pos + fs <= writerSize then
       if f.optional then
@@ -464,7 +465,10 @@ local function layout_tree(layout)
     if i > count then return nil end
     local at = 4 + (i - 1) * 17
     local kind = layout:byte(at + 9)
-    if not ((kind >= 1 and kind <= 16) or (kind >= 18 and kind <= 30) or kind == 32 or kind == 33 or kind == 35 or kind == 36) then return nil end
+    if not ((kind >= 1 and kind <= 16) or (kind >= 18 and kind <= 30)
+      or kind == 32 or kind == 33 or kind == 35 or kind == 36) then
+      return nil
+    end
     local size = string.unpack("<I4", layout, at + 10)
     local kids = string.unpack("<I4", layout, at + 14)
     local node = {
@@ -954,7 +958,9 @@ local function load_impl(T, name, buf, strict, cap)
     layout = entry.layout
   end
   local rootSize = entry ~= nil and entry.tree.size or string.unpack("<I4", layout, 5 + 9)
-  if rootSize <= 0 or rootSize > maxRecordBytes or (entry ~= nil and entry.record ~= 8 + rootSize) then error("layout_record_too_large", 0) end
+  if rootSize <= 0 or rootSize > maxRecordBytes or (entry ~= nil and entry.record ~= 8 + rootSize) then
+    error("layout_record_too_large", 0)
+  end
   local recSize = entry ~= nil and entry.record or (8 + rootSize)
   local rest = #buf - 20 - layoutLen
   if recSize <= 8 or rest % recSize ~= 0 then error("truncated", 0) end
@@ -1019,7 +1025,8 @@ function F.prepare(T)
     fixed.integrity = desc ~= nil and desc.integrity ~= nil
     -- THE WRITER'S HEADER AND HASH PREFIX ARE THE DESCRIPTOR'S CONSTANTS
     -- (docs/PORTING.md M13), built once here rather than on every save.
-    fixed.header = string.char(formByte) .. zeros(7) .. pack_uint(fixed.hash, 8) .. pack_uint(#fixed.layout, 4) .. fixed.layout
+    fixed.header = string.char(formByte) .. zeros(7) .. pack_uint(fixed.hash, 8)
+      .. pack_uint(#fixed.layout, 4) .. fixed.layout
     fixed.hashPrefix = pack_uint(fixed.hash, 8)
     for _, entry in ipairs(fixed.known or {}) do
       entry.tree = layout_tree(entry.layout) or false

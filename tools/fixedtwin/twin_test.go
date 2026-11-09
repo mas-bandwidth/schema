@@ -220,3 +220,54 @@ func TestRuntimeExtractionEndsBeforeSeparateIntegrity(t *testing.T) {
 		t.Fatal("a fixed-runtime operation change disappeared from the comparison")
 	}
 }
+
+// TestCCounterRenameAgrees holds the C counter rewrite: the C read loop's
+// out_of_range counter and its comma-expression refusal are the C++ oor_count
+// and its two stores, and nothing else.
+func TestCCounterRenameAgrees(t *testing.T) {
+	c := `
+static SCHEMA_UNUSED void table_fixed_apply( const TableFixedEntry * p, const uint8_t * base, int32_t * out_of_range, int32_t * widened )
+{
+    if ( v < 0 ) { v = 0; (*out_of_range)++; }
+}
+static SCHEMA_UNUSED void table_fixed_run( void )
+{
+    int32_t out_of_range = 0;
+    table_fixed_apply( p, base, &out_of_range, &widened );
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+    c.report.refused=1, c.report.refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
+}
+`
+	cpp := `
+inline void TableFixedApply( const TableFixedEntry & p, const uint8_t * base, int32_t & oor_count, int32_t & widened )
+{
+    if ( v < 0 ) { v = 0; oor_count++; }
+}
+inline void TableFixedRun( void )
+{
+    int32_t oor_count = 0;
+    TableFixedApply( p, base, oor_count, widened );
+    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    c.report.refused = true;
+    c.report.refuse_reason = kind_mismatch;
+}
+`
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) != 0 {
+		t.Fatalf("the C counter and the C++ oor_count are one counter:\n%s", strings.Join(left, "\n"))
+	}
+}
+
+// TestCCounterDroppedIncrementReds is that rule's NEGATIVE CONTROL: the rewrite
+// must not hide a counter one leg stopped counting.
+func TestCCounterDroppedIncrementReds(t *testing.T) {
+	c := `if ( v < 0 ) { v = 0; (*out_of_range)++; }`
+	cpp := `if ( v < 0 ) { v = 0; }`
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) == 0 {
+		t.Fatal("an increment one leg dropped passed the twin gate")
+	}
+	reason := `report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;`
+	other := `report->refused = true; report->refuse_reason = kind_mismatch;`
+	if left := diffLines("fixture", canonicalize(reason), canonicalize(other)); len(left) == 0 {
+		t.Fatal("two different refusal reasons passed the twin gate")
+	}
+}

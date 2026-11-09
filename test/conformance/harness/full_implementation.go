@@ -131,8 +131,11 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: report=%+v", report)
 	}
 	again, err := encodeImplementationWitness(model, value)
-	if err != nil || !bytes.Equal(again, wire) {
-		return nil, nil, false, fmt.Errorf("positive wire is not canonical for its declared root: %v", err)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("positive wire is not canonical for its declared root: %w", err)
+	}
+	if !bytes.Equal(again, wire) {
+		return nil, nil, false, fmt.Errorf("positive wire is not canonical for its declared root")
 	}
 	if inst.NoText {
 		return model, value, false, nil
@@ -150,8 +153,11 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 		return nil, nil, false, fmt.Errorf("positive JSON does not decode cleanly: %+v", report)
 	}
 	again, err = encodeImplementationWitness(model, fromText)
-	if err != nil || !bytes.Equal(again, wire) {
-		return nil, nil, false, fmt.Errorf("positive JSON does not reproduce its declared wire: %v", err)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("positive JSON does not reproduce its declared wire: %w", err)
+	}
+	if !bytes.Equal(again, wire) {
+		return nil, nil, false, fmt.Errorf("positive JSON does not reproduce its declared wire")
 	}
 	return model, value, true, nil
 }
@@ -172,8 +178,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 	hasNode := map[*tabletext.Instance]bool{}
 	var walkInstance func(*tabletext.Instance) bool
 	var walkField func(*tabletext.Field) bool
-	var walkCell func(*tabletext.Cell, *ir.Field) bool
-	walkCell = func(cell *tabletext.Cell, f *ir.Field) bool {
+	walkCell := func(cell *tabletext.Cell, f *ir.Field) bool {
 		def := tabletext.Cell{}
 		if f.Array == ir.ArrayNone {
 			def = model.FieldDefaultCell(f)
@@ -232,7 +237,8 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 			return false
 		}
 		node := false
-		if f.IsMap() {
+		switch {
+		case f.IsMap():
 			if len(fv.Entries) > 0 {
 				populated = true
 			}
@@ -246,7 +252,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 				}
 				node = walkInstance(entry) || node
 			}
-		} else if f.Array != ir.ArrayNone {
+		case f.Array != ir.ArrayNone:
 			count := len(fv.Elems)
 			if f.CountedOnWire() {
 				count = fv.Count
@@ -275,7 +281,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 				}
 				node = walkCell(cell, f) || node
 			}
-		} else {
+		default:
 			// A required positive witness carries actual nondefault scalar
 			// content. Missing-required refusal remains a native obligation.
 			if f.Required {
@@ -352,8 +358,7 @@ func implementationRoot(u *ir.Unit, name string) (*ir.Unit, error) {
 	unions := map[*ir.Union]bool{}
 	var walkStruct func(*ir.Struct)
 	var walkUnion func(*ir.Union)
-	var walkField func(*ir.Field)
-	walkField = func(f *ir.Field) {
+	walkField := func(f *ir.Field) {
 		if f == nil {
 			return
 		}
@@ -419,15 +424,21 @@ func implementationReport(w io.Writer, m *Manifest, lang string) error {
 		langs = []string{lang}
 	}
 	problems, witnesses := implementationAudit(m, langs, compiler.CarryConstructs(), compiler.Carried, newUnits(m), compiler.New())
-	fmt.Fprintln(w, "Required registered constructs and oracle-qualified active corpus inputs")
+	if _, err := fmt.Fprintln(w, "Required registered constructs and oracle-qualified active corpus inputs"); err != nil {
+		return err
+	}
 	for _, problem := range problems {
-		fmt.Fprintln(w, "FAIL:", problem)
+		if _, err := fmt.Fprintln(w, "FAIL:", problem); err != nil {
+			return err
+		}
 	}
 	if len(problems) != 0 {
 		return fmt.Errorf("full implementation prerequisites are incomplete (%d findings)", len(problems))
 	}
 	for _, checked := range langs {
-		fmt.Fprintf(w, "IMPLEMENTATION_PREREQUISITES_PASS language=%s constructs=%d witnesses=%d\n", checked, len(compiler.CarryConstructs()), witnesses)
+		if _, err := fmt.Fprintf(w, "IMPLEMENTATION_PREREQUISITES_PASS language=%s constructs=%d witnesses=%d\n", checked, len(compiler.CarryConstructs()), witnesses); err != nil {
+			return err
+		}
 	}
 	return nil
 }

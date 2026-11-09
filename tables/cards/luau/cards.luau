@@ -254,7 +254,7 @@ end
 
 -- ---- the owning facade (tables/cards/cards.go) -----------------------------------
 
--- readWire is the one tolerant read every facade read shares: the load
+-- readWire is the one strict read every facade read shares: the load
 -- into a zeroed report. Damaged input never publishes a partial record.
 local function readWire(wire)
   local report = newReport()
@@ -264,7 +264,7 @@ local function readWire(wire)
 end
 
 -- Load reads wire into a Record (docs/SPEC-TABLES.md §6.2). Refusals and
--- malformed wire are errors; tolerant events ride in the returned report. The
+-- malformed wire are errors; unknown and widened counts ride in the returned report. The
 -- ORIGINAL wire is kept, never rewritten, so an old input is preserved byte
 -- for byte.
 function M.Load(wire)
