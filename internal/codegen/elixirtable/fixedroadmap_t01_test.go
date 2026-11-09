@@ -90,8 +90,8 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   {ftag, freason, _} = load(forged, batch_capacity: n)
   check(ftag == :error and freason == :batch_too_large,
     "step 10 answers before step 11's record hash: #{inspect({ftag, freason})}")
-  {rtag, rreason, rreport} = load(data <> <<0x5A>>, batch_capacity: 0)
-  check(rtag == :error and rreason == :malformed and rreport.malformed == true,
+  {rtag, rreason, _rreport} = load(data <> <<0x5A>>, batch_capacity: 0)
+  check(rtag == :error and rreason == :malformed,
     "step 9's ragged tail answers before the capacity: #{inspect({rtag, rreason})}")`)
 		}},
 

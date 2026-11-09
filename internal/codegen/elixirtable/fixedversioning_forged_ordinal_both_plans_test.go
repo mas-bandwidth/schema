@@ -49,8 +49,8 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
   check(v.tier == :none, "a forged ordinal lands None: #{inspect(v.tier)}")
   check(v.tier != :platinum, "a forged ordinal never lands Platinum: #{inspect(v.tier)}")
   check(v.seq == 9, "the scalar after the enum is untouched: #{inspect(v.seq)}")
-  check(report.clamped == 1, "the forged ordinal is counted exactly once: #{why(report)}")
-  check(report.unknown == 0 and true and report.widened == 0 and true,
+  check(report.unknown == 1, "the forged ordinal is counted exactly once: #{why(report)}")
+  check(report.widened == 0 and true,
     "no other counter moved: #{why(report)}")`
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_enum_append", []string{"VOLD_enum_append"}, 0, forged, body)

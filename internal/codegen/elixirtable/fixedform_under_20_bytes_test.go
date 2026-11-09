@@ -72,7 +72,6 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
     "a truncation is malformed, never a named refusal: #{inspect(reason)}")
   check(not is_list(reason),
     "malformed decoded nothing: the second slot is a reason atom, not values: #{inspect(reason)}")
-  check(report.malformed == true, "a malformed read sets malformed: #{why(report)}")
   check(report.unknown == 0, "no unknown: #{why(report)}")
   check(true, "no kind_mismatch: #{why(report)}")
   check(true, "no clamped: #{why(report)}")

@@ -76,14 +76,14 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
   check(v.pick != 9, "a forged union tag never lands the forged 9: #{inspect(v.pick)}")
   check(not match?({:alpha, _}, v.pick), "a forged union tag never lands the writer's alpha arm: #{inspect(v.pick)}")
   check(v.seq == 15, "the scalar after the union is untouched: #{inspect(v.seq)}")
-  check(report.clamped == 1, "the forged union tag is counted exactly once: #{why(report)}")
-  check(report.unknown == 0 and true and report.widened == 0 and true,
+  check(report.unknown == 1, "the forged union tag is counted exactly once: #{why(report)}")
+  check(report.widened == 0 and true,
     "no other counter moved: #{why(report)}")`
 
-	// THE COMPILED PLAN COUNTS THE CLAMP TOO NOW (schema#1254 closed on this
-	// leg): the union case pushes an unguarded :tagconst carrying the WRITER'S
-	// ARM COUNT, and its step clause lands the None the prefill used to land AND
-	// counts a raw tag past that set. Both bodies are the same assertions.
+	// THE COMPILED PLAN COUNTS TOO (schema#1254 closed on this leg): the union
+	// case pushes an unguarded :tagcount carrying the WRITER'S ARM COUNT, and its
+	// step clause counts a raw tag past that set as unknown. Both bodies are the
+	// same assertions.
 	bodyCompiled := `  data = File.read!(file())
   {tag, values, report} = load(data)
   check(tag == :ok, "the forged union tag is not a refusal: #{inspect({tag, why(report)})}")
@@ -94,8 +94,8 @@ func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
   check(v.pick != 9, "a forged union tag never lands the forged 9: #{inspect(v.pick)}")
   check(not match?({:alpha, _}, v.pick), "a forged union tag never lands the writer's alpha arm: #{inspect(v.pick)}")
   check(v.seq == 15, "the scalar after the union is untouched: #{inspect(v.seq)}")
-  check(report.clamped == 1, "the forged union tag is counted exactly once: #{why(report)}")
-  check(report.unknown == 0 and true and report.widened == 0 and true,
+  check(report.unknown == 1, "the forged union tag is counted exactly once: #{why(report)}")
+  check(report.widened == 0 and true,
     "no other counter moved: #{why(report)}")`
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0, forged, bodyCompiled)
