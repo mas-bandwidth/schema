@@ -493,6 +493,19 @@ not-carried cases per surface and class. The harness is built with every `schema
 a target behind a tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 
+## The packet carrier
+
+`packet/` carries the packet wire the way this harness carries the table
+wire (docs/SPEC.md §7.2 gates 4 and 5). A generator emits random instances
+per schema as canonical JSON. Each participating driver writes them and
+reads every other driver's bytes. A bit-flip sweep compares read verdicts
+across readers. The set is seeded with shapes outside `examples/`, starting
+with a ranged scalar in a one-arm union, an alignment point, and a fixed
+byte array after the union. The array is not byte-aligned: the union's
+width depends on the arm, so its bytes ride from the next bit. The tests
+are unit tests — in-process drivers, no external compiler or runtime — and
+they run under `go test ./test/conformance/...`.
+
 ## The wire-fuzz driver
 
 `harness wire-fuzz` checks the single read contract in one process per leg.
