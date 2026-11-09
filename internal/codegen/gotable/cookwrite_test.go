@@ -90,7 +90,8 @@ table Root { head *Node
 				if tc.variable {
 					source.WriteString("size:=RootLoadMeasure(wire);raw:=make([]byte,size+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;value:=RootLoad(raw[off:off+uintptr(size)],wire,&report);if value==nil||report!=(TableReport{}){t.Fatalf(\"load: %+v\",report)}\n")
 				} else {
-					source.WriteString("var storage Root;value:=&storage;if !RootLoad(value,wire,&report)||report!=(TableReport{}){t.Fatalf(\"load: %+v\",report)};saved:=make([]byte,RootMeasure(value));if RootSave(value,saved)!=int64(len(wire))||!bytes.Equal(wire,saved){t.Fatal(\"wire rewrite\")}\n")
+					source.WriteString("fixed:=make([]Root,1);plan:=make([]TableFixedEntry,4096);if RootFixedLoad(fixed,wire,plan,&report)!=1||report!=(TableReport{}){t.Fatalf(\"load: %+v\",report)};saved:=make([]byte,RootFixedMeasure(1));if RootFixedSave(fixed,saved)!=int64(len(wire))||!bytes.Equal(wire,saved){t.Fatal(\"wire rewrite\")}\n")
+					fmt.Fprintf(&source, "var storage Root;value:=&storage;var jr TableReport;if !RootFromJSON(value,[]byte(%q),&jr)||jr!=(TableReport{}){t.Fatalf(\"json: %%+v\",jr)}\n", text)
 				}
 				for _, big := range []bool{false, true} {
 					want, err := tablecook.Cook(m, v, tablecook.Options{Big: big})

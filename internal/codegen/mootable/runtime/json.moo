@@ -2946,6 +2946,9 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 	end
 	local want = elementShape(e)
 	local seen: { [number]: boolean } = {}
+	-- a key string named twice refuses, None and an unknown name included:
+	-- the key is a key whether or not it names a slot (tabletext readKeyed)
+	local seenKeys: { [string]: boolean } = {}
 	-- the keys that name no slot (an unknown variant, `"None"`): a repeat of
 	-- one is a repeated key like any other, and refuses (§16.2)
 	local unknownSeen: { [string]: boolean }? = nil
@@ -2968,6 +2971,14 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			return false
 		end
 		r.pos += 1
+		if seenKeys[name] then
+			r.bad = true
+			if r.report.reason == nil then
+				r.report.reason = "a repeated key"
+			end
+			return false
+		end
+		seenKeys[name] = true
 		local at = -1
 		if name ~= "None" then
 			for i, v in fd.keyvs do
