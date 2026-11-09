@@ -32,7 +32,7 @@ table Root {
 
 // The count is wire input, not a fixture allocation: all payloads stay small.
 // Cap refusal must unwind nested decoders without inventing framing damage.
-func TestWireCountRefusalDart(t *testing.T) {
+func TestDartCountRefusalDiscardsTheWholeLoad(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	out, err := runCountRefusalProbe(t, nil)
 	if err != nil {
@@ -42,7 +42,7 @@ func TestWireCountRefusalDart(t *testing.T) {
 
 // Restore the old cap-as-damage branch in the generated units. The same
 // native inputs must reject it on both list and map refusals.
-func TestWireCountRefusalDartNegativeControl(t *testing.T) {
+func TestDartCountRefusalNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	out, err := runCountRefusalProbe(t, func(files map[string][]byte) {
 		changed := 0
@@ -115,6 +115,7 @@ func runCountRefusalProbe(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 	for _, count := range []uint64{1 << 31, 1 << 32, 1 << 63} {
 		list := binary.AppendUvarint([]byte{4}, count)
 		list = append(list, 23, 0, 0, 0)
+		widenedList := append(binary.AppendUvarint([]byte{2}, count), 23)
 		mp := binary.AppendUvarint([]byte{13}, count)
 		mp = append(mp, 1, 0)
 		nested := append(field(3, 14, list), 0)
@@ -126,7 +127,7 @@ func runCountRefusalProbe(t *testing.T, edit func(map[string][]byte)) ([]byte, e
 			body    []byte
 			unknown int
 		}{
-			{"list", field(3, 14, list), 1}, {"map", field(4, 14, mp), 1},
+			{"list", field(3, 14, list), 1}, {"widened_list", field(3, 14, widenedList), 1}, {"map", field(4, 14, mp), 1},
 			{"nested", field(5, 13, nested), 1}, {"arm", field(6, 15, arm), 1},
 			{"unreached_node", field(8, 12, nodes), 0},
 		} {
