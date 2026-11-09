@@ -452,3 +452,55 @@ func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
 		t.Fatalf("with the absent-payload defaults copy removed, the probe still passed:\n%s", out)
 	}
 }
+
+// TestCppAbsentPayloadResidueNotCopiedOrderingNegativeControl plants the
+// ORDERING fault in the real artifact, not the absence of the copy: it lifts
+// the emitted present-defaults row over the guarded payload rows in the
+// identity plan, which is what the old unguarded-first coalescer did. The same
+// probe must go red on the union-bearing optional, because the arm entries then
+// run after the defaults and answer the wire's residue.
+func TestCppAbsentPayloadResidueNotCopiedOrderingNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
+	t.Parallel()
+	undermine := func(files map[string][]byte) {
+		found := false
+		for name, data := range files {
+			if !strings.HasSuffix(name, "Table.h") {
+				continue
+			}
+			lines := strings.Split(string(data), "\n")
+			row := -1
+			open := -1
+			for i, line := range lines {
+				if row < 0 && strings.HasPrefix(strings.TrimSpace(line), "{ ") && strings.Contains(line, "kTableFixedPresentDefaults") {
+					row = i
+				}
+			}
+			if row < 0 {
+				continue
+			}
+			for i := row - 1; i >= 0; i-- {
+				if strings.Contains(lines[i], "FixedPlan[] = {") {
+					open = i
+					break
+				}
+			}
+			if open < 0 {
+				t.Fatalf("%s: the present-defaults row is not inside a fixed plan", name)
+			}
+			reordered := append([]string{}, lines[:open+1]...)
+			reordered = append(reordered, lines[row])
+			reordered = append(reordered, lines[open+1:row]...)
+			reordered = append(reordered, lines[row+1:]...)
+			files[name] = []byte(strings.Join(reordered, "\n"))
+			found = true
+		}
+		if !found {
+			t.Fatal("no Table.h carried a present-defaults plan row")
+		}
+	}
+	out, err := cppAbsentPayloadResidueRun(t, undermine)
+	if err == nil {
+		t.Fatalf("with the present-defaults row lifted over the guarded payload, the probe still passed:\n%s", out)
+	}
+}
