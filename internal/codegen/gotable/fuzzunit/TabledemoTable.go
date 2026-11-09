@@ -3761,6 +3761,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		return false
 	}
 	if _, _, _, reason := tableRegionMeasureReason(wire, root, nodeType, blobs, false); reason != TableRefuseOk {
+		if reason == TableRefuseCountOverLength {
+			reason = TableRefuseWireDamaged
+		}
 		report.Refuse(reason, "")
 		return false
 	}
