@@ -897,11 +897,6 @@ func lineAt(text []byte, at int) string {
 	return strings.TrimSpace(string(text[start : at+end]))
 }
 
-func answersDamage(got []byte) bool {
-	norm, err := normalizeReadAnswer(got)
-	return err == nil && string(norm) == "refused\n"
-}
-
 // normalizeReadAnswer parses the one-bit read outcome ("read" or "refused").
 // A refused answer must not carry a partial value after the verdict line.
 func normalizeReadAnswer(answer []byte) ([]byte, error) {

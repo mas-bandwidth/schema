@@ -8,24 +8,27 @@ import (
 	"testing"
 )
 
+// childHold keeps the child allocations reachable for the life of the
+// re-run test process, so the allocator cannot reclaim them before the
+// ceiling guard stops the process.
+var childHold [][]byte
+
 // child allocates and touches memory without bound when the test binary is
 // re-run as one: the process each guard must stop.
 func init() {
 	switch os.Getenv("MEMCEILING_CHILD") {
 	case "resident":
-		var hold [][]byte
 		for {
 			b := make([]byte, 64<<20)
 			for i := 0; i < len(b); i += 4096 {
 				b[i] = 1
 			}
-			hold = append(hold, b)
+			childHold = append(childHold, b)
 		}
 	case "heap":
 		stop := Heap(256 << 20)
-		var hold [][]byte
 		for range 1 << 20 {
-			hold = append(hold, make([]byte, 1<<20))
+			childHold = append(childHold, make([]byte, 1<<20))
 		}
 		stop()
 		os.Exit(0)

@@ -203,7 +203,7 @@ if ok then print("green") else print("red") end
 
 // patchEmittedRuntime skips the last field in the emitted runtime's table walk.
 func patchEmittedRuntime(runtime []byte) []byte {
-	anchor := "local parts = {}\n  for i, f in ipairs(desc.fields) do\n    local fs"
+	anchor := "local parts = {}\n  for _, f in ipairs(desc.fields) do\n    local fs"
 	repl := "local parts = {}\n  for i, f in ipairs(desc.fields) do\n    if i == #desc.fields then break end\n    local fs"
 	s := string(runtime)
 	if strings.Count(s, anchor) != 1 {

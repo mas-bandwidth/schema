@@ -74,9 +74,6 @@ func u64(v uint64) []byte {
 
 // leb, one canonical LEB128, is messagerules_test.go's helper.
 
-//go:fix inline
-func ptr(v uint64) *uint64 { return new(v) }
-
 func mustHex(s string) []byte {
 	out, err := hex.DecodeString(s)
 	if err != nil {
@@ -192,11 +189,11 @@ var framingVectors = []framingVector{
 	// a root body of no bytes, which has no terminator.
 	{name: "frame_nine_bytes", unit: "tblr1", root: "Cfg", raw: cat(b(1), u64(0))},
 	// F5: a count whose 8 × count + 8 runs past the front of the file.
-	{name: "frame_count_past_front", unit: "tblr1", root: "Cfg", ids: nil, body: b(0), count: ptr(2)},
+	{name: "frame_count_past_front", unit: "tblr1", root: "Cfg", ids: nil, body: b(0), count: new(uint64(2))},
 	// F7: an entry no body references counts nothing.
 	{name: "frame_unreferenced_entry", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0)},
 	// F5: the count one above the entries the file holds.
-	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: ptr(2)},
+	{name: "frame_count_one_over", unit: "tblr1", root: "Cfg", ids: []string{"zzz"}, body: b(0), count: new(uint64(2))},
 	// F5: a byte between the root's terminator and the first entry.
 	{name: "frame_slack_after_terminator", unit: "tblr1", root: "Cfg", ids: nil, body: b(0, 0)},
 	// F5: one id in two entries.

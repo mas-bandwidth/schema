@@ -136,7 +136,9 @@ func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, 
 // The public command always supplies the real implementation/corpus checker.
 func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireNine bool, implementationCheck func(*Manifest) []string, currentRevision func() (string, error)) error {
 	rows, fixed, readErr := readCoverage(in)
-	coverageMarkdown(w, rows, fixed)
+	if err := coverageMarkdown(w, rows, fixed); err != nil {
+		return err
+	}
 	var problems []string
 	if readErr != nil {
 		problems = append(problems, "coverage input: "+readErr.Error())
@@ -146,9 +148,13 @@ func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDi
 		if err == nil {
 			implementationProblems := implementationCheck(m)
 			if len(implementationProblems) == 0 {
-				fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: PASS.")
+				if _, err := fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: PASS."); err != nil {
+					return err
+				}
 			} else {
-				fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: FAIL.")
+				if _, err := fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: FAIL."); err != nil {
+					return err
+				}
 				problems = append(problems, implementationProblems...)
 			}
 			var reports map[string]string
@@ -164,16 +170,24 @@ func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDi
 		if err != nil {
 			problems = append(problems, "manifest expectations: "+err.Error())
 		}
-		fmt.Fprint(w, "## Original nine completion\n\n")
+		if _, err := fmt.Fprint(w, "## Original nine completion\n\n"); err != nil {
+			return err
+		}
 		problems = append(problems, originalReadinessProblems(w, in, currentRevision)...)
 		if len(problems) == 0 {
-			fmt.Fprintln(w, "PASS: every original-nine surface/class matches the manifest; all cases are answered or give an allowed named refusal, all eight port fixed-form gates pass, the implementation/corpus prerequisites pass, all nine full runtime acceptance receipts pass, and the original-nine roadmap is complete and current.")
+			if _, err := fmt.Fprintln(w, "PASS: every original-nine surface/class matches the manifest; all cases are answered or give an allowed named refusal, all eight port fixed-form gates pass, the implementation/corpus prerequisites pass, all nine full runtime acceptance receipts pass, and the original-nine roadmap is complete and current."); err != nil {
+				return err
+			}
 		}
 	}
 	if len(problems) > 0 {
-		fmt.Fprintln(w, "Coverage is incomplete:")
+		if _, err := fmt.Fprintln(w, "Coverage is incomplete:"); err != nil {
+			return err
+		}
 		for _, problem := range problems {
-			fmt.Fprintf(w, "\n- %s\n", problem)
+			if _, err := fmt.Fprintf(w, "\n- %s\n", problem); err != nil {
+				return err
+			}
 		}
 		return errors.New("coverage records do not satisfy the requested report")
 	}
