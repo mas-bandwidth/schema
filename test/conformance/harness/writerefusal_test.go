@@ -63,16 +63,10 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 			if answer == wr.Verdict {
 				return
 			}
-			// A leg whose own types cannot hold the value has nothing for its
-			// writer to refuse; the manifest admits `unrepresentable` only
-			// against a `refused` row.
-			if answer == "unrepresentable" && wr.Verdict == "refused" {
-				return
-			}
-			if answer == "absent" && wr.Form == "fixed" {
-				t.Logf("%s: this unit emits no fixed form for %s, so the row is absent", wr.Name, wr.Root)
-				return
-			}
+			// The Go engine holds every value these rows name, and every
+			// fixed root here emits its fixed form, so the engine owes the
+			// manifest's verdict exactly: an `unrepresentable` or `absent`
+			// answer is a row the battery never actually ran, not a refusal.
 			t.Errorf("%s: the Go engine answered %q, the manifest owes %q", wr.Name, answer, wr.Verdict)
 		})
 	}

@@ -1412,6 +1412,11 @@ write-refusal wref_text_illformed  tabledemo RootConfig testdata/wire/tables/roo
 write-refusal wref_text_wellformed tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 61C3A962         wrote
 write-refusal wref_wide_unpaired   widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D8000062     refused
 write-refusal wref_wide_paired     widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D83DDE000062 wrote
+# A zero byte or unit in variable-form text (docs/SPEC.md §5.1 row 8): the
+# binary reader calls it ill-formed, so the variable writer refuses it too;
+# only the text writer below spells it `\u0000`.
+write-refusal wref_text_zero       tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 610062           refused
+write-refusal wref_wide_zero       widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 006100000062     refused
 
 # THE SAME CONTRACT THROUGH THE FIXED FORM'S FixedSave (docs/SPEC.md §5.1): the
 # row loads the wire as the variable form does, sets the one field, and saves
@@ -1459,6 +1464,7 @@ write-refusal-message mref_enum            backend_conn StorePurchase testdata/w
 write-refusal-message mref_enum_ok         backend_conn StorePurchase testdata/wire/tables/store_full.bin currency          ordinal 4        wrote
 write-refusal-message mref_text_illformed  backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61FF62   refused
 write-refusal-message mref_text_wellformed backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61C3A962 wrote
+write-refusal-message mref_text_zero       backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   610062   refused
 
 # THE TEXT WRITER WRITES A ZERO BYTE OR UNIT (docs/SPEC-TABLES.md §16.3): it
 # spells it `\u0000`, it does not refuse it. The driver answers `wrote` when
