@@ -317,8 +317,8 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	put("seal", "broken", broken)
 	put("seal", "short", []byte{1, 0, 0, 0})
 
-	// a repeated map key: last wins and is counted duplicate (§2.8, §4), and
-	// the field is the map's
+	// a repeated map key on field m. Decision 5 (docs/plans/strict-only.md):
+	// a repeated map key is damage, and the strict read refuses it.
 	dup := generateFiles(t, map[string]string{"Dup.schema": "package dup\ntable Box\n{\n    m map[uint8]uint8\n}\n"})
 	gens["dup"], roots["dup"] = dup, emittedRoots(dup)
 	put("dup", "dup", duplicateMapWire(t))
@@ -368,10 +368,11 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 	}
 
 	cases = append(cases,
-		// unknown and a repeated key alone READ (§6.5, §4), and the report
-		// still counts each with its field
+		// unknown alone reads (§6.5): the report still counts it with its field.
+		// A repeated map key does not. Decision 5 (docs/plans/strict-only.md):
+		// it is damage, and the strict read refuses it as malformed, naming the map.
 		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
-		refusalCase{key: "duplicate", unit: "dup", root: "Box", input: "dup", form: -1, want: "ok", field: "-", side: "duplicate:m"},
+		refusalCase{key: "duplicate", unit: "dup", root: "Box", input: "dup", form: -1, want: "malformed", field: "m"},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean", form: -1, want: "ok", field: "-"},
 		// §2.14: the trailer checked before any field, both ways, and too short
 		refusalCase{key: "integrity_ok", unit: "seal", root: "Ledger", input: "sealed", form: -1, want: "ok", field: "-"},
