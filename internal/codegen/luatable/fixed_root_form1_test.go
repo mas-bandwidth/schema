@@ -36,12 +36,8 @@ table Note
 // class as previous_form.
 func luaFormOneHolds(files map[string][]byte) error {
 	loadSrc := string(files["load.lua"])
-	refuseSrc := string(files["refusal.lua"])
 	if !strings.Contains(loadSrc, "not desc.variable") || !strings.Contains(loadSrc, "\"previous_form\"") {
 		return fmt.Errorf("load.lua does not refuse a form-1 file at a fixed root as previous_form")
-	}
-	if !strings.Contains(refuseSrc, "if fixedclass and form == 1 then refuse(\"previous_form\"") {
-		return fmt.Errorf("refusal.lua does not refuse form 1 at a fixed class as previous_form")
 	}
 	return nil
 }

@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -57,15 +58,23 @@ func goConformanceRoot(t *testing.T) string {
 	return root
 }
 
+var goEnsureGeneratedMu sync.Mutex
+
 func goEnsureGeneratedTables(t *testing.T, root string) {
 	t.Helper()
+	goEnsureGeneratedMu.Lock()
+	defer goEnsureGeneratedMu.Unlock()
 	stamp := filepath.Join(root, "build", "tables-generated-go", ".stamp")
 	cards := filepath.Join(root, "build", "tables-generated-go", "cards", "cards.go")
+	wide := filepath.Join(root, "build", "tables-generated-go", "examples", "WideTable.go")
 	if _, err := os.Stat(stamp); err == nil {
 		if _, err := os.Stat(cards); err == nil {
-			return
+			if wideSrc, err := os.ReadFile(wide); err == nil && bytes.Contains(wideSrc, []byte("read.Refuse(TableRefusePreviousForm, \"\")\n\t\tWideBlobReset(value)")) {
+				return
+			}
 		}
 	}
+	_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "make", "build/conformance-go")

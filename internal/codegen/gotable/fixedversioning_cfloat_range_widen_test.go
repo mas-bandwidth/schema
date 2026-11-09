@@ -93,20 +93,11 @@ func TestCfloatRangeWiden(t *testing.T) {
 	}
 
 	n = %[4]sFixedLoad(back, pastData, plan, &r)
-	if n != 1 {
-		t.Fatalf("past: the forged file reads one record, not %%d (%%+v)", n, r)
+	if n != -1 {
+		t.Fatalf("past: the forged file must refuse, not read %%d records (%%+v)", n, r)
 	}
-	if r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || r.Verdict == TableOpenRefused {
-		t.Fatalf("past: a forged read is not a refusal: %%+v", r)
-	}
-	if back[0].Lead != 1 || back[0].Trail != 2 {
-		t.Fatalf("past: the bracketing fields moved: %%+v", back[0])
-	}
-	if bits := math.Float32bits(back[0].Aim); bits != 0x40000000 {
-		t.Fatalf("past: aim landed %%#x, want 0x40000000 — THIS READER'S OWN declared max 2.0, not a manifest value (%%v)", bits, back[0].Aim)
-	}
-	if !r.Refused() {
-		t.Fatalf("past: clamped %%d, want 1", r.Refusal)
+	if r.Verdict != TableOpenRefused || r.Reason != "out_of_range" || !r.FixedRaised {
+		t.Fatalf("past: expected out_of_range refusal, got %%+v", r)
 	}
 	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("past: a counter that must not move did: %%+v", r)

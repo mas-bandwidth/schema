@@ -60,23 +60,14 @@ func TestUnionTag(t *testing.T) {
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
 	n := %[2]sFixedLoad(back, data, plan, &r)
-	if n != 1 {
-		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
+	if n != -1 {
+		t.Fatalf("union_tag_both_plans: the forged file must refuse, n=%%d %%+v", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("union_tag_both_plans: a forged tag is a clamp, not a refusal and not malformed: %%+v", r)
-	}
-	if back[0].Pick.Type != PickTypeNone {
-		t.Fatalf("union_tag_both_plans: the forged tag lands None, not %%v (record %%+v)", back[0].Pick.Type, back[0])
-	}
-	if back[0].Seq != 15 {
-		t.Fatalf("union_tag_both_plans: the neighbour after the union must stand at 15, not %%v (record %%+v)", back[0].Seq, back[0])
-	}
-	if !r.Refused() {
-		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Refusal, r)
+	if r.Verdict != TableOpenRefused || r.Reason != "out_of_range" || !r.FixedRaised {
+		t.Fatalf("union_tag_both_plans: expected out_of_range refusal, got %%+v", r)
 	}
 	if r.Unknown != 0 || r.Widened != 0 {
-		t.Fatalf("union_tag_both_plans: a counter other than Clamped moved: %%+v", r)
+		t.Fatalf("union_tag_both_plans: a counter moved on an out_of_range refusal: %%+v", r)
 	}
 }
 `, file, table)
@@ -107,23 +98,14 @@ func TestUnionTag(t *testing.T) {
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
 	n := %[2]sFixedLoad(back, data, plan, &r)
-	if n != 1 {
-		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
+	if n != -1 {
+		t.Fatalf("union_tag_both_plans: the forged file must refuse, n=%%d %%+v", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("union_tag_both_plans: a forged tag is a clamp, not a refusal and not malformed: %%+v", r)
-	}
-	if back[0].Pick.Type != PickTypeNone {
-		t.Fatalf("union_tag_both_plans: the forged tag lands None, not %%v (record %%+v)", back[0].Pick.Type, back[0])
-	}
-	if back[0].Seq != 15 {
-		t.Fatalf("union_tag_both_plans: the neighbour after the union must stand at 15, not %%v (record %%+v)", back[0].Seq, back[0])
-	}
-	if !r.Refused() {
-		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Refusal, r)
+	if r.Verdict != TableOpenRefused || r.Reason != "out_of_range" || !r.FixedRaised {
+		t.Fatalf("union_tag_both_plans: expected out_of_range refusal, got %%+v", r)
 	}
 	if r.Unknown != 0 || r.Widened != 0 {
-		t.Fatalf("union_tag_both_plans: a counter other than Clamped moved: %%+v", r)
+		t.Fatalf("union_tag_both_plans: a counter moved on an out_of_range refusal: %%+v", r)
 	}
 }
 `, file, table)
