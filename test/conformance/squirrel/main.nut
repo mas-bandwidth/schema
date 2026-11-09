@@ -316,9 +316,10 @@ if (mode == "wire") {
   return;
 }
 
-// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: fromJsonWalk of the
-// pinned text, then Save, the bytes. json-write: Load the wire (the strict
-// read), ToJson, the text, and its ToJsonMeasure must be the text's length.
+// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: FromJson, the strict
+// text read, of the pinned text, then Save, the bytes. json-write: the
+// strict load of the wire, ToJson, the text, and its ToJsonMeasure must be
+// the text's length.
 if (mode == "json-read" || mode == "json-write") {
   local write = mode == "json-write";
   foreach (ln in lines) {
@@ -330,7 +331,8 @@ if (mode == "json-read" || mode == "json-write") {
     local opened = openUnit(unit);
     local T = opened[1];
     if (write) {
-      local v = T[root + "Load"](readBytes(wirepath), newReport());
+      local got = strictLoad(opened, root, readBytes(wirepath));
+      local v = got[0];
       if (v == null) throw cname + ": load refused " + wirepath;
       local text = T[root + "ToJson"](v);
       if (text == null) throw cname + ": ToJson refused the value";
@@ -339,8 +341,8 @@ if (mode == "json-read" || mode == "json-write") {
     } else {
       local report = newReport();
       local J = opened[0].require("schema_table_json");
-      local v = J.fromJsonWalk(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
-      if (v == null || report.bodyDamaged) throw cname + ": fromJsonWalk refused the text";
+      local v = J.FromJson(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
+      if (v == null || report.bodyDamaged) throw cname + ": FromJson refused the text";
       local out = T[root + "Save"](v);
       if (out == null) throw cname + ": save refused the value";
       if (T[root + "Measure"](v) != out.len()) throw cname + ": Measure is not the save's length";
@@ -360,19 +362,29 @@ if (mode == "json-read" || mode == "json-write") {
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4]; local damage = f[5];
     local outname = cname + ".json";
     if (!generated(unit)) { writeAbsent(outname); continue; }
-    local T = openUnit(unit)[1];
-    local v = T[root + "Load"](readBytes(wirepath), newReport());
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local got = strictLoad(opened, root, readBytes(wirepath));
+    local v = got[0];
     if (v == null) throw cname + ": load refused " + wirepath;
     if (damage != "none") {
       local colon = damage.find(":");
       if (colon == null) throw cname + ": damage " + damage + " names no field";
       local kind = damage.slice(0, colon);
       local name = damage.slice(colon + 1);
-      local member = name.slice(0, 1).toupper() + name.slice(1);
-      if (!(member in v)) throw cname + ": damage " + damage + " names no text field of " + root;
+      local member = memberOf(T, root, name);
+      if (member == null || !(member in v)) throw cname + ": damage " + damage + " names no text field of " + root;
       if (kind == "narrow") v[member] = format("%c%c%c", 0x61, 0xff, 0x62);
       else if (kind == "wide") v[member] = [0x61, 0xd800, 0x62];
       else throw cname + ": unknown damage " + damage;
+    }
+    // A value no read delivers is refused before the text is written:
+    // the strict load's textValueValid is §16.3's CheckValue for this
+    // driver, so an ill-formed narrow string or an unpaired wide unit
+    // answers `refused` rather than a sanitised text.
+    if (!opened[0].require("schema_table_load").textValueValid(T, root, v)) {
+      writeText(outdir + "/" + outname, "refused\n");
+      continue;
     }
     local answer = "refused\n";
     local size = T[root + "ToJsonMeasure"](v);

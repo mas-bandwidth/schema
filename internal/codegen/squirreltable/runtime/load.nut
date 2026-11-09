@@ -2189,6 +2189,74 @@ _M.report <- function(report) {
   return report;
 };
 
+// A TEXT VALUE NO READ DELIVERS (docs/SPEC-TABLES.md §16.3): a narrow
+// string holding ill-formed UTF-8, or a wide string holding an unpaired
+// surrogate or a unit outside [0, 0xFFFF]. Every writer refuses such a
+// value (the Go oracle's CheckValue, invalid_value); the conformance
+// driver asks this before it writes a read value back as text, so a
+// value built in code is refused here rather than sanitised to U+FFFD.
+local validUtf8 = function(s) {
+  local i = 0, n = s.len();
+  while (i < n) {
+    local b0 = s[i] & 0xff;
+    if (b0 < 0x80) { i++; continue; }
+    local need, cp, min;
+    if ((b0 & 0xe0) == 0xc0) { need = 1; cp = b0 & 0x1f; min = 0x80; }
+    else if ((b0 & 0xf0) == 0xe0) { need = 2; cp = b0 & 0x0f; min = 0x800; }
+    else if ((b0 & 0xf8) == 0xf0) { need = 3; cp = b0 & 0x07; min = 0x10000; }
+    else return false;
+    if (i + need >= n) return false;
+    for (local k = 1; k <= need; k++) {
+      local bb = s[i + k] & 0xff;
+      if ((bb & 0xc0) != 0x80) return false;
+      cp = (cp << 6) | (bb & 0x3f);
+    }
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    i += 1 + need;
+  }
+  return true;
+};
+local validWide = function(units) {
+  if (typeof units != "array") return false;
+  for (local i = 0; i < units.len(); i++) {
+    local u = units[i];
+    if (typeof u != "integer" || u < 0 || u > 0xffff) return false;
+    if (u >= 0xd800 && u <= 0xdbff) {
+      if (i + 1 >= units.len()) return false;
+      local lo = units[i + 1];
+      if (typeof lo != "integer" || lo < 0xdc00 || lo > 0xdfff) return false;
+      i++;
+    } else if (u >= 0xdc00 && u <= 0xdfff) return false;
+  }
+  return true;
+};
+local textValueValid;
+textValueValid = function(T, desc, v) {
+  if (v == null || desc == null) return true;
+  foreach (fd in desc.fields) {
+    if (fd.optional && (fd.member + "Present" in v) && !v[fd.member + "Present"]) continue;
+    if (!(fd.member in v)) continue;
+    local val = v[fd.member];
+    if (val == null) continue;
+    if (fd.shape == "str" && !validUtf8(val)) return false;
+    if (fd.shape == "wstr" && !validWide(val)) return false;
+    if (fd.shape == "tab" && !textValueValid(T, T.Descriptors[fd.table], val)) return false;
+    if (fd.shape == "ptr" && fd.table != null && !textValueValid(T, T.Descriptors[fd.table], val)) return false;
+    if (fd.shape == "arr" && fd.elem != null) {
+      if (fd.elem.shape == "str") { foreach (x in val) if (!validUtf8(x)) return false; }
+      if (fd.elem.shape == "wstr") { foreach (x in val) if (!validWide(x)) return false; }
+      if (fd.elem.shape == "tab") { foreach (x in val) if (!textValueValid(T, T.Descriptors[fd.elem.table], x)) return false; }
+    }
+    if (fd.shape == "map" && fd.entry != null) {
+      foreach (x in val) if (!textValueValid(T, T.Descriptors[fd.entry], x)) return false;
+    }
+  }
+  return true;
+};
+_M.textValueValid <- function(T, rootName, value) {
+  return textValueValid(T, T.Descriptors[rootName], value);
+};
+
 _M.load <- function(T, rootName, bytes, report) {
   return R.ReadStrict(T, rootName, bytes, report);
 };

@@ -79,6 +79,10 @@ func squirrelDriverStrict(src string) error {
 		[]string{"FromJson(", "strictLoad("}, []string{"loadWalk"}); err != nil {
 		return err
 	}
+	if err := check(`if (mode == "json-read" || mode == "json-write")`, "json-read/json-write",
+		[]string{"FromJson(", "strictLoad(", "textValueValid("}, []string{"fromJsonWalk", "loadWalk", `T[root + "Load"]`}); err != nil {
+		return err
+	}
 	if err := check(`if (mode == "retain" || mode == "retain-save")`, "retain",
 		[]string{`"read\n"`}, []string{`retained + "," + lost`}); err != nil {
 		return err
@@ -117,5 +121,23 @@ func TestSquirrelDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
 	}
 	if err := squirrelDriverStrict(planted); err == nil {
 		t.Fatal("NEGATIVE CONTROL FAILED: planting loadWalk in the real wire surface left the check green")
+	}
+	// The same plant in the json-read surface: fromJsonWalk back in place
+	// of the strict FromJson must also go red.
+	marker2 := `if (mode == "json-read" || mode == "json-write")`
+	at2 := strings.Index(src, marker2)
+	if at2 < 0 {
+		t.Fatal("json-read surface missing from the real driver")
+	}
+	rel2 := strings.Index(src[at2:], "FromJson(")
+	if rel2 < 0 {
+		t.Fatal("NEGATIVE CONTROL FAILED: the real driver has no FromJson in the json surface, so the fault was not planted in the artifact")
+	}
+	planted2 := src[:at2+rel2] + "fromJsonWalk(" + src[at2+rel2+len("FromJson("):]
+	if planted2 == src {
+		t.Fatal("NEGATIVE CONTROL FAILED: the json plant did not change the real driver")
+	}
+	if err := squirrelDriverStrict(planted2); err == nil {
+		t.Fatal("NEGATIVE CONTROL FAILED: planting fromJsonWalk in the real json surface left the check green")
 	}
 }
