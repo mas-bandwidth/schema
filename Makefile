@@ -1740,49 +1740,123 @@ if [ "$$d" = "0" ]; then echo "block zero-cost gate: $(1) $$n Table sources byte
 [ "$$d" = "0" ]
 endef
 
-.PHONY: tables-block-zero-cost
-tables-block-zero-cost: bin/schema build/tables-generated/.stamp build/tables-generated-cs/.stamp build/tables-generated-c/.stamp $(BLOCKLESS_SCHEMA)
-	@for f in build/tables-generated/*/*Table.h build/tables-generated/*/*Table.cpp \
-	          build/tables-generated-cs/*/*Table.cs; do \
+# ONE LANGUAGE PER TARGET. ci-full.yml's generated job runs these as matrix
+# rows. The aggregate below still runs every language, which is what
+# `make test` and ci-fast.yml's block-gate ask for. Each target's commands
+# are the same macros the old recipe expanded (tables_generate,
+# tables_generate_cs, tables_generate_c, tables_generate_c_collections), so a
+# unit added to a macro is a unit this gate compares. The symbol greps read
+# the fresh ordinary arm: that is the same emission the stamp dependency used
+# to scan, and building the stamps only to throw them away was most of the
+# per-commit minute (run 42556155793: 13s C++, 8s C#, 42s C, then the
+# comparison started over).
+#
+# Units that share an --out directory stay in order (cpp's vnum directory is
+# one directory for many schemas). Every other directory is a separate
+# process, at most eight at a time: those writes do not share a directory,
+# and the slow unit (C maps, about 5s on that run) is the row's generation
+# time instead of the sum.
+
+define tables_run_arm
+	@set -eu; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' > "$$tmp/cmds"; \
+	while IFS= read -r line; do \
+		line=$$(printf '%s' "$$line" | sed 's/^[[:space:]]*//'); \
+		case "$$line" in \
+			''|\#*) continue;; \
+		esac; \
+		out=$$(printf '%s\n' "$$line" | awk '{for(i=1;i<=NF;i++) if($$i=="--out"){print $$(i+1); exit}}'); \
+		if [ -z "$$out" ]; then \
+			echo "ZERO-COST GATE FAILED: a generate line names no --out: $$line"; \
+			exit 1; \
+		fi; \
+		key=$$(printf '%s' "$$out" | cksum | awk '{print $$1}'); \
+		printf '%s\n' "$$line" >> "$$tmp/b.$$key"; \
+	done < "$$tmp/cmds"; \
+	n=$$(find "$$tmp" -name 'b.*' | wc -l | tr -d ' '); \
+	if [ "$$n" -eq 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) expanded to no generate commands"; \
+		exit 1; \
+	fi; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	slot=0; pids=''; fail=0; \
+	for b in "$$tmp"/b.*; do \
+		bash -c 'set -eu; while IFS= read -r c; do bash -c "$$c"; done < "$$1"' _ "$$b" & \
+		pids="$$pids $$!"; \
+		slot=$$((slot+1)); \
+		if [ "$$slot" -ge "$$procs" ]; then \
+			for p in $$pids; do wait "$$p" || fail=1; done; \
+			pids=''; slot=0; \
+		fi; \
+	done; \
+	for p in $$pids; do wait "$$p" || fail=1; done; \
+	if [ "$$fail" != 0 ]; then \
+		echo "ZERO-COST GATE FAILED: $(2) generate failed"; \
+		exit 1; \
+	fi
+endef
+
+define tables_zero_cost_symbol_grep
+	@for f in $(1); do \
 		if sed -E 's://.*$$::' $$f | grep -nE "TableBlock|[A-Za-z0-9_]Block"; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the block form leaked into $$f"; exit 1; \
 		fi; \
-	done
-	@echo "block zero-cost gate: no Table source carries one symbol of the block form"
-# The grep runs over the CODE, with every // comment stripped first: what the
-# gate holds is that no block CONSTRUCT is in a Table source, and a comment
-# naming one (the arena runtime describes its allocator as the shape
-# TableBlockAllocator has, §19.1) is prose, not a symbol.
-# BuildVersion is NOT in that grep: it is not a block symbol — a build version
-# answers "which build?" and not "which form?", both accelerators carry it
-# (docs/SPEC-TABLES.md §20.6), and every C++ Table header carries it because every
-# table cooks (§7). What holds the block form to zero cost is the line above —
-# no Table source carries one BLOCK symbol — and the byte comparison below.
-# C# message and cook writers read the announcement's BuildVersion property;
-# the accelerator constant itself still belongs in the Block/Cook runtime.
-	@for f in build/tables-generated-cs/*/*Table.cs; do \
+	done; \
+	echo "block zero-cost gate: no Table source carries one symbol of the block form"
+endef
+
+define tables_zero_cost_no_block_files
+	@if find $(1) -name '*Block.*' | grep -q .; then \
+		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
+		find $(1) -name '*Block.*'; exit 1; \
+	fi
+endef
+
+.PHONY: tables-block-zero-cost tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
+
+tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKFUL = $(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
+tables-block-zero-cost-cpp: export ZERO_COST_CPP_BLOCKLESS = $(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
+tables-block-zero-cost-cpp: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
+	@mkdir -p $(BLOCKFUL_ROOT)/cpp $(BLOCKLESS_ROOT)/cpp
+	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKFUL,cpp blockful)
+	@$(call tables_run_arm,ZERO_COST_CPP_BLOCKLESS,cpp blockless)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cpp/*/*Table.h $(BLOCKFUL_ROOT)/cpp/*/*Table.cpp)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cpp)
+	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+
+tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKFUL = $(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
+tables-block-zero-cost-cs: export ZERO_COST_CS_BLOCKLESS = $(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
+tables-block-zero-cost-cs: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/cs $(BLOCKLESS_ROOT)/cs
+	@mkdir -p $(BLOCKFUL_ROOT)/cs $(BLOCKLESS_ROOT)/cs
+	@$(call tables_run_arm,ZERO_COST_CS_BLOCKFUL,cs blockful)
+	@$(call tables_run_arm,ZERO_COST_CS_BLOCKLESS,cs blockless)
+	@$(call tables_zero_cost_symbol_grep,$(BLOCKFUL_ROOT)/cs/*/*Table.cs)
+	@for f in $(BLOCKFUL_ROOT)/cs/*/*Table.cs; do \
 		if grep -nE "(^|[[:space:]])(const|readonly)([[:space:]]+static)?[[:space:]]+ulong[[:space:]]+BuildVersion([[:space:]]|=|;)" $$f; then \
 			echo "BLOCK ZERO-COST GATE FAILED: the C# Table sources declare the accelerator BuildVersion constant: $$f"; exit 1; \
 		fi; \
 	done
 	@echo "block zero-cost gate: the C# Table sources declare no accelerator build-version constant"
-	@rm -rf $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)
-	@mkdir -p $(BLOCKLESS_ROOT)/cpp $(BLOCKLESS_ROOT)/cs $(BLOCKLESS_ROOT)/c $(BLOCKFUL_ROOT)/cpp $(BLOCKFUL_ROOT)/cs $(BLOCKFUL_ROOT)/c
-	$(call tables_generate,./bin/schema,$(BLOCKFUL_ROOT)/cpp)
-	$(call tables_generate_cs,./bin/schema,$(BLOCKFUL_ROOT)/cs)
-	$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
-	$(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)
-	$(call tables_generate,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cpp)
-	$(call tables_generate_cs,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/cs)
-	$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
-	$(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
-	@if find $(BLOCKLESS_ROOT) -name '*Block.*' | grep -q .; then \
-		echo "ZERO-COST GATE FAILED: the block-less emitter still wrote a Block file — the sabotage did not take, and the comparison below would be a restatement"; \
-		find $(BLOCKLESS_ROOT) -name '*Block.*'; exit 1; \
-	fi
-	@$(call tables_byte_identical,cpp,$(BLOCKFUL_ROOT)/cpp,$(BLOCKLESS_ROOT)/cpp,-name '*Table.h' -o -name '*Table.cpp',100)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/cs)
 	@$(call tables_byte_identical,cs,$(BLOCKFUL_ROOT)/cs,$(BLOCKLESS_ROOT)/cs,-name '*Table.cs',40)
+
+tables-block-zero-cost-c: export ZERO_COST_C_BLOCKFUL = $(call tables_generate_c_collections,./bin/schema,$(BLOCKFUL_ROOT)/c)$(call tables_generate_c,./bin/schema,$(BLOCKFUL_ROOT)/c)
+tables-block-zero-cost-c: export ZERO_COST_C_BLOCKLESS = $(call tables_generate_c_collections,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)$(call tables_generate_c,$(BLOCKLESS_SCHEMA),$(BLOCKLESS_ROOT)/c)
+tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
+	@rm -rf $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
+	@mkdir -p $(BLOCKFUL_ROOT)/c $(BLOCKLESS_ROOT)/c
+	@$(call tables_run_arm,ZERO_COST_C_BLOCKFUL,c blockful)
+	@$(call tables_run_arm,ZERO_COST_C_BLOCKLESS,c blockless)
+	@$(call tables_zero_cost_no_block_files,$(BLOCKLESS_ROOT)/c)
 	@$(call tables_byte_identical,c,$(BLOCKFUL_ROOT)/c,$(BLOCKLESS_ROOT)/c,-name '*Table.h' -o -name '*Table.c',60)
+
+tables-block-zero-cost: tables-block-zero-cost-cpp tables-block-zero-cost-cs tables-block-zero-cost-c
+	@echo "block zero-cost gate: cpp, cs and c Table sources byte-identical with the block form removed"
 
 # THE NEGATIVE CONTROL. The block-less comparison above is a gate with no blade
 # until it is shown able to refuse a Table source that moved: the nearest
