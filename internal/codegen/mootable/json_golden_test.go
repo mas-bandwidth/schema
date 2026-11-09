@@ -288,7 +288,7 @@ func TestMooJsonHostileVerdictsNegativeControl(t *testing.T) {
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
 	sites := []string{
-		"\t\tif seenKeys[name] then\n\t\t\tr.bad = true\n\t\t\tif r.report.reason == nil then\n\t\t\t\tr.report.reason = \"malformed: a repeated key\"\n\t\t\tend\n\t\t\treturn false\n\t\tend\n",
+		"\t\tif seenKeys[name] then\n\t\t\tr.bad = true\n\t\t\tif r.report.reason == nil then\n\t\t\t\tr.report.reason = \"a repeated key\"\n\t\t\tend\n\t\t\treturn false\n\t\tend\n",
 		"\t\telseif unknownSeen[name] then\n\t\t\tr.bad = true -- a repeated key refuses\n\t\t\treturn false\n",
 	}
 	broken := src

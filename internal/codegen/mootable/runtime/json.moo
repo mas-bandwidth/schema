@@ -2974,7 +2974,7 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		if seenKeys[name] then
 			r.bad = true
 			if r.report.reason == nil then
-				r.report.reason = "malformed: a repeated key"
+				r.report.reason = "a repeated key"
 			end
 			return false
 		end
