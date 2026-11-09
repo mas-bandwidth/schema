@@ -70,11 +70,10 @@ func TestMapsAndUnionArmsOnTheTableWireDart(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Dart must carry %s on the variable wire, never refuse it: %v", c.unit, err)
 			}
-			wire, ok := files[c.wire]
-			if !ok || len(wire) == 0 {
+			if len(files[c.wire]) == 0 {
 				t.Fatalf("Generate emitted no %s for %s — the form-1 codec is not carried yet", c.wire, c.unit)
 			}
-			resaveOracleRows(t, c.wire, wire, repo, c.rows, packetFiles(t, u))
+			resaveOracleRows(t, c.wire, files, repo, u, c.rows)
 		})
 	}
 }
@@ -121,17 +120,41 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 	return rows
 }
 
-// resaveOracleRows writes the generated library and one probe that loads every
-// row's oracle wire through <root>WireLoad, saves it through <root>WireSave,
-// and requires the bytes to be identical, naming every row that is not. A row
-// with a refusal must instead throw the refusal's name.
-func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, rows []oracleRow, packet map[string][]byte) {
+// resaveOracleRows writes the generated libraries and one probe that loads every
+// row's oracle wire through its root's codec, saves it back, and requires the
+// bytes to be identical, naming every row that is not. A FIXED ROOT IS FORM 3
+// (docs/SPEC-TABLES.md §3.4; internal/tablewire/fixedroot_test.go): its oracle
+// is a form-3 file, so its resave rides <root>FixedLoad/<root>FixedSave and
+// never the form-1 wire codec. A variable root rides <root>WireLoad/
+// <root>WireSave. A row with a refusal must instead throw the refusal's name.
+func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, repo string, u *ir.Unit, rows []oracleRow) {
 	t.Helper()
 	dir := t.TempDir()
-	writeFiles(t, dir, packet)
+	writeFiles(t, dir, packetFiles(t, u))
+	wire := files[wireName]
+	if len(wire) == 0 {
+		t.Fatalf("no %s form-1 codec", wireName)
+	}
 	if err := os.WriteFile(filepath.Join(dir, wireName), wire, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// THE FIXED LIBRARIES (form 3) BESIDE THE VARIABLE ONE: the fixed roots'
+	// oracle wires are form 3, so their resave runs through the Fixed codec.
+	var fixedNames []string
+	for name, src := range files {
+		if strings.HasSuffix(name, "Fixed.dart") {
+			if err := os.WriteFile(filepath.Join(dir, name), src, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			fixedNames = append(fixedNames, name)
+		}
+	}
+	sort.Strings(fixedNames)
+	fixedRoots := map[string]bool{}
+	for _, st := range ir.TableFixedRoots(u) {
+		fixedRoots[st.Name] = true
+	}
+
 	roots := map[string]bool{}
 	for _, r := range rows {
 		roots[r.root] = true
@@ -141,15 +164,39 @@ func resaveOracleRows(t *testing.T, wireName string, wire []byte, repo string, r
 		names = append(names, r)
 	}
 	sort.Strings(names)
+	var imports strings.Builder
+	imports.WriteString("import '" + wireName + "';\n")
+	for _, name := range fixedNames {
+		imports.WriteString("import '" + name + "';\n")
+	}
 	var sw strings.Builder
 	for _, r := range names {
 		fn := strings.ToLower(r[:1]) + r[1:]
-		sw.WriteString("    case '" + r + "':\n      return " + fn + "WireSave(" + fn + "WireLoad(wire));\n")
+		if fixedRoots[r] {
+			// A FIXED ROOT IS FORM 3, BOTH WAYS (§3.4): its oracle is a form-3
+			// file and rides the Fixed codec — one record, one whole read or a
+			// refusal — never form 1.
+			sw.WriteString("    case '" + r + "':\n      {\n")
+			sw.WriteString("        final values = List<" + r + ">.generate(1, (_) => " + r + "());\n")
+			sw.WriteString("        final plan = " + fn + "FixedNewPlan();\n")
+			sw.WriteString("        final report = TableFixedReport();\n")
+			sw.WriteString("        if (" + fn + "FixedLoad(values, 1, wire, wire.length, plan, report) != 1 ||\n")
+			sw.WriteString("            report.refused != 0) {\n")
+			sw.WriteString("          throw StateError('fixed load refused');\n")
+			sw.WriteString("        }\n")
+			sw.WriteString("        final out = Uint8List(" + fn + "FixedMeasure(1));\n")
+			sw.WriteString("        if (" + fn + "FixedSave(values, 1, out) < 0) {\n")
+			sw.WriteString("          throw StateError('fixed save refused');\n")
+			sw.WriteString("        }\n")
+			sw.WriteString("        return out;\n")
+			sw.WriteString("      }\n")
+		} else {
+			sw.WriteString("    case '" + r + "':\n      return " + fn + "WireSave(" + fn + "WireLoad(wire));\n")
+		}
 	}
 	probe := `import 'dart:io';
 import 'dart:typed_data';
-import '` + wireName + `';
-
+` + imports.String() + `
 Uint8List resave(String root, Uint8List wire) {
   switch (root) {
 ` + sw.String() + `    default:
