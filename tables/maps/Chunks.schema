@@ -4,8 +4,7 @@ package mapdemo
 // is anything a table field can hold ... `*bytes` ... (§2.5)". A buffer is a
 // NODE, so the value is an ordinary pointer field of the generated entry and
 // its storage is that field's own row, the eight-byte reference (§4.2). The
-// handle is that SLOT. `*wstring` is refused under a map key by name and has no
-// table here (§2.8, §11).
+// handle is that SLOT.
 
 table Chunks
 {
