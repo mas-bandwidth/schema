@@ -9,7 +9,7 @@ package jstable
 // §3.3 is a form-1 FILE the unit's compiler settles whole: "THE WHOLE
 // ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT ... a backend emits
 // `Announce` and `AnnounceMeasure` as a constant byte array and its length
-// rather than as a walk." The byte array is `ir.TableAnnouncement`, the same
+// rather than as a walk." The byte array is `tablewire.Announce`, the same
 // bytes every other backend emits and the manifest pins.
 //
 // THE READER IS EMITTED (docs/SPEC-TABLES.md §3.3): `AnnounceRead` resolves an
@@ -22,15 +22,16 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func messageAnnouncementRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nexport const TableMessageBatchMax = 256;\n")
-	fmt.Fprintf(&b, "export const TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
-	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(ir.TableVocabulary(u)))
-	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(ir.TableAnnouncement(u)))
+	fmt.Fprintf(&b, "export const TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))))
+	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(tablewire.MessageVocabulary(u)))
+	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
 	b.WriteString(jsAnnounceRuntime)
 	return b.String()
 }
