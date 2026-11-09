@@ -919,11 +919,21 @@ const TableFixedNoGuard = int64(-1)
 // for that — and only a backend that asks for the normalised walk (the C++
 // reference today) puts it in a plan. The C++ runtime spells it
 // kTableFixedBool = 8; the compiled ops take 3..7 and must not be borrowed.
+//
+// TableFixedOpPresentDefaults is the optional's present flag with its absent
+// payload: it lands the flag (byte != 0) and, when the flag is 0, copies the
+// payload from the reader's DECLARED DEFAULTS into the destination. §3.4's
+// "payload rides whole, IGNORED on read" means an absent optional reads as its
+// declared default and never as the residue a peer left under the flag. Only
+// the C++ reference asks for this walk; Src is the flag on the wire, Dst the
+// flag in storage, Aux the payload's storage offset and Size the payload's
+// storage bytes.
 const (
-	TableFixedOpCopy  = 0
-	TableFixedOpCount = 1
-	TableFixedOpText  = 2
-	TableFixedOpBool  = 8
+	TableFixedOpCopy            = 0
+	TableFixedOpCount           = 1
+	TableFixedOpText            = 2
+	TableFixedOpBool            = 8
+	TableFixedOpPresentDefaults = 9
 )
 
 // TableFixedGuardLink is one link of a guard chain: the byte offset of the tag
@@ -982,37 +992,46 @@ type TableFixedLeaf struct {
 // tableFixedLeaves writes one type's leaves at a base the caller gives — the C twin
 // of <Name>FixedLeaves. normaliseBool lands a bool or a present flag through
 // TableFixedOpBool (byte != 0) instead of a plain copy; it is false for every
-// backend but the C++ reference.
-func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
+// backend but the C++ reference. presentDefaults adds the C++ reference's
+// present-flag-with-absent-payload entry after an optional's payload; it is
+// false for every other backend.
+func tableFixedLeaves(u *Unit, st *Struct, src, dst int64, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	off := int64(0)
 	for _, f := range st.Fields {
-		tableFixedFieldLeaves(u, st, f, src+off, dst, normaliseBool, out)
+		tableFixedFieldLeaves(u, st, f, src+off, dst, normaliseBool, presentDefaults, out)
 		off += TableFixedFieldBytes(f)
 	}
 }
 
-func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normaliseBool bool, out *[]TableFixedLeaf) {
+func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	base := src
+	presentSrc := base
+	presentDst := int64(0)
+	payloadDst := int64(0)
 	if f.Type.Optional {
-		// THE PRESENT BYTE IS A BOOL ON THE WIRE: 0 or 1 and nothing else, so a
-		// forged 0x02 must land normalised, the same as a bool field.
-		op := TableFixedOpCopy
-		if normaliseBool {
-			op = TableFixedOpBool
+		presentDst = dst + TableFixedMemberOffset(u, st, f.Name+"_present")
+		payloadDst = dst + TableFixedMemberOffset(u, st, f.Name)
+		if !presentDefaults {
+			// THE PRESENT BYTE IS A BOOL ON THE WIRE: 0 or 1 and nothing else, so a
+			// forged 0x02 must land normalised, the same as a bool field.
+			op := TableFixedOpCopy
+			if normaliseBool {
+				op = TableFixedOpBool
+			}
+			*out = append(*out, TableFixedLeaf{Src: base, Dst: presentDst,
+				Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: f.Name + " present"})
 		}
-		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_present"),
-			Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: op, Note: f.Name + " present"})
 		base += TableFixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
-		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, normaliseBool, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.KeyEnumRef.Max, normaliseBool, presentDefaults, out)
 	case f.Array == ArrayFixed:
-		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, normaliseBool, out)
+		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, normaliseBool, presentDefaults, out)
 	case f.Array == ArrayCounted:
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_count"),
 			Size: f.ArrayBound, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
-		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, out)
+		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, normaliseBool, presentDefaults, out)
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
 	case f.Type.Kind == TWString:
@@ -1020,7 +1039,16 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, normal
 	case f.Type.Kind == TBytes:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 3, out)
 	default:
-		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, normaliseBool, out)
+		tableFixedElementLeavesAt(u, f, base, dst+TableFixedMemberOffset(u, st, f.Name), f.Name, normaliseBool, presentDefaults, out)
+	}
+	if f.Type.Optional && presentDefaults {
+		// THE PRESENT FLAG AND THE ABSENT PAYLOAD IN ONE ENTRY, laid AFTER the
+		// payload's own leaves: the payload copy runs first, then this entry
+		// overwrites it with the DECLARED DEFAULTS when the flag is 0. It is one
+		// entry, so the leaf count and the plan's cap are unchanged.
+		*out = append(*out, TableFixedLeaf{Src: presentSrc, Dst: presentDst,
+			Size: presentDst - payloadDst, Aux: payloadDst, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard,
+			Op: TableFixedOpPresentDefaults, Note: f.Name + " present, absent payload defaults"})
 	}
 }
 
@@ -1030,15 +1058,15 @@ func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, fl
 		Op: TableFixedOpText, Meta: flavour, Note: f.Name})
 }
 
-func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
-	tableFixedElementLoopAt(u, f, src, dst+TableFixedMemberOffset(u, st, f.Name), count, normaliseBool, out)
+func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
+	tableFixedElementLoopAt(u, f, src, dst+TableFixedMemberOffset(u, st, f.Name), count, normaliseBool, presentDefaults, out)
 }
 
 // tableFixedElementLoopAt is the loop body of [tableFixedElementLoop] with the
 // element destination base already computed, so an ARM — whose value member is
 // at a computed offset inside its own unnamed struct, not a sibling field
 // offset — reaches the same walk a field does.
-func tableFixedElementLoopAt(u *Unit, f *Field, src, at, count int64, normaliseBool bool, out *[]TableFixedLeaf) {
+func tableFixedElementLoopAt(u *Unit, f *Field, src, at, count int64, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	elem := TableFixedElementBytes(f)
 	if normaliseBool && f.Type.Kind == TBool {
 		// [N]bool is ONE normalised run: a flat copy of N bytes would land a
@@ -1060,7 +1088,7 @@ func tableFixedElementLoopAt(u *Unit, f *Field, src, at, count int64, normaliseB
 	}
 	stride := TableFixedStrideBytes(u, f)
 	for i := range count {
-		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", normaliseBool, out)
+		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", normaliseBool, presentDefaults, out)
 	}
 }
 
@@ -1070,7 +1098,7 @@ func tableFixedElementLoopAt(u *Unit, f *Field, src, at, count int64, normaliseB
 // array arm rides as its own field type under the arm's position — a text
 // leaf, a count plus elements, or the element walk — landing in the arm's
 // unnamed struct at the offsets [ArmLayout] lays out.
-func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, normaliseBool bool, out *[]TableFixedLeaf) {
+func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	f := v.F
 	if f == nil {
 		return // a payload-free arm: the tag alone is its whole storage (§2.6)
@@ -1078,11 +1106,11 @@ func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, n
 	valueOff, companionOff := fixedArmPieceOffsets(u, f)
 	switch {
 	case f.Array == ArrayFixed:
-		tableFixedElementLoopAt(u, f, src, dst+valueOff, f.ArrayBound, normaliseBool, out)
+		tableFixedElementLoopAt(u, f, src, dst+valueOff, f.ArrayBound, normaliseBool, presentDefaults, out)
 	case f.Array == ArrayCounted:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Size: f.ArrayBound,
 			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: note + " count"})
-		tableFixedElementLoopAt(u, f, src+TableFixedCountBytes, dst+valueOff, f.ArrayBound, normaliseBool, out)
+		tableFixedElementLoopAt(u, f, src+TableFixedCountBytes, dst+valueOff, f.ArrayBound, normaliseBool, presentDefaults, out)
 	case f.Type.Kind == TString:
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 1, Note: note})
@@ -1093,7 +1121,7 @@ func tableFixedArmLeaves(u *Unit, v UnionVariant, src, dst int64, note string, n
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + companionOff, Aux: dst + valueOff,
 			Size: f.Type.Size, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpText, Meta: 3, Note: note})
 	default:
-		tableFixedElementLeavesAt(u, f, src, dst+valueOff, note, normaliseBool, out)
+		tableFixedElementLeavesAt(u, f, src, dst+valueOff, note, normaliseBool, presentDefaults, out)
 	}
 }
 
@@ -1116,11 +1144,11 @@ func fixedArmPieceOffsets(u *Unit, f *Field) (valueOff, companionOff int64) {
 }
 
 // tableFixedElementLeavesAt is ONE element's leaves at the bases given.
-func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, normaliseBool bool, out *[]TableFixedLeaf) {
+func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, normaliseBool, presentDefaults bool, out *[]TableFixedLeaf) {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
-			tableFixedLeaves(u, r, src, dst, normaliseBool, out)
+			tableFixedLeaves(u, r, src, dst, normaliseBool, presentDefaults, out)
 			return
 		case *Union:
 			tag := int64(StorageBitsFor(r.Max) / 8)
@@ -1140,7 +1168,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, n
 				// past two is not an error: it rides the pool whole, and the
 				// only bound is the layout's 64 ([TableFixedMaxDepth]).
 				at := len(*out)
-				tableFixedArmLeaves(u, v, src+tag, dst+arms, note+"."+v.Name, normaliseBool, out)
+				tableFixedArmLeaves(u, v, src+tag, dst+arms, note+"."+v.Name, normaliseBool, presentDefaults, out)
 				for q := at; q < len(*out); q++ {
 					(*out)[q].GuardLinks = append((*out)[q].GuardLinks, TableFixedGuardLink{Guard: src, Arg: i + 1, ArgW: int(tag)})
 				}
@@ -1197,7 +1225,7 @@ func tableFixedContainsBoolField(f *Field, seen map[string]bool) bool {
 // its outer links dropped (§4.1, §5.8 row 6). A backend that carries the chain
 // reads [TableFixedBuildPlanNormalisedWithPool] instead.
 func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
-	plan, guarded, _ = tableFixedBuildPlan(u, st, false)
+	plan, guarded, _ = tableFixedBuildPlan(u, st, false, false)
 	tableFixedTwoLanes(st, plan)
 	return plan, guarded
 }
@@ -1226,7 +1254,7 @@ func tableFixedTwoLanes(st *Struct, plan []TableFixedLeaf) {
 // It is the two-lane plan too, and refuses a chain past two links by name the
 // same way ([tableFixedTwoLanes]).
 func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int) {
-	plan, guarded, _ = tableFixedBuildPlan(u, st, true)
+	plan, guarded, _ = tableFixedBuildPlan(u, st, true, false)
 	tableFixedTwoLanes(st, plan)
 	return plan, guarded
 }
@@ -1236,12 +1264,23 @@ func TableFixedBuildPlanNormalised(u *Unit, st *Struct) (plan []TableFixedLeaf, 
 // FIRST, deduped by content. The C leg emits the pool as static data and each
 // entry's GuardIndex/GuardCount point into it (§5.8 row 6).
 func TableFixedBuildPlanNormalisedWithPool(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
-	return tableFixedBuildPlan(u, st, true)
+	return tableFixedBuildPlan(u, st, true, false)
 }
 
-func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool bool) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
+// TableFixedBuildPlanPresentDefaultsWithPool is [TableFixedBuildPlanNormalisedWithPool]
+// with the C++ reference's absent-optional entry: after every optional's
+// payload leaves it lays one TableFixedOpPresentDefaults, whose Src is the
+// present flag on the wire, Dst the flag in storage, Aux the payload's storage
+// offset and Size the payload's storage bytes. It is the SAME walk and the same
+// coalescer, so no byte position moves; only the absent optional's read
+// changes. Only the C++ reference asks for this walk.
+func TableFixedBuildPlanPresentDefaultsWithPool(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
+	return tableFixedBuildPlan(u, st, true, true)
+}
+
+func tableFixedBuildPlan(u *Unit, st *Struct, normaliseBool, presentDefaults bool) (plan []TableFixedLeaf, guarded int, pool []TableFixedGuardLink) {
 	var raw []TableFixedLeaf
-	tableFixedLeaves(u, st, 0, 0, normaliseBool, &raw)
+	tableFixedLeaves(u, st, 0, 0, normaliseBool, presentDefaults, &raw)
 	tableFixedStampGuards(raw)
 	pool = tableFixedGuardPool(raw)
 	plan, guarded = tableFixedCoalesce(raw)
@@ -1830,7 +1869,7 @@ func TableFixedHasWriteBound(u *Unit) bool {
 func TableFixedIdentityFlat(u *Unit, st *Struct) bool {
 	// Offsets and the unguarded half only: the guard chain does not enter
 	// the answer, so the walk is read without the two-lane refusal.
-	plan, guarded, _ := tableFixedBuildPlan(u, st, false)
+	plan, guarded, _ := tableFixedBuildPlan(u, st, false, false)
 	if len(plan) != 1 || guarded != 1 {
 		return false
 	}
@@ -1864,7 +1903,7 @@ type TableFixedRange struct {
 func TableFixedIdentityCoverage(u *Unit, st *Struct) []TableFixedRange {
 	// Destinations only: the guard chain does not enter the coverage, so the
 	// walk is read without the two-lane refusal.
-	plan, _, _ := tableFixedBuildPlan(u, st, false)
+	plan, _, _ := tableFixedBuildPlan(u, st, false, false)
 	var raw []TableFixedRange
 	for _, e := range plan {
 		switch e.Op {

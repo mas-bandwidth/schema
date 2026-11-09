@@ -527,7 +527,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlanPresentDefaultsWithPool(g.unit, st)
+	presentDefaults := false
+	for _, e := range plan {
+		if e.Op == ir.TableFixedOpPresentDefaults {
+			presentDefaults = true
+			break
+		}
+	}
 	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
@@ -788,9 +795,16 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            {\n                report->refused = true;\n                report->reason = why;\n                return -1;\n            }\n")
 	g.pf("            scan += record_bytes;\n        }\n    }\n")
 	g.pf("    %s defaults;\n", st.Name)
-	g.pf("    if ( fill_count > 0 )\n    {\n")
-	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
-	g.pf("        %sReset( defaults );\n    }\n", st.Name)
+	g.pf("    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):\n")
+	g.pf("    // an absent payload reads as this Reset image, never as the wire's slack.\n")
+	if presentDefaults {
+		g.pf("    memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
+		g.pf("    %sReset( defaults );\n", st.Name)
+	} else {
+		g.pf("    if ( fill_count > 0 )\n    {\n")
+		g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
+		g.pf("        %sReset( defaults );\n    }\n", st.Name)
+	}
 	// NOTHING OF A REFUSED BATCH IS KEPT (docs/SPEC-TABLES.md §4, §6.5): every
 	// refusal inside the loop resets each record it wrote and puts the two
 	// counters back to what they were before the batch.
@@ -806,7 +820,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        // §5.8): every record written so far goes back to its defaults and\n")
 		g.pf("        // the counters back to what they were before the batch.\n")
 	}
-	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards );\n", st.Name)
+	runDefaults := "NULL"
+	if presentDefaults {
+		runDefaults = "(const uint8_t *) &defaults"
+	}
+	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards, %s );\n", st.Name, runDefaults)
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
 		// FIRST, before the bounds pass, over the storage the run just wrote,
@@ -990,6 +1008,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedText"
 	case ir.TableFixedOpBool:
 		return "kTableFixedBool"
+	case ir.TableFixedOpPresentDefaults:
+		return "kTableFixedPresentDefaults"
 	}
 	return "kTableFixedCopy"
 }
