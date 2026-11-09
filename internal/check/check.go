@@ -2511,8 +2511,8 @@ func (c *checker) checkCycles() {
 	visit = func(name string) bool {
 		switch color[name] {
 		case grey:
-			c.errs = append(c.errs, fmt.Errorf("%s", fmt.Sprintf("type composition cycle: %s -> %s (SPEC §4.6)",
-				strings.Join(path, " -> "), name)))
+			c.errf(c.astDecls[path[0]].DeclPos(), "type composition cycle: %s -> %s (SPEC §4.6)",
+				strings.Join(path, " -> "), name)
 			return false
 		case black:
 			return true
