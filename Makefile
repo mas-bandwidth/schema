@@ -5672,7 +5672,7 @@ CPP_DISCARD_NC := build/cpp-discard-nc
 .PHONY: tables-cpp-discard-negative-control
 tables-cpp-discard-negative-control:
 	@rm -rf $(CPP_DISCARD_NC) && mkdir -p $(CPP_DISCARD_NC)
-	@sed -e 's|if ( to->malformed ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
+	@sed -e 's|if ( to->damaged ) { %sReset( value ); return TableOpenDamaged; }|if ( false ) { %sReset( value ); return TableOpenDamaged; } // NEGATIVE CONTROL: the discard is gone|' \
 		internal/codegen/cpptable/codecs.go > $(CPP_DISCARD_NC)/codecs.go.txt
 	@cmp -s internal/codegen/cpptable/codecs.go $(CPP_DISCARD_NC)/codecs.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ discard sabotage patched nothing"; exit 1; } || true
@@ -5683,21 +5683,21 @@ tables-cpp-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C++ discard is gone and the gate stayed green"; \
 		cat $(CPP_DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "fixed: LoadTolerant answered true on damage" $(CPP_DISCARD_NC)/log || \
+	@grep -q "fixed: the report does not say malformed" $(CPP_DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(CPP_DISCARD_NC)/log; exit 1; }
-	@grep -m1 "LoadTolerant answered true" $(CPP_DISCARD_NC)/log
+	@grep -m1 "fixed: the report does not say malformed" $(CPP_DISCARD_NC)/log
 	@echo "negative control: removing the C++ discard turns the whole-load gate RED"
 
 # The REGION twin of tables-cpp-discard-negative-control: the discard is
-# removed from a COPY of the variable-class LoadTolerant in pointers.go, so a
+# removed from a COPY of the variable-class Load in pointers.go, so a
 # variable root damaged inside a nested body hands back its region root, and
 # TestDamageDiscardsTheWholeLoadCPP must go red on exactly that.
 CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->malformed )|if ( false )|; }' \
+	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->damaged )|if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5708,10 +5708,10 @@ tables-cpp-region-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C++ region discard is gone and the gate stayed green"; \
 		cat $(CPP_REGION_DISCARD_NC)/log; exit 1; \
 	fi
-	@grep -q "variable: LoadTolerant handed back a root on damage" $(CPP_REGION_DISCARD_NC)/log || \
+	@grep -q "variable: the report does not say malformed" $(CPP_REGION_DISCARD_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
-	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
+	@grep -m1 "variable: the report does not say malformed" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
 # A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
@@ -5814,13 +5814,14 @@ tables-engine-cycle-linear-negative-control:
 	@echo "negative control: re-entering a shared node turns the diamond gate RED"
 
 # NOTHING OF A REFUSED BUILDER LOAD IS USED (docs/SPEC-TABLES.md §4): the control
-# removes the root reset from a COPY of pointers.go, so a damaged builder load
-# leaves its root holding what it decoded.
+# removes both root resets from a COPY of pointers.go — the walk's and the strict
+# wrapper's — so a damaged builder load leaves its root holding what it decoded.
 TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-discard-negative-control
 .PHONY: tables-cpp-builder-discard-negative-control
 tables-cpp-builder-discard-negative-control:
 	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
-	@sed -e 's#if ( out->malformed || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+	@sed -e 's#if ( out->damaged || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+		-e 's#if ( refused_root != NULL ) { %sReset( \*refused_root ); }#if ( false ) { %sReset( *refused_root ); } // NEGATIVE CONTROL: the reset is gone#' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true

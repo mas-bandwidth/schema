@@ -16,7 +16,6 @@ var (
 	luaOverlayRevRx  = regexp.MustCompile(`:tested-revision\s+"([^"]*)"`)
 	luaOverlayStrRx  = regexp.MustCompile(`"([^"]*)"`)
 	luaRoadmapTaskRx = regexp.MustCompile(`\(:id "([^"]+)" :type :task`)
-	luaTestFuncRx    = regexp.MustCompile(`(?m)^func\s+(Test[A-Za-z0-9_]+)\s*\(`)
 )
 
 // luaEvidenceStrings returns the quoted strings of the :evidence list of one
