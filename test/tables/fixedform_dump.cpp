@@ -314,19 +314,6 @@ static void man_add( const std::string & path, const std::string & text )
 #define MSTR( LV, VAL )       do { std::strcpy( LV, VAL ); man_add( man_path( #LV, {} ), man_quote( VAL ) ); } while ( 0 )
 #define MSTRI( LV, VAL, ... ) do { std::strcpy( LV, VAL ); man_add( man_path( #LV, { __VA_ARGS__ } ), man_quote( VAL ) ); } while ( 0 )
 
-// the wide copy, with the source array's own length: a unit count, never bytes
-template <size_t N>
-static void man_wcopy( char16_t * dst, const char16_t ( & src )[N], const std::string & path )
-{
-    std::memcpy( (void *) dst, src, N * sizeof( char16_t ) );
-    man_add( path, man_wtext( src, N ) );
-}
-#define MWCPY( LV, SRC )      man_wcopy( LV, SRC, man_path( #LV, {} ) )
-// the same copy under a SUBSCRIPT the call site is looping over: without it a
-// wide field reached through an index had to be stored unit by unit, and the
-// manifest then carried TWO encodings for wide text (§5.9 #32).
-#define MWCPYI( LV, SRC, ... ) man_wcopy( LV, SRC, man_path( #LV, { __VA_ARGS__ } ) )
-
 // a fixed(I,F) field: the store is the raw scaled integer and the record says
 // the real beside it
 #define MSFX( LV, VAL, FRAC )      do { man_add( man_path( #LV, {} ), man_fixed( (long long) ( (LV) = (VAL) ), (FRAC) ) ); } while ( 0 )

@@ -97,26 +97,6 @@ static partial class Program
             catch { return false; }
         }
 
-        static bool WideValid(ArraySegment<byte> b)
-        {
-            if ((b.Count & 1) != 0) return false;
-            int n = b.Count / 2;
-            for (int i = 0; i < n; i++)
-            {
-                ushort u = BitConverter.ToUInt16(b.Array, b.Offset + i * 2);
-                if (u == 0) return false;
-                if (u >= 0xD800 && u <= 0xDBFF)
-                {
-                    if (i + 1 >= n) return false;
-                    ushort low = BitConverter.ToUInt16(b.Array, b.Offset + (i + 1) * 2);
-                    if (low < 0xDC00 || low > 0xDFFF) return false;
-                    i++;
-                }
-                else if (u >= 0xDC00 && u <= 0xDFFF) return false;
-            }
-            return true;
-        }
-
         bool CheckBody(ArraySegment<byte> body)
         {
             ArraySegment<byte> table = default;
@@ -257,7 +237,7 @@ static partial class Program
                     }
                 case 15:
                     return Union(buf, off, out result);
-                case 12: case 33: case 31: case 32: case 13: case 14: case 16:
+                case 12: case 31: case 32: case 13: case 14: case 16:
                     {
                         ulong ln; int next;
                         if (!Leb(buf, off, out ln, out next) || ln > (ulong)(buf.Count - next)) return false;
@@ -276,7 +256,6 @@ static partial class Program
             switch (kind)
             {
                 case 12: return TextValid(b);
-                case 33: return WideValid(b);
                 case 31: return true;
                 case 32: return b.Count == 0;
                 case 13: case 14: case 16:

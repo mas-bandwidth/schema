@@ -240,12 +240,11 @@ public final class Probe {
 
     public static void main(String[] args) {
         // 1. Fixed class, defaults, table/variant/arm renames, wide scalars,
-        // wstring, maps, union arms (scalar + table), and widening from oldvt -> newvt.
+        // maps, union arms (scalar + table), and widening from oldvt -> newvt.
         oldvt.RootVariable.Value oldVal = new oldvt.RootVariable.Value();
         oldVal.item.x = -120;
         oldVal.mode = 1; // legacy
         oldVal.label = "hi"; // declared default elides on wire
-        oldVal.wide = "αβ".toCharArray();
         oldVal.rate = 24; // 1.5 in Q12.4
         oldVal.big = new oldvt.Int128(0L, 123456789L);
         oldVal.pick.tag = 1;
@@ -268,7 +267,6 @@ public final class Probe {
         check(got.item.x == -120, "fixed-class + table rename + field widen: " + got.item.x);
         check(got.mode == 1, "variant rename: " + got.mode);
         check("hi".equals(got.label), "default restored: " + got.label);
-        check(Arrays.equals("αβ".toCharArray(), got.wide), "wstring");
         check(got.rate == 24, "fixed-point: " + got.rate);
         check(new newvt.Int128(0L, 123456789L).equals(got.big), "int128: " + got.big);
         check(got.pick.tag == 1 && got.pick.newarm == 42, "union arm rename + widen: " + got.pick.tag + "," + got.pick.newarm);
