@@ -81,7 +81,13 @@ table Root
 `)
 	files := generateElixir(t, u)
 	listFiles := generateElixir(t, listUnit)
-	files["ListTable.ex"] = listFiles["Table.ex"]
+	// Every module the list unit generated rides under a List-prefixed
+	// file name (Elixir does not tie a module to its file's name), so the
+	// two units' same-named files never overwrite each other and no
+	// generated module the Table module calls is left undefined.
+	for name, data := range listFiles {
+		files["List"+name] = data
+	}
 
 	probe := `
 empty = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
@@ -143,13 +149,17 @@ case Fuzzprobe.Table.load_retain("Root", bad_bool_wire, store, empty) do
   other -> raise("expected retain malformed on bool byte 0x11, got " <> inspect(other))
 end
 
-# 6. Node table riding twice (framing N7): last occurrence wins even if earlier
-# occurrence had a mismatched inner node count.
+# 6. Node table riding twice is the same field id twice in one body: the
+# whole load refuses with a named reason (§3, §4).
 node_id = 0xFFFFFFFFFFFFFFFF
 node_table_twice_wire = <<1, 1, 12, 1, 99, 1, 12, 1, 0, 0, node_id::little-64, 1::little-64>>
 case Fuzzprobe.Table.load("Root", node_table_twice_wire) do
-  {:ok, _v, %{reason: ""}} -> :ok
-  other -> raise("expected clean load when second node_table overwrites damaged first, got " <> inspect(other))
+  {:error, _, %{reason: reason}} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected refusal when the node table rides twice, got " <> inspect(other))
+end
+case Fuzzprobe.Table.load_retain("Root", node_table_twice_wire, store, empty) do
+  {:error, _, %{reason: reason}, _} when is_binary(reason) and reason != "" -> :ok
+  other -> raise("expected retain refusal when the node table rides twice, got " <> inspect(other))
 end
 
 # 7. Unknown union arm inside a union array with L past remaining bytes is malformed.

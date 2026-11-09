@@ -560,9 +560,21 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 // ---------------------------------------------------------------------------
 
 func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
+	el := elemOf(f)
 	if f.Type.Optional {
-		off += " + 1"
+		e.p(ind, "if b[%s] > 1 { return schema_rt::FixedRefuseWireDamaged; }", off)
+		if !elemNeedsScan(el) && f.Array != ir.ArrayCounted {
+			return
+		}
+		e.p(ind, "if b[%s] == 1 {", off)
+		e.scanValue(ind+1, f, off+" + 1")
+		e.p(ind, "}")
+		return
 	}
+	e.scanValue(ind, f, off)
+}
+
+func (e *fixedEmit) scanValue(ind int, f *ir.Field, off string) {
 	el := elemOf(f)
 	switch {
 	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
@@ -581,9 +593,11 @@ func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
 		if !elemNeedsScan(el) {
 			return
 		}
+		c := e.loopVar()
 		i := e.loopVar()
+		e.p(ind, "let %s = schema_rt::fixed_u32(b, %s) as i64;", c, off)
 		e.p(ind, "var %s: i64 = 0;", i)
-		e.p(ind, "while %s < %d {", i, f.ArrayBound)
+		e.p(ind, "while %s < %s {", i, c)
 		e.scanElem(ind+1, el, offStep(off+" + 4", i, ir.TableFixedElementBytes(f)))
 		e.p(ind+1, "%s += 1;", i)
 		e.p(ind, "}")
@@ -595,6 +609,9 @@ func (e *fixedEmit) scanField(ind int, f *ir.Field, off string) {
 func (e *fixedEmit) scanElem(ind int, f *ir.Field, off string) {
 	flavour := 0
 	switch e.kindOf(f) {
+	case kBool:
+		e.p(ind, "if b[%s] > 1 { return schema_rt::FixedRefuseWireDamaged; }", off)
+		return
 	case kStr:
 		flavour = 1
 	case kWStr:
@@ -750,6 +767,74 @@ func (e *fixedEmit) clampElem(ind int, f *ir.Field, pl place) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// THE STRICT BOUNDS REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.6): the strict
+// read's twin of the clamp pass, over the same live extent, that REFUSES
+// out_of_range instead of clamping and counting. It is what <T>FixedLoad
+// calls after the run; the clamp pass itself remains for the write contract's
+// negative control.
+// ---------------------------------------------------------------------------
+
+func (e *fixedEmit) strictRefuseField(ind int, base string, f *ir.Field) {
+	el := elemOf(f)
+	if !elemNeedsClamp(el) {
+		return
+	}
+	pl := fieldPlace(base, f)
+	if f.Type.Optional {
+		e.p(ind, "if %s {", presentOf(base, f))
+		e.strictRefuseValue(ind+1, f, pl)
+		e.p(ind, "}")
+		return
+	}
+	e.strictRefuseValue(ind, f, pl)
+}
+
+func (e *fixedEmit) strictRefuseValue(ind int, f *ir.Field, pl place) {
+	el := elemOf(f)
+	switch {
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed:
+		i := e.loopVar()
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %d {", i, slotCount(f))
+		e.strictRefuseElem(ind+1, el, pl.at(i))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	case f.Array == ir.ArrayCounted:
+		i := e.loopVar()
+		e.p(ind, "var %s: i64 = 0;", i)
+		e.p(ind, "while %s < %sCount {", i, pl.val)
+		e.strictRefuseElem(ind+1, el, pl.at(i))
+		e.p(ind+1, "%s += 1;", i)
+		e.p(ind, "}")
+	default:
+		e.strictRefuseElem(ind, el, pl)
+	}
+}
+
+func (e *fixedEmit) strictRefuseElem(ind int, f *ir.Field, pl place) {
+	switch e.kindOf(f) {
+	case kStruct, kUnion:
+		if elemNeedsClamp(f) {
+			e.home(f.Type.Name)
+			v := e.loopVar()
+			e.p(ind, "let s%s = _%sFixedStrictRefuse(%s);", v, f.Type.Name, pl.val)
+			e.p(ind, "if s%s != 0 { return s%s; }", v, v)
+		}
+	case kInt, kInt128:
+		for _, b := range scalarBounds(f) {
+			e.p(ind, "if %s { return schema_rt::FixedRefuseOutOfRange; }", b.over(pl.val))
+		}
+	case kF32, kF64:
+		if lo, hi, ok := floatBounds(f); ok {
+			// A compressed float is the one float whose read moves a pattern
+			// (SPEC-TABLES §3.3): out of range refuses out_of_range, and a -0
+			// lands as +0.
+			e.p(ind, "if %s < %s || %s > %s { return schema_rt::FixedRefuseOutOfRange; } else if %s == 0.0 { %s = 0.0; }", pl.val, lo, pl.val, hi, pl.val, pl.val)
+		}
+	}
+}
+
 // a scalarBound is one declared bound of an integer-shaped value: the test
 // that it is broken, and the value a read lands when it is.
 type scalarBound struct {
@@ -850,8 +935,11 @@ func elemNeedsCheck(f *ir.Field) bool {
 
 func elemNeedsScan(f *ir.Field) bool {
 	return needs(f, map[string]bool{}, func(f *ir.Field) bool {
+		if f.Type.Optional {
+			return true
+		}
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TBool, ir.TString, ir.TWString, ir.TBytes:
 			return true
 		}
 		return false
@@ -918,7 +1006,7 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	}
 	n := st.Name
 	typ := e.structType(st)
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
 	e.p(0, "// ---- %s's record image, C = %d bytes (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, ir.TableFixedTypeBytes(st))
 
 	e.loop = 0
@@ -969,6 +1057,16 @@ func (e *fixedEmit) emitStruct(st *ir.Struct) error {
 	}
 	e.p(1, "return c;")
 	e.p(0, "}\n")
+
+	e.loop = 0
+	e.p(0, "// _%sFixedStrictRefuse is %s's strict read-side bounds (§4.6): it returns 0 or", n, n)
+	e.p(0, "// out_of_range on the first value a read landed outside its declared bounds. It never clamps.")
+	e.p(0, "fn _%sFixedStrictRefuse(v: %s&) -> i64 {", n, typ)
+	for _, f := range st.Fields {
+		e.strictRefuseField(1, "v", f)
+	}
+	e.p(1, "return 0;")
+	e.p(0, "}\n")
 	return e.err
 }
 
@@ -988,7 +1086,7 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	typ := e.unionType(un)
 	tw := ir.TableFixedUnionTagBytes(un)
 	widest := ir.TableFixedUnionBytes(un) - tw
-	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp")
+	e.declare("_"+n+"FixedWrite", "_"+n+"FixedCheck", "_"+n+"FixedScan", "_"+n+"FixedRead", "_"+n+"FixedClamp", "_"+n+"FixedStrictRefuse")
 	e.p(0, "// ---- union %s's record image: a %d-byte tag, then %d bytes of arm (docs/FIXED-FORM-ALGORITHM.md §3) ----", n, tw, widest)
 	arms := func(fn func(ind int, tag int, v ir.UnionVariant)) {
 		first := true
@@ -1080,6 +1178,20 @@ func (e *fixedEmit) emitUnion(un *ir.Union) error {
 	}
 	e.p(1, "return c;")
 	e.p(0, "}\n")
+
+	e.loop = 0
+	e.p(0, "fn _%sFixedStrictRefuse(v: %s&) -> i64 {", n, typ)
+	e.p(1, "if (v.Type as u64) > %d { return schema_rt::FixedRefuseOutOfRange; }", un.Max)
+	for i, v := range un.Variants {
+		if v.F == nil || !elemNeedsClamp(elemOf(armField(v))) {
+			continue
+		}
+		e.p(1, "if v.Type == %d {", i+1)
+		e.strictRefuseField(2, "v", armField(v))
+		e.p(1, "}")
+	}
+	e.p(1, "return 0;")
+	e.p(0, "}\n")
 	return e.err
 }
 
@@ -1147,7 +1259,12 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "k = 0;")
 	e.p(1, "while k < n {")
 	e.p(2, "_%sFixedRead(data, first + k * %sFixedRecordBytes, values[k]);", n, n)
-	e.p(2, "report.oor += _%sFixedClamp(values[k]);", n)
+	e.p(2, "let why = _%sFixedStrictRefuse(values[k]);", n)
+	e.p(2, "if why != 0 {")
+	e.p(3, "var j: i64 = 0;")
+	e.p(3, "while j <= k { values[j] = %s { .. }; j += 1; }", typ)
+	e.p(3, "return schema_rt::fixed_refuse(report, why, false);")
+	e.p(2, "}")
 	e.p(2, "k += 1;")
 	e.p(1, "}")
 	e.p(1, "return n;")

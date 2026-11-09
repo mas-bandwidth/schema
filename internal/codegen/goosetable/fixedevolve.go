@@ -290,7 +290,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        let body = rec + 8;\n")
 	e.p("        if pick == 0 {\n")
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
-	e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
+	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
 	for i, plan := range plans {
 		e.p("        } else if pick == %d {\n", i+1)
@@ -300,7 +300,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		seq := 0
 		e.emitNodes(plan.nodes, "body", "", &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
-		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
+		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
 		e.emitWriterClamps(st, olds[i].Ranges)
 	}
