@@ -164,15 +164,19 @@ public final class TablesWireFuzz {
                 Object image = fixedImage.invoke(null);
                 int read = (int) fixedLoad.invoke(null, values, 1, wire, plan, new short[1 << 14], image, report);
                 fill(r, report, fixedReportType);
-                // A REFUSAL IS NOT DAMAGE (§3): a form byte this reader does not
-                // carry moves no counter and reports nothing, so a load that came
-                // back -1 without naming a refusal is damage for the whole wire.
-                if (read < 0 && !r.refused) {
-                    r.damaged = true;
+                // THE STRICT READ IS ONE READ: THE WHOLE VALUE OR A REFUSAL
+                // (§3.4): the file holds one record, so only a read of exactly
+                // that record, clean, is an accept. A read of none (a truncated
+                // file) or a named refusal is a refusal of the whole wire, never
+                // damage.
+                boolean ok = read > 0 && !r.damaged && !r.refused;
+                r.loaded = ok;
+                if (!ok) {
+                    r.refused = true;
+                    r.damaged = false;
                 }
-                r.loaded = true;
                 r.measure = -1;
-                if (read > 0) {
+                if (ok) {
                     int size = (int) fixedMeasure.invoke(null, read);
                     byte[] buf = new byte[size];
                     int wrote = (int) fixedSave.invoke(null, values, read, buf);
