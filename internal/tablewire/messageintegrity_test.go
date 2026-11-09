@@ -137,7 +137,18 @@ func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, _, want := messageIntegrityFixture(t)
+	model, _, _ := messageIntegrityFixture(t)
+	// The JS leg still announces ir.TableVocabulary (jstable is not trimmed),
+	// so its writer is pinned against the shared batch.hex corpus, not the
+	// trimmed tablewire closure pin the fixture returns for EncodeMessages.
+	pinText, err := os.ReadFile(filepath.Join("../../testdata/conformance/feature-witnesses/message-integrity", "batch.hex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
+	if err != nil {
+		t.Fatal(err)
+	}
 	files, err := compiler.New().Generate(model.Unit, "js", compiler.Options{})
 	if err != nil {
 		t.Fatal(err)

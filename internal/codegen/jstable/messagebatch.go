@@ -20,7 +20,6 @@ import (
 	"strconv"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -287,7 +286,7 @@ export function TableMessageFloat64FromBits(bits) { TableMessageDoubleWords[0] =
 // messageSlot is the 1-based slot an entry names in this unit's own
 // vocabulary, a compile-time constant on the write path (§3.3).
 func messageSlot(u *ir.Unit, entry ir.TableVocabularyEntry) int {
-	for i, v := range tablewire.MessageVocabulary(u) {
+	for i, v := range ir.TableVocabulary(u) {
 		if entry.Key() == v.Key() {
 			return i + 1
 		}
@@ -298,7 +297,7 @@ func messageSlot(u *ir.Unit, entry ir.TableVocabularyEntry) int {
 // messageNameSlot is the 1-based slot of a NAME entry (kind 0) with a given id,
 // the enum-variant slot lookup on the write path.
 func messageNameSlot(u *ir.Unit, id uint64) int {
-	for i, v := range tablewire.MessageVocabulary(u) {
+	for i, v := range ir.TableVocabulary(u) {
 		if v.Id == id && v.Kind == 0 {
 			return i + 1
 		}
