@@ -1247,6 +1247,16 @@ jobs:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
+    #
+    # THIS JOB ALSO BUILDS THE SHARED CONFORMANCE INPUTS ONCE. Every
+    # conformance leg used to rebuild bin/schema, build/conformance-harness
+    # and build/tables-generated from a wiped build/ (117 s of the go leg's
+    # 129-150 s kills at the 120 s fleet cap, 303 s uncapped in nightly
+    # 42458071627): the time was the build, not the run. `make
+    # conformance-shared` builds that tree once here; the legs below
+    # download it and build only their own driver, in parallel. The Go
+    # build cache is restored and saved here on fleet runners too (not
+    # only hosted), so an ephemeral fleet runner starts warm.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -1263,17 +1273,16 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored and saved on fleet runners as well as
+      # hosted ones, so a cold fleet runner does not recompile the compiler
+      # and the harness from nothing. This job is a writer for this lane;
+      # `go-test` remains the widest writer. See the block on that job.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1286,6 +1295,25 @@ jobs:
           echo "$matrix"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+      - name: build the shared conformance inputs once
+        run: make -j"$(nproc)" conformance-shared
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+
+      - name: hand the shared conformance inputs to every leg
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-shared
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated
+          retention-days: 1
+          if-no-files-found: error
+
   conformance:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1294,7 +1322,7 @@ jobs:
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
+    timeout-minutes: 5
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1327,20 +1355,35 @@ jobs:
           cache: false
 
       # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # Restored on fleet runners too, so the leg's own Go work (its driver
+      # where it has one) does not start from a cold cache.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # THE SHARED INPUTS, built once by conformance-matrix: bin/schema,
+      # build/conformance-harness and build/tables-generated. The artifact
+      # keeps the build job's timestamps, which predate this leg's checkout,
+      # so the stamp and the two binaries are touched (bin/schema first,
+      # the stamp last) to stand newer than the checked-out sources: make
+      # then builds only this leg's driver, not the shared tree again.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: conformance-shared
+          path: .
+
+      - name: stand the shared inputs newer than this checkout
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated/.stamp
 
       # THE LUAU PIN, installed exactly as make/luau.mk's dist-luau does: the
       # same release archive, the same sha256 refused before it is unpacked,
@@ -1442,9 +1485,11 @@ jobs:
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
-      # PATH rather than in dist/, cargo not in a homebrew keg.
-      - name: build the harness and the ${{ matrix.lang }} driver
-        run: make ${{ matrix.targets }} ${{ matrix.env }}
+      # PATH rather than in dist/, cargo not in a homebrew keg. The shared
+      # inputs above are already built, so this builds only the leg's own
+      # driver (and its base64 row where it has one), in parallel.
+      - name: build the ${{ matrix.lang }} driver
+        run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
