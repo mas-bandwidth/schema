@@ -124,13 +124,13 @@ func TestProbe(t *testing.T) {
 				v.Deep[j] = nextFloat64(r)
 			}
 		}
-		size := RootMeasure(&v)
+		size := RootFixedMeasure(1)
 		if size < 0 {
-			t.Fatalf("instance %d: RootMeasure refused (%d)", i, size)
+			t.Fatalf("instance %d: RootFixedMeasure refused (%d)", i, size)
 		}
 		wire := make([]byte, size)
-		if RootSave(&v, wire) != int64(len(wire)) {
-			t.Fatalf("instance %d: RootSave wrote short", i)
+		if RootFixedSave([]Root{v}, wire) != int64(len(wire)) {
+			t.Fatalf("instance %d: RootFixedSave wrote short", i)
 		}
 		if err := os.WriteFile(dir+"/inst-"+strconv.Itoa(i)+".wire", wire, 0o600); err != nil {
 			t.Fatal(err)
