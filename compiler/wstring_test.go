@@ -19,6 +19,10 @@ func TestWstringKind33Retired(t *testing.T) {
 		"package wide\ntable Root { w ?wstring(8) }\n",
 		"package wide\ntable Root { w *wstring }\n",
 		"package wide\ntable Root { w wstring }\n",
+		"package wide\ntable Root { a [4]wstring(4) }\n",
+		"package wide\ntable Root { a []wstring(4) }\n",
+		"package wide\ntable Root { m map[string]wstring(4) }\n",
+		"package wide\nunion U\n{\n    a wstring(4)\n}\n",
 	}
 	for _, src := range cases {
 		f, perrs := parser.Parse("Probe.schema", []byte(src))
