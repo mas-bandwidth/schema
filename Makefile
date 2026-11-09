@@ -7976,3 +7976,36 @@ tables-block-zero-cost-c: bin/schema $(BLOCKLESS_SCHEMA)
 	@$(MAKE) tables-block-zero-cost-c-heavy
 	@$(MAKE) tables-block-zero-cost-c-rest
 	@echo "block zero-cost gate: c Table sources byte-identical with the block form removed"
+
+# Extend cards-conformance-all (make/go.mk) with the goose card leg.
+.PHONY: cards-conformance-all-goose
+cards-conformance-all: cards-conformance-all-goose
+cards-conformance-all-goose:
+	@mkdir -p build/cards-conformance-all; \
+	fail=0; \
+	for leg in goose; do \
+		target=cards-$$leg-conformance; \
+		log=build/cards-conformance-all/$$leg.log; \
+		if ! $(MAKE) -n $$target >/dev/null 2>&1; then \
+			echo "$$leg FAIL: missing target $$target"; \
+			fail=1; \
+			continue; \
+		fi; \
+		if $(MAKE) --no-print-directory $$target CARDS_REQUIRE=$(CARDS_ALL_SURFACES) CARDS_CPP_SURFACES=$(CARDS_ALL_SURFACES) CARDS_JAVA_REQUIRE=$(CARDS_ALL_SURFACES) > "$$log" 2>&1; then \
+			status=0; \
+		else \
+			status=$$?; fail=1; \
+		fi; \
+		lines=$$(sed -n "s/^cards /$$leg /p" "$$log"); \
+		if [ -z "$$lines" ]; then \
+			cat "$$log"; \
+			echo "$$leg FAIL: $$target exited $$status without surface lines"; \
+			fail=1; \
+			continue; \
+		fi; \
+		printf '%s\n' "$$lines"; \
+		for s in load save render parse bounds upgrade edit taskhash view; do \
+			printf '%s\n' "$$lines" | grep -qE "^$$leg $$s pass [1-9][0-9]*/[1-9][0-9]*$$" || fail=1; \
+		done; \
+	done; \
+	exit $$fail
