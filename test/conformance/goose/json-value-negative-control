@@ -29,8 +29,12 @@ case "$mode" in
 label)
 	from='    if c.count[wire] <= 1 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
 	to='    if c.count[wire] <= 1000000 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
-	want="json-write "
-	green="wire json-read json-hostile"
+	# The writer's `&node` label is part of the §16 text, so the label
+	# sabotage reds json-write (the graph written as a tree) and the
+	# json-hostile rows whose canonical value carries a shared-node label
+	# (shared-node-by-label); wire and json-read stay green.
+	want="json-hostile json-write "
+	green="wire json-read"
 	unit=graphdemo
 	;;
 share)
