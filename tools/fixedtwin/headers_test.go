@@ -58,37 +58,70 @@ func TestCAndCppTwinHeadersAgree(t *testing.T) {
 }
 
 // TestCAndCppTwinHeadersAgreeNegativeControl plants its faults in the real
-// artifact: the strict read's count refusal is weakened on each leg in turn
-// and the twin gate must say so. The scan is the C++ half of the one read
-// (count and length past the plan's bound refuse before any destination
-// byte); the C leg answers the same rule in its read loop.
+// artifact: the strict read's count and text refusals are weakened on each leg
+// in turn and the twin gate must say so. The scan is the C++ half of the one
+// read (both halves of each guard — a negative or an over-bound value — refuse
+// before any destination byte); the C leg answers the same rule in its read
+// loop. Each planted C++ fault keeps the function's shape, so the gate cannot
+// red merely because a whole block disappeared.
 func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	cSrc, cppSrc, root := readTwinHeaders(t)
 	if left := twinLeftover(t, cSrc, cppSrc, root); len(left) != 0 {
 		t.Fatalf("the real artifact is not green before the fault is planted:\n%s", strings.Join(left, "\n"))
 	}
 
-	const cppCountRefusal = "\n                why = count_over_bound;"
-	if !strings.Contains(cppSrc, cppCountRefusal) {
-		t.Fatalf("the real C++ artifact no longer carries the strict count refusal")
+	cppFaults := []struct{ name, from, to string }{
+		{
+			"the C++ count guard loses its negative half",
+			"if ( v < 0 || v > (int32_t) p.size )",
+			"if ( v > (int32_t) p.size )",
+		},
+		{
+			"the C++ text guard loses its negative half",
+			"if ( v < 0 || (uint32_t) v > cap )",
+			"if ( (uint32_t) v > cap )",
+		},
+		{
+			"the C++ count refusal loses its name",
+			"\n                why = count_over_bound;",
+			"",
+		},
 	}
-	brokenCpp := strings.Replace(cppSrc, cppCountRefusal, "", 1)
-	if brokenCpp == cppSrc {
-		t.Fatal("the planted C++ fault did not apply")
-	}
-	if left := twinLeftover(t, cSrc, brokenCpp, root); len(left) == 0 {
-		t.Fatal("a weakened strict count refusal in the real C++ artifact passed the twin gate")
+	for _, fault := range cppFaults {
+		if !strings.Contains(cppSrc, fault.from) {
+			t.Fatalf("the real C++ artifact no longer carries the strict read clause for %q", fault.name)
+		}
+		broken := strings.Replace(cppSrc, fault.from, fault.to, 1)
+		if broken == cppSrc {
+			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
+		}
+		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+			t.Fatalf("a weakened strict read in the real C++ artifact passed the twin gate: %s", fault.name)
+		}
 	}
 
-	const cCountRefusal = "else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*out_of_range)++; }"
-	if !strings.Contains(cSrc, cCountRefusal) {
-		t.Fatalf("the real C artifact no longer carries the strict count refusal")
+	cFaults := []struct{ name, from, to string }{
+		{
+			"the C count refusal loses its count",
+			"else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; (*out_of_range)++; }",
+			"else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; }",
+		},
+		{
+			"the C text refusal loses its count",
+			"else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }",
+			"else if ( (uint32_t) v > cap ) { v = (int32_t) cap; }",
+		},
 	}
-	brokenC := strings.Replace(cSrc, cCountRefusal, "else if ( v > (int32_t) p->size ) { v = (int32_t) p->size; }", 1)
-	if brokenC == cSrc {
-		t.Fatal("the planted C fault did not apply")
-	}
-	if left := twinLeftover(t, brokenC, cppSrc, root); len(left) == 0 {
-		t.Fatal("a dropped count refusal in the real C artifact passed the twin gate")
+	for _, fault := range cFaults {
+		if !strings.Contains(cSrc, fault.from) {
+			t.Fatalf("the real C artifact no longer carries the strict read clause for %q", fault.name)
+		}
+		broken := strings.Replace(cSrc, fault.from, fault.to, 1)
+		if broken == cSrc {
+			t.Fatalf("the planted C fault did not apply: %s", fault.name)
+		}
+		if left := twinLeftover(t, broken, cppSrc, root); len(left) == 0 {
+			t.Fatalf("a dropped strict read in the real C artifact passed the twin gate: %s", fault.name)
+		}
 	}
 }

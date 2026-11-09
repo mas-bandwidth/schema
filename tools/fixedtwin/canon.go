@@ -768,17 +768,21 @@ func stripPendingCBoundScan(s string) string {
 // a count past the plan size and a text length past the plan's unit capacity
 // each refuse by name. The names are mapped first so the C spelling, if it
 // ever supplies the scan, is held to the same text.
+//
+// BOTH HALVES OF EACH GUARD ARE REQUIRED. A scan that keeps the over-bound
+// compare but loses the negative half is not the strict read: it would land a
+// negative count or length, write destination bytes and only then refuse. The
+// check matches the squashed guard-refusal-return block, so dropping either
+// `v < 0 ||` or the return leaves the scan in the diff instead of erasing it.
 func strictCountTextScan(fn string) bool {
 	fn = applyIdents(fn)
 	fn = strings.ReplaceAll(fn, "->", ".")
-	fn = reSpaces.ReplaceAllString(fn, " ")
+	fn = strings.Join(strings.Fields(fn), " ")
 	for _, clause := range []string{
 		"p.op == kTableFixedCount",
-		"v > (int32_t) p.size",
-		"why = count_over_bound",
+		"if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }",
 		"p.op == kTableFixedText",
-		"(uint32_t) v > cap",
-		"why = length_over_bound",
+		"if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }",
 	} {
 		if !strings.Contains(fn, clause) {
 			return false
