@@ -2293,7 +2293,7 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 		end
 	end
 	local edges: { [number]: number } = {}
-	local children: { { number } } = table.create(recordCount + 1)
+	local children: { { number } } = {}
 	local curEdges: { number } = {}
 	local depth = 0
 	local checkFields: any
