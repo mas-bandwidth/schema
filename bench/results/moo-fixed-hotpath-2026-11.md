@@ -34,14 +34,28 @@ measured record is unchanged. This commit does not touch that line.
 
 ## Command
 
+The measurement lives in the moo runner directory, `bench/tables/moo/`, and is
+driven by the bench's own corpus: the unit is generated from
+`bench/corpus/Bench.schema` and `bench/corpus/FixedTable.schema`, and the
+timed batch is `bench/paired/corpus/bench_fixed.bin` — the C++ reference's
+form-3 save of the paired corpus's sixty-four logical records. No schema, no
+field and no record batch is written down in the test; that is what makes it
+a runner of the sanctioned benchmark instead of a second, hand-written
+measurement of a schema shape (`bench/README.md`, "The shape gate").
+
     env SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-      -tags schema_leg_moo ./internal/codegen/mootable/ \
+      -tags schema_leg_moo ./bench/tables/moo/ \
       -run '^TestMooFixedHotPathBench$'
 
 `GOFLAGS=-mod=readonly` and `MOO` set as above. The 1-minute load was read
 before the command and the run was not started at 8 or higher.
 
-## Result — the measured sitting (02:58:22–02:58:43Z)
+## Result — the probe-shaped sitting this card owed (02:58:22–02:58:43Z)
+
+The numbers below are the sitting recorded for the original probe-shaped
+workload. They remain this card's record; the test now reproduces the same
+before/after claim on the paired corpus above, and a fresh sitting on that
+corpus is owed the next time the fleet bench runs it.
 
 Host load at start 3.52 / 7.09 / 9.51 (1 / 5 / 15 min); at finish
 3.16 / 6.78 / 9.36. The 15-minute figure is the hour before this window
@@ -80,7 +94,7 @@ not re-run vision.
 ## DONE-WHEN
 
     env SCHEMA_SLOW=1 SCHEMA_MOO_FIXED_BENCH=1 go test -count=1 -v -timeout 900s \
-      -tags schema_leg_moo ./internal/codegen/mootable/ \
+      -tags schema_leg_moo ./bench/tables/moo/ \
       -run '^TestMooFixedHotPathBench$'
 
 PASS, exit 0, on hetzner2, on the code this receipt measures (20.253s and

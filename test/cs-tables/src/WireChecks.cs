@@ -54,12 +54,19 @@ static partial class Program
 
         // Ref zero terminates a body; identity zero in the vocabulary is just
         // an unknown name. Escape, no-payload and enum values remain skippable.
-        byte[] zeroId = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,127,4,4,42,0,0,0,0 },
+        byte[] zeroId = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,1,4,4,42,0,0,0,0 },
             "zero", "future-void", "future-enum", "a");
         zeroId.AsSpan(zeroId.Length - 40, 8).Clear();
         report = new V1.TableReport();
         Check(V1.Schema.CfgLoad(cfg, zeroId, report) && cfg.A == 42 && report.Unknown == 3 && !report.Damaged,
             "zero identity and unknown future kinds skip without swallowing the next field");
+        // an enum reference past the id table is damage even in a field this
+        // reader does not declare (docs/SPEC-TABLES.md §6.5)
+        byte[] enumPast = Fixture(new byte[] { 1,31,2,99,100,2,32,0,3,30,127,4,4,42,0,0,0,0 },
+            "zero", "future-void", "future-enum", "a");
+        report = new V1.TableReport();
+        Check(!V1.Schema.CfgLoad(cfg, enumPast, report) && report.Damaged && cfg.A != 42,
+            "an unknown enum reference past the id table refuses the whole load");
 
         V1.TableTypeInfo cfgType = V1.Schema.CfgTableType();
         Check(V1.Schema.TableWire.FindField(cfgType, cfgType.Fields[0].Id) == cfgType.Fields[0],

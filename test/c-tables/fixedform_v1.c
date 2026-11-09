@@ -28,13 +28,14 @@ int64_t fixed_v1_write( uint8_t * buffer, int64_t capacity )
 }
 
 /* AN ENUM ORDINAL PAST THE ENUM'S TOP VALUE is not a variant this generation
-   cannot name — it is a number the enum cannot hold at all. It lands None and
-   COUNTS as a clamp (docs/SPEC-TABLES.md §3.4). */
+   cannot name — it is a number the enum cannot hold at all. Under the strict
+   read it refuses the whole read as out_of_range and resets the destination
+   (docs/SPEC-TABLES.md §3.4, §6.5). */
 void fixed_v1_bounds( void )
 {
     static uint8_t file[16384];
     static tblv1_table_fixed_entry_t plan[8192];
-    tblv1_cfg_t v, back;
+    tblv1_cfg_t v, defaults, back;
     tblv1_table_report_t r;
     int64_t n;
 
@@ -43,26 +44,33 @@ void fixed_v1_bounds( void )
     n = tblv1_cfg_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
     fixed_check( n == tblv1_cfg_fixed_measure( 1 ), "C bounds: V1 save" );
 
+    tblv1_cfg_reset( &defaults );
+    tblv1_cfg_reset( &back );
+    back.a = 77; /* poison: the refusal must put every field back */
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblv1_cfg_fixed_load_tolerant( &back, 1, file, n, plan, 8192, NULL, &r ) == 1,
-                 "C bounds: the enum record reads" );
-    fixed_check( back.grade == TBLV1_GRADE_NONE, "C ORDINAL: an ordinal past the enum's top value lands None" );
-    fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
+    fixed_check( tblv1_cfg_fixed_load( &back, 1, file, n, plan, 8192, NULL, &r ) == -1,
+                 "C ORDINAL: an ordinal past the enum's top value refuses the whole read" );
+    fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLV1_TABLE_REFUSE_OUT_OF_RANGE,
+                 "C ORDINAL: named out_of_range" );
+    fixed_check( back.grade == defaults.grade && back.a == defaults.a,
+                 "C ORDINAL: nothing lands — the destination is back at its defaults" );
 
     /* LIVE COUNT, NEVER SLACK, ON BOTH PATHS. A counted array of ranged
        integers, read twice: once through the identity plan and once through a
-       plan compiled from this build's own layout. Neither plan clamps, so the
-       loop alone leaves both live values standing on both paths, and the ONE
-       pass over storage holds both and counts two — the same two, because the
-       pass walks the LIVE count and never the slack behind it. */
+       plan compiled from this build's own layout. Neither plan holds a range,
+       so the loop alone leaves both live values standing on both paths, and the
+       ONE pass over storage refuses them on both — and it walks the LIVE count
+       and never the slack behind it. */
     {
         static uint8_t file2[16384];
         static tblv1_table_fixed_entry_t compiled[8192];
-        tblv1_cfg_t poison, ident, held;
+        tblv1_cfg_t poison, ident, held, slack_only;
         tblv1_table_fixed_layout_view_t parsed;
-        tblv1_table_report_t ident_r, compile_r, run_r;
+        tblv1_table_report_t ident_r, compile_r, run_r, slack_r;
         int why = SCHEMA_TBLV1_TABLE_LAYOUT_MALFORMED;
         int32_t guarded = 0, made, i, past_the_set = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         const uint8_t * body;
         int64_t n2;
 
@@ -74,16 +82,14 @@ void fixed_v1_bounds( void )
         fixed_check( n2 == tblv1_cfg_fixed_measure( 1 ), "C live-count: V1 save" );
 
         memset( &ident_r, 0, sizeof( ident_r ) );
-        fixed_check( tblv1_cfg_fixed_load_tolerant( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == 1,
-                     "C live-count: identity reads" );
-        fixed_check( ident.a == 1000 && ident.items[0] == 255, "C live-count, identity: both live values clamp" );
-        fixed_check( ident_r.clamped == 2, "C live-count, identity: two clamps, slack never" );
+        fixed_check( tblv1_cfg_fixed_load( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == -1,
+                     "C live-count, identity: the live values past their bounds refuse the read" );
+        fixed_check( ident_r.refused && ident_r.refuse_reason == SCHEMA_TBLV1_TABLE_REFUSE_OUT_OF_RANGE,
+                     "C live-count, identity: named out_of_range" );
 
         fixed_check( tblv1_table_fixed_parse_layout( tblv1_cfg_fixed_layout, (int64_t) sizeof( tblv1_cfg_fixed_layout ), &parsed, &why ) != 0,
                      "C live-count: this build's layout parses" );
         memset( &compile_r, 0, sizeof( compile_r ) );
-        uint32_t fill_at = 0;
-        int32_t fill_count = 0;
         made = tblv1_table_fixed_compile( &parsed, tblv1_cfg_fixed_layout, (int32_t) sizeof( tblv1_cfg_fixed_layout ),
                                     tblv1_cfg_fixed_dst, tblv1_cfg_fixed_cover, tblv1_cfg_fixed_cover_count,
                                     compiled, 8192, &guarded, &fill_at, &fill_count, &compile_r );
@@ -92,19 +98,29 @@ void fixed_v1_bounds( void )
         {
             if ( compiled[i].op > (uint8_t) TBLV1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
         }
-        fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no clamp op either" );
+        fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no range op either" );
 
         tblv1_cfg_reset( &held );
         memset( &run_r, 0, sizeof( run_r ) );
         body = file2 + TBLV1_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tblv1_cfg_fixed_layout ) + 8;
-        tblv1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r, NULL );
+        tblv1_table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r, tblv1_cfg_fixed_guards );
         fixed_check( held.a == 5000 && held.items[0] == 300,
                      "C live-count, compiled loop: nothing in the plan held either value" );
-        fixed_check( run_r.clamped == 0, "C live-count, compiled loop: and it counted nothing" );
+        fixed_check( !run_r.refused, "C live-count, compiled loop: and it refused nothing" );
 
-        schema_tblv1_cfg_fixed_clamp_( &held, &run_r );
-        fixed_check( held.a == 1000 && held.items[0] == 255, "C live-count, compiled pass: both live values clamp" );
-        fixed_check( run_r.clamped == 2, "C live-count: identity and compiled count the same two" );
+        tblv1_cfg_reset( &slack_only );
+        slack_only.items_count = 1;
+        slack_only.items[0] = 7;
+        slack_only.items[1] = 300; /* past max, but in the slack */
+        memset( &slack_r, 0, sizeof( slack_r ) );
+        fixed_check( schema_tblv1_cfg_fixed_clamp_( &slack_only, &slack_r ) == 0 && !slack_r.refused,
+                     "C live-count: an out-of-range value in the SLACK is never read by the pass" );
+
+        fixed_check( schema_tblv1_cfg_fixed_clamp_( &held, &run_r ) == -1,
+                     "C live-count, compiled pass: the pass refuses the out-of-range live values" );
+        fixed_check( run_r.refused && run_r.refuse_reason == SCHEMA_TBLV1_TABLE_REFUSE_OUT_OF_RANGE &&
+                     run_r.reason == SCHEMA_TBLV1_TABLE_NO_REFUSAL,
+                     "C live-count: the compiled pass names out_of_range on the live values, as the identity read did" );
     }
 }
 

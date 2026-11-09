@@ -566,18 +566,25 @@
       ]
     },
     {
+      "name": "base-cpp-discard",
+      "when": "pull-request",
+      "why": "the C++ leg's WHOLE-LOAD DISCARD controls (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): each removes one read's discard from a COPY of the emitter through a Go build overlay and requires TestDamageDiscardsTheWholeLoadCPP red on that read's own line \u2014 the value read's LoadVerdict (codecs.go), the region read and the builder load (pointers.go). The controls are anchored on the strict read's current names: the plain Load and the damaged flag, never the retired LoadTolerant and malformed spellings. Three small C++ builds of one probe unit, well inside the rule on its own row.",
+      "targets": [
+        "tables-cpp-discard-negative-control",
+        "tables-cpp-region-discard-negative-control",
+        "tables-cpp-builder-discard-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
         "tables-wire-fuzz-discard-negative-control",
-        "tables-cpp-discard-negative-control",
-        "tables-cpp-region-discard-negative-control",
         "tables-cpp-cycle-negative-control",
         "tables-cpp-cycle-linear-negative-control",
         "tables-engine-cycle-negative-control",
         "tables-engine-cycle-linear-negative-control",
-        "tables-cpp-builder-discard-negative-control",
         "tables-cpp-retain-refusal-negative-control",
         "tables-cpp-fixed-refusal-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",

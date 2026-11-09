@@ -16,7 +16,7 @@ int64_t fixed_fx2_write( uint8_t * buffer, int64_t capacity )
     tblfx2_fx_root_t two;
     tblfx2_fx_root_reset( &two );
     two.keep = 5150u;
-    two.narrow = 70000u;      /* past uint16: FX1 must NOT narrow it, it must skip */
+    two.narrow = 70000u;      /* past uint16: FX1 must NOT narrow it */
     two.renamed_to = 808;
     two.added = 12;
     two.nested.a = 33;
@@ -37,7 +37,7 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
     tblfx2_table_report_t r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    n = tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "older writer: one record" );
     fixed_check( back.keep == 4242u, "older writer: an unmoved field" );
     fixed_check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
@@ -51,7 +51,7 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
                  "BYTES(N): the compiled plan lands the buffer in the buffer and the length in the length" );
     fixed_check( back.blob[4] == 0 && back.blob[5] == 0, "BYTES(N): the slack past the live length is zero" );
     fixed_check( r.unknown == 1, "older writer: `gone` is the one field this reader cannot name" );
-    fixed_check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
+    fixed_check( !r.refused && r.refuse_reason == SCHEMA_TBLFX2_TABLE_REFUSE_OK, "older writer: nothing else fired" );
 }
 
 /* THE NEGATIVE CONTROL FOR THE `bytes(N)` ROW. The two columns are swapped
@@ -133,30 +133,34 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
 /* A READ THAT CLAIMS NOTHING ABOUT THE VALUES. A form-3 file with one bit
    flipped is a layout whose child sizes may not sum to its parent's, a tree that
    may not close, a chain a thousand deep, or a record count that divides
-   wrongly. Every one of those must come out as a refusal by name, a malformed
-   read, or a read that lands values — and never as a step outside the buffer,
-   which is what the sanitized build of this file is here to say. */
+   wrongly. Every one of those must come out as a refusal or a read that lands
+   values — and never as a step outside the buffer, which is what the sanitized
+   build of this file is here to say. */
 void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
 {
     tblfx2_fx_root_t back;
     tblfx2_table_report_t r;
     memset( &r, 0, sizeof( r ) );
     tblfx2_fx_root_reset( &back );
-    (void) tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
+    (void) tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
 }
 
 /* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
    pass covers the identity plan and a plan compiled from a stranger's layout
-   alike (docs/SPEC-TABLES.md §3.4). */
+   alike (docs/SPEC-TABLES.md §3.4, §6.5). */
 void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
 {
-    tblfx2_fx_root_t back;
+    tblfx2_fx_root_t defaults, back;
     tblfx2_table_report_t r;
+    tblfx2_fx_root_reset( &defaults );
+    tblfx2_fx_root_reset( &back );
+    back.renamed_to = 77;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
-                 "C bounds, compiled: the record reads" );
-    fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
-    fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == -1,
+                 "C RANGE, compiled: the same bound refuses through a compiled plan" );
+    fixed_check( r.refused && r.refuse_reason == SCHEMA_TBLFX2_TABLE_REFUSE_OUT_OF_RANGE &&
+                 back.renamed_to == defaults.renamed_to,
+                 "C RANGE, compiled: out_of_range, and nothing lands" );
 }
 
 /* THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
@@ -181,13 +185,13 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     tblfx2_table_fixed_plan_cache_init( &cache, g_cache_slab, CacheStride );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: first foreign load" );
     fixed_check( cache.compiles == 1, "cache: first foreign load compiled once" );
     fixed_check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: second foreign load" );
     fixed_check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
 
@@ -200,7 +204,7 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HASH_AT, hashB );
     tblfx2_table_fixed_put64( mutated + TBLFX2_K_TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes, hashB );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: a different hash compiles once more" );
     fixed_check( cache.compiles == 2, "cache: the third load compiled once more" );
     fixed_check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
@@ -211,7 +215,7 @@ void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
     two.keep = 1;
     fixed_check( tblfx2_fx_root_fixed_save( &two, 1, own, need ) == need, "cache: FX2 save" );
     memset( &r, 0, sizeof( r ) );
-    fixed_check( tblfx2_fx_root_fixed_load_tolerant( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
+    fixed_check( tblfx2_fx_root_fixed_load( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
                  "cache: identity load" );
     fixed_check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }

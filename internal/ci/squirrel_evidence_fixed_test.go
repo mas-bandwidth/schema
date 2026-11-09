@@ -111,7 +111,7 @@ func dropOverlayRow(overlay, id string) string {
 func validateSquirrelFixedOverlay(root, overlay string) error {
 	suiteSrc, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(squirrelFixedSuiteFile)))
 	if err != nil {
-		return fmt.Errorf("read %s: %v", squirrelFixedSuiteFile, err)
+		return fmt.Errorf("read %s: %w", squirrelFixedSuiteFile, err)
 	}
 	defined := map[string]bool{}
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(suiteSrc), -1) {
@@ -232,7 +232,7 @@ func validateSquirrelFixedCutRow(root, cut, line, want string) error {
 	}
 	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
 	if err != nil {
-		return fmt.Errorf("%s: read %s: %v", id, file, err)
+		return fmt.Errorf("%s: read %s: %w", id, file, err)
 	}
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {
 		if m[1] == fn {
