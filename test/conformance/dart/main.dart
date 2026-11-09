@@ -45,6 +45,42 @@ import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vocab
 import '../../../build/tables-generated-dart/vocab/VocabFixed.dart' as vocab;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as vocab9demo_fixed;
 import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
+import '../../../build/tables-generated-dart/examples/TabledemoFixed.dart' as tabledemo_fixed;
+import '../../../build/tables-generated-dart/examples/TablesFixed.dart' as tables_fixed;
+import '../../../build/tables-generated-dart/examples/NestedFixed.dart' as nested_fixed;
+import '../../../build/tables-generated-dart/examples/PackFixed.dart' as pack_fixed;
+import '../../../build/tables-generated-dart/examples/KeyedFixed.dart' as keyed_fixed;
+import '../../../build/tables-generated-dart/v1/Tblv1Fixed.dart' as tblv1_fixed;
+import '../../../build/tables-generated-dart/v1/V1Fixed.dart' as v1_fixed;
+import '../../../build/tables-generated-dart/v2/Tblv2Fixed.dart' as tblv2_fixed;
+import '../../../build/tables-generated-dart/v2/V2Fixed.dart' as v2_fixed;
+import '../../../build/tables-generated-dart/p1/Tblp1Fixed.dart' as tblp1_fixed;
+import '../../../build/tables-generated-dart/p1/P1Fixed.dart' as p1_fixed;
+import '../../../build/tables-generated-dart/p3/Tblp3Fixed.dart' as tblp3_fixed;
+import '../../../build/tables-generated-dart/p3/P3Fixed.dart' as p3_fixed;
+import '../../../build/tables-generated-dart/messages/MessagedemoFixed.dart' as messagedemo_fixed;
+import '../../../build/tables-generated-dart/messages/MessagesFixed.dart' as messages_fixed;
+import '../../../build/tables-generated-dart/m1/Tblm1Fixed.dart' as tblm1_fixed;
+import '../../../build/tables-generated-dart/m1/M1Fixed.dart' as m1_fixed;
+import '../../../build/tables-generated-dart/m2/Tblm2Fixed.dart' as tblm2_fixed;
+import '../../../build/tables-generated-dart/m2/M2Fixed.dart' as m2_fixed;
+import '../../../build/tables-generated-dart/wide/WideFixed.dart' as widedemo_fixed;
+import '../../../build/tables-generated-dart/wide/CaptionFixed.dart' as caption_fixed;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoFixed.dart' as scalardemo_fixed;
+import '../../../build/tables-generated-dart-scalars/scalars/ScalarsFixed.dart' as scalars_fixed;
+import '../../../build/tables-generated-dart-scalars/scalars/Int128.dart' as scalars_i128;
+import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Fixed.dart' as scalardemo2_fixed;
+import '../../../build/tables-generated-dart-scalars/scalars2/Scalars2Fixed.dart' as scalars2_fixed;
+import '../../../build/tables-generated-dart/r1/Tblr1Fixed.dart' as tblr1_fixed;
+import '../../../build/tables-generated-dart/r1/R1Fixed.dart' as r1_fixed;
+import '../../../build/tables-generated-dart/r2/Tblr2Fixed.dart' as tblr2_fixed;
+import '../../../build/tables-generated-dart/r2/R2Fixed.dart' as r2_fixed;
+import '../../../build/tables-generated-dart/a2/Tbla2Fixed.dart' as tbla2_fixed;
+import '../../../build/tables-generated-dart/a2/A2Fixed.dart' as a2_fixed;
+import '../../../build/tables-generated-dart/k1/Tblk1Fixed.dart' as tblk1_fixed;
+import '../../../build/tables-generated-dart/k1/K1Fixed.dart' as k1_fixed;
+import '../../../build/tables-generated-dart/k2/Tblk2Fixed.dart' as tblk2_fixed;
+import '../../../build/tables-generated-dart/k2/K2Fixed.dart' as k2_fixed;
 import '../../../build/tables-generated-dart/g1/Tblg1Wire.dart' as tblg1;
 import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
 import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
@@ -811,113 +847,1506 @@ String _reportLine(int unknown, int kind, int widened, int clamped, int duplicat
   return '$unknown,$kind,$widened,$clamped,$duplicate,$m,$v\n';
 }
 
+void _w2fUtf8(String s, Uint8List dst, void Function(int) setLen) {
+  final b = utf8.encode(s);
+  final n = b.length <= dst.length ? b.length : dst.length;
+  dst.setRange(0, n, b);
+  setLen(n);
+}
+
+String _f2wUtf8(Uint8List src, int len) =>
+    utf8.decode(src.sublist(0, len), allowMalformed: true);
+
+void _w2fBytes(String s, Uint8List dst, void Function(int) setLen) {
+  final b = latin1.encode(s);
+  final n = b.length <= dst.length ? b.length : dst.length;
+  dst.setRange(0, n, b);
+  setLen(n);
+}
+
+String _f2wBytes(Uint8List src, int len) =>
+    latin1.decode(src.sublist(0, len));
+
+void _w2fWide(String s, Uint16List dst, void Function(int) setLen) {
+  final cu = s.codeUnits;
+  final n = cu.length <= dst.length ? cu.length : dst.length;
+  dst.setRange(0, n, cu);
+  setLen(n);
+}
+
+String _f2wWide(Uint16List src, int len) =>
+    String.fromCharCodes(src.sublist(0, len));
+
+scalars_i128.Int128 _w2fInt128(BigInt b) {
+  final u = b.toUnsigned(128);
+  return scalars_i128.Int128((u >> 64).toSigned(64).toInt(), u.toSigned(64).toInt());
+}
+
+BigInt _f2wInt128(scalars_i128.Int128 x) =>
+    ((BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64)).toSigned(128);
+
+scalars_i128.UInt128 _w2fUInt128(BigInt b) {
+  final u = b.toUnsigned(128);
+  return scalars_i128.UInt128((u >> 64).toSigned(64).toInt(), u.toSigned(64).toInt());
+}
+
+BigInt _f2wUInt128(scalars_i128.UInt128 x) =>
+    (BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64);
+
+void _w2f_scalars_Pose(scalardemo.Pose w, dynamic f) {
+  f.x = w.x.toSigned(64).toInt();
+  f.y = w.y.toSigned(64).toInt();
+  f.heading = w.heading.toSigned(64).toInt();
+}
+
+void _f2w_scalars_Pose(dynamic f, scalardemo.Pose w) {
+  w.x = BigInt.from(f.x as int);
+  w.y = BigInt.from(f.y as int);
+  w.heading = BigInt.from(f.heading as int).toUnsigned(64);
+}
+
+void _w2f_scalars_SimState(scalardemo.SimState w, scalardemo_fixed.SimState f) {
+  f.tilt = w.tilt.toSigned(64).toInt();
+  f.angle = w.angle.toSigned(64).toInt();
+  f.position = w.position.toSigned(64).toInt();
+  f.reach = _w2fInt128(w.reach);
+  f.ticks = w.ticks.toSigned(64).toInt();
+  f.ratio = w.ratio.toSigned(64).toInt();
+  f.speed = w.speed.toSigned(64).toInt();
+  f.span = w.span.toSigned(64).toInt();
+  f.mass = _w2fUInt128(w.mass);
+  f.frames = w.frames.toSigned(64).toInt();
+  f.flux = _w2fInt128(w.flux);
+  f.energy = _w2fInt128(w.energy);
+  f.entityId = _w2fUInt128(w.entityId);
+  f.scale = w.scale.toSigned(64).toInt();
+  for (var i = 0; i < 3; i++) f.samples[i] = w.samples[i].toSigned(64).toInt();
+  f.weightsCount = w.weights.length;
+  for (var i = 0; i < w.weights.length; i++) f.weights[i] = w.weights[i].toSigned(64).toInt();
+  for (var i = 0; i < 3; i++) f.axes[i] = w.axes[i].toSigned(64).toInt();
+  f.seedsCount = w.seeds.length;
+  for (var i = 0; i < w.seeds.length; i++) f.seeds[i] = _w2fUInt128(w.seeds[i]);
+  _w2f_scalars_Pose(w.pose, f.pose);
+  f.spawnPresent = w.hasSpawn;
+  _w2f_scalars_Pose(w.spawn, f.spawn);
+}
+
+void _f2w_scalars_SimState(scalardemo_fixed.SimState f, scalardemo.SimState w) {
+  w.tilt = BigInt.from(f.tilt);
+  w.angle = BigInt.from(f.angle);
+  w.position = BigInt.from(f.position);
+  w.reach = _f2wInt128(f.reach);
+  w.ticks = BigInt.from(f.ticks);
+  w.ratio = BigInt.from(f.ratio).toUnsigned(64);
+  w.speed = BigInt.from(f.speed).toUnsigned(64);
+  w.span = BigInt.from(f.span).toUnsigned(64);
+  w.mass = _f2wUInt128(f.mass);
+  w.frames = BigInt.from(f.frames).toUnsigned(64);
+  w.flux = _f2wInt128(f.flux);
+  w.energy = _f2wInt128(f.energy);
+  w.entityId = _f2wUInt128(f.entityId);
+  w.scale = BigInt.from(f.scale);
+  for (var i = 0; i < 3; i++) w.samples[i] = BigInt.from(f.samples[i]);
+  w.weights = List<BigInt>.generate(f.weightsCount, (i) => BigInt.from(f.weights[i]).toUnsigned(64));
+  for (var i = 0; i < 3; i++) w.axes[i] = BigInt.from(f.axes[i]);
+  w.seeds = List<BigInt>.generate(f.seedsCount, (i) => _f2wUInt128(f.seeds[i]));
+  _f2w_scalars_Pose(f.pose, w.pose);
+  w.hasSpawn = f.spawnPresent;
+  _f2w_scalars_Pose(f.spawn, w.spawn);
+}
+
+Uint8List? _fixedResave<T, P, R>(
+  Uint8List wire,
+  T Function() create,
+  P Function() newPlan,
+  R Function() newReport,
+  bool Function(R) refused,
+  int Function(List<T>, int, Uint8List, int, P, R) load,
+  int Function(int) measure,
+  int Function(List<T>, int, Uint8List) save,
+) {
+  final values = <T>[create()];
+  final report = newReport();
+  if (load(values, 1, wire, wire.length, newPlan(), report) != 1 || refused(report)) {
+    return null;
+  }
+  final out = Uint8List(measure(1));
+  if (save(values, 1, out) < 0) return null;
+  return out;
+}
+
+Uint8List? _fixedSaveOne<T>(
+  T value,
+  int Function(int) measure,
+  int Function(List<T>, int, Uint8List) save,
+) {
+  final out = Uint8List(measure(1));
+  if (save(<T>[value], 1, out) < 0) return null;
+  return out;
+}
+
+T? _fixedLoadOne<T, P, R>(
+  Uint8List wire,
+  T Function() create,
+  P Function() newPlan,
+  R Function() newReport,
+  bool Function(R) refused,
+  int Function(List<T>, int, Uint8List, int, P, R) load,
+) {
+  final values = <T>[create()];
+  final report = newReport();
+  if (load(values, 1, wire, wire.length, newPlan(), report) != 1 || refused(report)) {
+    return null;
+  }
+  return values[0];
+}
+
+String _fixedReportLine<T, P, R>(
+  Uint8List wire,
+  T Function() create,
+  P Function() newPlan,
+  R Function() newReport,
+  (int, int, bool) Function(R) status,
+  int Function(List<T>, int, Uint8List, int, P, R) load,
+) {
+  final values = <T>[create()];
+  final report = newReport();
+  final n = load(values, 1, wire, wire.length, newPlan(), report);
+  final (unknown, widened, refused) = status(report);
+  final bad = n != 1 || refused;
+  return _reportLine(unknown, 0, widened, 0, 0, bad, bad);
+}
+
+Uint8List? _wireResaveOne<T, R>(
+  Uint8List wire,
+  R Function() newReport,
+  (bool, String) Function(R) status,
+  T Function(Uint8List, R) load,
+  Uint8List Function(T) save,
+) {
+  final r = newReport();
+  final v = load(wire, r);
+  final (refused, refusal) = status(r);
+  if (refused) {
+    if (refusal.startsWith('blob_shared')) {
+      throw StateError(refusal);
+    }
+    return null;
+  }
+  return save(v);
+}
+void _w2f_backend_PlayerRow(backenddemo.PlayerRow w, backenddemo_fixed.PlayerRow f) {
+  f.playerId = w.playerId;
+  f.score = w.score;
+  f.placement = w.placement;
+}
+void _f2w_backend_PlayerRow(backenddemo_fixed.PlayerRow f, backenddemo.PlayerRow w) {
+  w.playerId = f.playerId;
+  w.score = f.score;
+  w.placement = f.placement;
+}
+void _w2f_backend_LoginRequest(backenddemo.LoginRequest w, backenddemo_fixed.LoginRequest f) {
+  f.playerId = w.playerId;
+  _w2fBytes(w.sessionToken, f.sessionToken, (n) => f.sessionTokenLength = n);
+  f.clientBuild = w.clientBuild;
+  f.region = w.region;
+}
+void _f2w_backend_LoginRequest(backenddemo_fixed.LoginRequest f, backenddemo.LoginRequest w) {
+  w.playerId = f.playerId;
+  w.sessionToken = _f2wBytes(f.sessionToken, f.sessionTokenLength);
+  w.clientBuild = f.clientBuild;
+  w.region = f.region;
+}
+void _w2f_backend_MatchResult(backenddemo.MatchResult w, backenddemo_fixed.MatchResult f) {
+  f.matchId = w.matchId;
+  for (var i = 0; i < f.players.length; i++) _w2f_backend_PlayerRow(w.players[i], f.players[i]);
+}
+void _f2w_backend_MatchResult(backenddemo_fixed.MatchResult f, backenddemo.MatchResult w) {
+  w.matchId = f.matchId;
+  for (var i = 0; i < f.players.length; i++) _f2w_backend_PlayerRow(f.players[i], w.players[i]);
+}
+void _w2f_backend_StorePurchase(backenddemo.StorePurchase w, backenddemo_fixed.StorePurchase f) {
+  f.playerId = w.playerId;
+  _w2fUtf8(w.sku, f.sku, (n) => f.skuLength = n);
+  f.quantity = w.quantity;
+  f.priceMinor = w.priceMinor;
+  f.currency = w.currency;
+}
+void _f2w_backend_StorePurchase(backenddemo_fixed.StorePurchase f, backenddemo.StorePurchase w) {
+  w.playerId = f.playerId;
+  w.sku = _f2wUtf8(f.sku, f.skuLength);
+  w.quantity = f.quantity;
+  w.priceMinor = f.priceMinor;
+  w.currency = f.currency;
+}
+void _w2f_examples_TeamConfig(tabledemo.TeamConfig w, tabledemo_fixed.TeamConfig f) {
+  f.spawnCount = w.spawnCount;
+  _w2fUtf8(w.banner, f.banner, (n) => f.bannerLength = n);
+}
+void _f2w_examples_TeamConfig(tabledemo_fixed.TeamConfig f, tabledemo.TeamConfig w) {
+  w.spawnCount = f.spawnCount;
+  w.banner = _f2wUtf8(f.banner, f.bannerLength);
+}
+void _w2f_examples_GunnerConfig(tabledemo.GunnerConfig w, tabledemo_fixed.GunnerConfig f) {
+  f.reaction = w.reaction;
+  f.tracking = w.tracking;
+}
+void _f2w_examples_GunnerConfig(tabledemo_fixed.GunnerConfig f, tabledemo.GunnerConfig w) {
+  w.reaction = f.reaction;
+  w.tracking = f.tracking;
+}
+void _w2f_examples_TurretConfig(tabledemo.TurretConfig w, tabledemo_fixed.TurretConfig f) {
+  f.damage = w.damage;
+  f.cooldown = w.cooldown;
+  f.gunnerPresent = w.hasGunner;
+  _w2f_examples_GunnerConfig(w.gunner, f.gunner);
+}
+void _f2w_examples_TurretConfig(tabledemo_fixed.TurretConfig f, tabledemo.TurretConfig w) {
+  w.damage = f.damage;
+  w.cooldown = f.cooldown;
+  w.hasGunner = f.gunnerPresent;
+  _f2w_examples_GunnerConfig(f.gunner, w.gunner);
+}
+void _w2f_examples_HullConfig(tabledemo.HullConfig w, tabledemo_fixed.HullConfig f) {
+  f.health = w.health;
+  f.mass = w.mass;
+  for (var i = 0; i < f.turrets.length; i++) _w2f_examples_TurretConfig(w.turrets[i], f.turrets[i]);
+}
+void _f2w_examples_HullConfig(tabledemo_fixed.HullConfig f, tabledemo.HullConfig w) {
+  w.health = f.health;
+  w.mass = f.mass;
+  for (var i = 0; i < f.turrets.length; i++) _f2w_examples_TurretConfig(f.turrets[i], w.turrets[i]);
+}
+void _w2f_examples_ScoreBoard(tabledemo.ScoreBoard w, dynamic f) {
+  for (var i = 0; i < f.perTeam.length; i++) f.perTeam[i] = w.perTeam[i];
+}
+void _f2w_examples_ScoreBoard(dynamic f, tabledemo.ScoreBoard w) {
+  for (var i = 0; i < f.perTeam.length; i++) w.perTeam[i] = f.perTeam[i];
+}
+void _w2f_examples_KeyedConfig(tabledemo.KeyedConfig w, tabledemo_fixed.KeyedConfig f) {
+  for (var i = 0; i < f.teams.length; i++) _w2f_examples_TeamConfig(w.teams[i], f.teams[i]);
+  for (var i = 0; i < f.hulls.length; i++) _w2f_examples_HullConfig(w.hulls[i], f.hulls[i]);
+  _w2f_examples_ScoreBoard(w.scores, f.scores);
+}
+void _f2w_examples_KeyedConfig(tabledemo_fixed.KeyedConfig f, tabledemo.KeyedConfig w) {
+  for (var i = 0; i < f.teams.length; i++) _f2w_examples_TeamConfig(f.teams[i], w.teams[i]);
+  for (var i = 0; i < f.hulls.length; i++) _f2w_examples_HullConfig(f.hulls[i], w.hulls[i]);
+  _f2w_examples_ScoreBoard(f.scores, w.scores);
+}
+void _w2f_examples_Buff(tabledemo.Buff w, dynamic f) {
+  f.multiplier = w.multiplier;
+}
+void _f2w_examples_Buff(dynamic f, tabledemo.Buff w) {
+  w.multiplier = f.multiplier;
+}
+void _w2f_examples_Debuff(tabledemo.Debuff w, dynamic f) {
+  f.amount = w.amount;
+}
+void _f2w_examples_Debuff(dynamic f, tabledemo.Debuff w) {
+  w.amount = f.amount;
+}
+void _w2f_examples_Effect(tabledemo.Effect w, dynamic f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_examples_Buff(w.buff, f.buff);
+  _w2f_examples_Debuff(w.debuff, f.debuff);
+}
+void _f2w_examples_Effect(dynamic f, tabledemo.Effect w) {
+  w.armTag = (f.type as int);
+  _f2w_examples_Buff(f.buff, w.buff);
+  _f2w_examples_Debuff(f.debuff, w.debuff);
+}
+void _w2f_examples_Attachment(tabledemo.Attachment w, dynamic f) {
+  f.slot = w.slot;
+  f.power = w.power;
+}
+void _f2w_examples_Attachment(dynamic f, tabledemo.Attachment w) {
+  w.slot = f.slot;
+  w.power = f.power;
+}
+void _w2f_examples_WeaponConfig(tabledemo.WeaponConfig w, tabledemo_fixed.WeaponConfig f) {
+  f.damage = w.damage;
+  f.speed = w.speed;
+  f.penetration = w.penetration;
+  f.channel = w.channel;
+  f.homing = w.homing;
+  _w2f_examples_Effect(w.effect, f.effect);
+}
+void _f2w_examples_WeaponConfig(tabledemo_fixed.WeaponConfig f, tabledemo.WeaponConfig w) {
+  w.damage = f.damage;
+  w.speed = f.speed;
+  w.penetration = f.penetration;
+  w.channel = f.channel;
+  w.homing = f.homing;
+  _f2w_examples_Effect(f.effect, w.effect);
+}
+void _w2f_examples_LoadoutConfig(tabledemo.LoadoutConfig w, tabledemo_fixed.LoadoutConfig f) {
+  f.grade = (w.grade as dynamic);
+  f.gradesCount = w.grades.length;
+  for (var i = 0; i < w.grades.length; i++) f.grades[i] = (w.grades[i] as int);
+  for (var i = 0; i < f.podium.length; i++) f.podium[i] = (w.podium[i] as int);
+  f.perks = w.perks;
+  _w2f_examples_WeaponConfig(w.primary, f.primary);
+  for (var i = 0; i < f.backups.length; i++) _w2f_examples_WeaponConfig(w.backups[i], f.backups[i]);
+  f.attachmentsCount = w.attachments.length;
+  for (var i = 0; i < w.attachments.length; i++) _w2f_examples_Attachment(w.attachments[i], f.attachments[i]);
+}
+void _f2w_examples_LoadoutConfig(tabledemo_fixed.LoadoutConfig f, tabledemo.LoadoutConfig w) {
+  w.grade = (f.grade as dynamic);
+  w.grades = List.generate(f.gradesCount, (i) => (f.grades[i] as dynamic));
+  for (var i = 0; i < f.podium.length; i++) w.podium[i] = (f.podium[i] as dynamic);
+  w.perks = f.perks;
+  _f2w_examples_WeaponConfig(f.primary, w.primary);
+  for (var i = 0; i < f.backups.length; i++) _f2w_examples_WeaponConfig(f.backups[i], w.backups[i]);
+  w.attachments = List<tabledemo.Attachment>.generate(f.attachmentsCount, (i) { final e = tabledemo.Attachment(); _f2w_examples_Attachment(f.attachments[i], e); return e; });
+}
+void _w2f_examples_ProfileConfig(tabledemo.ProfileConfig w, tabledemo_fixed.ProfileConfig f) {
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+  _w2fBytes(w.icon, f.icon, (n) => f.iconLength = n);
+  f.experience = w.experience;
+  f.tilt = w.tilt;
+  f.heading = w.heading;
+  f.timestamp = w.timestamp;
+  f.badge = w.badge;
+  f.port = w.port;
+  f.epoch = w.epoch;
+  f.precision = w.precision;
+  for (var i = 0; i < f.ratings.length; i++) f.ratings[i] = w.ratings[i];
+  f.hasLoadout = w.hasLoadout;
+  _w2f_examples_LoadoutConfig(w.loadout, f.loadout);
+}
+void _f2w_examples_ProfileConfig(tabledemo_fixed.ProfileConfig f, tabledemo.ProfileConfig w) {
+  w.name = _f2wUtf8(f.name, f.nameLength);
+  w.icon = _f2wBytes(f.icon, f.iconLength);
+  w.experience = f.experience;
+  w.tilt = f.tilt;
+  w.heading = f.heading;
+  w.timestamp = f.timestamp;
+  w.badge = f.badge;
+  w.port = f.port;
+  w.epoch = f.epoch;
+  w.precision = f.precision;
+  for (var i = 0; i < f.ratings.length; i++) w.ratings[i] = f.ratings[i];
+  w.hasLoadout = f.hasLoadout;
+  _f2w_examples_LoadoutConfig(f.loadout, w.loadout);
+}
+void _w2f_examples_RootConfig(tabledemo.RootConfig w, tabledemo_fixed.RootConfig f) {
+  _w2fUtf8(w.versionNote, f.versionNote, (n) => f.versionNoteLength = n);
+  f.weaponsCount = w.weapons.length;
+  for (var i = 0; i < w.weapons.length; i++) _w2f_examples_WeaponConfig(w.weapons[i], f.weapons[i]);
+  f.profilesCount = w.profiles.length;
+  for (var i = 0; i < w.profiles.length; i++) _w2f_examples_ProfileConfig(w.profiles[i], f.profiles[i]);
+}
+void _f2w_examples_RootConfig(tabledemo_fixed.RootConfig f, tabledemo.RootConfig w) {
+  w.versionNote = _f2wUtf8(f.versionNote, f.versionNoteLength);
+  w.weapons = List<tabledemo.WeaponConfig>.generate(f.weaponsCount, (i) { final e = tabledemo.WeaponConfig(); _f2w_examples_WeaponConfig(f.weapons[i], e); return e; });
+  w.profiles = List<tabledemo.ProfileConfig>.generate(f.profilesCount, (i) { final e = tabledemo.ProfileConfig(); _f2w_examples_ProfileConfig(f.profiles[i], e); return e; });
+}
+void _w2f_examples_ArchiveConfig(tabledemo.ArchiveConfig w, tabledemo_fixed.ArchiveConfig f) {
+  _w2f_examples_RootConfig(w.root, f.root);
+  f.count = w.count;
+}
+void _f2w_examples_ArchiveConfig(tabledemo_fixed.ArchiveConfig f, tabledemo.ArchiveConfig w) {
+  _f2w_examples_RootConfig(f.root, w.root);
+  w.count = f.count;
+}
+void _w2f_examples_GunnerSettings(tabledemo.GunnerSettings w, tabledemo_fixed.GunnerSettings f) {
+  f.reaction = w.reaction;
+  f.tracking = w.tracking;
+  _w2fUtf8(w.callsign, f.callsign, (n) => f.callsignLength = n);
+}
+void _f2w_examples_GunnerSettings(tabledemo_fixed.GunnerSettings f, tabledemo.GunnerSettings w) {
+  w.reaction = f.reaction;
+  w.tracking = f.tracking;
+  w.callsign = _f2wUtf8(f.callsign, f.callsignLength);
+}
+void _w2f_examples_ShipEntry(tabledemo.ShipEntry w, tabledemo_fixed.ShipEntry f) {
+  _w2fUtf8(w.displayName, f.displayName, (n) => f.displayNameLength = n);
+  f.health = w.health;
+  f.mass = w.mass;
+  f.hardpointsCount = w.hardpoints.length;
+  for (var i = 0; i < w.hardpoints.length; i++) f.hardpoints[i] = w.hardpoints[i];
+  f.gunnerPresent = w.hasGunner;
+  _w2f_examples_GunnerSettings(w.gunner, f.gunner);
+}
+void _f2w_examples_ShipEntry(tabledemo_fixed.ShipEntry f, tabledemo.ShipEntry w) {
+  w.displayName = _f2wUtf8(f.displayName, f.displayNameLength);
+  w.health = f.health;
+  w.mass = f.mass;
+  w.hardpoints = List<int>.generate(f.hardpointsCount, (i) => f.hardpoints[i]);
+  w.hasGunner = f.gunnerPresent;
+  _f2w_examples_GunnerSettings(f.gunner, w.gunner);
+}
+void _w2f_examples_GlobalSettings(tabledemo.GlobalSettings w, tabledemo_fixed.GlobalSettings f) {
+  f.tickRate = w.tickRate;
+  f.difficulty = w.difficulty;
+  _w2fUtf8(w.buildNote, f.buildNote, (n) => f.buildNoteLength = n);
+  for (var i = 0; i < f.spawnDelays.length; i++) f.spawnDelays[i] = w.spawnDelays[i];
+}
+void _f2w_examples_GlobalSettings(tabledemo_fixed.GlobalSettings f, tabledemo.GlobalSettings w) {
+  w.tickRate = f.tickRate;
+  w.difficulty = f.difficulty;
+  w.buildNote = _f2wUtf8(f.buildNote, f.buildNoteLength);
+  for (var i = 0; i < f.spawnDelays.length; i++) w.spawnDelays[i] = f.spawnDelays[i];
+}
+void _w2f_examples_PackConfig(tabledemo.PackConfig w, tabledemo_fixed.PackConfig f) {
+  f.version = w.version;
+  _w2f_examples_GlobalSettings(w.settings, f.settings);
+  for (var i = 0; i < f.ships.length; i++) _w2f_examples_ShipEntry(w.ships[i], f.ships[i]);
+  for (var i = 0; i < f.thresholds.length; i++) f.thresholds[i] = w.thresholds[i];
+  f.reservesCount = w.reserves.length;
+  for (var i = 0; i < w.reserves.length; i++) _w2f_examples_ShipEntry(w.reserves[i], f.reserves[i]);
+}
+void _f2w_examples_PackConfig(tabledemo_fixed.PackConfig f, tabledemo.PackConfig w) {
+  w.version = f.version;
+  _f2w_examples_GlobalSettings(f.settings, w.settings);
+  for (var i = 0; i < f.ships.length; i++) _f2w_examples_ShipEntry(f.ships[i], w.ships[i]);
+  for (var i = 0; i < f.thresholds.length; i++) w.thresholds[i] = f.thresholds[i];
+  w.reserves = List<tabledemo.ShipEntry>.generate(f.reservesCount, (i) { final e = tabledemo.ShipEntry(); _f2w_examples_ShipEntry(f.reserves[i], e); return e; });
+}
+void _w2f_m1_Open(tblm1.Open w, tblm1_fixed.Open f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+}
+void _f2w_m1_Open(tblm1_fixed.Open f, tblm1.Open w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+}
+void _w2f_m1_Save(tblm1.Save w, tblm1_fixed.Save f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+  f.force = w.force;
+}
+void _f2w_m1_Save(tblm1_fixed.Save f, tblm1.Save w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+  w.force = f.force;
+}
+void _w2f_m1_Quit(tblm1.Quit w, tblm1_fixed.Quit f) {
+  f.code = w.code;
+}
+void _f2w_m1_Quit(tblm1_fixed.Quit f, tblm1.Quit w) {
+  w.code = f.code;
+}
+void _w2f_m1_Body(tblm1.Body w, tblm1_fixed.Body f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_m1_Open(w.open, f.open);
+  _w2f_m1_Save(w.save, f.save);
+  _w2f_m1_Quit(w.quit, f.quit);
+}
+void _f2w_m1_Body(tblm1_fixed.Body f, tblm1.Body w) {
+  w.armTag = (f.type as int);
+  _f2w_m1_Open(f.open, w.open);
+  _f2w_m1_Save(f.save, w.save);
+  _f2w_m1_Quit(f.quit, w.quit);
+}
+void _w2f_m1_Msg(tblm1.Msg w, tblm1_fixed.Msg f) {
+  f.seq = w.seq;
+  _w2f_m1_Body(w.body, f.body);
+}
+void _f2w_m1_Msg(tblm1_fixed.Msg f, tblm1.Msg w) {
+  w.seq = f.seq;
+  _f2w_m1_Body(f.body, w.body);
+}
+void _w2f_m2_Open(tblm2.Open w, tblm2_fixed.Open f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+  f.line = w.line;
+}
+void _f2w_m2_Open(tblm2_fixed.Open f, tblm2.Open w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+  w.line = f.line;
+}
+void _w2f_m2_Close(tblm2.Close w, tblm2_fixed.Close f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+}
+void _f2w_m2_Close(tblm2_fixed.Close f, tblm2.Close w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+}
+void _w2f_m2_Quit(tblm2.Quit w, tblm2_fixed.Quit f) {
+  f.code = w.code;
+}
+void _f2w_m2_Quit(tblm2_fixed.Quit f, tblm2.Quit w) {
+  w.code = f.code;
+}
+void _w2f_m2_Body(tblm2.Body w, tblm2_fixed.Body f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_m2_Close(w.close, f.close);
+  _w2f_m2_Open(w.open, f.open);
+  _w2f_m2_Quit(w.quit, f.quit);
+}
+void _f2w_m2_Body(tblm2_fixed.Body f, tblm2.Body w) {
+  w.armTag = (f.type as int);
+  _f2w_m2_Close(f.close, w.close);
+  _f2w_m2_Open(f.open, w.open);
+  _f2w_m2_Quit(f.quit, w.quit);
+}
+void _w2f_m2_Msg(tblm2.Msg w, tblm2_fixed.Msg f) {
+  f.seq = w.seq;
+  _w2f_m2_Body(w.body, f.body);
+}
+void _f2w_m2_Msg(tblm2_fixed.Msg f, tblm2.Msg w) {
+  w.seq = f.seq;
+  _f2w_m2_Body(f.body, w.body);
+}
+void _w2f_messages_Cursor(messagedemo.Cursor w, dynamic f) {
+  f.line = w.line;
+  f.column = w.column;
+}
+void _f2w_messages_Cursor(dynamic f, messagedemo.Cursor w) {
+  w.line = f.line;
+  w.column = f.column;
+}
+void _w2f_messages_Ping(messagedemo.Ping w, dynamic f) {
+  f.nonce = w.nonce;
+}
+void _f2w_messages_Ping(dynamic f, messagedemo.Ping w) {
+  w.nonce = f.nonce;
+}
+void _w2f_messages_User(messagedemo.User w, messagedemo_fixed.User f) {
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+}
+void _f2w_messages_User(messagedemo_fixed.User f, messagedemo.User w) {
+  w.name = _f2wUtf8(f.name, f.nameLength);
+}
+void _w2f_messages_Script(messagedemo.Script w, messagedemo_fixed.Script f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+  f.line = w.line;
+}
+void _f2w_messages_Script(messagedemo_fixed.Script f, messagedemo.Script w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+  w.line = f.line;
+}
+void _w2f_messages_Origin(messagedemo.Origin w, messagedemo_fixed.Origin f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_messages_User(w.user, f.user);
+  _w2f_messages_Script(w.script, f.script);
+  f.pid = w.pid;
+  _w2fUtf8(w.note, f.note, (n) => f.noteLength = n);
+}
+void _f2w_messages_Origin(messagedemo_fixed.Origin f, messagedemo.Origin w) {
+  w.armTag = (f.type as int);
+  _f2w_messages_User(f.user, w.user);
+  _f2w_messages_Script(f.script, w.script);
+  w.pid = f.pid;
+  w.note = _f2wUtf8(f.note, f.noteLength);
+}
+void _w2f_messages_Selection(messagedemo.Selection w, messagedemo_fixed.Selection f) {
+  _w2f_messages_Cursor(w.start, f.start);
+  _w2f_messages_Cursor(w.stop, f.stop);
+}
+void _f2w_messages_Selection(messagedemo_fixed.Selection f, messagedemo.Selection w) {
+  _f2w_messages_Cursor(f.start, w.start);
+  _f2w_messages_Cursor(f.stop, w.stop);
+}
+void _w2f_messages_InsertText(messagedemo.InsertText w, messagedemo_fixed.InsertText f) {
+  _w2f_messages_Cursor(w.at, f.at);
+  _w2fUtf8(w.text, f.text, (n) => f.textLength = n);
+  _w2f_messages_Origin(w.origin, f.origin);
+  f.originsCount = w.origins.length;
+  for (var i = 0; i < w.origins.length; i++) _w2f_messages_Origin(w.origins[i], f.origins[i]);
+  f.modesPresent = w.hasModes;
+  f.modesCount = w.modes.length;
+  for (var i = 0; i < w.modes.length; i++) f.modes[i] = (w.modes[i] as int);
+}
+void _f2w_messages_InsertText(messagedemo_fixed.InsertText f, messagedemo.InsertText w) {
+  _f2w_messages_Cursor(f.at, w.at);
+  w.text = _f2wUtf8(f.text, f.textLength);
+  _f2w_messages_Origin(f.origin, w.origin);
+  w.origins = List<messagedemo.Origin>.generate(f.originsCount, (i) { final e = messagedemo.Origin(); _f2w_messages_Origin(f.origins[i], e); return e; });
+  w.hasModes = f.modesPresent;
+  w.modes = List.generate(f.modesCount, (i) => (f.modes[i] as dynamic));
+}
+void _w2f_messages_RemoveText(messagedemo.RemoveText w, messagedemo_fixed.RemoveText f) {
+  _w2f_messages_Selection(w.span, f.span);
+}
+void _f2w_messages_RemoveText(messagedemo_fixed.RemoveText f, messagedemo.RemoveText w) {
+  _f2w_messages_Selection(f.span, w.span);
+}
+void _w2f_messages_EditBody(messagedemo.EditBody w, messagedemo_fixed.EditBody f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_messages_InsertText(w.insert, f.insert);
+  _w2f_messages_RemoveText(w.remove, f.remove);
+  f.tally = w.tally;
+  f.marksCount = w.marks.length;
+  for (var i = 0; i < w.marks.length; i++) f.marks[i] = w.marks[i];
+  _w2fBytes(w.blob, f.blob, (n) => f.blobLength = n);
+  f.mode = (w.mode as dynamic);
+}
+void _f2w_messages_EditBody(messagedemo_fixed.EditBody f, messagedemo.EditBody w) {
+  w.armTag = (f.type as int);
+  _f2w_messages_InsertText(f.insert, w.insert);
+  _f2w_messages_RemoveText(f.remove, w.remove);
+  w.tally = f.tally;
+  w.marks = List<int>.generate(f.marksCount, (i) => f.marks[i]);
+  w.blob = _f2wBytes(f.blob, f.blobLength);
+  w.mode = (f.mode as dynamic);
+}
+void _w2f_messages_Edit(messagedemo.Edit w, messagedemo_fixed.Edit f) {
+  f.revision = w.revision;
+  _w2f_messages_EditBody(w.body, f.body);
+}
+void _f2w_messages_Edit(messagedemo_fixed.Edit f, messagedemo.Edit w) {
+  w.revision = f.revision;
+  _f2w_messages_EditBody(f.body, w.body);
+}
+void _w2f_messages_OpenDocument(messagedemo.OpenDocument w, messagedemo_fixed.OpenDocument f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+  f.mode = (w.mode as dynamic);
+  _w2f_messages_Cursor(w.cursor, f.cursor);
+}
+void _f2w_messages_OpenDocument(messagedemo_fixed.OpenDocument f, messagedemo.OpenDocument w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+  w.mode = (f.mode as dynamic);
+  _f2w_messages_Cursor(f.cursor, w.cursor);
+}
+void _w2f_messages_SaveDocument(messagedemo.SaveDocument w, messagedemo_fixed.SaveDocument f) {
+  _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
+  f.force = w.force;
+}
+void _f2w_messages_SaveDocument(messagedemo_fixed.SaveDocument f, messagedemo.SaveDocument w) {
+  w.path = _f2wUtf8(f.path, f.pathLength);
+  w.force = f.force;
+}
+void _w2f_messages_Transaction(messagedemo.Transaction w, messagedemo_fixed.Transaction f) {
+  _w2fUtf8(w.reason, f.reason, (n) => f.reasonLength = n);
+  f.editsCount = w.edits.length;
+  for (var i = 0; i < w.edits.length; i++) _w2f_messages_Edit(w.edits[i], f.edits[i]);
+  for (var i = 0; i < f.pending.length; i++) _w2f_messages_EditBody(w.pending[i], f.pending[i]);
+  f.checkpointsPresent = w.hasCheckpoints;
+  for (var i = 0; i < f.checkpoints.length; i++) f.checkpoints[i] = w.checkpoints[i];
+  f.snapshotsPresent = w.hasSnapshots;
+  for (var i = 0; i < f.snapshots.length; i++) _w2f_messages_Selection(w.snapshots[i], f.snapshots[i]);
+}
+void _f2w_messages_Transaction(messagedemo_fixed.Transaction f, messagedemo.Transaction w) {
+  w.reason = _f2wUtf8(f.reason, f.reasonLength);
+  w.edits = List<messagedemo.Edit>.generate(f.editsCount, (i) { final e = messagedemo.Edit(); _f2w_messages_Edit(f.edits[i], e); return e; });
+  for (var i = 0; i < f.pending.length; i++) _f2w_messages_EditBody(f.pending[i], w.pending[i]);
+  w.hasCheckpoints = f.checkpointsPresent;
+  for (var i = 0; i < f.checkpoints.length; i++) w.checkpoints[i] = f.checkpoints[i];
+  w.hasSnapshots = f.snapshotsPresent;
+  for (var i = 0; i < f.snapshots.length; i++) _f2w_messages_Selection(f.snapshots[i], w.snapshots[i]);
+}
+void _w2f_messages_ToolBody(messagedemo.ToolBody w, messagedemo_fixed.ToolBody f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_messages_OpenDocument(w.open, f.open);
+  _w2f_messages_SaveDocument(w.save, f.save);
+  _w2f_messages_Transaction(w.transact, f.transact);
+  _w2f_messages_Ping(w.ping, f.ping);
+  f.caps = w.caps;
+  for (var i = 0; i < f.spans.length; i++) f.spans[i] = w.spans[i];
+  _w2f_messages_Origin(w.origin, f.origin);
+}
+void _f2w_messages_ToolBody(messagedemo_fixed.ToolBody f, messagedemo.ToolBody w) {
+  w.armTag = (f.type as int);
+  _f2w_messages_OpenDocument(f.open, w.open);
+  _f2w_messages_SaveDocument(f.save, w.save);
+  _f2w_messages_Transaction(f.transact, w.transact);
+  _f2w_messages_Ping(f.ping, w.ping);
+  w.caps = f.caps;
+  for (var i = 0; i < f.spans.length; i++) w.spans[i] = f.spans[i];
+  _f2w_messages_Origin(f.origin, w.origin);
+}
+void _w2f_messages_ToolMessage(messagedemo.ToolMessage w, messagedemo_fixed.ToolMessage f) {
+  f.sequence = w.sequence;
+  _w2f_messages_ToolBody(w.body, f.body);
+  f.historyCount = w.history.length;
+  for (var i = 0; i < w.history.length; i++) _w2f_messages_ToolBody(w.history[i], f.history[i]);
+  f.tracePresent = w.hasTrace;
+  f.traceCount = w.trace.length;
+  for (var i = 0; i < w.trace.length; i++) _w2f_messages_Script(w.trace[i], f.trace[i]);
+  f.marksPresent = w.hasMarks;
+  for (var i = 0; i < f.marks.length; i++) f.marks[i] = (w.marks[i] as int);
+}
+void _f2w_messages_ToolMessage(messagedemo_fixed.ToolMessage f, messagedemo.ToolMessage w) {
+  w.sequence = f.sequence;
+  _f2w_messages_ToolBody(f.body, w.body);
+  w.history = List<messagedemo.ToolBody>.generate(f.historyCount, (i) { final e = messagedemo.ToolBody(); _f2w_messages_ToolBody(f.history[i], e); return e; });
+  w.hasTrace = f.tracePresent;
+  w.trace = List<messagedemo.Script>.generate(f.traceCount, (i) { final e = messagedemo.Script(); _f2w_messages_Script(f.trace[i], e); return e; });
+  w.hasMarks = f.marksPresent;
+  for (var i = 0; i < f.marks.length; i++) w.marks[i] = (f.marks[i] as dynamic);
+}
+void _w2f_p1_Link(tblp1.Link w, tblp1_fixed.Link f) {
+  f.value = w.value;
+  _w2fUtf8(w.tag, f.tag, (n) => f.tagLength = n);
+}
+void _f2w_p1_Link(tblp1_fixed.Link f, tblp1.Link w) {
+  w.value = f.value;
+  w.tag = _f2wUtf8(f.tag, f.tagLength);
+}
+void _w2f_p1_Chain(tblp1.Chain w, tblp1_fixed.Chain f) {
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+  _w2f_p1_Link(w.link, f.link);
+}
+void _f2w_p1_Chain(tblp1_fixed.Chain f, tblp1.Chain w) {
+  w.name = _f2wUtf8(f.name, f.nameLength);
+  _f2w_p1_Link(f.link, w.link);
+}
+void _w2f_p3_Link(tblp3.Link w, tblp3_fixed.Link f) {
+  f.value = w.value;
+  _w2fUtf8(w.tag, f.tag, (n) => f.tagLength = n);
+}
+void _f2w_p3_Link(tblp3_fixed.Link f, tblp3.Link w) {
+  w.value = f.value;
+  w.tag = _f2wUtf8(f.tag, f.tagLength);
+}
+void _w2f_p3_Chain(tblp3.Chain w, tblp3_fixed.Chain f) {
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+  f.linkPresent = w.hasLink;
+  _w2f_p3_Link(w.link, f.link);
+}
+void _f2w_p3_Chain(tblp3_fixed.Chain f, tblp3.Chain w) {
+  w.name = _f2wUtf8(f.name, f.nameLength);
+  w.hasLink = f.linkPresent;
+  _f2w_p3_Link(f.link, w.link);
+}
+void _w2f_r1_Boost(tblr1.Boost w, dynamic f) {
+  f.power = w.power;
+}
+void _f2w_r1_Boost(dynamic f, tblr1.Boost w) {
+  w.power = f.power;
+}
+void _w2f_r1_Ward(tblr1.Ward w, dynamic f) {
+  f.charge = w.charge;
+}
+void _f2w_r1_Ward(dynamic f, tblr1.Ward w) {
+  w.charge = f.charge;
+}
+void _w2f_r1_Buff(tblr1.Buff w, dynamic f) {
+  f.multiplier = w.multiplier;
+}
+void _f2w_r1_Buff(dynamic f, tblr1.Buff w) {
+  w.multiplier = f.multiplier;
+}
+void _w2f_r1_Effect(tblr1.Effect w, tblr1_fixed.Effect f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_r1_Boost(w.boost, f.boost);
+  _w2f_r1_Ward(w.ward, f.ward);
+  f.amount = w.amount;
+}
+void _f2w_r1_Effect(tblr1_fixed.Effect f, tblr1.Effect w) {
+  w.armTag = (f.type as int);
+  _f2w_r1_Boost(f.boost, w.boost);
+  _f2w_r1_Ward(f.ward, w.ward);
+  w.amount = f.amount;
+}
+void _w2f_r1_Cfg(tblr1.Cfg w, tblr1_fixed.Cfg f) {
+  f.grade = (w.grade as dynamic);
+  _w2f_r1_Effect(w.effect, f.effect);
+  _w2f_r1_Buff(w.buff, f.buff);
+  f.gradesCount = w.grades.length;
+  for (var i = 0; i < w.grades.length; i++) f.grades[i] = (w.grades[i] as int);
+  for (var i = 0; i < f.tally.length; i++) f.tally[i] = w.tally[i];
+}
+void _f2w_r1_Cfg(tblr1_fixed.Cfg f, tblr1.Cfg w) {
+  w.grade = (f.grade as dynamic);
+  _f2w_r1_Effect(f.effect, w.effect);
+  _f2w_r1_Buff(f.buff, w.buff);
+  w.grades = List.generate(f.gradesCount, (i) => (f.grades[i] as dynamic));
+  for (var i = 0; i < f.tally.length; i++) w.tally[i] = f.tally[i];
+}
+void _w2f_r2_Boost(tblr2.Boost w, dynamic f) {
+  f.power = w.power;
+}
+void _f2w_r2_Boost(dynamic f, tblr2.Boost w) {
+  w.power = f.power;
+}
+void _w2f_r2_Ward(tblr2.Ward w, dynamic f) {
+  f.charge = w.charge;
+}
+void _f2w_r2_Ward(dynamic f, tblr2.Ward w) {
+  w.charge = f.charge;
+}
+void _w2f_r2_Buff(tblr2.Buff w, dynamic f) {
+  f.mult = w.mult;
+}
+void _f2w_r2_Buff(dynamic f, tblr2.Buff w) {
+  w.mult = f.mult;
+}
+void _w2f_r2_Effect(tblr2.Effect w, tblr2_fixed.Effect f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_r2_Boost(w.boost, f.boost);
+  _w2f_r2_Ward(w.shield, f.shield);
+  f.amount = w.amount;
+}
+void _f2w_r2_Effect(tblr2_fixed.Effect f, tblr2.Effect w) {
+  w.armTag = (f.type as int);
+  _f2w_r2_Boost(f.boost, w.boost);
+  _f2w_r2_Ward(f.shield, w.shield);
+  w.amount = f.amount;
+}
+void _w2f_r2_Cfg(tblr2.Cfg w, tblr2_fixed.Cfg f) {
+  f.grade = (w.grade as dynamic);
+  _w2f_r2_Effect(w.effect, f.effect);
+  _w2f_r2_Buff(w.buff, f.buff);
+  f.gradesCount = w.grades.length;
+  for (var i = 0; i < w.grades.length; i++) f.grades[i] = (w.grades[i] as int);
+  for (var i = 0; i < f.tally.length; i++) f.tally[i] = w.tally[i];
+}
+void _f2w_r2_Cfg(tblr2_fixed.Cfg f, tblr2.Cfg w) {
+  w.grade = (f.grade as dynamic);
+  _f2w_r2_Effect(f.effect, w.effect);
+  _f2w_r2_Buff(f.buff, w.buff);
+  w.grades = List.generate(f.gradesCount, (i) => (f.grades[i] as dynamic));
+  for (var i = 0; i < f.tally.length; i++) w.tally[i] = f.tally[i];
+}
+void _w2f_v1_Boost(tblv1.Boost w, dynamic f) {
+  f.power = w.power;
+}
+void _f2w_v1_Boost(dynamic f, tblv1.Boost w) {
+  w.power = f.power;
+}
+void _w2f_v1_Ward(tblv1.Ward w, dynamic f) {
+  f.charge = w.charge;
+}
+void _f2w_v1_Ward(dynamic f, tblv1.Ward w) {
+  w.charge = f.charge;
+}
+void _w2f_v1_Effect(tblv1.Effect w, dynamic f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_v1_Boost(w.boost, f.boost);
+  _w2f_v1_Ward(w.ward, f.ward);
+}
+void _f2w_v1_Effect(dynamic f, tblv1.Effect w) {
+  w.armTag = (f.type as int);
+  _f2w_v1_Boost(f.boost, w.boost);
+  _f2w_v1_Ward(f.ward, w.ward);
+}
+void _w2f_v1_Inner(tblv1.Inner w, dynamic f) {
+  f.factor = w.factor;
+}
+void _f2w_v1_Inner(dynamic f, tblv1.Inner w) {
+  w.factor = f.factor;
+}
+void _w2f_v1_Cell(tblv1.Cell w, tblv1_fixed.Cell f) {
+  f.power = w.power;
+  _w2fUtf8(w.label, f.label, (n) => f.labelLength = n);
+}
+void _f2w_v1_Cell(tblv1_fixed.Cell f, tblv1.Cell w) {
+  w.power = f.power;
+  w.label = _f2wUtf8(f.label, f.labelLength);
+}
+void _w2f_v1_Cfg(tblv1.Cfg w, tblv1_fixed.Cfg f) {
+  f.a = w.a;
+  f.b = w.b;
+  f.mode = (w.mode as dynamic);
+  _w2fUtf8(w.name, f.name, (n) => f.nameLength = n);
+  _w2f_v1_Inner(w.inner, f.inner);
+  f.itemsCount = w.items.length;
+  for (var i = 0; i < w.items.length; i++) f.items[i] = w.items[i];
+  f.grade = (w.grade as dynamic);
+  f.gradesCount = w.grades.length;
+  for (var i = 0; i < w.grades.length; i++) f.grades[i] = (w.grades[i] as int);
+  for (var i = 0; i < f.podium.length; i++) f.podium[i] = (w.podium[i] as int);
+  f.slotsCount = w.slots.length;
+  for (var i = 0; i < w.slots.length; i++) f.slots[i] = w.slots[i];
+  for (var i = 0; i < f.tally.length; i++) f.tally[i] = w.tally[i];
+  _w2f_v1_Effect(w.effect, f.effect);
+  for (var i = 0; i < f.bank.length; i++) _w2f_v1_Cell(w.bank[i], f.bank[i]);
+  for (var i = 0; i < f.tokens.length; i++) f.tokens[i] = w.tokens[i];
+  for (var i = 0; i < f.ranks.length; i++) f.ranks[i] = (w.ranks[i] as int);
+  for (var i = 0; i < f.ledger.length; i++) f.ledger[i] = w.ledger[i];
+  f.extraPresent = w.hasExtra;
+  _w2f_v1_Inner(w.extra, f.extra);
+  f.tierPresent = w.hasTier;
+  f.tier = w.tier;
+  f.markPresent = w.hasMark;
+  f.mark = (w.mark as dynamic);
+}
+void _f2w_v1_Cfg(tblv1_fixed.Cfg f, tblv1.Cfg w) {
+  w.a = f.a;
+  w.b = f.b;
+  w.mode = (f.mode as dynamic);
+  w.name = _f2wUtf8(f.name, f.nameLength);
+  _f2w_v1_Inner(f.inner, w.inner);
+  w.items = List<int>.generate(f.itemsCount, (i) => f.items[i]);
+  w.grade = (f.grade as dynamic);
+  w.grades = List.generate(f.gradesCount, (i) => (f.grades[i] as dynamic));
+  for (var i = 0; i < f.podium.length; i++) w.podium[i] = (f.podium[i] as dynamic);
+  w.slots = List<int>.generate(f.slotsCount, (i) => f.slots[i]);
+  for (var i = 0; i < f.tally.length; i++) w.tally[i] = f.tally[i];
+  _f2w_v1_Effect(f.effect, w.effect);
+  for (var i = 0; i < f.bank.length; i++) _f2w_v1_Cell(f.bank[i], w.bank[i]);
+  for (var i = 0; i < f.tokens.length; i++) w.tokens[i] = f.tokens[i];
+  for (var i = 0; i < f.ranks.length; i++) w.ranks[i] = (f.ranks[i] as dynamic);
+  for (var i = 0; i < f.ledger.length; i++) w.ledger[i] = f.ledger[i];
+  w.hasExtra = f.extraPresent;
+  _f2w_v1_Inner(f.extra, w.extra);
+  w.hasTier = f.tierPresent;
+  w.tier = f.tier;
+  w.hasMark = f.markPresent;
+  w.mark = (f.mark as dynamic);
+}
+void _w2f_v2_Boost(tblv2.Boost w, dynamic f) {
+  f.power = w.power;
+}
+void _f2w_v2_Boost(dynamic f, tblv2.Boost w) {
+  w.power = f.power;
+}
+void _w2f_v2_Hex(tblv2.Hex w, dynamic f) {
+  f.level = w.level;
+}
+void _f2w_v2_Hex(dynamic f, tblv2.Hex w) {
+  w.level = f.level;
+}
+void _w2f_v2_Ward(tblv2.Ward w, dynamic f) {
+  f.charge = w.charge;
+}
+void _f2w_v2_Ward(dynamic f, tblv2.Ward w) {
+  w.charge = f.charge;
+}
+void _w2f_v2_Effect(tblv2.Effect w, dynamic f) {
+  f.type = (w.armTag as dynamic);
+  _w2f_v2_Boost(w.boost, f.boost);
+  _w2f_v2_Hex(w.hex, f.hex);
+  _w2f_v2_Ward(w.ward, f.ward);
+}
+void _f2w_v2_Effect(dynamic f, tblv2.Effect w) {
+  w.armTag = (f.type as int);
+  _f2w_v2_Boost(f.boost, w.boost);
+  _f2w_v2_Hex(f.hex, w.hex);
+  _f2w_v2_Ward(f.ward, w.ward);
+}
+void _w2f_v2_Inner(tblv2.Inner w, dynamic f) {
+  f.factor = w.factor;
+  f.gain = w.gain;
+}
+void _f2w_v2_Inner(dynamic f, tblv2.Inner w) {
+  w.factor = f.factor;
+  w.gain = f.gain;
+}
+void _w2f_v2_Cell(tblv2.Cell w, tblv2_fixed.Cell f) {
+  f.power = w.power;
+  _w2fUtf8(w.label, f.label, (n) => f.labelLength = n);
+}
+void _f2w_v2_Cell(tblv2_fixed.Cell f, tblv2.Cell w) {
+  w.power = f.power;
+  w.label = _f2wUtf8(f.label, f.labelLength);
+}
+void _w2f_v2_Cfg(tblv2.Cfg w, tblv2_fixed.Cfg f) {
+  f.a = w.a;
+  f.c = w.c;
+  f.mode = (w.mode as dynamic);
+  _w2fUtf8(w.title, f.title, (n) => f.titleLength = n);
+  _w2f_v2_Inner(w.inner, f.inner);
+  f.itemsCount = w.items.length;
+  for (var i = 0; i < w.items.length; i++) f.items[i] = w.items[i];
+  f.grade = (w.grade as dynamic);
+  f.gradesCount = w.grades.length;
+  for (var i = 0; i < w.grades.length; i++) f.grades[i] = (w.grades[i] as int);
+  for (var i = 0; i < f.podium.length; i++) f.podium[i] = (w.podium[i] as int);
+  f.slotsCount = w.slots.length;
+  for (var i = 0; i < w.slots.length; i++) f.slots[i] = w.slots[i];
+  for (var i = 0; i < f.tally.length; i++) f.tally[i] = w.tally[i];
+  _w2f_v2_Effect(w.effect, f.effect);
+  for (var i = 0; i < f.bank.length; i++) _w2f_v2_Cell(w.bank[i], f.bank[i]);
+  for (var i = 0; i < f.tokens.length; i++) f.tokens[i] = w.tokens[i];
+  for (var i = 0; i < f.ranks.length; i++) f.ranks[i] = (w.ranks[i] as int);
+  for (var i = 0; i < f.ledger.length; i++) f.ledger[i] = w.ledger[i];
+  f.extraPresent = w.hasExtra;
+  _w2f_v2_Inner(w.extra, f.extra);
+  f.tierPresent = w.hasTier;
+  f.tier = w.tier;
+  f.markPresent = w.hasMark;
+  f.mark = (w.mark as dynamic);
+}
+void _f2w_v2_Cfg(tblv2_fixed.Cfg f, tblv2.Cfg w) {
+  w.a = f.a;
+  w.c = f.c;
+  w.mode = (f.mode as dynamic);
+  w.title = _f2wUtf8(f.title, f.titleLength);
+  _f2w_v2_Inner(f.inner, w.inner);
+  w.items = List<int>.generate(f.itemsCount, (i) => f.items[i]);
+  w.grade = (f.grade as dynamic);
+  w.grades = List.generate(f.gradesCount, (i) => (f.grades[i] as dynamic));
+  for (var i = 0; i < f.podium.length; i++) w.podium[i] = (f.podium[i] as dynamic);
+  w.slots = List<int>.generate(f.slotsCount, (i) => f.slots[i]);
+  for (var i = 0; i < f.tally.length; i++) w.tally[i] = f.tally[i];
+  _f2w_v2_Effect(f.effect, w.effect);
+  for (var i = 0; i < f.bank.length; i++) _f2w_v2_Cell(f.bank[i], w.bank[i]);
+  for (var i = 0; i < f.tokens.length; i++) w.tokens[i] = f.tokens[i];
+  for (var i = 0; i < f.ranks.length; i++) w.ranks[i] = (f.ranks[i] as dynamic);
+  for (var i = 0; i < f.ledger.length; i++) w.ledger[i] = f.ledger[i];
+  w.hasExtra = f.extraPresent;
+  _f2w_v2_Inner(f.extra, w.extra);
+  w.hasTier = f.tierPresent;
+  w.tier = f.tier;
+  w.hasMark = f.markPresent;
+  w.mark = (f.mark as dynamic);
+}
+void _w2f_vocab_Wide00(vocabdemo.Wide00 w, vocabdemo_fixed.Wide00 f) {
+  f.field0000 = w.field0000;
+  f.field0001 = w.field0001;
+  f.field0002 = w.field0002;
+  f.field0003 = w.field0003;
+  f.field0004 = w.field0004;
+  f.field0005 = w.field0005;
+  f.field0006 = w.field0006;
+  f.field0007 = w.field0007;
+  f.field0008 = w.field0008;
+  f.field0009 = w.field0009;
+  f.field0010 = w.field0010;
+  f.field0011 = w.field0011;
+  f.field0012 = w.field0012;
+}
+void _f2w_vocab_Wide00(vocabdemo_fixed.Wide00 f, vocabdemo.Wide00 w) {
+  w.field0000 = f.field0000;
+  w.field0001 = f.field0001;
+  w.field0002 = f.field0002;
+  w.field0003 = f.field0003;
+  w.field0004 = f.field0004;
+  w.field0005 = f.field0005;
+  w.field0006 = f.field0006;
+  w.field0007 = f.field0007;
+  w.field0008 = f.field0008;
+  w.field0009 = f.field0009;
+  w.field0010 = f.field0010;
+  w.field0011 = f.field0011;
+  w.field0012 = f.field0012;
+}
+void _w2f_vocab_Wide09(vocabdemo.Wide09 w, vocabdemo_fixed.Wide09 f) {
+  f.field0900 = w.field0900;
+  f.field0901 = w.field0901;
+  f.field0902 = w.field0902;
+  f.field0903 = w.field0903;
+  f.field0904 = w.field0904;
+  f.field0905 = w.field0905;
+  f.field0906 = w.field0906;
+  f.field0907 = w.field0907;
+  f.field0908 = w.field0908;
+  f.field0909 = w.field0909;
+  f.field0910 = w.field0910;
+  f.field0911 = w.field0911;
+  f.field0912 = w.field0912;
+}
+void _f2w_vocab_Wide09(vocabdemo_fixed.Wide09 f, vocabdemo.Wide09 w) {
+  w.field0900 = f.field0900;
+  w.field0901 = f.field0901;
+  w.field0902 = f.field0902;
+  w.field0903 = f.field0903;
+  w.field0904 = f.field0904;
+  w.field0905 = f.field0905;
+  w.field0906 = f.field0906;
+  w.field0907 = f.field0907;
+  w.field0908 = f.field0908;
+  w.field0909 = f.field0909;
+  w.field0910 = f.field0910;
+  w.field0911 = f.field0911;
+  w.field0912 = f.field0912;
+}
+void _w2f_vocab9_Wide00(vocab9demo.Wide00 w, vocab9demo_fixed.Wide00 f) {
+  f.field0000 = w.field0000;
+  f.field0001 = w.field0001;
+  f.field0002 = w.field0002;
+  f.field0003 = w.field0003;
+  f.field0004 = w.field0004;
+  f.field0005 = w.field0005;
+  f.field0006 = w.field0006;
+  f.field0007 = w.field0007;
+  f.field0008 = w.field0008;
+  f.field0009 = w.field0009;
+  f.field0010 = w.field0010;
+  f.field0011 = w.field0011;
+  f.field0012 = w.field0012;
+}
+void _f2w_vocab9_Wide00(vocab9demo_fixed.Wide00 f, vocab9demo.Wide00 w) {
+  w.field0000 = f.field0000;
+  w.field0001 = f.field0001;
+  w.field0002 = f.field0002;
+  w.field0003 = f.field0003;
+  w.field0004 = f.field0004;
+  w.field0005 = f.field0005;
+  w.field0006 = f.field0006;
+  w.field0007 = f.field0007;
+  w.field0008 = f.field0008;
+  w.field0009 = f.field0009;
+  w.field0010 = f.field0010;
+  w.field0011 = f.field0011;
+  w.field0012 = f.field0012;
+}
+void _w2f_vocab9_Wide19(vocab9demo.Wide19 w, vocab9demo_fixed.Wide19 f) {
+  f.field1900 = w.field1900;
+  f.field1901 = w.field1901;
+  f.field1902 = w.field1902;
+  f.field1903 = w.field1903;
+  f.field1904 = w.field1904;
+  f.field1905 = w.field1905;
+  f.field1906 = w.field1906;
+  f.field1907 = w.field1907;
+  f.field1908 = w.field1908;
+  f.field1909 = w.field1909;
+  f.field1910 = w.field1910;
+  f.field1911 = w.field1911;
+  f.field1912 = w.field1912;
+}
+void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
+  w.field1900 = f.field1900;
+  w.field1901 = f.field1901;
+  w.field1902 = f.field1902;
+  w.field1903 = f.field1903;
+  w.field1904 = f.field1904;
+  w.field1905 = f.field1905;
+  w.field1906 = f.field1906;
+  w.field1907 = f.field1907;
+  w.field1908 = f.field1908;
+  w.field1909 = f.field1909;
+  w.field1910 = f.field1910;
+  w.field1911 = f.field1911;
+  w.field1912 = f.field1912;
+}
+void _w2f_wide_Line(widedemo.Line w, dynamic f) {
+  _w2fWide(w.text, f.text, (n) => f.textLength = n);
+}
+void _f2w_wide_Line(dynamic f, widedemo.Line w) {
+  w.text = _f2wWide(f.text, f.textLength);
+}
+void _w2f_wide_Body(widedemo.Body w, widedemo_fixed.Body f) {
+  f.type = (w.armTag as dynamic);
+  _w2fWide(w.wide, f.wide, (n) => f.wideLength = n);
+  _w2fUtf8(w.narrow, f.narrow, (n) => f.narrowLength = n);
+  f.tally = w.tally;
+}
+void _f2w_wide_Body(widedemo_fixed.Body f, widedemo.Body w) {
+  w.armTag = (f.type as int);
+  w.wide = _f2wWide(f.wide, f.wideLength);
+  w.narrow = _f2wUtf8(f.narrow, f.narrowLength);
+  w.tally = f.tally;
+}
+void _w2f_wide_Caption(widedemo.Caption w, widedemo_fixed.Caption f) {
+  _w2fWide(w.title, f.title, (n) => f.titleLength = n);
+  _w2f_wide_Line(w.line, f.line);
+  f.linesCount = w.lines.length;
+  for (var i = 0; i < w.lines.length; i++) _w2f_wide_Line(w.lines[i], f.lines[i]);
+  _w2f_wide_Body(w.body, f.body);
+}
+void _f2w_wide_Caption(widedemo_fixed.Caption f, widedemo.Caption w) {
+  w.title = _f2wWide(f.title, f.titleLength);
+  _f2w_wide_Line(f.line, w.line);
+  w.lines = List<widedemo.Line>.generate(f.linesCount, (i) { final e = widedemo.Line(); _f2w_wide_Line(f.lines[i], e); return e; });
+  _f2w_wide_Body(f.body, w.body);
+}
+void _w2f_wide_Stamp(widedemo.Stamp w, widedemo_fixed.Stamp f) {
+  _w2fWide(w.label, f.label, (n) => f.labelLength = n);
+  f.seq = w.seq;
+}
+void _f2w_wide_Stamp(widedemo_fixed.Stamp f, widedemo.Stamp w) {
+  w.label = _f2wWide(f.label, f.labelLength);
+  w.seq = f.seq;
+}
+
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
-      return feature.rootWireSave(feature.rootWireLoad(wire));
+      return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.rootWireLoad, feature.rootWireSave);
     case 'featurewitnesses ArrayRoot':
-      return feature.arrayRootWireSave(feature.arrayRootWireLoad(wire));
-
+      return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.arrayRootWireLoad, feature.arrayRootWireSave);
     case 'tblg1 Guarded':
-      return tblg1.guardedWireSave(tblg1.guardedWireLoad(wire));
-    case 'tblv1 Cfg':
-      return tblv1.cfgWireSave(tblv1.cfgWireLoad(wire));
-    case 'tblv2 Cfg':
-      return tblv2.cfgWireSave(tblv2.cfgWireLoad(wire));
+      return _wireResaveOne(wire, tblg1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblg1.guardedWireLoad, tblg1.guardedWireSave);
     case 'tblw1 Fleet':
-      return tblw1.fleetWireSave(tblw1.fleetWireLoad(wire));
+      return _wireResaveOne(wire, tblw1.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblw1.fleetWireLoad, tblw1.fleetWireSave);
     case 'tblw2 Fleet':
-      return tblw2.fleetWireSave(tblw2.fleetWireLoad(wire));
-    case 'tblr1 Cfg':
-      return tblr1.cfgWireSave(tblr1.cfgWireLoad(wire));
-    case 'tblr2 Cfg':
-      return tblr2.cfgWireSave(tblr2.cfgWireLoad(wire));
+      return _wireResaveOne(wire, tblw2.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblw2.fleetWireLoad, tblw2.fleetWireSave);
     case 'graphdemo Scene':
-      return graphdemo.sceneWireSave(graphdemo.sceneWireLoad(wire));
+      return _wireResaveOne(wire, graphdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), graphdemo.sceneWireLoad, graphdemo.sceneWireSave);
     case 'blobdemo Catalog':
-      return blobdemo.catalogWireSave(blobdemo.catalogWireLoad(wire));
+      return _wireResaveOne(wire, blobdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), blobdemo.catalogWireLoad, blobdemo.catalogWireSave);
     case 'listdemo Save':
-      return listdemo.saveWireSave(listdemo.saveWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.saveWireLoad, listdemo.saveWireSave);
     case 'listdemo Album':
-      return listdemo.albumWireSave(listdemo.albumWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.albumWireLoad, listdemo.albumWireSave);
     case 'listdemo Sheet':
-      return listdemo.sheetWireSave(listdemo.sheetWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.sheetWireLoad, listdemo.sheetWireSave);
     case 'listdemo Unbounded':
-      return listdemo.unboundedWireSave(listdemo.unboundedWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.unboundedWireLoad, listdemo.unboundedWireSave);
     case 'mapdemo Cells':
-      return mapdemo.cellsWireSave(mapdemo.cellsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.cellsWireLoad, mapdemo.cellsWireSave);
     case 'mapdemo Chunks':
-      return mapdemo.chunksWireSave(mapdemo.chunksWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.chunksWireLoad, mapdemo.chunksWireSave);
     case 'mapdemo Crews':
-      return mapdemo.crewsWireSave(mapdemo.crewsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.crewsWireLoad, mapdemo.crewsWireSave);
     case 'mapdemo Depth':
-      return mapdemo.depthWireSave(mapdemo.depthWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.depthWireLoad, mapdemo.depthWireSave);
     case 'mapdemo Docs':
-      return mapdemo.docsWireSave(mapdemo.docsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.docsWireLoad, mapdemo.docsWireSave);
     case 'mapdemo Fleet':
-      return mapdemo.fleetWireSave(mapdemo.fleetWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.fleetWireLoad, mapdemo.fleetWireSave);
     case 'mapdemo Pairs':
-      return mapdemo.pairsWireSave(mapdemo.pairsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.pairsWireLoad, mapdemo.pairsWireSave);
     case 'mapdemo Runs':
-      return mapdemo.runsWireSave(mapdemo.runsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.runsWireLoad, mapdemo.runsWireSave);
     case 'mapdemo Slots':
-      return mapdemo.slotsWireSave(mapdemo.slotsWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.slotsWireLoad, mapdemo.slotsWireSave);
     case 'mapdemo Spans':
-      return mapdemo.spansWireSave(mapdemo.spansWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.spansWireLoad, mapdemo.spansWireSave);
     case 'mapdemo Text':
-      return mapdemo.textWireSave(mapdemo.textWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.textWireLoad, mapdemo.textWireSave);
     case 'mapdemo Trails':
-      return mapdemo.trailsWireSave(mapdemo.trailsWireLoad(wire));
-    case 'messagedemo ToolMessage':
-      return messagedemo.toolMessageWireSave(messagedemo.toolMessageWireLoad(wire));
-    case 'scalars SimState':
-      return scalardemo.simStateWireSave(scalardemo.simStateWireLoad(wire));
-    case 'widedemo Caption':
-      return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
-    case 'widedemo Stamp':
-      return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+      return _wireResaveOne(wire, mapdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), mapdemo.trailsWireLoad, mapdemo.trailsWireSave);
     case 'widelist Wide':
-      return widelist.wideWireSave(widelist.wideWireLoad(wire));
+      return _wireResaveOne(wire, widelist.TableWireReport.new, (rep) => (rep.refused, rep.refusal), widelist.wideWireLoad, widelist.wideWireSave);
     case 'listdemo Army':
-      return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.armyWireLoad, listdemo.armyWireSave);
     case 'listdemo Mixed':
-      return listdemo.mixedWireSave(listdemo.mixedWireLoad(wire));
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.mixedWireLoad, listdemo.mixedWireSave);
     case 'streamdemo Feed':
-      return streamdemo.feedWireSave(streamdemo.feedWireLoad(wire));
-    case 'tabledemo ArchiveConfig':
-      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigWireLoad(wire));
-    case 'tabledemo KeyedConfig':
-      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigWireLoad(wire));
+      return _wireResaveOne(wire, streamdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), streamdemo.feedWireLoad, streamdemo.feedWireSave);
     case 'tabledemo WideBlob':
-      return tabledemo.wideBlobWireSave(tabledemo.wideBlobWireLoad(wire));
-    case 'tblm1 Msg':
-      return tblm1.msgWireSave(tblm1.msgWireLoad(wire));
-    case 'tblm2 Msg':
-      return tblm2.msgWireSave(tblm2.msgWireLoad(wire));
-    case 'tblp1 Chain':
-      return tblp1.chainWireSave(tblp1.chainWireLoad(wire));
-    case 'tblp3 Chain':
-      return tblp3.chainWireSave(tblp3.chainWireLoad(wire));
-    case 'vocabdemo Wide00':
-      return vocabdemo.wide00WireSave(vocabdemo.wide00WireLoad(wire));
-    case 'vocabdemo Wide09':
-      return vocabdemo.wide09WireSave(vocabdemo.wide09WireLoad(wire));
-    case 'vocab9demo Wide00':
-      return vocab9demo.wide00WireSave(vocab9demo.wide00WireLoad(wire));
-    case 'vocab9demo Wide19':
-      return vocab9demo.wide19WireSave(vocab9demo.wide19WireLoad(wire));
+      return _wireResaveOne(wire, tabledemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave);
+    case 'graphdemo ListNode':
+      return _wireResaveOne(wire, graphdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), graphdemo.listNodeWireLoad, graphdemo.listNodeWireSave);
+    case 'listdemo Bounded':
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.boundedWireLoad, listdemo.boundedWireSave);
+    case 'listdemo Ints':
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.intsWireLoad, listdemo.intsWireSave);
+    case 'listdemo Squad':
+      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.squadWireLoad, listdemo.squadWireSave);
+    case 'tblp2 Chain':
+      return _wireResaveOne(wire, tblp2.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblp2.chainWireLoad, tblp2.chainWireSave);
     case 'backenddemo LoginRequest':
-      return backenddemo.loginRequestWireSave(backenddemo.loginRequestWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.loginRequestWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = backenddemo_fixed.LoginRequest();
+        _w2f_backend_LoginRequest(w, f);
+        return _fixedSaveOne(f, backend.loginRequestFixedMeasure, backend.loginRequestFixedSave);
+      }
+      return _fixedResave(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.loginRequestFixedLoad, backend.loginRequestFixedMeasure, backend.loginRequestFixedSave);
     case 'backenddemo MatchResult':
-      return backenddemo.matchResultWireSave(backenddemo.matchResultWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.matchResultWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = backenddemo_fixed.MatchResult();
+        _w2f_backend_MatchResult(w, f);
+        return _fixedSaveOne(f, backend.matchResultFixedMeasure, backend.matchResultFixedSave);
+      }
+      return _fixedResave(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.matchResultFixedLoad, backend.matchResultFixedMeasure, backend.matchResultFixedSave);
     case 'backenddemo StorePurchase':
-      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.storePurchaseWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = backenddemo_fixed.StorePurchase();
+        _w2f_backend_StorePurchase(w, f);
+        return _fixedSaveOne(f, backend.storePurchaseFixedMeasure, backend.storePurchaseFixedSave);
+      }
+      return _fixedResave(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad, backend.storePurchaseFixedMeasure, backend.storePurchaseFixedSave);
+    case 'messagedemo ToolMessage':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = messagedemo.TableWireReport();
+        final w = messagedemo.toolMessageWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = messagedemo_fixed.ToolMessage();
+        _w2f_messages_ToolMessage(w, f);
+        return _fixedSaveOne(f, messages_fixed.toolMessageFixedMeasure, messages_fixed.toolMessageFixedSave);
+      }
+      return _fixedResave(wire, messagedemo_fixed.ToolMessage.new, messages_fixed.toolMessageFixedNewPlan, messagedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, messages_fixed.toolMessageFixedLoad, messages_fixed.toolMessageFixedMeasure, messages_fixed.toolMessageFixedSave);
+    case 'scalars SimState':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = scalardemo.TableWireReport();
+        final w = scalardemo.simStateWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = scalardemo_fixed.SimState();
+        _w2f_scalars_SimState(w, f);
+        return _fixedSaveOne(f, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
+      }
+      return _fixedResave(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
+    case 'tabledemo ArchiveConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.archiveConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.ArchiveConfig();
+        _w2f_examples_ArchiveConfig(w, f);
+        return _fixedSaveOne(f, nested_fixed.archiveConfigFixedMeasure, nested_fixed.archiveConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.ArchiveConfig.new, nested_fixed.archiveConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, nested_fixed.archiveConfigFixedLoad, nested_fixed.archiveConfigFixedMeasure, nested_fixed.archiveConfigFixedSave);
+    case 'tabledemo KeyedConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.keyedConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.KeyedConfig();
+        _w2f_examples_KeyedConfig(w, f);
+        return _fixedSaveOne(f, keyed_fixed.keyedConfigFixedMeasure, keyed_fixed.keyedConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.KeyedConfig.new, keyed_fixed.keyedConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, keyed_fixed.keyedConfigFixedLoad, keyed_fixed.keyedConfigFixedMeasure, keyed_fixed.keyedConfigFixedSave);
     case 'tabledemo LoadoutConfig':
-      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.loadoutConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.LoadoutConfig();
+        _w2f_examples_LoadoutConfig(w, f);
+        return _fixedSaveOne(f, tables_fixed.loadoutConfigFixedMeasure, tables_fixed.loadoutConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad, tables_fixed.loadoutConfigFixedMeasure, tables_fixed.loadoutConfigFixedSave);
+    case 'tabledemo PackConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.packConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.PackConfig();
+        _w2f_examples_PackConfig(w, f);
+        return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
     case 'tabledemo ProfileConfig':
-      return tabledemo.profileConfigWireSave(tabledemo.profileConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.profileConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.ProfileConfig();
+        _w2f_examples_ProfileConfig(w, f);
+        return _fixedSaveOne(f, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.profileConfigFixedLoad, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave);
     case 'tabledemo RootConfig':
-      return tabledemo.rootConfigWireSave(tabledemo.rootConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.rootConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.RootConfig();
+        _w2f_examples_RootConfig(w, f);
+        return _fixedSaveOne(f, tables_fixed.rootConfigFixedMeasure, tables_fixed.rootConfigFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad, tables_fixed.rootConfigFixedMeasure, tables_fixed.rootConfigFixedSave);
+    case 'tblm1 Msg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblm1.TableWireReport();
+        final w = tblm1.msgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblm1_fixed.Msg();
+        _w2f_m1_Msg(w, f);
+        return _fixedSaveOne(f, m1_fixed.msgFixedMeasure, m1_fixed.msgFixedSave);
+      }
+      return _fixedResave(wire, tblm1_fixed.Msg.new, m1_fixed.msgFixedNewPlan, tblm1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, m1_fixed.msgFixedLoad, m1_fixed.msgFixedMeasure, m1_fixed.msgFixedSave);
+    case 'tblm2 Msg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblm2.TableWireReport();
+        final w = tblm2.msgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblm2_fixed.Msg();
+        _w2f_m2_Msg(w, f);
+        return _fixedSaveOne(f, m2_fixed.msgFixedMeasure, m2_fixed.msgFixedSave);
+      }
+      return _fixedResave(wire, tblm2_fixed.Msg.new, m2_fixed.msgFixedNewPlan, tblm2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, m2_fixed.msgFixedLoad, m2_fixed.msgFixedMeasure, m2_fixed.msgFixedSave);
+    case 'tblp1 Chain':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblp1.TableWireReport();
+        final w = tblp1.chainWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblp1_fixed.Chain();
+        _w2f_p1_Chain(w, f);
+        return _fixedSaveOne(f, p1_fixed.chainFixedMeasure, p1_fixed.chainFixedSave);
+      }
+      return _fixedResave(wire, tblp1_fixed.Chain.new, p1_fixed.chainFixedNewPlan, tblp1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, p1_fixed.chainFixedLoad, p1_fixed.chainFixedMeasure, p1_fixed.chainFixedSave);
+    case 'tblp3 Chain':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblp3.TableWireReport();
+        final w = tblp3.chainWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblp3_fixed.Chain();
+        _w2f_p3_Chain(w, f);
+        return _fixedSaveOne(f, p3_fixed.chainFixedMeasure, p3_fixed.chainFixedSave);
+      }
+      return _fixedResave(wire, tblp3_fixed.Chain.new, p3_fixed.chainFixedNewPlan, tblp3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, p3_fixed.chainFixedLoad, p3_fixed.chainFixedMeasure, p3_fixed.chainFixedSave);
+    case 'tblr1 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblr1.TableWireReport();
+        final w = tblr1.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblr1_fixed.Cfg();
+        _w2f_r1_Cfg(w, f);
+        return _fixedSaveOne(f, r1_fixed.cfgFixedMeasure, r1_fixed.cfgFixedSave);
+      }
+      return _fixedResave(wire, tblr1_fixed.Cfg.new, r1_fixed.cfgFixedNewPlan, tblr1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, r1_fixed.cfgFixedLoad, r1_fixed.cfgFixedMeasure, r1_fixed.cfgFixedSave);
+    case 'tblr2 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblr2.TableWireReport();
+        final w = tblr2.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblr2_fixed.Cfg();
+        _w2f_r2_Cfg(w, f);
+        return _fixedSaveOne(f, r2_fixed.cfgFixedMeasure, r2_fixed.cfgFixedSave);
+      }
+      return _fixedResave(wire, tblr2_fixed.Cfg.new, r2_fixed.cfgFixedNewPlan, tblr2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, r2_fixed.cfgFixedLoad, r2_fixed.cfgFixedMeasure, r2_fixed.cfgFixedSave);
+    case 'tblv1 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblv1.TableWireReport();
+        final w = tblv1.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblv1_fixed.Cfg();
+        _w2f_v1_Cfg(w, f);
+        return _fixedSaveOne(f, v1_fixed.cfgFixedMeasure, v1_fixed.cfgFixedSave);
+      }
+      return _fixedResave(wire, tblv1_fixed.Cfg.new, v1_fixed.cfgFixedNewPlan, tblv1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, v1_fixed.cfgFixedLoad, v1_fixed.cfgFixedMeasure, v1_fixed.cfgFixedSave);
+    case 'tblv2 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblv2.TableWireReport();
+        final w = tblv2.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tblv2_fixed.Cfg();
+        _w2f_v2_Cfg(w, f);
+        return _fixedSaveOne(f, v2_fixed.cfgFixedMeasure, v2_fixed.cfgFixedSave);
+      }
+      return _fixedResave(wire, tblv2_fixed.Cfg.new, v2_fixed.cfgFixedNewPlan, tblv2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, v2_fixed.cfgFixedLoad, v2_fixed.cfgFixedMeasure, v2_fixed.cfgFixedSave);
+    case 'vocab9demo Wide00':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocab9demo.TableWireReport();
+        final w = vocab9demo.wide00WireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = vocab9demo_fixed.Wide00();
+        _w2f_vocab9_Wide00(w, f);
+        return _fixedSaveOne(f, vocab9.wide00FixedMeasure, vocab9.wide00FixedSave);
+      }
+      return _fixedResave(wire, vocab9demo_fixed.Wide00.new, vocab9.wide00FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab9.wide00FixedLoad, vocab9.wide00FixedMeasure, vocab9.wide00FixedSave);
+    case 'vocab9demo Wide19':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocab9demo.TableWireReport();
+        final w = vocab9demo.wide19WireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = vocab9demo_fixed.Wide19();
+        _w2f_vocab9_Wide19(w, f);
+        return _fixedSaveOne(f, vocab9.wide19FixedMeasure, vocab9.wide19FixedSave);
+      }
+      return _fixedResave(wire, vocab9demo_fixed.Wide19.new, vocab9.wide19FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab9.wide19FixedLoad, vocab9.wide19FixedMeasure, vocab9.wide19FixedSave);
+    case 'vocabdemo Wide00':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocabdemo.TableWireReport();
+        final w = vocabdemo.wide00WireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = vocabdemo_fixed.Wide00();
+        _w2f_vocab_Wide00(w, f);
+        return _fixedSaveOne(f, vocab.wide00FixedMeasure, vocab.wide00FixedSave);
+      }
+      return _fixedResave(wire, vocabdemo_fixed.Wide00.new, vocab.wide00FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab.wide00FixedLoad, vocab.wide00FixedMeasure, vocab.wide00FixedSave);
+    case 'vocabdemo Wide09':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocabdemo.TableWireReport();
+        final w = vocabdemo.wide09WireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = vocabdemo_fixed.Wide09();
+        _w2f_vocab_Wide09(w, f);
+        return _fixedSaveOne(f, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
+      }
+      return _fixedResave(wire, vocabdemo_fixed.Wide09.new, vocab.wide09FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab.wide09FixedLoad, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
+    case 'widedemo Caption':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = widedemo.TableWireReport();
+        final w = widedemo.captionWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = widedemo_fixed.Caption();
+        _w2f_wide_Caption(w, f);
+        return _fixedSaveOne(f, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
+      }
+      return _fixedResave(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.captionFixedLoad, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
+    case 'widedemo Stamp':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = widedemo.TableWireReport();
+        final w = widedemo.stampWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = widedemo_fixed.Stamp();
+        _w2f_wide_Stamp(w, f);
+        return _fixedSaveOne(f, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
+      }
+      return _fixedResave(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
   }
   return null;
 }
@@ -925,110 +2354,345 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
-      return feature.rootWireSave(feature.rootFromJson(text));
+      final rep = feature.TableTextReport();
+      final v = feature.rootFromJson(text, rep);
+      if (rep.refused) return null;
+      return feature.rootWireSave(v);
     case 'featurewitnesses ArrayRoot':
-      return feature.arrayRootWireSave(feature.arrayRootFromJson(text));
-
-    case 'tblw1 Fleet':
-      return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
-    case 'tblw2 Fleet':
-      return tblw2.fleetWireSave(tblw2.fleetFromJson(text));
-    case 'graphdemo Scene':
-      return graphdemo.sceneWireSave(graphdemo.sceneFromJson(text));
-    case 'blobdemo Catalog':
-      return blobdemo.catalogWireSave(blobdemo.catalogFromJson(text));
-    case 'listdemo Save':
-      return listdemo.saveWireSave(listdemo.saveFromJson(text));
-    case 'listdemo Album':
-      return listdemo.albumWireSave(listdemo.albumFromJson(text));
-    case 'listdemo Sheet':
-      return listdemo.sheetWireSave(listdemo.sheetFromJson(text));
-    case 'listdemo Unbounded':
-      return listdemo.unboundedWireSave(listdemo.unboundedFromJson(text));
-    case 'mapdemo Cells':
-      return mapdemo.cellsWireSave(mapdemo.cellsFromJson(text));
-    case 'mapdemo Chunks':
-      return mapdemo.chunksWireSave(mapdemo.chunksFromJson(text));
-    case 'mapdemo Crews':
-      return mapdemo.crewsWireSave(mapdemo.crewsFromJson(text));
-    case 'mapdemo Depth':
-      return mapdemo.depthWireSave(mapdemo.depthFromJson(text));
-    case 'mapdemo Docs':
-      return mapdemo.docsWireSave(mapdemo.docsFromJson(text));
-    case 'mapdemo Fleet':
-      return mapdemo.fleetWireSave(mapdemo.fleetFromJson(text));
-    case 'mapdemo Pairs':
-      return mapdemo.pairsWireSave(mapdemo.pairsFromJson(text));
-    case 'mapdemo Runs':
-      return mapdemo.runsWireSave(mapdemo.runsFromJson(text));
-    case 'mapdemo Slots':
-      return mapdemo.slotsWireSave(mapdemo.slotsFromJson(text));
-    case 'mapdemo Spans':
-      return mapdemo.spansWireSave(mapdemo.spansFromJson(text));
-    case 'mapdemo Text':
-      return mapdemo.textWireSave(mapdemo.textFromJson(text));
-    case 'mapdemo Trails':
-      return mapdemo.trailsWireSave(mapdemo.trailsFromJson(text));
-    case 'messagedemo ToolMessage':
-      return messagedemo.toolMessageWireSave(messagedemo.toolMessageFromJson(text));
-    case 'scalars SimState':
-      return scalardemo.simStateWireSave(scalardemo.simStateFromJson(text));
-    case 'widedemo Caption':
-      return widedemo.captionWireSave(widedemo.captionFromJson(text));
-    case 'widedemo Stamp':
-      return widedemo.stampWireSave(widedemo.stampFromJson(text));
-    case 'widelist Wide':
-      return widelist.wideWireSave(widelist.wideFromJson(text));
-    case 'listdemo Army':
-      return listdemo.armyWireSave(listdemo.armyFromJson(text));
-    case 'listdemo Mixed':
-      return listdemo.mixedWireSave(listdemo.mixedFromJson(text));
-    case 'streamdemo Feed':
-      return streamdemo.feedWireSave(streamdemo.feedFromJson(text));
-    case 'tabledemo ArchiveConfig':
-      return tabledemo.archiveConfigWireSave(tabledemo.archiveConfigFromJson(text));
-    case 'tabledemo KeyedConfig':
-      return tabledemo.keyedConfigWireSave(tabledemo.keyedConfigFromJson(text));
-    case 'tabledemo WideBlob':
-      return tabledemo.wideBlobWireSave(tabledemo.wideBlobFromJson(text));
+      final rep = feature.TableTextReport();
+      final v = feature.arrayRootFromJson(text, rep);
+      if (rep.refused) return null;
+      return feature.arrayRootWireSave(v);
     case 'tblg1 Guarded':
-      return tblg1.guardedWireSave(tblg1.guardedFromJson(text));
-    case 'tblm1 Msg':
-      return tblm1.msgWireSave(tblm1.msgFromJson(text));
-    case 'tblm2 Msg':
-      return tblm2.msgWireSave(tblm2.msgFromJson(text));
-    case 'tblp1 Chain':
-      return tblp1.chainWireSave(tblp1.chainFromJson(text));
-    case 'tblp3 Chain':
-      return tblp3.chainWireSave(tblp3.chainFromJson(text));
-    case 'tblr1 Cfg':
-      return tblr1.cfgWireSave(tblr1.cfgFromJson(text));
-    case 'tblr2 Cfg':
-      return tblr2.cfgWireSave(tblr2.cfgFromJson(text));
-    case 'tblv1 Cfg':
-      return tblv1.cfgWireSave(tblv1.cfgFromJson(text));
-    case 'tblv2 Cfg':
-      return tblv2.cfgWireSave(tblv2.cfgFromJson(text));
-    case 'vocabdemo Wide00':
-      return vocabdemo.wide00WireSave(vocabdemo.wide00FromJson(text));
-    case 'vocabdemo Wide09':
-      return vocabdemo.wide09WireSave(vocabdemo.wide09FromJson(text));
-    case 'vocab9demo Wide00':
-      return vocab9demo.wide00WireSave(vocab9demo.wide00FromJson(text));
-    case 'vocab9demo Wide19':
-      return vocab9demo.wide19WireSave(vocab9demo.wide19FromJson(text));
+      final rep = tblg1.TableTextReport();
+      final v = tblg1.guardedFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblg1.guardedWireSave(v);
+    case 'tblw1 Fleet':
+      final rep = tblw1.TableTextReport();
+      final v = tblw1.fleetFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblw1.fleetWireSave(v);
+    case 'tblw2 Fleet':
+      final rep = tblw2.TableTextReport();
+      final v = tblw2.fleetFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblw2.fleetWireSave(v);
+    case 'graphdemo Scene':
+      final rep = graphdemo.TableTextReport();
+      final v = graphdemo.sceneFromJson(text, rep);
+      if (rep.refused) return null;
+      return graphdemo.sceneWireSave(v);
+    case 'blobdemo Catalog':
+      final rep = blobdemo.TableTextReport();
+      final v = blobdemo.catalogFromJson(text, rep);
+      if (rep.refused) return null;
+      return blobdemo.catalogWireSave(v);
+    case 'listdemo Save':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.saveFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.saveWireSave(v);
+    case 'listdemo Album':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.albumFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.albumWireSave(v);
+    case 'listdemo Sheet':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.sheetFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.sheetWireSave(v);
+    case 'listdemo Unbounded':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.unboundedFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.unboundedWireSave(v);
+    case 'mapdemo Cells':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.cellsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.cellsWireSave(v);
+    case 'mapdemo Chunks':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.chunksFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.chunksWireSave(v);
+    case 'mapdemo Crews':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.crewsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.crewsWireSave(v);
+    case 'mapdemo Depth':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.depthFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.depthWireSave(v);
+    case 'mapdemo Docs':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.docsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.docsWireSave(v);
+    case 'mapdemo Fleet':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.fleetFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.fleetWireSave(v);
+    case 'mapdemo Pairs':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.pairsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.pairsWireSave(v);
+    case 'mapdemo Runs':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.runsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.runsWireSave(v);
+    case 'mapdemo Slots':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.slotsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.slotsWireSave(v);
+    case 'mapdemo Spans':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.spansFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.spansWireSave(v);
+    case 'mapdemo Text':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.textFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.textWireSave(v);
+    case 'mapdemo Trails':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.trailsFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.trailsWireSave(v);
+    case 'widelist Wide':
+      final rep = widelist.TableTextReport();
+      final v = widelist.wideFromJson(text, rep);
+      if (rep.refused) return null;
+      return widelist.wideWireSave(v);
+    case 'listdemo Army':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.armyFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.armyWireSave(v);
+    case 'listdemo Mixed':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.mixedFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.mixedWireSave(v);
+    case 'streamdemo Feed':
+      final rep = streamdemo.TableTextReport();
+      final v = streamdemo.feedFromJson(text, rep);
+      if (rep.refused) return null;
+      return streamdemo.feedWireSave(v);
+    case 'tabledemo WideBlob':
+      final rep = tabledemo.TableTextReport();
+      final v = tabledemo.wideBlobFromJson(text, rep);
+      if (rep.refused) return null;
+      return tabledemo.wideBlobWireSave(v);
+    case 'graphdemo ListNode':
+      final rep = graphdemo.TableTextReport();
+      final v = graphdemo.listNodeFromJson(text, rep);
+      if (rep.refused) return null;
+      return graphdemo.listNodeWireSave(v);
+    case 'listdemo Bounded':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.boundedFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.boundedWireSave(v);
+    case 'listdemo Ints':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.intsFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.intsWireSave(v);
+    case 'listdemo Squad':
+      final rep = listdemo.TableTextReport();
+      final v = listdemo.squadFromJson(text, rep);
+      if (rep.refused) return null;
+      return listdemo.squadWireSave(v);
+    case 'tblp2 Chain':
+      final rep = tblp2.TableTextReport();
+      final v = tblp2.chainFromJson(text, rep);
+      if (rep.refused) return null;
+      return tblp2.chainWireSave(v);
     case 'backenddemo LoginRequest':
-      return backenddemo.loginRequestWireSave(backenddemo.loginRequestFromJson(text));
+      final rep = backenddemo.TableTextReport();
+      final w = backenddemo.loginRequestFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = backenddemo_fixed.LoginRequest();
+      _w2f_backend_LoginRequest(w, f);
+      return _fixedSaveOne(f, backend.loginRequestFixedMeasure, backend.loginRequestFixedSave);
     case 'backenddemo MatchResult':
-      return backenddemo.matchResultWireSave(backenddemo.matchResultFromJson(text));
+      final rep = backenddemo.TableTextReport();
+      final w = backenddemo.matchResultFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = backenddemo_fixed.MatchResult();
+      _w2f_backend_MatchResult(w, f);
+      return _fixedSaveOne(f, backend.matchResultFixedMeasure, backend.matchResultFixedSave);
     case 'backenddemo StorePurchase':
-      return backenddemo.storePurchaseWireSave(backenddemo.storePurchaseFromJson(text));
+      final rep = backenddemo.TableTextReport();
+      final w = backenddemo.storePurchaseFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = backenddemo_fixed.StorePurchase();
+      _w2f_backend_StorePurchase(w, f);
+      return _fixedSaveOne(f, backend.storePurchaseFixedMeasure, backend.storePurchaseFixedSave);
+    case 'messagedemo ToolMessage':
+      final rep = messagedemo.TableTextReport();
+      final w = messagedemo.toolMessageFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = messagedemo_fixed.ToolMessage();
+      _w2f_messages_ToolMessage(w, f);
+      return _fixedSaveOne(f, messages_fixed.toolMessageFixedMeasure, messages_fixed.toolMessageFixedSave);
+    case 'scalars SimState':
+      final rep = scalardemo.TableTextReport();
+      final w = scalardemo.simStateFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = scalardemo_fixed.SimState();
+      _w2f_scalars_SimState(w, f);
+      return _fixedSaveOne(f, scalars_fixed.simStateFixedMeasure, scalars_fixed.simStateFixedSave);
+    case 'tabledemo ArchiveConfig':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.archiveConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.ArchiveConfig();
+      _w2f_examples_ArchiveConfig(w, f);
+      return _fixedSaveOne(f, nested_fixed.archiveConfigFixedMeasure, nested_fixed.archiveConfigFixedSave);
+    case 'tabledemo KeyedConfig':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.keyedConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.KeyedConfig();
+      _w2f_examples_KeyedConfig(w, f);
+      return _fixedSaveOne(f, keyed_fixed.keyedConfigFixedMeasure, keyed_fixed.keyedConfigFixedSave);
     case 'tabledemo LoadoutConfig':
-      return tabledemo.loadoutConfigWireSave(tabledemo.loadoutConfigFromJson(text));
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.loadoutConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.LoadoutConfig();
+      _w2f_examples_LoadoutConfig(w, f);
+      return _fixedSaveOne(f, tables_fixed.loadoutConfigFixedMeasure, tables_fixed.loadoutConfigFixedSave);
+    case 'tabledemo PackConfig':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.packConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.PackConfig();
+      _w2f_examples_PackConfig(w, f);
+      return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
     case 'tabledemo ProfileConfig':
-      return tabledemo.profileConfigWireSave(tabledemo.profileConfigFromJson(text));
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.profileConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.ProfileConfig();
+      _w2f_examples_ProfileConfig(w, f);
+      return _fixedSaveOne(f, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave);
     case 'tabledemo RootConfig':
-      return tabledemo.rootConfigWireSave(tabledemo.rootConfigFromJson(text));
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.rootConfigFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.RootConfig();
+      _w2f_examples_RootConfig(w, f);
+      return _fixedSaveOne(f, tables_fixed.rootConfigFixedMeasure, tables_fixed.rootConfigFixedSave);
+    case 'tblm1 Msg':
+      final rep = tblm1.TableTextReport();
+      final w = tblm1.msgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblm1_fixed.Msg();
+      _w2f_m1_Msg(w, f);
+      return _fixedSaveOne(f, m1_fixed.msgFixedMeasure, m1_fixed.msgFixedSave);
+    case 'tblm2 Msg':
+      final rep = tblm2.TableTextReport();
+      final w = tblm2.msgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblm2_fixed.Msg();
+      _w2f_m2_Msg(w, f);
+      return _fixedSaveOne(f, m2_fixed.msgFixedMeasure, m2_fixed.msgFixedSave);
+    case 'tblp1 Chain':
+      final rep = tblp1.TableTextReport();
+      final w = tblp1.chainFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblp1_fixed.Chain();
+      _w2f_p1_Chain(w, f);
+      return _fixedSaveOne(f, p1_fixed.chainFixedMeasure, p1_fixed.chainFixedSave);
+    case 'tblp3 Chain':
+      final rep = tblp3.TableTextReport();
+      final w = tblp3.chainFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblp3_fixed.Chain();
+      _w2f_p3_Chain(w, f);
+      return _fixedSaveOne(f, p3_fixed.chainFixedMeasure, p3_fixed.chainFixedSave);
+    case 'tblr1 Cfg':
+      final rep = tblr1.TableTextReport();
+      final w = tblr1.cfgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblr1_fixed.Cfg();
+      _w2f_r1_Cfg(w, f);
+      return _fixedSaveOne(f, r1_fixed.cfgFixedMeasure, r1_fixed.cfgFixedSave);
+    case 'tblr2 Cfg':
+      final rep = tblr2.TableTextReport();
+      final w = tblr2.cfgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblr2_fixed.Cfg();
+      _w2f_r2_Cfg(w, f);
+      return _fixedSaveOne(f, r2_fixed.cfgFixedMeasure, r2_fixed.cfgFixedSave);
+    case 'tblv1 Cfg':
+      final rep = tblv1.TableTextReport();
+      final w = tblv1.cfgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblv1_fixed.Cfg();
+      _w2f_v1_Cfg(w, f);
+      return _fixedSaveOne(f, v1_fixed.cfgFixedMeasure, v1_fixed.cfgFixedSave);
+    case 'tblv2 Cfg':
+      final rep = tblv2.TableTextReport();
+      final w = tblv2.cfgFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tblv2_fixed.Cfg();
+      _w2f_v2_Cfg(w, f);
+      return _fixedSaveOne(f, v2_fixed.cfgFixedMeasure, v2_fixed.cfgFixedSave);
+    case 'vocab9demo Wide00':
+      final rep = vocab9demo.TableTextReport();
+      final w = vocab9demo.wide00FromJson(text, rep);
+      if (rep.refused) return null;
+      final f = vocab9demo_fixed.Wide00();
+      _w2f_vocab9_Wide00(w, f);
+      return _fixedSaveOne(f, vocab9.wide00FixedMeasure, vocab9.wide00FixedSave);
+    case 'vocab9demo Wide19':
+      final rep = vocab9demo.TableTextReport();
+      final w = vocab9demo.wide19FromJson(text, rep);
+      if (rep.refused) return null;
+      final f = vocab9demo_fixed.Wide19();
+      _w2f_vocab9_Wide19(w, f);
+      return _fixedSaveOne(f, vocab9.wide19FixedMeasure, vocab9.wide19FixedSave);
+    case 'vocabdemo Wide00':
+      final rep = vocabdemo.TableTextReport();
+      final w = vocabdemo.wide00FromJson(text, rep);
+      if (rep.refused) return null;
+      final f = vocabdemo_fixed.Wide00();
+      _w2f_vocab_Wide00(w, f);
+      return _fixedSaveOne(f, vocab.wide00FixedMeasure, vocab.wide00FixedSave);
+    case 'vocabdemo Wide09':
+      final rep = vocabdemo.TableTextReport();
+      final w = vocabdemo.wide09FromJson(text, rep);
+      if (rep.refused) return null;
+      final f = vocabdemo_fixed.Wide09();
+      _w2f_vocab_Wide09(w, f);
+      return _fixedSaveOne(f, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
+    case 'widedemo Caption':
+      final rep = widedemo.TableTextReport();
+      final w = widedemo.captionFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = widedemo_fixed.Caption();
+      _w2f_wide_Caption(w, f);
+      return _fixedSaveOne(f, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
+    case 'widedemo Stamp':
+      final rep = widedemo.TableTextReport();
+      final w = widedemo.stampFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = widedemo_fixed.Stamp();
+      _w2f_wide_Stamp(w, f);
+      return _fixedSaveOne(f, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
   }
   return null;
 }
@@ -1036,310 +2700,674 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
-      return feature.rootToJson(feature.rootWireLoad(wire));
+      final rep = feature.TableWireReport();
+      final v = feature.rootWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return feature.rootToJson(v);
     case 'featurewitnesses ArrayRoot':
-      return feature.arrayRootToJson(feature.arrayRootWireLoad(wire));
-
-    case 'graphdemo ListNode':
-      return graphdemo.listNodeToJson(graphdemo.listNodeWireLoad(wire));
-    case 'listdemo Bounded':
-      return listdemo.boundedToJson(listdemo.boundedWireLoad(wire));
-    case 'listdemo Ints':
-      return listdemo.intsToJson(listdemo.intsWireLoad(wire));
-    case 'listdemo Squad':
-      return listdemo.squadToJson(listdemo.squadWireLoad(wire));
-    case 'tblw1 Fleet':
-      return tblw1.fleetToJson(tblw1.fleetWireLoad(wire));
-    case 'tblw2 Fleet':
-      return tblw2.fleetToJson(tblw2.fleetWireLoad(wire));
-    case 'graphdemo Scene':
-      return graphdemo.sceneToJson(graphdemo.sceneWireLoad(wire));
-    case 'blobdemo Catalog':
-      return blobdemo.catalogToJson(blobdemo.catalogWireLoad(wire));
-    case 'listdemo Save':
-      return listdemo.saveToJson(listdemo.saveWireLoad(wire));
-    case 'listdemo Album':
-      return listdemo.albumToJson(listdemo.albumWireLoad(wire));
-    case 'listdemo Sheet':
-      return listdemo.sheetToJson(listdemo.sheetWireLoad(wire));
-    case 'listdemo Unbounded':
-      return listdemo.unboundedToJson(listdemo.unboundedWireLoad(wire));
-    case 'mapdemo Cells':
-      return mapdemo.cellsToJson(mapdemo.cellsWireLoad(wire));
-    case 'mapdemo Chunks':
-      return mapdemo.chunksToJson(mapdemo.chunksWireLoad(wire));
-    case 'mapdemo Crews':
-      return mapdemo.crewsToJson(mapdemo.crewsWireLoad(wire));
-    case 'mapdemo Depth':
-      return mapdemo.depthToJson(mapdemo.depthWireLoad(wire));
-    case 'mapdemo Docs':
-      return mapdemo.docsToJson(mapdemo.docsWireLoad(wire));
-    case 'mapdemo Fleet':
-      return mapdemo.fleetToJson(mapdemo.fleetWireLoad(wire));
-    case 'mapdemo Pairs':
-      return mapdemo.pairsToJson(mapdemo.pairsWireLoad(wire));
-    case 'mapdemo Runs':
-      return mapdemo.runsToJson(mapdemo.runsWireLoad(wire));
-    case 'mapdemo Slots':
-      return mapdemo.slotsToJson(mapdemo.slotsWireLoad(wire));
-    case 'mapdemo Spans':
-      return mapdemo.spansToJson(mapdemo.spansWireLoad(wire));
-    case 'mapdemo Text':
-      return mapdemo.textToJson(mapdemo.textWireLoad(wire));
-    case 'mapdemo Trails':
-      return mapdemo.trailsToJson(mapdemo.trailsWireLoad(wire));
-    case 'messagedemo ToolMessage':
-      return messagedemo.toolMessageToJson(messagedemo.toolMessageWireLoad(wire));
-    case 'scalars SimState':
-      return scalardemo.simStateToJson(scalardemo.simStateWireLoad(wire));
-    case 'widedemo Caption':
-      return widedemo.captionToJson(widedemo.captionWireLoad(wire));
-    case 'widedemo Stamp':
-      return widedemo.stampToJson(widedemo.stampWireLoad(wire));
-    case 'widelist Wide':
-      return widelist.wideToJson(widelist.wideWireLoad(wire));
-    case 'listdemo Army':
-      return listdemo.armyToJson(listdemo.armyWireLoad(wire));
-    case 'listdemo Mixed':
-      return listdemo.mixedToJson(listdemo.mixedWireLoad(wire));
-    case 'streamdemo Feed':
-      return streamdemo.feedToJson(streamdemo.feedWireLoad(wire));
-    case 'tabledemo ArchiveConfig':
-      return tabledemo.archiveConfigToJson(tabledemo.archiveConfigWireLoad(wire));
-    case 'tabledemo KeyedConfig':
-      return tabledemo.keyedConfigToJson(tabledemo.keyedConfigWireLoad(wire));
-    case 'tabledemo WideBlob':
-      return tabledemo.wideBlobToJson(tabledemo.wideBlobWireLoad(wire));
+      final rep = feature.TableWireReport();
+      final v = feature.arrayRootWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return feature.arrayRootToJson(v);
     case 'tblg1 Guarded':
-      return tblg1.guardedToJson(tblg1.guardedWireLoad(wire));
-    case 'tblm1 Msg':
-      return tblm1.msgToJson(tblm1.msgWireLoad(wire));
-    case 'tblm2 Msg':
-      return tblm2.msgToJson(tblm2.msgWireLoad(wire));
-    case 'tblp1 Chain':
-      return tblp1.chainToJson(tblp1.chainWireLoad(wire));
-    case 'tblp3 Chain':
-      return tblp3.chainToJson(tblp3.chainWireLoad(wire));
-    case 'tblr1 Cfg':
-      return tblr1.cfgToJson(tblr1.cfgWireLoad(wire));
-    case 'tblr2 Cfg':
-      return tblr2.cfgToJson(tblr2.cfgWireLoad(wire));
-    case 'tblv1 Cfg':
-      return tblv1.cfgToJson(tblv1.cfgWireLoad(wire));
-    case 'tblv2 Cfg':
-      return tblv2.cfgToJson(tblv2.cfgWireLoad(wire));
-    case 'vocabdemo Wide00':
-      return vocabdemo.wide00ToJson(vocabdemo.wide00WireLoad(wire));
-    case 'vocabdemo Wide09':
-      return vocabdemo.wide09ToJson(vocabdemo.wide09WireLoad(wire));
-    case 'vocab9demo Wide00':
-      return vocab9demo.wide00ToJson(vocab9demo.wide00WireLoad(wire));
-    case 'vocab9demo Wide19':
-      return vocab9demo.wide19ToJson(vocab9demo.wide19WireLoad(wire));
+      final rep = tblg1.TableWireReport();
+      final v = tblg1.guardedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblg1.guardedToJson(v);
+    case 'tblw1 Fleet':
+      final rep = tblw1.TableWireReport();
+      final v = tblw1.fleetWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblw1.fleetToJson(v);
+    case 'tblw2 Fleet':
+      final rep = tblw2.TableWireReport();
+      final v = tblw2.fleetWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblw2.fleetToJson(v);
+    case 'graphdemo Scene':
+      final rep = graphdemo.TableWireReport();
+      final v = graphdemo.sceneWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return graphdemo.sceneToJson(v);
+    case 'blobdemo Catalog':
+      final rep = blobdemo.TableWireReport();
+      final v = blobdemo.catalogWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return blobdemo.catalogToJson(v);
+    case 'listdemo Save':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.saveWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.saveToJson(v);
+    case 'listdemo Album':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.albumWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.albumToJson(v);
+    case 'listdemo Sheet':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.sheetWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.sheetToJson(v);
+    case 'listdemo Unbounded':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.unboundedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.unboundedToJson(v);
+    case 'mapdemo Cells':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.cellsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.cellsToJson(v);
+    case 'mapdemo Chunks':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.chunksWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.chunksToJson(v);
+    case 'mapdemo Crews':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.crewsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.crewsToJson(v);
+    case 'mapdemo Depth':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.depthWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.depthToJson(v);
+    case 'mapdemo Docs':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.docsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.docsToJson(v);
+    case 'mapdemo Fleet':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.fleetWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.fleetToJson(v);
+    case 'mapdemo Pairs':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.pairsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.pairsToJson(v);
+    case 'mapdemo Runs':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.runsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.runsToJson(v);
+    case 'mapdemo Slots':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.slotsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.slotsToJson(v);
+    case 'mapdemo Spans':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.spansWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.spansToJson(v);
+    case 'mapdemo Text':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.textWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.textToJson(v);
+    case 'mapdemo Trails':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.trailsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.trailsToJson(v);
+    case 'widelist Wide':
+      final rep = widelist.TableWireReport();
+      final v = widelist.wideWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return widelist.wideToJson(v);
+    case 'listdemo Army':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.armyWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.armyToJson(v);
+    case 'listdemo Mixed':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.mixedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.mixedToJson(v);
+    case 'streamdemo Feed':
+      final rep = streamdemo.TableWireReport();
+      final v = streamdemo.feedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return streamdemo.feedToJson(v);
+    case 'tabledemo WideBlob':
+      final rep = tabledemo.TableWireReport();
+      final v = tabledemo.wideBlobWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tabledemo.wideBlobToJson(v);
+    case 'graphdemo ListNode':
+      final rep = graphdemo.TableWireReport();
+      final v = graphdemo.listNodeWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return graphdemo.listNodeToJson(v);
+    case 'listdemo Bounded':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.boundedWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.boundedToJson(v);
+    case 'listdemo Ints':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.intsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.intsToJson(v);
+    case 'listdemo Squad':
+      final rep = listdemo.TableWireReport();
+      final v = listdemo.squadWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return listdemo.squadToJson(v);
+    case 'tblp2 Chain':
+      final rep = tblp2.TableWireReport();
+      final v = tblp2.chainWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return tblp2.chainToJson(v);
     case 'backenddemo LoginRequest':
-      return backenddemo.loginRequestToJson(backenddemo.loginRequestWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.loginRequestWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return backenddemo.loginRequestToJson(w);
+      }
+      final f = _fixedLoadOne(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.loginRequestFixedLoad);
+      if (f == null) return null;
+      final w = backenddemo.LoginRequest();
+      _f2w_backend_LoginRequest(f, w);
+      return backenddemo.loginRequestToJson(w);
     case 'backenddemo MatchResult':
-      return backenddemo.matchResultToJson(backenddemo.matchResultWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.matchResultWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return backenddemo.matchResultToJson(w);
+      }
+      final f = _fixedLoadOne(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.matchResultFixedLoad);
+      if (f == null) return null;
+      final w = backenddemo.MatchResult();
+      _f2w_backend_MatchResult(f, w);
+      return backenddemo.matchResultToJson(w);
     case 'backenddemo StorePurchase':
-      return backenddemo.storePurchaseToJson(backenddemo.storePurchaseWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = backenddemo.TableWireReport();
+        final w = backenddemo.storePurchaseWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return backenddemo.storePurchaseToJson(w);
+      }
+      final f = _fixedLoadOne(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad);
+      if (f == null) return null;
+      final w = backenddemo.StorePurchase();
+      _f2w_backend_StorePurchase(f, w);
+      return backenddemo.storePurchaseToJson(w);
+    case 'messagedemo ToolMessage':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = messagedemo.TableWireReport();
+        final w = messagedemo.toolMessageWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return messagedemo.toolMessageToJson(w);
+      }
+      final f = _fixedLoadOne(wire, messagedemo_fixed.ToolMessage.new, messages_fixed.toolMessageFixedNewPlan, messagedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, messages_fixed.toolMessageFixedLoad);
+      if (f == null) return null;
+      final w = messagedemo.ToolMessage();
+      _f2w_messages_ToolMessage(f, w);
+      return messagedemo.toolMessageToJson(w);
+    case 'scalars SimState':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = scalardemo.TableWireReport();
+        final w = scalardemo.simStateWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return scalardemo.simStateToJson(w);
+      }
+      final f = _fixedLoadOne(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad);
+      if (f == null) return null;
+      final w = scalardemo.SimState();
+      _f2w_scalars_SimState(f, w);
+      return scalardemo.simStateToJson(w);
+    case 'tabledemo ArchiveConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.archiveConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.archiveConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.ArchiveConfig.new, nested_fixed.archiveConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, nested_fixed.archiveConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.ArchiveConfig();
+      _f2w_examples_ArchiveConfig(f, w);
+      return tabledemo.archiveConfigToJson(w);
+    case 'tabledemo KeyedConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.keyedConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.keyedConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.KeyedConfig.new, keyed_fixed.keyedConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, keyed_fixed.keyedConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.KeyedConfig();
+      _f2w_examples_KeyedConfig(f, w);
+      return tabledemo.keyedConfigToJson(w);
     case 'tabledemo LoadoutConfig':
-      return tabledemo.loadoutConfigToJson(tabledemo.loadoutConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.loadoutConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.loadoutConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.LoadoutConfig();
+      _f2w_examples_LoadoutConfig(f, w);
+      return tabledemo.loadoutConfigToJson(w);
+    case 'tabledemo PackConfig':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.packConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.packConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, pack_fixed.packConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.PackConfig();
+      _f2w_examples_PackConfig(f, w);
+      return tabledemo.packConfigToJson(w);
     case 'tabledemo ProfileConfig':
-      return tabledemo.profileConfigToJson(tabledemo.profileConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.profileConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.profileConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.profileConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.ProfileConfig();
+      _f2w_examples_ProfileConfig(f, w);
+      return tabledemo.profileConfigToJson(w);
     case 'tabledemo RootConfig':
-      return tabledemo.rootConfigToJson(tabledemo.rootConfigWireLoad(wire));
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.rootConfigWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.rootConfigToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.RootConfig();
+      _f2w_examples_RootConfig(f, w);
+      return tabledemo.rootConfigToJson(w);
+    case 'tblm1 Msg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblm1.TableWireReport();
+        final w = tblm1.msgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblm1.msgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblm1_fixed.Msg.new, m1_fixed.msgFixedNewPlan, tblm1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, m1_fixed.msgFixedLoad);
+      if (f == null) return null;
+      final w = tblm1.Msg();
+      _f2w_m1_Msg(f, w);
+      return tblm1.msgToJson(w);
+    case 'tblm2 Msg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblm2.TableWireReport();
+        final w = tblm2.msgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblm2.msgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblm2_fixed.Msg.new, m2_fixed.msgFixedNewPlan, tblm2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, m2_fixed.msgFixedLoad);
+      if (f == null) return null;
+      final w = tblm2.Msg();
+      _f2w_m2_Msg(f, w);
+      return tblm2.msgToJson(w);
+    case 'tblp1 Chain':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblp1.TableWireReport();
+        final w = tblp1.chainWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblp1.chainToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblp1_fixed.Chain.new, p1_fixed.chainFixedNewPlan, tblp1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, p1_fixed.chainFixedLoad);
+      if (f == null) return null;
+      final w = tblp1.Chain();
+      _f2w_p1_Chain(f, w);
+      return tblp1.chainToJson(w);
+    case 'tblp3 Chain':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblp3.TableWireReport();
+        final w = tblp3.chainWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblp3.chainToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblp3_fixed.Chain.new, p3_fixed.chainFixedNewPlan, tblp3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, p3_fixed.chainFixedLoad);
+      if (f == null) return null;
+      final w = tblp3.Chain();
+      _f2w_p3_Chain(f, w);
+      return tblp3.chainToJson(w);
+    case 'tblr1 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblr1.TableWireReport();
+        final w = tblr1.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblr1.cfgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblr1_fixed.Cfg.new, r1_fixed.cfgFixedNewPlan, tblr1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, r1_fixed.cfgFixedLoad);
+      if (f == null) return null;
+      final w = tblr1.Cfg();
+      _f2w_r1_Cfg(f, w);
+      return tblr1.cfgToJson(w);
+    case 'tblr2 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblr2.TableWireReport();
+        final w = tblr2.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblr2.cfgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblr2_fixed.Cfg.new, r2_fixed.cfgFixedNewPlan, tblr2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, r2_fixed.cfgFixedLoad);
+      if (f == null) return null;
+      final w = tblr2.Cfg();
+      _f2w_r2_Cfg(f, w);
+      return tblr2.cfgToJson(w);
+    case 'tblv1 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblv1.TableWireReport();
+        final w = tblv1.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblv1.cfgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblv1_fixed.Cfg.new, v1_fixed.cfgFixedNewPlan, tblv1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, v1_fixed.cfgFixedLoad);
+      if (f == null) return null;
+      final w = tblv1.Cfg();
+      _f2w_v1_Cfg(f, w);
+      return tblv1.cfgToJson(w);
+    case 'tblv2 Cfg':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblv2.TableWireReport();
+        final w = tblv2.cfgWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblv2.cfgToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tblv2_fixed.Cfg.new, v2_fixed.cfgFixedNewPlan, tblv2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, v2_fixed.cfgFixedLoad);
+      if (f == null) return null;
+      final w = tblv2.Cfg();
+      _f2w_v2_Cfg(f, w);
+      return tblv2.cfgToJson(w);
+    case 'vocab9demo Wide00':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocab9demo.TableWireReport();
+        final w = vocab9demo.wide00WireLoad(wire, rep);
+        if (rep.refused) return null;
+        return vocab9demo.wide00ToJson(w);
+      }
+      final f = _fixedLoadOne(wire, vocab9demo_fixed.Wide00.new, vocab9.wide00FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab9.wide00FixedLoad);
+      if (f == null) return null;
+      final w = vocab9demo.Wide00();
+      _f2w_vocab9_Wide00(f, w);
+      return vocab9demo.wide00ToJson(w);
+    case 'vocab9demo Wide19':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocab9demo.TableWireReport();
+        final w = vocab9demo.wide19WireLoad(wire, rep);
+        if (rep.refused) return null;
+        return vocab9demo.wide19ToJson(w);
+      }
+      final f = _fixedLoadOne(wire, vocab9demo_fixed.Wide19.new, vocab9.wide19FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab9.wide19FixedLoad);
+      if (f == null) return null;
+      final w = vocab9demo.Wide19();
+      _f2w_vocab9_Wide19(f, w);
+      return vocab9demo.wide19ToJson(w);
+    case 'vocabdemo Wide00':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocabdemo.TableWireReport();
+        final w = vocabdemo.wide00WireLoad(wire, rep);
+        if (rep.refused) return null;
+        return vocabdemo.wide00ToJson(w);
+      }
+      final f = _fixedLoadOne(wire, vocabdemo_fixed.Wide00.new, vocab.wide00FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab.wide00FixedLoad);
+      if (f == null) return null;
+      final w = vocabdemo.Wide00();
+      _f2w_vocab_Wide00(f, w);
+      return vocabdemo.wide00ToJson(w);
+    case 'vocabdemo Wide09':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = vocabdemo.TableWireReport();
+        final w = vocabdemo.wide09WireLoad(wire, rep);
+        if (rep.refused) return null;
+        return vocabdemo.wide09ToJson(w);
+      }
+      final f = _fixedLoadOne(wire, vocabdemo_fixed.Wide09.new, vocab.wide09FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab.wide09FixedLoad);
+      if (f == null) return null;
+      final w = vocabdemo.Wide09();
+      _f2w_vocab_Wide09(f, w);
+      return vocabdemo.wide09ToJson(w);
+    case 'widedemo Caption':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = widedemo.TableWireReport();
+        final w = widedemo.captionWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return widedemo.captionToJson(w);
+      }
+      final f = _fixedLoadOne(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.captionFixedLoad);
+      if (f == null) return null;
+      final w = widedemo.Caption();
+      _f2w_wide_Caption(f, w);
+      return widedemo.captionToJson(w);
+    case 'widedemo Stamp':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = widedemo.TableWireReport();
+        final w = widedemo.stampWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return widedemo.stampToJson(w);
+      }
+      final f = _fixedLoadOne(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad);
+      if (f == null) return null;
+      final w = widedemo.Stamp();
+      _f2w_wide_Stamp(f, w);
+      return widedemo.stampToJson(w);
   }
   return null;
 }
 
-String? loadReport(String unit, String root, Uint8List wire) {
+String? loadReport(String unit, String root, Uint8List wire, {bool framing = false}) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
-      final r=feature.TableWireReport();feature.rootWireLoad(wire,r);
-      return _reportLine(r.unknown,0,r.widened,0,0,r.refused,r.refused);
+      final rep = feature.TableWireReport();
+      feature.rootWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'featurewitnesses ArrayRoot':
-      final r=feature.TableWireReport();feature.arrayRootWireLoad(wire,r);
-      return _reportLine(r.unknown,0,r.widened,0,0,r.refused,r.refused);
-
-    case 'graphdemo ListNode':
-      final r = graphdemo.TableWireReport();
-      graphdemo.listNodeWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'listdemo Army':
-      final r = listdemo.TableWireReport();
-      listdemo.armyWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'listdemo Bounded':
-      final r = listdemo.TableWireReport();
-      listdemo.boundedWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'listdemo Ints':
-      final r = listdemo.TableWireReport();
-      listdemo.intsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'listdemo Squad':
-      final r = listdemo.TableWireReport();
-      listdemo.squadWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblv1 Cfg':
-      final r = tblv1.TableWireReport();
-      tblv1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblv2 Cfg':
-      final r = tblv2.TableWireReport();
-      tblv2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = feature.TableWireReport();
+      feature.arrayRootWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'tblg1 Guarded':
+      final rep = tblg1.TableWireReport();
+      tblg1.guardedWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'tblw1 Fleet':
-      final r = tblw1.TableWireReport();
-      tblw1.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = tblw1.TableWireReport();
+      tblw1.fleetWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'tblw2 Fleet':
-      final r = tblw2.TableWireReport();
-      tblw2.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblr1 Cfg':
-      final r = tblr1.TableWireReport();
-      tblr1.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblr2 Cfg':
-      final r = tblr2.TableWireReport();
-      tblr2.cfgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = tblw2.TableWireReport();
+      tblw2.fleetWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'graphdemo Scene':
-      final r = graphdemo.TableWireReport();
-      graphdemo.sceneWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = graphdemo.TableWireReport();
+      graphdemo.sceneWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'blobdemo Catalog':
-      final r = blobdemo.TableWireReport();
-      blobdemo.catalogWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = blobdemo.TableWireReport();
+      blobdemo.catalogWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'listdemo Save':
-      final r = listdemo.TableWireReport();
-      listdemo.saveWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = listdemo.TableWireReport();
+      listdemo.saveWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'listdemo Album':
-      final r = listdemo.TableWireReport();
-      listdemo.albumWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = listdemo.TableWireReport();
+      listdemo.albumWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'listdemo Sheet':
-      final r = listdemo.TableWireReport();
-      listdemo.sheetWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = listdemo.TableWireReport();
+      listdemo.sheetWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'listdemo Unbounded':
-      final r = listdemo.TableWireReport();
-      listdemo.unboundedWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = listdemo.TableWireReport();
+      listdemo.unboundedWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Cells':
-      final r = mapdemo.TableWireReport();
-      mapdemo.cellsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.cellsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Chunks':
-      final r = mapdemo.TableWireReport();
-      mapdemo.chunksWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.chunksWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Crews':
-      final r = mapdemo.TableWireReport();
-      mapdemo.crewsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.crewsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Depth':
-      final r = mapdemo.TableWireReport();
-      mapdemo.depthWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.depthWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Docs':
-      final r = mapdemo.TableWireReport();
-      mapdemo.docsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.docsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Fleet':
-      final r = mapdemo.TableWireReport();
-      mapdemo.fleetWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.fleetWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Pairs':
-      final r = mapdemo.TableWireReport();
-      mapdemo.pairsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.pairsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Runs':
-      final r = mapdemo.TableWireReport();
-      mapdemo.runsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.runsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Slots':
-      final r = mapdemo.TableWireReport();
-      mapdemo.slotsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.slotsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Spans':
-      final r = mapdemo.TableWireReport();
-      mapdemo.spansWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.spansWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Text':
-      final r = mapdemo.TableWireReport();
-      mapdemo.textWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = mapdemo.TableWireReport();
+      mapdemo.textWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'mapdemo Trails':
-      final r = mapdemo.TableWireReport();
-      mapdemo.trailsWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'messagedemo ToolMessage':
-      final r = messagedemo.TableWireReport();
-      messagedemo.toolMessageWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'scalars SimState':
-      final r = scalardemo.TableWireReport();
-      scalardemo.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'widedemo Caption':
-      final r = widedemo.TableWireReport();
-      widedemo.captionWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'widedemo Stamp':
-      final r = widedemo.TableWireReport();
-      widedemo.stampWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    // THE P SET's presence evolution and the M SET's arm evolution
-    // (docs/SPEC-TABLES.md §4, §5): a value, an optional and a pointer reading
-    // one another, and a union whose arms moved, each read tolerantly
-    case 'tblp1 Chain':
-      final r = tblp1.TableWireReport();
-      tblp1.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblp3 Chain':
-      final r = tblp3.TableWireReport();
-      tblp3.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    // the stream unit's parts: an element kind, a count past its bound and
-    // an index out of range, each read tolerantly (§4)
+      final rep = mapdemo.TableWireReport();
+      mapdemo.trailsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'widelist Wide':
+      final rep = widelist.TableWireReport();
+      widelist.wideWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'listdemo Army':
+      final rep = listdemo.TableWireReport();
+      listdemo.armyWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'listdemo Mixed':
+      final rep = listdemo.TableWireReport();
+      listdemo.mixedWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'streamdemo Feed':
-      final r = streamdemo.TableWireReport();
-      streamdemo.feedWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = streamdemo.TableWireReport();
+      streamdemo.feedWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'tabledemo WideBlob':
+      return _reportLine(0, 0, 0, 0, 0, true, true);
+    case 'graphdemo ListNode':
+      final rep = graphdemo.TableWireReport();
+      graphdemo.listNodeWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'listdemo Bounded':
+      final rep = listdemo.TableWireReport();
+      listdemo.boundedWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'listdemo Ints':
+      final rep = listdemo.TableWireReport();
+      listdemo.intsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'listdemo Squad':
+      final rep = listdemo.TableWireReport();
+      listdemo.squadWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
     case 'tblp2 Chain':
-      final r = tblp2.TableWireReport();
-      tblp2.chainWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    // the 64-bit id-table pair and the arm retypes (§3, §5): K1 and K2 read
-    // each other's escapes, A2 reads A1's arms moved, retyped and unknown
-    case 'tblk1 Root':
-      final r = tblk1.TableWireReport();
-      tblk1.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblk2 Root':
-      final r = tblk2.TableWireReport();
-      tblk2.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tbla2 Root':
-      final r = tbla2.TableWireReport();
-      tbla2.rootWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
-    case 'tblscalars2 SimState':
-      final r = scalardemo2.TableWireReport();
-      scalardemo2.simStateWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      final rep = tblp2.TableWireReport();
+      tblp2.chainWireLoad(wire, rep);
+      return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+    case 'backenddemo LoginRequest':
+      return _fixedReportLine(wire, backenddemo_fixed.LoginRequest.new, backend.loginRequestFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), backend.loginRequestFixedLoad);
+    case 'backenddemo MatchResult':
+      return _fixedReportLine(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), backend.matchResultFixedLoad);
+    case 'backenddemo StorePurchase':
+      return _fixedReportLine(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), backend.storePurchaseFixedLoad);
+    case 'messagedemo ToolMessage':
+      return _fixedReportLine(wire, messagedemo_fixed.ToolMessage.new, messages_fixed.toolMessageFixedNewPlan, messagedemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), messages_fixed.toolMessageFixedLoad);
+    case 'scalars SimState':
+      return _fixedReportLine(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), scalars_fixed.simStateFixedLoad);
+    case 'tabledemo ArchiveConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.ArchiveConfig.new, nested_fixed.archiveConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), nested_fixed.archiveConfigFixedLoad);
+    case 'tabledemo KeyedConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.KeyedConfig.new, keyed_fixed.keyedConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), keyed_fixed.keyedConfigFixedLoad);
+    case 'tabledemo LoadoutConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.loadoutConfigFixedLoad);
+    case 'tabledemo PackConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), pack_fixed.packConfigFixedLoad);
+    case 'tabledemo ProfileConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.profileConfigFixedLoad);
+    case 'tabledemo RootConfig':
+      return _fixedReportLine(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.rootConfigFixedLoad);
     case 'tblm1 Msg':
-      final r = tblm1.TableWireReport();
-      tblm1.msgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      return _fixedReportLine(wire, tblm1_fixed.Msg.new, m1_fixed.msgFixedNewPlan, tblm1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), m1_fixed.msgFixedLoad);
     case 'tblm2 Msg':
-      final r = tblm2.TableWireReport();
-      tblm2.msgWireLoad(wire, r);
-      return _reportLine(r.unknown, 0, r.widened, 0, 0, r.refused, r.refused);
+      return _fixedReportLine(wire, tblm2_fixed.Msg.new, m2_fixed.msgFixedNewPlan, tblm2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), m2_fixed.msgFixedLoad);
+    case 'tblp1 Chain':
+      return _fixedReportLine(wire, tblp1_fixed.Chain.new, p1_fixed.chainFixedNewPlan, tblp1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), p1_fixed.chainFixedLoad);
+    case 'tblp3 Chain':
+      return _fixedReportLine(wire, tblp3_fixed.Chain.new, p3_fixed.chainFixedNewPlan, tblp3_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), p3_fixed.chainFixedLoad);
+    case 'tblr1 Cfg':
+      if (framing && (wire.isEmpty || wire[0] != 3)) {
+        final rep = tblr1.TableWireReport();
+        tblr1.cfgWireLoad(wire, rep);
+        final scan = tblr1.TableWireReader(wire, wire.length)..report = rep;
+        if (!rep.refused && scan.open() == 0) {
+          scan.scanNodeTable();
+          if (scan.wireUnreachedNode()) rep.refuse('unreached_node');
+        }
+        return _reportLine(rep.unknown, 0, rep.widened, 0, 0, rep.refused, rep.refused);
+      }
+      return _fixedReportLine(wire, tblr1_fixed.Cfg.new, r1_fixed.cfgFixedNewPlan, tblr1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), r1_fixed.cfgFixedLoad);
+    case 'tblr2 Cfg':
+      return _fixedReportLine(wire, tblr2_fixed.Cfg.new, r2_fixed.cfgFixedNewPlan, tblr2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), r2_fixed.cfgFixedLoad);
+    case 'tblv1 Cfg':
+      return _fixedReportLine(wire, tblv1_fixed.Cfg.new, v1_fixed.cfgFixedNewPlan, tblv1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), v1_fixed.cfgFixedLoad);
+    case 'tblv2 Cfg':
+      return _fixedReportLine(wire, tblv2_fixed.Cfg.new, v2_fixed.cfgFixedNewPlan, tblv2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), v2_fixed.cfgFixedLoad);
+    case 'vocab9demo Wide00':
+      return _fixedReportLine(wire, vocab9demo_fixed.Wide00.new, vocab9.wide00FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab9.wide00FixedLoad);
+    case 'vocab9demo Wide19':
+      return _fixedReportLine(wire, vocab9demo_fixed.Wide19.new, vocab9.wide19FixedNewPlan, vocab9demo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab9.wide19FixedLoad);
+    case 'vocabdemo Wide00':
+      return _fixedReportLine(wire, vocabdemo_fixed.Wide00.new, vocab.wide00FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab.wide00FixedLoad);
+    case 'vocabdemo Wide09':
+      return _fixedReportLine(wire, vocabdemo_fixed.Wide09.new, vocab.wide09FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab.wide09FixedLoad);
+    case 'widedemo Caption':
+      return _fixedReportLine(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), caption_fixed.captionFixedLoad);
+    case 'widedemo Stamp':
+      return _fixedReportLine(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), caption_fixed.stampFixedLoad);
+    case 'tbla2 Root':
+      return _fixedReportLine(wire, tbla2_fixed.Root.new, a2_fixed.rootFixedNewPlan, tbla2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), a2_fixed.rootFixedLoad);
+    case 'tblk1 Root':
+      return _fixedReportLine(wire, tblk1_fixed.Root.new, k1_fixed.rootFixedNewPlan, tblk1_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), k1_fixed.rootFixedLoad);
+    case 'tblk2 Root':
+      return _fixedReportLine(wire, tblk2_fixed.Root.new, k2_fixed.rootFixedNewPlan, tblk2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), k2_fixed.rootFixedLoad);
+    case 'tblscalars2 SimState':
+      return _fixedReportLine(wire, scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), scalars2_fixed.simStateFixedLoad);
   }
   return null;
 }
@@ -1361,133 +3389,156 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
   String unit,
   String root,
   Uint8List wire,
+  String? jsonText,
+  String shareSrc,
+  String shareAlias,
 ) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
-      final r=feature.TableWireReport();final value=feature.rootWireLoad(wire,r);
-      if(r.refused||r.refused)return(-1,(_,__)=>false);
+      final r = feature.TableWireReport();
+      final tr = feature.TableTextReport();
+      final value = jsonText != null ? feature.rootFromJson(jsonText, tr) : feature.rootWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return(featurecook.RootCook.cookMeasure(value),(out,order)=>featurecook.RootCook.cook(value,out,order));
     case 'featurewitnesses ArrayRoot':
-      final r=feature.TableWireReport();final value=feature.arrayRootWireLoad(wire,r);
-      if(r.refused||r.refused)return(-1,(_,__)=>false);
+      final r = feature.TableWireReport();
+      final tr = feature.TableTextReport();
+      final value = jsonText != null ? feature.arrayRootFromJson(jsonText, tr) : feature.arrayRootWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return(featurecook.ArrayRootCook.cookMeasure(value),(out,order)=>featurecook.ArrayRootCook.cook(value,out,order));
 
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
-      final value = graphdemo.sceneWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = graphdemo.TableTextReport();
+      final value = jsonText != null ? graphdemo.sceneFromJson(jsonText, tr) : graphdemo.sceneWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         ck.SceneCook.cookMeasure(value),
         (out, order) => ck.SceneCook.cook(value, out, order),
       );
     case 'blobdemo Catalog':
       final r = blobdemo.TableWireReport();
-      final value = blobdemo.catalogWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = blobdemo.TableTextReport();
+      final value = jsonText != null ? blobdemo.catalogFromJson(jsonText, tr) : blobdemo.catalogWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
+      if (shareSrc == 'thumb' && shareAlias == 'alias') value.alias = value.thumb;
       return (
         assets.CatalogCook.cookMeasure(value),
         (out, order) => assets.CatalogCook.cook(value, out, order),
       );
     case 'tabledemo ArchiveConfig':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.archiveConfigWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.archiveConfigFromJson(jsonText, tr) : tabledemo.archiveConfigWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         nestedcook.ArchiveConfigCookWire.cookMeasure(value),
         (out, order) => nestedcook.ArchiveConfigCookWire.cook(value, out, order),
       );
     case 'tabledemo KeyedConfig':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.keyedConfigWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.keyedConfigFromJson(jsonText, tr) : tabledemo.keyedConfigWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         keyedcook.KeyedConfigCookWire.cookMeasure(value),
         (out, order) => keyedcook.KeyedConfigCookWire.cook(value, out, order),
       );
     case 'tabledemo LoadoutConfig':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.loadoutConfigWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.loadoutConfigFromJson(jsonText, tr) : tabledemo.loadoutConfigWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         tablescook.LoadoutConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.LoadoutConfigCookWire.cook(value, out, order),
       );
     case 'tabledemo ProfileConfig':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.profileConfigWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.profileConfigFromJson(jsonText, tr) : tabledemo.profileConfigWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         tablescook.ProfileConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.ProfileConfigCookWire.cook(value, out, order),
       );
     case 'tabledemo RootConfig':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.rootConfigWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.rootConfigFromJson(jsonText, tr) : tabledemo.rootConfigWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         tablescook.RootConfigCookWire.cookMeasure(value),
         (out, order) => tablescook.RootConfigCookWire.cook(value, out, order),
       );
     case 'tabledemo WideBlob':
       final r = tabledemo.TableWireReport();
-      final value = tabledemo.wideBlobWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tabledemo.TableTextReport();
+      final value = jsonText != null ? tabledemo.wideBlobFromJson(jsonText, tr) : tabledemo.wideBlobWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         widecook.WideBlobCookWire.cookMeasure(value),
         (out, order) => widecook.WideBlobCookWire.cook(value, out, order),
       );
     case 'tblv1 Cfg':
       final r = tblv1.TableWireReport();
-      final value = tblv1.cfgWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblv1.TableTextReport();
+      final value = jsonText != null ? tblv1.cfgFromJson(jsonText, tr) : tblv1.cfgWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         v1cook.CfgCookWire.cookMeasure(value),
         (out, order) => v1cook.CfgCookWire.cook(value, out, order),
       );
     case 'tblv2 Cfg':
       final r = tblv2.TableWireReport();
-      final value = tblv2.cfgWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblv2.TableTextReport();
+      final value = jsonText != null ? tblv2.cfgFromJson(jsonText, tr) : tblv2.cfgWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         v2cook.CfgCookWire.cookMeasure(value),
         (out, order) => v2cook.CfgCookWire.cook(value, out, order),
       );
     case 'tblp1 Chain':
       final r = tblp1.TableWireReport();
-      final value = tblp1.chainWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblp1.TableTextReport();
+      final value = jsonText != null ? tblp1.chainFromJson(jsonText, tr) : tblp1.chainWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         p1cook.ChainCookWire.cookMeasure(value),
         (out, order) => p1cook.ChainCookWire.cook(value, out, order),
       );
     case 'tblp3 Chain':
       final r = tblp3.TableWireReport();
-      final value = tblp3.chainWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblp3.TableTextReport();
+      final value = jsonText != null ? tblp3.chainFromJson(jsonText, tr) : tblp3.chainWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         p3cook.ChainCookWire.cookMeasure(value),
         (out, order) => p3cook.ChainCookWire.cook(value, out, order),
       );
     case 'tblm1 Msg':
       final r = tblm1.TableWireReport();
-      final value = tblm1.msgWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblm1.TableTextReport();
+      final value = jsonText != null ? tblm1.msgFromJson(jsonText, tr) : tblm1.msgWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         m1cook.MsgCookWire.cookMeasure(value),
         (out, order) => m1cook.MsgCookWire.cook(value, out, order),
       );
     case 'tblm2 Msg':
       final r = tblm2.TableWireReport();
-      final value = tblm2.msgWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = tblm2.TableTextReport();
+      final value = jsonText != null ? tblm2.msgFromJson(jsonText, tr) : tblm2.msgWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         m2cook.MsgCookWire.cookMeasure(value),
         (out, order) => m2cook.MsgCookWire.cook(value, out, order),
       );
     case 'messagedemo ToolMessage':
       final r = messagedemo.TableWireReport();
-      final value = messagedemo.toolMessageWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = messagedemo.TableTextReport();
+      final value = jsonText != null ? messagedemo.toolMessageFromJson(jsonText, tr) : messagedemo.toolMessageWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         messagescook.ToolMessageCookWire.cookMeasure(value),
         (out, order) =>
@@ -1495,168 +3546,189 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
       );
     case 'scalars SimState':
       final r = scalardemo.TableWireReport();
-      final value = scalardemo.simStateWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = scalardemo.TableTextReport();
+      final value = jsonText != null ? scalardemo.simStateFromJson(jsonText, tr) : scalardemo.simStateWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         scalarscook.SimStateCookWire.cookMeasure(value),
         (out, order) => scalarscook.SimStateCookWire.cook(value, out, order),
       );
     case 'streamdemo Feed':
       final r = streamdemo.TableWireReport();
-      final value = streamdemo.feedWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = streamdemo.TableTextReport();
+      final value = jsonText != null ? streamdemo.feedFromJson(jsonText, tr) : streamdemo.feedWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         streamcook.FeedCook.cookMeasure(value),
         (out, order) => streamcook.FeedCook.cook(value, out, order),
       );
     case 'listdemo Save':
       final r = listdemo.TableWireReport();
-      final value = listdemo.saveWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.saveFromJson(jsonText, tr) : listdemo.saveWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lsavecook.SaveCook.cookMeasure(value),
         (out, order) => lsavecook.SaveCook.cook(value, out, order),
       );
     case 'listdemo Mixed':
       final r = listdemo.TableWireReport();
-      final value = listdemo.mixedWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.mixedFromJson(jsonText, tr) : listdemo.mixedWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lsavecook.MixedCook.cookMeasure(value),
         (out, order) => lsavecook.MixedCook.cook(value, out, order),
       );
     case 'listdemo Album':
       final r = listdemo.TableWireReport();
-      final value = listdemo.albumWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.albumFromJson(jsonText, tr) : listdemo.albumWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lsharedcook.AlbumCook.cookMeasure(value),
         (out, order) => lsharedcook.AlbumCook.cook(value, out, order),
       );
     case 'listdemo Sheet':
       final r = listdemo.TableWireReport();
-      final value = listdemo.sheetWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.sheetFromJson(jsonText, tr) : listdemo.sheetWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lholderscook.SheetCook.cookMeasure(value),
         (out, order) => lholderscook.SheetCook.cook(value, out, order),
       );
     case 'listdemo Army':
       final r = listdemo.TableWireReport();
-      final value = listdemo.armyWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.armyFromJson(jsonText, tr) : listdemo.armyWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lholderscook.ArmyCook.cookMeasure(value),
         (out, order) => lholderscook.ArmyCook.cook(value, out, order),
       );
     case 'listdemo Unbounded':
       final r = listdemo.TableWireReport();
-      final value = listdemo.unboundedWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = listdemo.TableTextReport();
+      final value = jsonText != null ? listdemo.unboundedFromJson(jsonText, tr) : listdemo.unboundedWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         lmigratecook.UnboundedCook.cookMeasure(value),
         (out, order) => lmigratecook.UnboundedCook.cook(value, out, order),
       );
     case 'mapdemo Cells':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.cellsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.cellsFromJson(jsonText, tr) : mapdemo.cellsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mcellscook.CellsCook.cookMeasure(value),
         (out, order) => mcellscook.CellsCook.cook(value, out, order),
       );
     case 'mapdemo Chunks':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.chunksWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.chunksFromJson(jsonText, tr) : mapdemo.chunksWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mchunkscook.ChunksCook.cookMeasure(value),
         (out, order) => mchunkscook.ChunksCook.cook(value, out, order),
       );
     case 'mapdemo Crews':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.crewsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.crewsFromJson(jsonText, tr) : mapdemo.crewsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mcrewscook.CrewsCook.cookMeasure(value),
         (out, order) => mcrewscook.CrewsCook.cook(value, out, order),
       );
     case 'mapdemo Depth':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.depthWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.depthFromJson(jsonText, tr) : mapdemo.depthWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mdepthcook.DepthCook.cookMeasure(value),
         (out, order) => mdepthcook.DepthCook.cook(value, out, order),
       );
     case 'mapdemo Docs':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.docsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.docsFromJson(jsonText, tr) : mapdemo.docsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mdocscook.DocsCook.cookMeasure(value),
         (out, order) => mdocscook.DocsCook.cook(value, out, order),
       );
     case 'mapdemo Fleet':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.fleetWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.fleetFromJson(jsonText, tr) : mapdemo.fleetWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mfleetcook.FleetCook.cookMeasure(value),
         (out, order) => mfleetcook.FleetCook.cook(value, out, order),
       );
     case 'mapdemo Pairs':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.pairsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.pairsFromJson(jsonText, tr) : mapdemo.pairsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mpairscook.PairsCook.cookMeasure(value),
         (out, order) => mpairscook.PairsCook.cook(value, out, order),
       );
     case 'mapdemo Runs':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.runsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.runsFromJson(jsonText, tr) : mapdemo.runsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mrunscook.RunsCook.cookMeasure(value),
         (out, order) => mrunscook.RunsCook.cook(value, out, order),
       );
     case 'mapdemo Slots':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.slotsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.slotsFromJson(jsonText, tr) : mapdemo.slotsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mslotscook.SlotsCook.cookMeasure(value),
         (out, order) => mslotscook.SlotsCook.cook(value, out, order),
       );
     case 'mapdemo Spans':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.spansWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.spansFromJson(jsonText, tr) : mapdemo.spansWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mspanscook.SpansCook.cookMeasure(value),
         (out, order) => mspanscook.SpansCook.cook(value, out, order),
       );
     case 'mapdemo Text':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.textWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.textFromJson(jsonText, tr) : mapdemo.textWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mtextcook.TextCook.cookMeasure(value),
         (out, order) => mtextcook.TextCook.cook(value, out, order),
       );
     case 'mapdemo Trails':
       final r = mapdemo.TableWireReport();
-      final value = mapdemo.trailsWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = mapdemo.TableTextReport();
+      final value = jsonText != null ? mapdemo.trailsFromJson(jsonText, tr) : mapdemo.trailsWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         mtrailscook.TrailsCook.cookMeasure(value),
         (out, order) => mtrailscook.TrailsCook.cook(value, out, order),
       );
     case 'widelist Wide':
       final r = widelist.TableWireReport();
-      final value = widelist.wideWireLoad(wire, r);
-      if (r.refused || r.refused) return (-1, (_, _) => false);
+      final tr = widelist.TableTextReport();
+      final value = jsonText != null ? widelist.wideFromJson(jsonText, tr) : widelist.wideWireLoad(wire, r);
+      if (r.refused || tr.refused) return (-1, (_, _) => false);
       return (
         widelistcook.WideCook.cookMeasure(value),
         (out, order) => widelistcook.WideCook.cook(value, out, order),
@@ -1675,10 +3747,33 @@ int surfaceCookWrite(String outDir) {
       stderr.writeln('driver: cook-write ${f[1]} names no instance');
       return 1;
     }
+    String? jsonText;
+    var shareSrc = '-';
+    var shareAlias = '-';
+    if (f.length > 2 && f[2].endsWith('.json')) {
+      jsonText = readJsonTextFile(f[2]);
+      if (f.length > 3) shareSrc = f[3];
+      if (f.length > 4) shareAlias = f[4];
+    } else {
+      for (final tok in f.skip(2)) {
+        if (tok.startsWith('input=')) {
+          jsonText = readJsonTextFile(tok.substring(6));
+        } else if (tok.startsWith('share=')) {
+          final sp = tok.substring(6).split(':');
+          if (sp.length == 2) {
+            shareSrc = sp[0];
+            shareAlias = sp[1];
+          }
+        }
+      }
+    }
     final writer = cookWriter(
       instance[2],
       instance[3],
       File(instance[4]).readAsBytesSync(),
+      jsonText,
+      shareSrc,
+      shareAlias,
     );
     if (writer == null) {
       final why =
@@ -1764,6 +3859,46 @@ int surfaceJsonWrite(String outDir) {
     }
     File('$outDir/${f[1]}.json').writeAsStringSync(text);
   }
+  for (final f in kind('json-write-refusal')) {
+    final wire = File(f[4]).readAsBytesSync();
+    String? outText;
+    try {
+      switch ('${f[2]} ${f[3]}') {
+        case 'graphdemo Scene':
+          final r = graphdemo.TableWireReport();
+          final v = graphdemo.sceneWireLoad(wire, r);
+          if (r.refused) {
+            outText = 'refused\n';
+          } else {
+            outText = graphdemo.sceneToJson(v);
+          }
+          break;
+        case 'tabledemo ProfileConfig':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.profileConfigFixedLoad);
+          if (fx == null) return 1;
+          final v = tabledemo.ProfileConfig();
+          _f2w_examples_ProfileConfig(fx, v);
+          if (f[5] == 'narrow:name') v.name = String.fromCharCodes(const <int>[0x61, 0xd800, 0x62]);
+          outText = tabledemo.profileConfigToJson(v);
+          break;
+        case 'widedemo Stamp':
+          final fx = _fixedLoadOne(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad);
+          if (fx == null) return 1;
+          final v = widedemo.Stamp();
+          _f2w_wide_Stamp(fx, v);
+          if (f[5] == 'wide:label') v.label = String.fromCharCodes(const <int>[0x61, 0xd800, 0x62]);
+          outText = widedemo.stampToJson(v);
+          break;
+      }
+    } on StateError {
+      outText = 'refused\n';
+    }
+    if (outText == null) {
+      spillAbsent(outDir, '${f[1]}.json');
+      continue;
+    }
+    File('$outDir/${f[1]}.json').writeAsStringSync(outText);
+  }
   return 0;
 }
 
@@ -1823,7 +3958,10 @@ String? jsonHostileReport(String unit, String root, String text) {
     }
   } on FormatException {
     return 'refused\n';
+  } on StateError {
+    return 'refused\n';
   }
+  if (r.refused as bool) return 'refused\n';
   // the report line, then the §16 text of the value the read left
   return '${r.unknown},${0},0,${0},${0},false,read\n$value';
 }
@@ -1841,16 +3979,26 @@ int surfaceJsonHostile(String outDir) {
       continue;
     }
     File('$outDir/${f[1]}').writeAsStringSync(verdict);
+    // an accepted hostile read also writes the write-back wire of the value
+    // the text read left
+    final first = verdict.substring(0, verdict.indexOf('\n')).trimRight();
+    if (first.endsWith('read')) {
+      final saved = jsonReadSave(f[2], f[3], text);
+      if (saved != null) {
+        File('$outDir/${f[1]}.wire').writeAsBytesSync(saved);
+      }
+    }
   }
   return 0;
 }
 
 // ---- retain and retain-save (docs/SPEC-TABLES.md §6.6): RT1's Node loaded
 // with retention at the row's two capacities, measured and saved back. `retain`
-// prints `<retained>,<retain_lost>,<unknown> <save lost>`, `retain-save` the
-// saved bytes. `short` is ONE BYTE SHORT OF THE LAST RECORD: a roomy load says
-// what this port's own records cost, and the second load gets one byte less
-// (test/conformance/README.md). The id list's capacity is a count.
+// answers `read\n` plus the §16 text of the known value the read left (or the
+// refusal alone), `retain-save` the saved bytes. `short` is ONE BYTE SHORT OF
+// THE LAST RECORD: a roomy load says what this port's own records cost, and the
+// second load gets one byte less (test/conformance/README.md). The id list's
+// capacity is a count.
 const int _retainRoomy = 1 << 20;
 
 int surfaceRetain(String outDir, bool saves) {
@@ -1875,9 +4023,13 @@ int surfaceRetain(String outDir, bool saves) {
       report = tblrt1.TableWireReport();
     }
     final root = tblrt1.nodeWireLoadRetain(wire, store, report);
-    if (report.refused || report.refused) {
-      stderr.writeln('driver: ${f[1]}: retaining load failed');
-      return 1;
+    if (report.refused) {
+      // THE ONE READ'S VERDICT is the answer: a refused retaining read owes
+      // the refusal alone, and no bytes (docs/SPEC-TABLES.md §6.6)
+      if (!saves) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+      }
+      continue;
     }
     final size = tblrt1.nodeWireMeasureRetain(root, store);
     final save = tblrt1.TableWireReport();
@@ -1897,9 +4049,11 @@ int surfaceRetain(String outDir, bool saves) {
     if (saves) {
       File('$outDir/${f[1]}').writeAsBytesSync(out);
     } else {
+      // the verdict, then the §16 text of the known value the read left:
+      // retention keeps the unknown records for the save and never changes
+      // the value a reader of this build sees
       File('$outDir/${f[1]}').writeAsStringSync(
-        '${report.retained},${report.retainLost},${report.unknown} '
-        '${save.retainLost}\n',
+        'read\n${tblrt1.nodeToJson(root)}',
       );
     }
   }
@@ -1923,7 +4077,7 @@ bool _sameBytes(List<int> a, List<int> b) {
 int surfaceFraming(String outDir) {
   for (final f in kind('framing')) {
     final wire = File(f[4]).readAsBytesSync();
-    final line = loadReport(f[2], f[3], wire);
+    final line = loadReport(f[2], f[3], wire, framing: true);
     if (line == null) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -1931,7 +4085,18 @@ int surfaceFraming(String outDir) {
     final noValue = f.length > 5 && f[5] == 'no-value';
     final fields = line.trimRight().split(',');
     final damaged = fields.length == 7 && fields[5] == 'true';
-    if (fields.last == 'refused' || damaged || noValue) {
+    if (fields.last == 'refused' || damaged) {
+      File('$outDir/${f[1]}').writeAsStringSync(line);
+      continue;
+    }
+    // an accepted read writes its write-back wire, whatever it owes in text
+    final saved = wireResave(f[2], f[3], wire);
+    if (saved == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}.wire').writeAsBytesSync(saved);
+    if (noValue) {
       File('$outDir/${f[1]}').writeAsStringSync(line);
       continue;
     }
@@ -1962,13 +4127,17 @@ int surfaceReport(String outDir) {
       continue;
     }
     final text = jsonWriteText(f[2], f[3], wire);
-    if (text == null) {
-      // no text writer for this root: the line alone, and the value absent
+    final saved = wireResave(f[2], f[3], wire);
+    if (text == null || saved == null) {
+      // no text or save writer for this root: the line alone, and the value
+      // (and its write-back wire) absent
       File('$outDir/${f[1]}').writeAsStringSync(line);
       spillAbsent(outDir, f[1]);
       continue;
     }
     File('$outDir/${f[1]}').writeAsStringSync(line + text);
+    // the write-back wire of the accepted read
+    File('$outDir/${f[1]}.wire').writeAsBytesSync(saved);
   }
   return 0;
 }
@@ -2394,7 +4563,7 @@ _FuzzRun _plainCodec<V, R>(
     final m = measure(wire);
     final value = load(wire, report);
     final dynamic r=report;
-    final loaded=!r.refused&&!r.refused;
+    final loaded=!(r.refused as bool);
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value)) : null);
   };
 }
@@ -2415,7 +4584,7 @@ _FuzzRun _retainCodec<V, R, T>(
     final m = measure(wire);
     final value = load(wire, retain, report);
     final dynamic r=report;
-    final loaded=!r.refused&&!r.refused;
+    final loaded=!(r.refused as bool);
     return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value, retain, report)) : null);
   };
 }

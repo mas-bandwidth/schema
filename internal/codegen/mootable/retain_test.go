@@ -22,9 +22,11 @@ import (
 const retainFull = 1 << 20
 
 // retainRow is one `retain` row of the tables manifest (FORMAT.md):
-// <case> <unit> <root> <wire> <capacity> <ids> <save>. The row pins the
-// verdict (every row is readable) and the save; the counters are evolution
-// diagnostics, held to the Go reference engine and never pinned.
+// <case> <unit> <root> <wire> <capacity> <ids> <save>, with the legacy
+// <counters> <save lost> columns between ids and saves in the accepted
+// ten-field syntax. The row pins the verdict (every row is readable) and the
+// save; the counters are evolution diagnostics, held to the Go reference engine
+// and never pinned.
 type retainRow struct {
 	caseName, unit, root, wire, capacity, ids, saves string
 }
@@ -41,10 +43,10 @@ func retainRows(t *testing.T) []retainRow {
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
 		if len(x) > 0 && x[0] == "retain" {
-			if len(x) != 8 {
-				t.Fatalf("a retain row has %d fields, want 8: %q", len(x), sc.Text())
+			if len(x) != 8 && len(x) != 10 {
+				t.Fatalf("a retain row has %d fields, want 8 or 10: %q", len(x), sc.Text())
 			}
-			rows = append(rows, retainRow{x[1], x[2], x[3], x[4], x[5], x[6], x[7]})
+			rows = append(rows, retainRow{x[1], x[2], x[3], x[4], x[5], x[6], x[len(x)-1]})
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -456,20 +458,31 @@ print(tostring(v ~= nil) .. " " .. tostring(report.reason) .. " " .. report.reta
 	}
 }
 
+// schemaUnit generates the unit at one schema file. The retain controls name
+// the file they sabotage. A blank manifest key is not a path: generateUnit
+// would report "unit : no .schema files found" and the control would never
+// reach its gate.
+func schemaUnit(t *testing.T, rel string) *generatedUnit {
+	t.Helper()
+	return generateUnit(t, map[string][]string{rel: {rel}}, rel)
+}
+
 // TestMooRetainNegativeControl plants out the save hook's write of a kept
 // record (one anchor in the emitted table_retain.moo) and requires the
 // manifest's round-trip row to go red against its pinned save.
 func TestMooRetainNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	units, _ := readManifest(t)
 	var row retainRow
 	for _, r := range retainRows(t) {
 		if r.caseName == "retain_round_trip" {
 			row = r
 		}
 	}
-	g := generateUnit(t, units, row.unit)
+	if row.caseName != "retain_round_trip" {
+		t.Fatal("the manifest has no retain_round_trip row")
+	}
+	g := schemaUnit(t, "test/tables/RT1.schema")
 	wire, err := os.ReadFile(filepath.Join(root, row.wire))
 	if err != nil {
 		t.Fatal(err)
@@ -509,14 +522,16 @@ end
 
 func retainRoundTripRow(t *testing.T) (*generatedUnit, retainRow, []byte) {
 	t.Helper()
-	units, _ := readManifest(t)
 	var row retainRow
 	for _, r := range retainRows(t) {
 		if r.caseName == "retain_round_trip" {
 			row = r
 		}
 	}
-	g := generateUnit(t, units, row.unit)
+	if row.caseName != "retain_round_trip" {
+		t.Fatal("the manifest has no retain_round_trip row")
+	}
+	g := schemaUnit(t, "test/tables/RT1.schema")
 	wire, err := os.ReadFile(filepath.Join(root, row.wire))
 	if err != nil {
 		t.Fatal(err)
@@ -586,8 +601,7 @@ end
 func TestMooRetainRefusesWhatThePageRefuses(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	units, _ := readManifest(t)
-	fixed := generateUnit(t, units, "tblv2")
+	fixed := schemaUnit(t, "test/tables/V2.schema")
 	g, row, wire := retainRoundTripRow(t)
 	fixedMain := "--!strict\nlocal inputs = require(\"./inputs\")\nlocal L = require(\"./table_load\")\nlocal R = require(\"./table_retain\")\n" + fixed.requireAll() + `
 local report = L.newReport()

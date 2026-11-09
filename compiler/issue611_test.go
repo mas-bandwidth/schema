@@ -115,19 +115,25 @@ using P;
 
 class Program {
     static int Main() {
+        // a token past the field's domain refuses the JSON read (docs/SPEC-TABLES.md
+        // §4, §16.11), and the refused value is the declared default 0
         byte[] text = Encoding.UTF8.GetBytes("{\"experience\":99999999999999999999999999}");
         Ship s = new Ship();
         TableReport r = new TableReport();
-        if (!Schema.ShipFromJson(s, text, r)) {
-            Console.Error.WriteLine("FromJson failed");
+        if (Schema.ShipFromJson(s, text, r)) {
+            Console.Error.WriteLine("past the domain read succeeded");
             return 1;
         }
-        if (s.Experience != 4294967295u) {
-            Console.Error.WriteLine($"experience={s.Experience}, want 4294967295 (the ceiling, not the floor)");
+        if (s.Experience != 0) {
+            Console.Error.WriteLine($"experience={s.Experience}, want the default 0");
             return 2;
         }
-        if (r.Clamped != 2) {
-            Console.Error.WriteLine($"clamped={r.Clamped}, want 2");
+        // the ceiling itself reads
+        text = Encoding.UTF8.GetBytes("{\"experience\":4294967295}");
+        s = new Ship();
+        r = new TableReport();
+        if (!Schema.ShipFromJson(s, text, r) || s.Experience != 4294967295u) {
+            Console.Error.WriteLine($"experience={s.Experience}, want 4294967295 (the ceiling, not the floor)");
             return 3;
         }
         return 0;

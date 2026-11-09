@@ -14,26 +14,135 @@ import (
 // Variable roots stay on the id-table codec below these clauses.
 func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	roots := fixedRoots(u)
-	if len(roots) == 0 {
-		return runtime
+	fixedNames := map[string]bool{}
+	for _, st := range roots {
+		fixedNames[st.Name] = true
+	}
+	var noFile []*ir.Struct
+	for _, st := range ir.TableFixedRoots(u) {
+		if !fixedNames[st.Name] {
+			noFile = append(noFile, st)
+		}
 	}
 	var save, load strings.Builder
-	save.WriteString("  # A declared fixed root's file is form 3 (docs/SPEC-TABLES.md §3, §3.4).\n")
-	save.WriteString("  # The write is the fixed form's own. The variable codec below is for\n")
-	save.WriteString("  # variable roots, including one that holds a fixed table.\n\n")
-	load.WriteString("  # A declared fixed root is read as form 3, one record or a refusal.\n")
-	load.WriteString("  # Form 1 is previous_form: the form byte is named and nothing is decoded.\n\n")
-	save.WriteString(fixedClassHelpers(u))
+	if len(roots) > 0 {
+		save.WriteString("  # A declared fixed root's file is form 3 (docs/SPEC-TABLES.md §3, §3.4).\n")
+		save.WriteString("  # The write is the fixed form's own. The variable codec below is for\n")
+		save.WriteString("  # variable roots, including one that holds a fixed table.\n\n")
+		save.WriteString(fixedClassHelpers(u))
+	}
+	load.WriteString("  # variable_load is the strict variable-form read for the framing\n")
+	load.WriteString("  # vectors; strict_load is that read beside the fixed roots' own form.\n\n")
+	load.WriteString("  def variable_load(table, data) when is_binary(data) do\n")
+	load.WriteString("    Process.put(:elixir_strict_framing, true)\n\n")
+	load.WriteString("    try do\n")
+	load.WriteString("      variable_load_impl(table, data)\n")
+	load.WriteString("    after\n")
+	load.WriteString("      Process.delete(:elixir_strict_framing)\n")
+	load.WriteString("    end\n")
+	load.WriteString("  end\n\n")
+	for _, st := range roots {
+		load.WriteString(fmt.Sprintf("  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name))
+	}
+	for _, st := range noFile {
+		load.WriteString(fmt.Sprintf("  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name))
+	}
+	load.WriteString("  def strict_load(table, data) when is_binary(data), do: variable_load(table, data)\n\n")
+	load.WriteString(strictHelpers)
+	if len(roots) > 0 {
+		load.WriteString("  # A declared fixed root is read as form 3, one record or a refusal.\n")
+		load.WriteString("  # Form 1 is previous_form: the form byte is named and nothing is decoded.\n\n")
+	}
 	for _, st := range roots {
 		mod := fmt.Sprintf("%s.%s%s", ns, moduleBase(u.DeclFile[st.Name]), FixedModuleSuffix)
 		snake := ir.RustSnake(st.Name)
 		save.WriteString(fixedRootSaveClause(st.Name, mod+"."+snake+"_fixed_save([value])"))
 		load.WriteString(fixedRootLoadClauses(st.Name, mod+"."+snake+"_fixed_load(data)"))
 	}
-	runtime = insertOnce(runtime, "  # ---- the write side (docs/SPEC-TABLES.md §3) ----\n", save.String())
+	if len(roots) > 0 {
+		runtime = insertOnce(runtime, "  # ---- the write side (docs/SPEC-TABLES.md §3) ----\n", save.String())
+	}
 	runtime = insertOnce(runtime, "  # ---- the read side (docs/SPEC-TABLES.md §3, §4) ----\n", load.String())
+	if strings.Count(runtime, variableLoadEnd) != 1 {
+		panic("elixirtable: variable load clause not found exactly once")
+	}
+	runtime = strings.Replace(runtime, variableLoadEnd, variableLoadEnd+"\n"+variableLoadImpl(runtime), 1)
 	return runtime
 }
+
+const variableLoadHead = "  def load(table, data) when is_binary(data) do\n"
+
+const variableLoadEnd = "    :wire_damaged ->\n      {:error, :malformed, reasoned(empty_report(), :malformed)}\n  end\n"
+
+func variableLoadImpl(runtime string) string {
+	if strings.Count(runtime, variableLoadHead) != 1 || strings.Count(runtime, variableLoadEnd) != 1 {
+		panic("elixirtable: variable load clause not found exactly once")
+	}
+	start := strings.Index(runtime, variableLoadHead)
+	end := strings.Index(runtime, variableLoadEnd) + len(variableLoadEnd)
+	impl := strings.Replace(runtime[start:end], variableLoadHead, "  defp variable_load_impl(table, data) when is_binary(data) do\n", 1)
+	impl = strings.Replace(impl, "case entries(body, ids, desc, desc.variable) do", "case entries(body, ids, desc, true) do", 1)
+	return impl + "\n"
+}
+
+const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
+
+  defp strict_unknown!(13, payload, _nodes, ids) do
+    case leb(payload) do
+      {l, body} when byte_size(body) >= l ->
+        case entries(binary_part(body, 0, l), ids, false, :nested) do
+          {:ok, _fields, []} -> :ok
+          _ -> throw(:wire_damaged)
+        end
+
+      _ ->
+        throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(kind, payload, nodes, _ids) when kind in [17, 30] do
+    case leb(payload) do
+      {idx, _rest} when idx <= length(nodes) + 1 -> :ok
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(kind, payload, _nodes, _ids) when kind in [14, 16] do
+    case leb(payload) do
+      {_l, body} when byte_size(body) >= 2 -> :ok
+      _ -> throw(:wire_damaged)
+    end
+  end
+
+  defp strict_unknown!(_kind, _payload, _nodes, _ids), do: :ok
+
+  defp strict_reachable!(records, root) do
+    all = Map.put(records, 1, root)
+    seen = strict_reach([1], all, MapSet.new())
+
+    if Enum.any?(Map.keys(all), fn idx -> not MapSet.member?(seen, idx) end),
+      do: throw(:wire_damaged)
+
+    :ok
+  end
+
+  defp strict_reach([], _all, seen), do: seen
+
+  defp strict_reach([idx | rest], all, seen) do
+    if MapSet.member?(seen, idx) do
+      strict_reach(rest, all, seen)
+    else
+      refs =
+        case Map.fetch(all, idx) do
+          {:ok, value} -> stored_references(value, [])
+          :error -> []
+        end
+
+      strict_reach(refs ++ rest, all, MapSet.put(seen, idx))
+    end
+  end
+
+`
 
 // fixedClassHelpers is the conversion between the fixed form's value
 // surface (a struct with atom keys, an atom-tagged union, an atom enum and
@@ -46,8 +155,29 @@ func fixedClassHelpers(u *ir.Unit) string {
 	unionTo, unionFrom := fixedClassUnionPassthrough, fixedClassUnionPassthroughFrom
 	if len(u.Unions)+len(u.TableUnions) > 0 {
 		unionTo, unionFrom = fixedClassUnionTo, fixedClassUnionFrom
+		if !hasVoidUnionArm(u) {
+			unionFrom = fixedClassUnionFromNoVoid
+		}
 	}
 	return fixedClassHelperHead + unionTo + unionFrom + fixedClassHelperTail
+}
+
+func hasVoidUnionArm(u *ir.Unit) bool {
+	for _, un := range u.Unions {
+		for _, v := range un.Variants {
+			if v.Void() {
+				return true
+			}
+		}
+	}
+	for _, un := range u.TableUnions {
+		for _, v := range un.Variants {
+			if v.Void() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 const fixedClassUnionPassthrough = `
@@ -113,6 +243,33 @@ const fixedClassUnionFrom = `
             if Map.get(desc, :t) == :void,
               do: atom,
               else: {atom, fixed_class_value_from_table(desc, payload)}
+        end
+
+      {arm, payload} when is_atom(arm) ->
+        {arm, payload}
+
+      _ ->
+        value
+    end
+  end
+`
+
+const fixedClassUnionFromNoVoid = `
+  defp fixed_class_union_from_table(f, value) do
+    case value do
+      nil ->
+        nil
+
+      {arm, payload} when is_binary(arm) ->
+        union = Map.fetch!(@unions, Map.fetch!(f, :elem))
+        atom = String.to_atom(fixed_class_snake(arm))
+
+        case Map.get(union.by_name, arm) do
+          nil ->
+            {atom, payload}
+
+          desc ->
+            {atom, fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -310,7 +467,7 @@ const fixedClassHelperTail = `
 
       :list ->
         if is_list(value),
-          do: Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end),
+          do: fixed_class_list_from_table(f, value),
           else: []
 
       :union ->
@@ -327,6 +484,19 @@ const fixedClassHelperTail = `
 
       _ ->
         if value == nil, do: Map.get(f, :default), else: value
+    end
+  end
+
+  defp fixed_class_list_from_table(f, value) do
+    elems = Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
+
+    case Map.get(f, :fixed_array) do
+      n when is_integer(n) ->
+        kept = Enum.take(elems, n)
+        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+      _ ->
+        elems
     end
   end
 

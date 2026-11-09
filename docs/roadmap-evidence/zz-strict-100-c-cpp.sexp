@@ -37,9 +37,9 @@
 (:id "c/R11" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl" "test/c-tables/fixedform_v1.c"))
 (:id "c/R12" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl" "test/c-tables/fixedform_v1.c"))
 (:id "c/R13" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl" "test/c-tables/fixedform_v1.c"))
-(:id "c/R17" :state :todo :note "2026-11-08 audit: the row says the byte normalises; FIXED-FORM-ALGORITHM.md fix 2 says a bool or present byte other than 0/1 refuses wire_damaged. The C runtime refuses it as out_of_range, and the cited subtest only checks the emitted text.")
-(:id "c/C12" :state :todo :note "2026-11-08 audit: a bool byte other than 0/1 must refuse wire_damaged (fix 2); the C runtime counts it out_of_range.")
-(:id "c/C13" :state :todo :note "2026-11-08 audit: a present byte other than 0/1 must refuse wire_damaged (fix 2); the C runtime counts it out_of_range.")
+(:id "c/R17" :state :done :evidence ("internal/codegen/ctable/fixed_normalization_strict_test.go: TestCFixedNormalizationIsDamage, TestCFixedNormalizationIsDamageNegativeControl"))
+(:id "c/C12" :state :done :evidence ("internal/codegen/ctable/fixed_normalization_strict_test.go: TestCFixedNormalizationIsDamage, TestCFixedNormalizationIsDamageNegativeControl"))
+(:id "c/C13" :state :done :evidence ("internal/codegen/ctable/fixed_normalization_strict_test.go: TestCFixedNormalizationIsDamage, TestCFixedNormalizationIsDamageNegativeControl"))
 (:id "c/R30" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl"))
 (:id "c/E3/fixed-array-element" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl"))
 (:id "fixed-arrays/c/valid-data" :state :done :evidence ("internal/codegen/ctable/fixedform_strict_test.go: TestCFixedFormSourcesStrict, TestCFixedFormSourcesStrictNegativeControl"))
@@ -100,4 +100,4 @@
 (:id "vt/cards/c" :state :todo :note "2026-11-08 audit: make cards-c-test and cards-c-conformance do not compile (tables/cards/c/cards_test.c:401 and driver.c:132 read the retired kind_mismatch); the cards-driver-c negative control is red (main CI 42459510328).")
 
 ; ---- packet wire ----
-(:id "packet/cpp/defaults" :state :todo :note "2026-11-08 audit: make packet-defaults-cpp passes, but no negative control holds the C++ defaults gate (only the other legs' controls exist).")
+(:id "packet/cpp/defaults" :state :done :evidence ("internal/codegen/cpp/packet_defaults_control_test.go: TestCppPacketDefaults, TestCppPacketDefaultsNegativeControl" "test/packet-defaults/Defaults.schema and testdata/wire/packet-defaults") :note "2026-11-09: TestCppPacketDefaults generates and compiles the C++ unit, checks the constructors and all eight shared pins, reads each pin to its exact bit count and refuses a one-byte-short buffer; the negative control removes only the generated Sample flags default and requires the constructor-bytes marker. Run under SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 with the whole internal/codegen/cpp package green.")

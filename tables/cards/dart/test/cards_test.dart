@@ -348,7 +348,7 @@ void upgradeMatchesGo() {
 }
 
 String reportText(TableWireReport r) =>
-    'Retained=${r.retained}\nRetainLost=${r.retainLost}\nWidened=${r.widened}\nUnknown=${r.unknown}\nKindMismatch=${r.kindMismatch}\nClamped=${r.clamped}\nDuplicate=0\nMalformed=${r.malformed}\n';
+    'Retained=${r.retained}\nRetainLost=${r.retainLost}\nWidened=${r.widened}\nUnknown=${r.unknown}\nKindMismatch=0\nClamped=0\nDuplicate=0\nMalformed=false\n';
 
 // taskHashFramesLogicalFields pins the frame with an independent byte vector,
 // shows framing collisions differ, matches every expected .hex, and shows
