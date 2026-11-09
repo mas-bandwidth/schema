@@ -7679,6 +7679,7 @@ tables-big-endian-control-full:
 # conformance-big-endian is the nightly row: on run 42581682964 its make
 # step was 96 s inside a 127 s job. These three units still put a uint32,
 # a uint16 and a wstring on the wire, and the host bytes must match qemu-s390x.
+# The target measured 8.7 s on amd-2 with bin/schema warm (2026-11-09).
 .PHONY: conformance-big-endian-smoke
 conformance-big-endian-smoke: bin/schema
 	rm -rf build/be-go-smoke

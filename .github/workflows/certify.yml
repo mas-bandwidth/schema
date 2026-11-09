@@ -939,8 +939,11 @@ jobs:
   # (tables-big-endian-tables-full, card 282 s), its full corpus host-order
   # control (tables-big-endian-control-full, card 322 s) and the Go host-order
   # control (conformance-big-endian-negative-control, card 250 s). Same pinned
-  # ubuntu-24.04 archive and s390x/qemu pins. Big-endian reds stay with
-  # green-be-message-form, green-be-control and green-conf-go-big-endian.
+  # ubuntu-24.04 archive and s390x/qemu pins. The slowest per-commit row after
+  # the split is c-control at 103 s, and the go row's 127 s harness is now the
+  # per-commit smoke, so every per-commit row fits the 110 s budget. Big-endian
+  # reds stay with green-be-message-form, green-be-control and
+  # green-conf-go-big-endian.
   big-endian:
     name: big-endian (${{ matrix.leg }})
     runs-on: ubuntu-24.04

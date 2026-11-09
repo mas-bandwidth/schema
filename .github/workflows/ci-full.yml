@@ -1963,7 +1963,8 @@ jobs:
   # about the code in the diff, not about the compiler that built it — and it
   # fits the budget now that it is sharded by unit (issue #684): one row per
   # independent piece, so the run pays the longest piece rather than the sum.
-  # The controls keep their own rows, so nothing runs less than it did.
+  # The controls keep their own rows; the reduced host-order checks stay
+  # per-commit and the full corpus battery and control run nightly.
   #
   # THE PINS. The runner image is named rather than `-latest`, because package
   # versions are only meaningful against one archive; the cross compiler and
@@ -2005,8 +2006,12 @@ jobs:
       # is conformance-big-endian-smoke: three units, host bytes against
       # qemu-s390x. The full C++ battery and its host-order control stay
       # nightly as tables-big-endian-tables-full and
-      # tables-big-endian-control-full. Big-endian reds stay with
-      # green-be-message-form, green-be-control and green-conf-go-big-endian.
+      # tables-big-endian-control-full. After that split the slowest row left
+      # here is c-control at 103 s, under the 110 s budget; the smoke target
+      # itself measured 8.7 s on amd-2 with bin/schema warm (2026-11-09), and
+      # the row's floor is checkout, the Go toolchain and the cache restore.
+      # Big-endian reds stay with green-be-message-form, green-be-control and
+      # green-conf-go-big-endian.
       matrix:
         include:
           - leg: tables
