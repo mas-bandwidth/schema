@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -86,8 +87,8 @@ type vcCase struct {
 }
 
 func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
-	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated modules)")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -626,7 +627,7 @@ table Probe
     leaves []*Leaf
     head   *Leaf
     tail   int32
-    least  [2..4]uint8
+    least  [..4]uint8
     wide   bytes(16384)
 }
 `
