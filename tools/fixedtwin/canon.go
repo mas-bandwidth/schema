@@ -734,10 +734,13 @@ func collapse(s string) []string {
 	return lines
 }
 
-// The C fixed-count/length sibling lands on sprint/schema-c before its forward
-// merge to schema-cpp. Until then, compare the common C/C++ runtime while the
-// C++ refusal scan is covered against Go by cpptable/fixedbound_test.go. Remove
-// this named exclusion when that forward merge supplies the C scan.
+// THE COUNT AND TEXT PRE-SCAN IS THE STRICT READ, so it is not erased
+// blindly: a scan whose count or length refusal has been weakened stays in
+// the source and the twin diff reds on it. Only the reference's own scan,
+// with both bound clauses intact, is stripped here because the C leg answers
+// the same rule in table_fixed_apply; the Apply pair is compared on both
+// sides by the runtime diff. Delete this exclusion when the C leg emits the
+// scan too.
 func stripPendingCBoundScan(s string) string {
 	for _, name := range []string{"TableFixedRefuseScan", "table_fixed_refuse_scan"} {
 		i := strings.Index(s, name+"(")
@@ -750,11 +753,83 @@ func stripPendingCBoundScan(s string) string {
 			continue
 		}
 		end := matchingBrace(s, i+open)
-		if end >= 0 {
-			s = s[:start] + s[end+1:]
+		if end < 0 {
+			continue
 		}
+		if !strictCountTextScan(s[i : end+1]) {
+			continue
+		}
+		s = s[:start] + s[end+1:]
 	}
 	return s
+}
+
+// hasStrictCountTextScan reports whether s carries the strict count/text
+// scan at all. A missing scan is not a weakened one: stripPendingCBoundScan
+// leaves nothing behind to diff, so the gate must name its absence itself.
+// Comments and preprocessor are removed first: canonicalize deletes them
+// before the diff, so a scan that survives only in a comment or under #if 0
+// is not the read and must not satisfy this check.
+func hasStrictCountTextScan(s string) bool {
+	s = stripPreprocessor(stripComments(s))
+	for _, name := range []string{"TableFixedRefuseScan", "table_fixed_refuse_scan"} {
+		i := strings.Index(s, name+"(")
+		if i < 0 {
+			continue
+		}
+		open := strings.Index(s[i:], "{")
+		if open < 0 {
+			continue
+		}
+		end := matchingBrace(s, i+open)
+		if end < 0 {
+			continue
+		}
+		return strictCountTextScan(s[i : end+1])
+	}
+	return false
+}
+
+// hasStrictCountTextScanCall reports whether s invokes the strict count/text
+// scan and refuses the whole read through it. extractRuntime cuts the C++ slice
+// at the separate integrity runtime (canon.go), before the load body, so the
+// definition alone is not the strict read: a header that keeps
+// TableFixedRefuseScan but drops the call would leave the runtime diff with
+// nothing to compare and pass. The invocation and its refusal return are held
+// in the whole source, past that boundary.
+func hasStrictCountTextScanCall(s string) bool {
+	s = stripPreprocessor(stripComments(s))
+	s = applyIdents(s)
+	s = strings.ReplaceAll(s, "->", ".")
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.Contains(s, "if ( TableFixedRefuseScan( entries, entry_count, entry_guarded, scan + 8, FixedTableFixedGuards, why ) ) { report.refused = true; report.reason = why; return -1; }")
+}
+
+// strictCountTextScan reports whether fn is the whole count/text bound rule:
+// a count past the plan size and a text length past the plan's unit capacity
+// each refuse by name. The names are mapped first so the C spelling, if it
+// ever supplies the scan, is held to the same text.
+//
+// BOTH HALVES OF EACH GUARD ARE REQUIRED. A scan that keeps the over-bound
+// compare but loses the negative half is not the strict read: it would land a
+// negative count or length, write destination bytes and only then refuse. The
+// check matches the squashed guard-refusal-return block, so dropping either
+// `v < 0 ||` or the return leaves the scan in the diff instead of erasing it.
+func strictCountTextScan(fn string) bool {
+	fn = applyIdents(fn)
+	fn = strings.ReplaceAll(fn, "->", ".")
+	fn = strings.Join(strings.Fields(fn), " ")
+	for _, clause := range []string{
+		"p.op == kTableFixedCount",
+		"if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }",
+		"p.op == kTableFixedText",
+		"if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }",
+	} {
+		if !strings.Contains(fn, clause) {
+			return false
+		}
+	}
+	return true
 }
 
 // THE C COUNTER IS NAMED FOR ITS REFUSAL. C calls the read loop's counter
