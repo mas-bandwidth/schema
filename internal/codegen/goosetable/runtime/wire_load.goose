@@ -2244,7 +2244,7 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // and unknown ones, before any value is decoded: a refusal here lands
     // nothing, and a non-finite float anywhere refuses the read (§3.3)
     let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);
-    if wfail == LoadRefuseWireDamaged { report.body_damaged = true; report.damaged = true; report.reason = wfail; return -1; }
+    if wfail == LoadRefuseWireDamaged { report.body_damaged = true; report.damaged = true; report.reason = wfail; report.refused = true; return -1; }
     if wfail == LoadRefuseCountOverExtentCap { report.count_refused = true; report.refused = true; report.reason = wfail; return -1; }
     if wfail != 0 { report.refused = true; report.blob_shared += 1; report.reason = wfail; return -1; }
     if wnon { report.non_finite = true; report.reason = LoadRefuseNonFiniteFloat; return -1; }
@@ -2265,7 +2265,13 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     // other verdict, and the caller discards the partial value
     if report.non_finite { report.reason = LoadRefuseNonFiniteFloat; return -1; }
     // §4: damage in any body invalidates the whole plain or retaining load.
-    if report.body_damaged { return -1; }
+    // The driver's verdict is report.refused, so a malformed body refuses
+    // here, the same reason load_error names, rather than returning a read.
+    if report.body_damaged {
+        report.refused = true;
+        report.reason = LoadRefuseMalformed;
+        return -1;
+    }
     // THE STRICT READ REFUSES AT THE END OF THE LOAD (docs/SPEC-TABLES.md
     // §6.5; docs/plans/strict-only.md layer 4): a map key that repeats or
     // descends is damage (§2.8), and any other condition the walk met — a

@@ -139,7 +139,7 @@ func sabotageAll(t *testing.T, file string, pairs ...string) map[string][]byte {
 const (
 	ctlWireWalk  = "    let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);\n"
 	ctlNoWalk    = "    let wfail: i64 = 0;\n    let wnon = false;\n"
-	ctlBodyDmg   = "    if report.body_damaged { return -1; }\n"
+	ctlBodyDmg   = "    if report.body_damaged {\n        report.refused = true;\n        report.reason = LoadRefuseMalformed;\n        return -1;\n    }\n"
 	ctlEndRefuse = "    let refusal = load_error(report, c.root_val);\n"
 	ctlEndOk     = "    let refusal = LoadRefuseOk;\n"
 )

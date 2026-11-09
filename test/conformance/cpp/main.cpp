@@ -1136,6 +1136,504 @@ static bool codec_text( const Codec * codec, void * value, std::vector<char> & t
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// THE STRICT FORM-1 WALK (docs/LAYERS/1-framing.md; docs/SPEC-TABLES.md §6.5)
+// ---------------------------------------------------------------------------
+//
+// The conditions decidable from the wire alone, applied to every byte of a
+// form-1 file before any value is decoded: in fields and records this reader
+// declares and in those it does not. Skipped is not unread: an unknown field
+// is walked by the same rules as a known one, so damage inside it refuses the
+// load. This is the C++ port of the engine's walk (internal/tablewire
+// wirecheck.go, held beside it by test/conformance/harness/strictcheck.go):
+// the framing (lengths, counts, terminators, headers inside their own L, the
+// id table's references, canonical LEB128, a kind no reader can skip), a
+// repeated field id in one body, ill-formed text, a non-finite float, the
+// node table's framing, a reserved id out of place, and then the pointer
+// graph: an index past the node table, a cycle, a record no pointer reaches
+// and one blob record named from two slots. The generated readers decode
+// without this walk, so the framing battery runs it here, in the driver,
+// before the read it answers for: damage discards the whole load (D1), and a
+// refused row owes the refusal alone.
+
+struct FramingWalk
+{
+    const uint64_t * ids;
+    size_t id_count;
+    std::vector<uint64_t> edges; // the kind 17 payloads of the body being walked
+    const uint8_t * table;       // the node table's payload, when the root carries it
+    size_t table_bytes;
+    bool table_present;
+    bool non_finite;
+    int depth;
+};
+
+static uint64_t framing_u64le( const uint8_t * p )
+{
+    uint64_t v = 0;
+    for ( int i = 0; i < 8; i++ ) v |= (uint64_t) p[i] << ( 8 * i );
+    return v;
+}
+
+static uint64_t framing_name_id( const char * name )
+{
+    uint64_t h = 0xCBF29CE484222325ull;
+    for ( const char * p = name; *p != '\0'; p++ )
+    {
+        h ^= (uint64_t) (uint8_t) *p;
+        h *= 0x00000100000001B3ull;
+    }
+    return h;
+}
+
+// a canonical LEB128: minimal spelling, at most ten bytes, the tenth byte
+// carrying no bit above the 64th value bit (F10)
+static bool framing_leb( const uint8_t * buf, size_t len, size_t off, uint64_t * value, size_t * next )
+{
+    uint64_t v = 0;
+    unsigned shift = 0;
+    for ( int i = 0; ; i++ )
+    {
+        if ( off >= len || i >= 10 ) return false;
+        const uint8_t b = buf[off++];
+        if ( i == 9 && b > 1 ) return false;
+        v |= (uint64_t) ( b & 0x7F ) << shift;
+        if ( ( b & 0x80 ) == 0 )
+        {
+            if ( i > 0 && b == 0 ) return false; // a non-minimal spelling is damage
+            *value = v;
+            *next = off;
+            return true;
+        }
+        shift += 7;
+    }
+}
+
+static bool framing_fixed_kind( int kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 3: case 7: case 4: case 8: case 10:
+        case 5: case 9: case 11: case 18: case 19:
+        case 20: case 21: case 22: case 23: case 24:
+        case 25: case 26: case 27: case 28: case 29: case 36:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static int framing_kind_width( int kind )
+{
+    switch ( kind )
+    {
+        case 1: case 2: case 6: case 20: case 25: return 1;
+        case 3: case 7: case 21: case 26: return 2;
+        case 4: case 8: case 10: case 22: case 27: return 4;
+        case 5: case 9: case 11: case 23: case 28: case 36: return 8;
+        case 18: case 19: case 24: case 29: return 16;
+        default: return 0;
+    }
+}
+
+static bool framing_scalar( FramingWalk * w, const uint8_t * b, int kind )
+{
+    if ( kind == 1 ) return b[0] <= 1; // a bool byte other than 0 or 1 is damage
+    if ( kind == 10 )
+    {
+        uint32_t bits = 0;
+        for ( int i = 0; i < 4; i++ ) bits |= (uint32_t) b[i] << ( 8 * i );
+        if ( ( ( bits >> 23 ) & 0xFF ) == 0xFF ) w->non_finite = true;
+    }
+    if ( kind == 11 )
+    {
+        const uint64_t bits = framing_u64le( b );
+        if ( ( ( bits >> 52 ) & 0x7FF ) == 0x7FF ) w->non_finite = true;
+    }
+    return true;
+}
+
+static bool framing_text_valid( const uint8_t * b, size_t len )
+{
+    size_t i = 0;
+    while ( i < len )
+    {
+        const uint8_t c = b[i];
+        if ( c == 0 ) return false;
+        if ( c < 0x80 ) { i++; continue; }
+        int extra;
+        uint32_t cp;
+        if ( ( c & 0xE0 ) == 0xC0 ) { extra = 1; cp = c & 0x1F; if ( cp < 2 ) return false; }
+        else if ( ( c & 0xF0 ) == 0xE0 ) { extra = 2; cp = c & 0x0F; }
+        else if ( ( c & 0xF8 ) == 0xF0 ) { extra = 3; cp = c & 0x07; }
+        else return false;
+        if ( i + (size_t) extra >= len ) return false;
+        for ( int k = 1; k <= extra; k++ )
+        {
+            if ( ( b[i + (size_t) k] & 0xC0 ) != 0x80 ) return false;
+            cp = ( cp << 6 ) | (uint32_t) ( b[i + (size_t) k] & 0x3F );
+        }
+        if ( extra == 2 && cp < 0x800 ) return false;
+        if ( extra == 3 && cp < 0x10000 ) return false;
+        if ( cp >= 0xD800 && cp <= 0xDFFF ) return false; // a surrogate is not a scalar
+        if ( cp > 0x10FFFF ) return false;
+        i += (size_t) extra + 1;
+    }
+    return true;
+}
+
+static bool framing_wide_valid( const uint8_t * b, size_t len )
+{
+    if ( ( len & 1 ) != 0 ) return false;
+    const size_t n = len / 2;
+    for ( size_t i = 0; i < n; i++ )
+    {
+        const uint32_t u = (uint32_t) b[2 * i] | ( (uint32_t) b[2 * i + 1] << 8 );
+        if ( u == 0 ) return false;
+        if ( u >= 0xD800 && u <= 0xDBFF )
+        {
+            if ( i + 1 >= n ) return false;
+            const uint32_t low = (uint32_t) b[2 * ( i + 1 )] | ( (uint32_t) b[2 * ( i + 1 ) + 1] << 8 );
+            if ( low < 0xDC00 || low > 0xDFFF ) return false;
+            i++;
+        }
+        else if ( u >= 0xDC00 && u <= 0xDFFF ) return false;
+    }
+    return true;
+}
+
+static bool framing_body( FramingWalk * w, const uint8_t * buf, size_t len, bool root );
+static bool framing_payload( FramingWalk * w, const uint8_t * buf, size_t len, size_t off, int kind, size_t * next );
+static bool framing_content( FramingWalk * w, const uint8_t * b, size_t len, int kind );
+
+static bool framing_array_header( const uint8_t * b, size_t len, int * elem_kind, uint64_t * count, size_t * off )
+{
+    // THE HEADER LIES INSIDE ITS OWN L (H2, H3): a body too short to carry
+    // the element kind byte and the count is damage, inert at any value
+    if ( len < 2 ) return false;
+    uint64_t n = 0;
+    size_t after = 0;
+    if ( !framing_leb( b, len, 1, &n, &after ) ) return false;
+    if ( n > 0x7FFFFFFFull ) return false; // a count past the storage cap
+    *elem_kind = (int) b[0];
+    *count = n;
+    *off = after;
+    return true;
+}
+
+static bool framing_array( FramingWalk * w, const uint8_t * b, size_t len )
+{
+    int elem_kind = 0;
+    uint64_t count = 0;
+    size_t off = 0;
+    if ( !framing_array_header( b, len, &elem_kind, &count, &off ) ) return false;
+    for ( uint64_t i = 0; i < count; i++ )
+    {
+        if ( !framing_payload( w, b, len, off, elem_kind, &off ) ) return false;
+    }
+    return off == len; // bytes left inside an array's L after its elements (L6)
+}
+
+static bool framing_keyed( FramingWalk * w, const uint8_t * b, size_t len )
+{
+    int elem_kind = 0;
+    uint64_t count = 0;
+    size_t off = 0;
+    if ( !framing_array_header( b, len, &elem_kind, &count, &off ) ) return false;
+    std::vector<uint64_t> seen;
+    for ( uint64_t i = 0; i < count; i++ )
+    {
+        uint64_t key = 0;
+        size_t after_key = 0;
+        if ( !framing_leb( b, len, off, &key, &after_key ) ) return false;
+        if ( key == 0 || key > (uint64_t) w->id_count ) return false; // H7
+        for ( size_t k = 0; k < seen.size(); k++ ) if ( seen[k] == key ) return false;
+        seen.push_back( key );
+        uint64_t n = 0;
+        size_t after_n = 0;
+        if ( !framing_leb( b, len, after_key, &n, &after_n ) ) return false;
+        if ( n > (uint64_t) ( len - after_n ) ) return false;
+        off = after_n + (size_t) n;
+        if ( !framing_content( w, b + after_n, (size_t) n, elem_kind ) ) return false;
+    }
+    return off == len;
+}
+
+static bool framing_union( FramingWalk * w, const uint8_t * buf, size_t len, size_t off, size_t * next )
+{
+    uint64_t ref = 0;
+    size_t after_ref = 0;
+    if ( !framing_leb( buf, len, off, &ref, &after_ref ) ) return false;
+    if ( ref == 0 ) { *next = after_ref; return true; } // the empty arm carries nothing
+    if ( ref > (uint64_t) w->id_count || after_ref >= len ) return false;
+    const int kind = (int) buf[after_ref];
+    uint64_t n = 0;
+    size_t after_n = 0;
+    if ( !framing_leb( buf, len, after_ref + 1, &n, &after_n ) ) return false;
+    if ( n > (uint64_t) ( len - after_n ) ) return false;
+    const size_t end = after_n + (size_t) n;
+    const bool structural = kind == 13 || kind == 14 || kind == 16 || kind == 15;
+    if ( structural )
+    {
+        if ( w->depth >= 64 ) return false;
+        w->depth++;
+    }
+    const bool ok = framing_content( w, buf + after_n, (size_t) n, kind );
+    if ( structural ) w->depth--;
+    *next = end;
+    return ok;
+}
+
+static bool framing_content( FramingWalk * w, const uint8_t * b, size_t len, int kind )
+{
+    if ( framing_fixed_kind( kind ) )
+    {
+        if ( len != (size_t) framing_kind_width( kind ) ) return false; // an L that is not its width (H9)
+        return framing_scalar( w, b, kind );
+    }
+    switch ( kind )
+    {
+        case 12: return framing_text_valid( b, len );
+        case 33: return framing_wide_valid( b, len );
+        case 31: return true; // the escape: opaque by rule (§3)
+        case 32: return len == 0; // kind 32 with a nonzero L is damage
+        case 13: case 14: case 16:
+        {
+            if ( w->depth >= 64 ) return false;
+            w->depth++;
+            bool ok;
+            if ( kind == 13 ) ok = framing_body( w, b, len, false );
+            else if ( kind == 14 ) ok = framing_array( w, b, len );
+            else ok = framing_keyed( w, b, len );
+            w->depth--;
+            return ok;
+        }
+        case 17: case 30: case 15:
+        {
+            size_t end = 0;
+            return framing_payload( w, b, len, 0, kind, &end ) && end == len;
+        }
+        default:
+            return false; // a kind no reader can skip (R3)
+    }
+}
+
+static bool framing_payload( FramingWalk * w, const uint8_t * buf, size_t len, size_t off, int kind, size_t * next )
+{
+    if ( framing_fixed_kind( kind ) )
+    {
+        const int width = framing_kind_width( kind );
+        if ( (size_t) width > len - off ) return false;
+        *next = off + (size_t) width;
+        return framing_scalar( w, buf + off, kind );
+    }
+    switch ( kind )
+    {
+        case 17: // a pointer: the index is bounds-checked, never followed (T7)
+        {
+            uint64_t index = 0;
+            if ( !framing_leb( buf, len, off, &index, next ) ) return false;
+            w->edges.push_back( index );
+            return true;
+        }
+        case 30: // an enum: a variant reference into the id table
+        {
+            uint64_t ref = 0;
+            if ( !framing_leb( buf, len, off, &ref, next ) ) return false;
+            return ref <= (uint64_t) w->id_count;
+        }
+        case 15:
+            return framing_union( w, buf, len, off, next );
+        case 12: case 33: case 31: case 32: case 13: case 14: case 16:
+        {
+            uint64_t n = 0;
+            size_t after_n = 0;
+            if ( !framing_leb( buf, len, off, &n, &after_n ) ) return false;
+            if ( n > (uint64_t) ( len - after_n ) ) return false; // L4
+            *next = after_n + (size_t) n;
+            return framing_content( w, buf + after_n, (size_t) n, kind );
+        }
+        default:
+            return false; // a kind no reader can skip (R3)
+    }
+}
+
+static bool framing_body( FramingWalk * w, const uint8_t * buf, size_t len, bool root )
+{
+    size_t off = 0;
+    std::vector<uint64_t> seen;
+    for ( ;; )
+    {
+        uint64_t ref = 0;
+        size_t after_ref = 0;
+        if ( !framing_leb( buf, len, off, &ref, &after_ref ) ) return false;
+        off = after_ref;
+        if ( ref == 0 ) return off == len; // bytes after the terminator inside its L (L3)
+        if ( ref > (uint64_t) w->id_count ) return false; // F9
+        const uint64_t id = w->ids[ref - 1];
+        for ( size_t k = 0; k < seen.size(); k++ ) if ( seen[k] == id ) return false; // R5
+        seen.push_back( id );
+        if ( off >= len ) return false;
+        const int kind = (int) buf[off++];
+        if ( id == 0xFFFFFFFFFFFFFFFEull || id == 0xFFFFFFFFFFFFFFFDull ) return false; // R6
+        if ( id == 0xFFFFFFFFFFFFFFFFull )
+        {
+            // the node table rides once, at the root, as kind 12 (T1, T5)
+            if ( !root || kind != 12 ) return false;
+            uint64_t n = 0;
+            size_t after_n = 0;
+            if ( !framing_leb( buf, len, off, &n, &after_n ) ) return false;
+            if ( n > (uint64_t) ( len - after_n ) ) return false;
+            w->table = buf + after_n;
+            w->table_bytes = (size_t) n;
+            w->table_present = true;
+            off = after_n + (size_t) n;
+            continue;
+        }
+        if ( !framing_payload( w, buf, len, off, kind, &off ) ) return false;
+    }
+}
+
+struct FramingRecord
+{
+    uint64_t type_id;
+    const uint8_t * body;
+    size_t body_bytes;
+};
+
+static bool framing_scan_records( FramingWalk * w, const uint8_t * payload, size_t len, std::vector<FramingRecord> * records )
+{
+    // the record scan is authoritative, and a node_count that disagrees with
+    // it is malformed (T3); nothing is sized from node_count before it (T2)
+    uint64_t declared = 0;
+    size_t off = 0;
+    if ( !framing_leb( payload, len, 0, &declared, &off ) ) return false;
+    while ( off < len )
+    {
+        uint64_t ref = 0;
+        size_t after_ref = 0;
+        if ( !framing_leb( payload, len, off, &ref, &after_ref ) ) return false;
+        if ( ref == 0 || ref > (uint64_t) w->id_count ) return false; // T4
+        uint64_t n = 0;
+        size_t after_n = 0;
+        if ( !framing_leb( payload, len, after_ref, &n, &after_n ) ) return false;
+        if ( n > (uint64_t) ( len - after_n ) ) return false;
+        FramingRecord record;
+        record.type_id = w->ids[ref - 1];
+        record.body = payload + after_n;
+        record.body_bytes = (size_t) n;
+        records->push_back( record );
+        off = after_n + (size_t) n;
+    }
+    return off == len && declared == (uint64_t) records->size();
+}
+
+static bool framing_graph( const std::vector<std::vector<uint64_t> > & children, const std::vector<bool> & blobs )
+{
+    // node 0 is the root, node k is record k (wire index k + 1): an index past
+    // the table, a cycle, a record no pointer reaches, one blob named twice
+    const size_t n = children.size();
+    std::vector<uint64_t> names( n, 0 );
+    for ( size_t c = 0; c < n; c++ )
+    {
+        for ( size_t e = 0; e < children[c].size(); e++ )
+        {
+            const uint64_t index = children[c][e];
+            if ( index == 0 ) continue;
+            if ( index - 1 >= (uint64_t) n ) return false;
+            names[(size_t) ( index - 1 )]++;
+        }
+    }
+    for ( size_t k = 0; k < blobs.size(); k++ )
+    {
+        if ( blobs[k] && names[k + 1] > 1 ) return false; // one blob, two slots (§2.5)
+    }
+    std::vector<uint8_t> mark( n, 0 ); // 0 unvisited, 1 open, 2 closed (T8, linear)
+    std::vector<size_t> stack_node;
+    std::vector<size_t> stack_next;
+    stack_node.push_back( 0 );
+    stack_next.push_back( 0 );
+    mark[0] = 1;
+    while ( !stack_node.empty() )
+    {
+        const size_t node = stack_node.back();
+        size_t & next = stack_next.back();
+        const std::vector<uint64_t> & out = children[node];
+        if ( next == out.size() )
+        {
+            mark[node] = 2;
+            stack_node.pop_back();
+            stack_next.pop_back();
+            continue;
+        }
+        const uint64_t index = out[next++];
+        if ( index == 0 ) continue;
+        const size_t target = (size_t) ( index - 1 );
+        if ( mark[target] == 1 ) return false; // a cycle, over every slot (T8)
+        if ( mark[target] == 2 ) continue;     // a second pointer to a closed node is a share
+        mark[target] = 1;
+        stack_node.push_back( target );
+        stack_next.push_back( 0 );
+    }
+    for ( size_t k = 1; k < n; k++ ) if ( mark[k] == 0 ) return false; // unreachable is damage
+    return true;
+}
+
+// framing_strict_ok answers whether a form-1 file's whole wire is well-formed
+// under the rules above. It takes no declaration: every leg is held to it, and
+// a false answer is the strict read's refusal, with nothing else defined (D1).
+static bool framing_strict_ok( const uint8_t * data, size_t len )
+{
+    if ( len < 9 || data[0] != 1 ) return false; // F1, F5: no form byte, or a short file
+    const uint64_t count = framing_u64le( data + len - 8 );
+    if ( count > (uint64_t) ( len / 8 ) || count > 4096 ) return false; // F5, F6
+    const size_t span = (size_t) count * 8 + 8;
+    if ( span + 1 > len ) return false;
+    const size_t first = len - span; // the body is data[1:first] (F2, F4)
+    std::vector<uint64_t> ids( (size_t) count );
+    for ( size_t i = 0; i < (size_t) count; i++ )
+    {
+        ids[i] = framing_u64le( data + first + i * 8 );
+        for ( size_t k = 0; k < i; k++ ) if ( ids[k] == ids[i] ) return false; // one id twice (F5)
+    }
+    FramingWalk walk;
+    walk.ids = ids.data();
+    walk.id_count = ids.size();
+    walk.table = NULL;
+    walk.table_bytes = 0;
+    walk.table_present = false;
+    walk.non_finite = false;
+    walk.depth = 0;
+    if ( !framing_body( &walk, data + 1, first - 1, true ) ) return false;
+    std::vector<std::vector<uint64_t> > children;
+    children.push_back( walk.edges );
+    std::vector<bool> blobs;
+    if ( walk.table_present )
+    {
+        std::vector<FramingRecord> records;
+        if ( !framing_scan_records( &walk, walk.table, walk.table_bytes, &records ) ) return false;
+        const uint64_t bytes_id = framing_name_id( "bytes" );
+        const uint64_t string_id = framing_name_id( "string" );
+        for ( size_t i = 0; i < records.size(); i++ )
+        {
+            walk.edges.clear();
+            if ( records[i].type_id == bytes_id || records[i].type_id == string_id )
+            {
+                // a blob record is its bytes (§2.5, §3.1): no body to walk
+                if ( records[i].type_id == string_id && !framing_text_valid( records[i].body, records[i].body_bytes ) ) return false;
+                blobs.push_back( true );
+            }
+            else
+            {
+                if ( !framing_body( &walk, records[i].body, records[i].body_bytes, false ) ) return false;
+                blobs.push_back( false );
+            }
+            children.push_back( walk.edges );
+        }
+    }
+    return framing_graph( children, blobs ) && !walk.non_finite;
+}
+
 // THE ONE READ AND ITS WRITE-BACK (test/conformance/README.md): an accepted row
 // owes the verdict line, the §16 text of the value, and the canonical wire the
 // value saves to in `<case>.wire`; a refused row owes `refused` and nothing
@@ -1150,10 +1648,15 @@ static bool read_answer( const std::string & out, const std::string & name, cons
     std::vector<char> value_text;
     std::vector<uint8_t> saved;
     bool ok = false;
+    // the framing battery's read is a form-1 read, so the strict walk above
+    // judges the whole wire first: damage anywhere refuses the load before
+    // any value is decoded, and nothing the decode produced is defined (D1)
+    const bool framing_ok = !form1 || framing_strict_ok( wire.data(), wire.size() );
+    if ( !framing_ok ) report.refused = true;
     if ( variable != NULL )
     {
         std::vector<uint8_t> region;
-        const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
+        const void * root = framing_ok ? variable->load( region, wire.data(), (int64_t) wire.size(), &report ) : NULL;
         ok = root != NULL && !report.refused;
         if ( ok )
         {
@@ -1168,7 +1671,7 @@ static bool read_answer( const std::string & out, const std::string & name, cons
     {
         void * value = codec->make();
         codec->reset( value );
-        ok = ( form1 ? codec->load_form1 : codec->load )( value, wire.data(), (int64_t) wire.size(), &report ) && !report.refused;
+        ok = framing_ok && ( form1 ? codec->load_form1 : codec->load )( value, wire.data(), (int64_t) wire.size(), &report ) && !report.refused;
         if ( ok )
         {
             if ( with_value && !codec_text( codec, value, value_text ) ) return false;

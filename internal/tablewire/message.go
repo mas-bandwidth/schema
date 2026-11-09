@@ -98,9 +98,9 @@ func (e *MessageRefusal) Error() string {
 // Vocabulary is ONE ANNOUNCEMENT's id table (docs/SPEC-TABLES.md §3.3): the
 // entries it carried, whole, in the projection's order, slot `k` being
 // `Entries()[k-1]`. The announcement's own two reserved ids, the build version
-// and the vocabulary, are its transport and take NO slot; the reserved
-// node-table id takes exactly one, because a pointered body names the node
-// table through it.
+// and the vocabulary, are its transport and take NO slot. The vocabulary is
+// the MESSAGE CLOSURE's alone (see messageclosure.go): no body of this form
+// carries a pointer, so the node-table id takes no slot either.
 //
 // THE SCOPE IS THE ANNOUNCEMENT'S, and nothing here assumes a transport. The
 // announcement is delivered ONCE, reliably, before the first body, and is
@@ -166,7 +166,7 @@ func (v *Vocabulary) byteBound() int {
 // file, so it needs no second form byte, no envelope and no rule of its own.
 // Every byte is settled by the compiler, which is why a backend may emit it as
 // a constant.
-func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
+func Announce(u *ir.Unit) []byte { return messageAnnouncement(u) }
 
 // AnnounceRead reads an announcement into this direction's vocabulary
 // (docs/SPEC-TABLES.md §3.3).
@@ -339,9 +339,10 @@ func announcementFields(body []byte, ids []uint64, byteBound int, report *tablet
 // shape running past the field are each malformed here, once, and never again.
 //
 // SO ARE THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
-// own two ids never take a slot, and the node-table id takes exactly one, so a
-// vocabulary carrying 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD or a SECOND
-// 0xFFFFFFFFFFFFFFFF is malformed whole and sets nothing.
+// own two ids never take a slot, and the node-table id takes at most one (a
+// vocabulary from a build that still announced it), so a vocabulary carrying
+// 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD or a SECOND 0xFFFFFFFFFFFFFFFF is
+// malformed whole and sets nothing.
 func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
 	var out []ir.TableVocabularyEntry
 	nodeTable := 0

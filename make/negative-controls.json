@@ -566,18 +566,25 @@
       ]
     },
     {
+      "name": "base-cpp-discard",
+      "when": "pull-request",
+      "why": "the C++ leg's WHOLE-LOAD DISCARD controls (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): each removes one read's discard from a COPY of the emitter through a Go build overlay and requires TestDamageDiscardsTheWholeLoadCPP red on that read's own line \u2014 the value read's LoadVerdict (codecs.go), the region read and the builder load (pointers.go). The controls are anchored on the strict read's current names: the plain Load and the damaged flag, never the retired LoadTolerant and malformed spellings. Three small C++ builds of one probe unit, well inside the rule on its own row.",
+      "targets": [
+        "tables-cpp-discard-negative-control",
+        "tables-cpp-region-discard-negative-control",
+        "tables-cpp-builder-discard-negative-control"
+      ]
+    },
+    {
       "name": "wire-fuzz",
       "when": "pull-request",
       "why": "the tolerant-wire oracle and nested-arm trailing controls, which read a pinned vector rather than rebuilding the compiler. The five oracles ran as one job at 82 s of control time on run 34115675206, most of it the fuzz driver they all build, so they run as two. Measured 11 s over 2 controls.",
       "targets": [
         "tables-wire-fuzz-discard-negative-control",
-        "tables-cpp-discard-negative-control",
-        "tables-cpp-region-discard-negative-control",
         "tables-cpp-cycle-negative-control",
         "tables-cpp-cycle-linear-negative-control",
         "tables-engine-cycle-negative-control",
         "tables-engine-cycle-linear-negative-control",
-        "tables-cpp-builder-discard-negative-control",
         "tables-cpp-retain-refusal-negative-control",
         "tables-cpp-fixed-refusal-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
@@ -1211,97 +1218,70 @@
       "java": "21"
     },
     {
-      "name": "elixir-1",
+      "name": "elixir-packets",
       "when": "pull-request",
-      "why": "the Elixir port's card, packet and accessor controls: the card driver's three (one rendered byte, one dropped retained field, extra needs in the task hash, each required to red exactly its own surface), its three packet families and the accessor offset (56 s on its own: a sabotaged corpus compile). The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). One half of what was the `elixir` group, cut on 2026-10-28 because that group ran 211 s median and 262 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 163 s of control time over 13 controls). Measured about 91 s of control time on run 40684770225.",
+      "why": "the Elixir port's four packet families: the constructor-bytes defaults, the UTF-8 read validation, the wide pairing against the C++ readers' bit-flip verdicts, and the finite-float read rule, each a small compile off the packet codegen. Split out of the old `elixir-1` group, whose accessor control rebuilt the whole table corpus through a sabotaged compiler and pushed that row past the 120 s job ceiling on the killed runs (42556155793/42554833739); the accessor now runs nightly with the other corpus-rebuild controls.",
       "targets": [
-        "cards-elixir-conformance-negative-control",
-        "cards-elixir-conformance-upgrade-negative-control",
-        "cards-elixir-conformance-hash-negative-control",
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
         "packet-wide-elixir-negative-control",
-        "tables-elixir-accessor-negative-control",
         "packet-finite-elixir-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-2",
+      "name": "elixir-cards",
       "when": "pull-request",
-      "why": "the Elixir port's slot control (56 s on its own: a sabotaged corpus compile) and its small refusers: the allocation audit's refusal on a pin nothing runs, the I13 text differential, the keyed accessor's two ends, the runtime pin and the cook writer's blob-by-slot numbering (9 s on the studio, 2026-10-28). The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). One half of what was the `elixir` group, cut on 2026-10-28 because that group ran 211 s median and 262 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 163 s of control time over 13 controls). Measured about 72 s of control time on run 40684770225.",
+      "why": "the Elixir card driver's three controls: one rendered byte, one dropped retained field and extra needs in the task hash, each required to red exactly its own surface while the other eight pass. Three harness runs over the shared cards driver build. Split out of the old `elixir-1` group for the same reason its packets are.",
       "targets": [
-        "tables-elixir-alloc-runtime-negative-control",
-        "tables-elixir-finite-float-negative-control",
-        "tables-elixir-json-differential-negative-control",
-        "tables-elixir-keyed-max-negative-control",
-        "tables-elixir-keyed-none-negative-control",
+        "cards-elixir-conformance-negative-control",
+        "cards-elixir-conformance-upgrade-negative-control",
+        "cards-elixir-conformance-hash-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-pins",
+      "when": "pull-request",
+      "why": "the Elixir port's small runtime and emitter-overlay gates that need no corpus rebuild: the runtime pin's refusal (a pin nothing is running is refused, naming both versions), the allocation audit's off-pin refusal, the runtime home's file-order rule (one overlay compiler build and a two-tree generate), and the cook's blob-by-slot numbering (one go test -overlay). Each is seconds; the four share no compile weight of their own. Split out of the old `elixir-2` group, whose slot and retain controls rebuilt the whole corpus and pushed the row past the 120 s ceiling on the killed runs.",
+      "targets": [
         "tables-elixir-runtime-pin-negative-control",
-        "tables-elixir-slot-negative-control",
-        "tables-elixir-cook-blob-negative-control",
-        "tables-elixir-retain-negative-control",
-        "tables-elixir-runtime-home-negative-control"
+        "tables-elixir-alloc-runtime-negative-control",
+        "tables-elixir-runtime-home-negative-control",
+        "tables-elixir-cook-blob-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-alloc",
+      "name": "elixir-keyed",
       "when": "pull-request",
-      "why": "the Elixir allocation audit's sabotaged emitter (issue #420: every load allocating sixteen refc binaries and a thousand-cell list must red the heap-word and binary-call columns of every pinned case). 173 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "why": "the Elixir keyed accessor's two ends: dropping the key >= 1 guard reds TestKeyedAccessorCoversBothEndsElixir on key 0 (None), and dropping the key <= max guard reds it on key past max. Two go test -overlay runs of the elixirtable package. Split out of the old `elixir-2` group for the slot/retain reason above.",
       "targets": [
-        "tables-elixir-alloc-negative-control"
+        "tables-elixir-keyed-none-negative-control",
+        "tables-elixir-keyed-max-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-soak",
+      "name": "elixir-json-differential",
       "when": "pull-request",
-      "why": "the Elixir soak's sabotaged emitter (docs/PORTING.md I9): every load allocating and dropping sixteen refc binaries and a thousand-cell list must red the count at both samples of a 400-pass soak over four pinned cases while the drift line stays silent. A group of its own because it rebuilds the corpus through a sabotaged compiler, as elixir-alloc does: 149 s on vision.",
+      "why": "the Elixir text differential's control: a float32 capped at six significant digits in memory reds the run on the text comparison. One go test of the elixirtable package over its own probe unit; it was split out of the old `elixir-2` group so the corpus-rebuild slot and retain controls move nightly without carrying it along.",
       "targets": [
-        "tables-elixir-soak-negative-control"
+        "tables-elixir-json-differential-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-offsets",
+      "name": "elixir-finite-float",
       "when": "pull-request",
-      "why": "the Elixir composed-offset control: the block's offset_of read back as a whole word must red the forged-offset check. 95 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "why": "the Elixir leg's FINITE TABLE FLOAT control: each sabotaged refusal reds exactly its own rows of TestElixirFiniteFloatNegativeControl. One go test of the elixirtable package over its own three units. Split out of the old `elixir-2` group for the same reason as the json differential.",
       "targets": [
-        "tables-elixir-offsets-negative-control"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-block",
-      "when": "pull-request",
-      "why": "the Elixir block base-alignment control: dropping the check must red the gate. 134 s on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
-      "targets": [
-        "tables-elixir-block-lead-negative-control"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-fuzz",
-      "when": "pull-request",
-      "why": "the Elixir wire fuzzer's planted defect, which must red the fuzz gate. 27 s on the studio; it had not finished 55 s after the block control on the runner when the wire group was cancelled. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
-      "targets": [
-        "tables-elixir-fuzz-negative-control"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-form-1",
-      "when": "pull-request",
-      "why": "the Elixir cook's delta-read control alone. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). One half of what was the `elixir-form` group, cut on 2026-10-28 because that group ran 199 s median and 220 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 139 s of control time over 2 controls). Measured about 69 s of control time on run 40684770225 and 85 s on run 40684250024.",
-      "targets": [
-        "tables-elixir-cook-negative-control"
+        "tables-elixir-finite-float-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -1309,7 +1289,7 @@
     {
       "name": "elixir-cook-map",
       "when": "pull-request",
-      "why": "the Elixir map and list cook's control (docs/PORTING.md M19): two Go overlays of the cook writer's emitter, one laying a map's entries descending (map_full and the writer-holds-the-sort test red) and one beginning the extent at the floor of eight in a node aligned to its record alone (widelist_wide red, and no other row). It rebuilds only the units under test through the overlay, so it is small: 17 s on mini-m5, 2026-10-31.",
+      "why": "the Elixir map and list cook's control (docs/PORTING.md M19): two Go overlays of the cook writer's emitter, one laying a map's entries descending (map_full and the sort test red) and one beginning the extent at the floor of eight in a node aligned to its record alone (widelist_wide red, and no other row). It rebuilds only the units under test through the overlay, so it is small: 17 s on mini-m5, 2026-10-31.",
       "targets": [
         "tables-elixir-cook-map-negative-control"
       ],
@@ -1317,11 +1297,11 @@
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-form-2",
+      "name": "elixir-fixed-form",
       "when": "pull-request",
-      "why": "the Elixir raw-output format gate's control alone. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). One half of what was the `elixir-form` group, cut on 2026-10-28 because that group ran 199 s median and 220 s max against the job's five-minute timeout over 14 ci-full runs (run 40684250024: 139 s of control time over 2 controls). Measured about 45 s of control time on run 40684770225 and 54 s on run 40684250024.",
+      "why": "the Elixir fixed form's control: one byte off the write template reds the reference byte match. It rebuilds only the nine fixed-form units through the overlay, not the variable corpus, so it measured 26 s in the old `elixir-versioning` group (the other two thirds — versioning's go-test and the hostile corpus's full rebuild — moved or stayed apart on their own rows).",
       "targets": [
-        "tables-elixir-emit-format-negative-control"
+        "tables-elixir-fixed-form-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -1329,111 +1309,9 @@
     {
       "name": "elixir-versioning",
       "when": "pull-request",
-      "why": "the Elixir fixed form's, versioning's and hostile-corpus controls. 26 s, then 75 s for the other two, on the runner. The Elixir controls are split so each job stays inside the five-minute ceiling: one group of all twenty-two was cancelled at 5:00 (run 39800381797), and a four-way split still left the wire group over it (run 39803763220). Runner timings below are from run 39803763220, about 4-5x the studio's serial ones.",
+      "why": "the Elixir versioning gate's control: the wrong name for a hash outside the lineage reds TestFixedVersioningOldRefusesNew. One go test -overlay of the elixirtable package against the fixedform corpus. Split out of the old `elixir-versioning` group, whose three controls measured 101 s together on the runner (26 s + 75 s) and ran 117-147 s on the killed CI runs, so the hostile corpus and the fixed-form rebuild no longer ride this row.",
       "targets": [
-        "tables-elixir-fixed-form-negative-control",
-        "tables-elixir-versioning-negative-control",
-        "schema-elixir-runs-hostile-corpus-negative-control"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-walk",
-      "when": "pull-request",
-      "why": "the Elixir leg's conformance negative control (docs/PORTING.md I11): the emitted text reader stores the negation of every bool, and the matrix must go red on json-read alone while json-write and wire stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-walk"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-shared",
-      "when": "pull-request",
-      "why": "the Elixir pack walk's identity control (docs/PORTING.md M6): a node two pointers name is written twice, and the matrix must go red on wire and json-read (whose answer is the saved wire) while json-write and report stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-shared"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-label",
-      "when": "pull-request",
-      "why": "the Elixir text writer's &node control (docs/PORTING.md M14): a shared node is written in full at every pointer and never labeled, and the matrix must go red on json-write while json-read and wire stay green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-label"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-ids",
-      "when": "pull-request",
-      "why": "the Elixir id-table control (docs/PORTING.md M20): the id table is written in reverse first-use order, and the matrix must go red on wire while json-write stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-ids"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-arm",
-      "when": "pull-request",
-      "why": "the Elixir arm-header control (docs/PORTING.md M18): an arm header under another kind reads as the declared arm instead of a counted kind mismatch, and the matrix must go red on report while json-write stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-arm"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-order",
-      "when": "pull-request",
-      "why": "the Elixir block reader's foreign-order control (docs/PORTING.md I7): a byte-swapped magic is no longer refused by name as a foreign order, and the matrix must go red on block-reason while block stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-order"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-usage",
-      "when": "pull-request",
-      "why": "the Elixir usage gate's control (docs/PORTING.md I12): the cook emitter renames the page's entry point, and docs/USAGE.md's Elixir example run against the corpus rebuilt through that compiler must go red naming cook_open_scene. It rebuilds the whole corpus through a sabotaged compiler, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "tables-elixir-usage-negative-control"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-conformance-mapsort",
-      "when": "pull-request",
-      "why": "the Elixir map writer's sort control (docs/PORTING.md M19): the writer sorts a map's entries descending, and the matrix must go red on wire while report stays green. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-alloc is.",
-      "targets": [
-        "conformance-negative-control-elixir-mapsort"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-framing",
-      "when": "pull-request",
-      "why": "the Elixir framing control (docs/LAYERS/1-framing.md, F6): the emitter loses the id table's 4096-entry cap and the cycle refusal (T8), and the matrix must go red on framing, at frame_entries_4097 and the three cycle rows, while report stays green; a second build drops all but one dependent of each node and must red node_diamond_chain while json-read stays green. This shared-dependency fault also affects report rows with shared nodes, so report is not an unaffected surface for the second build. It rebuilds the whole corpus through a sabotaged compiler and runs the harness's Elixir leg against it, which is why it is a group of its own, as elixir-mapsort is.",
-      "targets": [
-        "conformance-negative-control-elixir-framing"
-      ],
-      "otp": "29.0.5",
-      "elixir": "1.20.4"
-    },
-    {
-      "name": "elixir-wire-fuzz-refusal",
-      "when": "pull-request",
-      "why": "the Elixir wire-fuzz driver's refusal control (docs/PORTING.md I15, the discard rule of #2447): a driver that answers a refused load with an empty report must red tables-elixir-wire-fuzz-refusal on the fixed root's empty buffer. It compiles one sabotaged driver over a copy of the built corpus, which is why it is a group of its own.",
-      "targets": [
-        "tables-elixir-wire-fuzz-refusal-negative-control"
+        "tables-elixir-versioning-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
@@ -1441,7 +1319,7 @@
     {
       "name": "elixir-discard",
       "when": "pull-request",
-      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): the plain read's discard is removed from a copy of the emitter through go test -overlay, and TestDamageDiscardsTheWholeLoadElixir must go red with a framing vector handed back as a value. It generates and runs three units under the overlay, which is why it is a group of its own.",
+      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): removing the plain read's discard from a copy of the emitter reds TestDamageDiscardsTheWholeLoadElixir on a framing vector. It generates and runs three units under the overlay, so it is a group of its own.",
       "targets": [
         "tables-elixir-discard-negative-control"
       ],
@@ -1449,22 +1327,52 @@
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-hostile",
-      "when": "pull-request",
-      "why": "the Elixir json-hostile rows' two controls (docs/SPEC-TABLES.md §16.2): an uncounted repeated enum-keyed slot and a float32 stored past its rounding midpoint, each required to red exactly its own rows of the json-hostile surface. Each is a sabotaged corpus compile, about 60 s on the studio.",
+      "name": "elixir-nightly-conformance",
+      "when": "nightly",
+      "why": "the Elixir conformance harness's controls, each of which rebuilds the whole corpus through a sabotaged compiler (walk, shared, label, ids, arm, order, mapsort and framing; framing does two builds) and runs the harness's Elixir leg against it. They are structurally identical to the alloc/soak/block controls that measure 95-173 s on the fleet runner, so every one of them exceeds the 75 s control budget the per-commit rule leaves after ~30 s of setup and shared build, and none can be split further by grouping. They moved from the pull request to the nightly tier on 2026-11-09 for that reason; the harness's cheap sibling surfaces (cards, packets, keyed, cook-blob, versioning, fixed-form) remain per commit, and no control was dropped.",
       "targets": [
-        "tables-elixir-json-hostile-dup-negative-control",
-        "tables-elixir-json-hostile-f32-negative-control"
+        "conformance-negative-control-elixir-walk",
+        "conformance-negative-control-elixir-shared",
+        "conformance-negative-control-elixir-label",
+        "conformance-negative-control-elixir-ids",
+        "conformance-negative-control-elixir-arm",
+        "conformance-negative-control-elixir-order",
+        "conformance-negative-control-elixir-mapsort",
+        "conformance-negative-control-elixir-framing"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"
     },
     {
-      "name": "elixir-reach",
-      "when": "pull-request",
-      "why": "the Elixir leg's reach control (make/elixir.mk, docs/SPEC-TABLES.md §4): the nested-body read ends the WHOLE read at damage in a copy of the emitter, and three reach_ vectors replayed over the rebuilt corpus must each go red on the oracle's refusal. It rebuilds the corpus through a sabotaged compiler and runs the harness's Elixir leg, which is why it is a group of its own, as elixir-alloc is. Measured time unmeasured.",
+      "name": "elixir-nightly-emitter",
+      "when": "nightly",
+      "why": "the Elixir controls that rebuild the corpus through a sabotaged emitter and then run one gate over it. Each measures far over the 75 s control budget the per-commit rule allows: alloc 173 s on the runner, soak 149 s on vision, block-lead 134 s on the runner, offsets 95 s on the runner, cook 69-85 s, emit-format 45-54 s, and fuzz and usage are full corpus rebuilds of the same shape. None fits on its own row under the 120 s kill, so they moved to the nightly tier on 2026-11-09; the per-commit Elixir smoke keeps the lightweight gates below.",
       "targets": [
-        "tables-elixir-reach-negative-control"
+        "tables-elixir-alloc-negative-control",
+        "tables-elixir-soak-negative-control",
+        "tables-elixir-offsets-negative-control",
+        "tables-elixir-block-lead-negative-control",
+        "tables-elixir-fuzz-negative-control",
+        "tables-elixir-cook-negative-control",
+        "tables-elixir-usage-negative-control",
+        "tables-elixir-emit-format-negative-control"
+      ],
+      "otp": "29.0.5",
+      "elixir": "1.20.4"
+    },
+    {
+      "name": "elixir-nightly-accessors",
+      "when": "nightly",
+      "why": "the rest of the Elixir corpus-rebuild controls: the accessor, slot and retain agreement gates (each a sabotaged full-corpus compile, as the old elixir-1/-2 carried them), the two json-hostile rows (each a sabotaged corpus compile, about 60 s on the studio), the hostile-corpus plant (a planted reader rebuilt over the whole corpus plus two runner passes), reach (a copied ebin recompiled under a sabotaged emitter) and wire-fuzz-refusal (which pays the corpus compile its row owns). These moved to the nightly tier with elixir-nightly-conformance and elixir-nightly-emitter on 2026-11-09 because each exceeds the per-commit control budget on its own.",
+      "targets": [
+        "tables-elixir-accessor-negative-control",
+        "tables-elixir-slot-negative-control",
+        "tables-elixir-retain-negative-control",
+        "tables-elixir-json-hostile-dup-negative-control",
+        "tables-elixir-json-hostile-f32-negative-control",
+        "schema-elixir-runs-hostile-corpus-negative-control",
+        "tables-elixir-reach-negative-control",
+        "tables-elixir-wire-fuzz-refusal-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"

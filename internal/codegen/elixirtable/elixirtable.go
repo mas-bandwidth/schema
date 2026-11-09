@@ -122,8 +122,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: the FIXED
-	// tables' wire. The variable form (form byte 1) is emitted below for the
-	// variable class; this is the fixed tables' own, laid out by the plan.
+	// tables' wire. The variable form (form byte 1) is emitted below for
+	// variable roots and for nested bodies; a declared fixed root's table-wire
+	// load and save are this form, one record or a refusal.
 	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err
@@ -131,12 +132,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	maps.Copy(out, fixed)
 
 	// THE VARIABLE FORM (docs/SPEC-TABLES.md §3), form byte 1: the id-table
-	// wire the card constructs read and write byte for byte as the Go, C, C++
-	// and C# backends do. It is emitted for every unit whose closure holds a
-	// table, beside the fixed form. A mixed unit (graphdemo, listdemo) gets
-	// both. A fixed-only unit (tblp1, tblp3) gets it too: its conformance wire
-	// is form byte 1, and an optional and a by-value nest are one framing
-	// (§2.3), so those instances answer rather than write <case>.absent.
+	// wire a variable root reads and writes as the Go, C, C++ and C# backends
+	// do. It is emitted for every unit whose closure holds a table, beside the
+	// fixed form. A mixed unit (graphdemo, listdemo) gets both. A fixed-only
+	// unit still gets it, so a nested body stays on this codec. The fixed
+	// root's own file does not: Table.load and Table.save of that name are
+	// form 3.
 	maps.Copy(out, generateVariableForm(u, ns))
 
 	// the id-table wire's shared framing (docs/SPEC-TABLES.md §3, §5): the

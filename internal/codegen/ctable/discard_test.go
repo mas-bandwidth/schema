@@ -64,7 +64,12 @@ table Graph
 // assumption.
 func discardProbeWire(t *testing.T, u *ir.Unit, root string) []byte {
 	t.Helper()
-	m := tabletext.NewModel(u)
+	// A fixed root's writer writes form 3 (docs/SPEC-TABLES.md §3.4), while the
+	// C value read is the variable form. Encode the form-1 wire this gate
+	// damages through the same declaration without the fixed keyword; the
+	// reader's own model still judges it.
+	writer := unitFrom(t, strings.ReplaceAll(discardProbeSchema, "fixed table", "table"))
+	m := tabletext.NewModel(writer)
 	inst := m.New(m.Lookup(root))
 	var r tabletext.Report
 	if !m.Read(inst, []byte(`{"a":5,"inner":{"n":3},"b":9}`), &r) {
@@ -79,8 +84,9 @@ func discardProbeWire(t *testing.T, u *ir.Unit, root string) []byte {
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
 	}
 	wire[at] = 37
+	reader := tabletext.NewModel(u)
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
+	if ok, err := tablewire.Decode(reader, reader.New(reader.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire
@@ -205,17 +211,17 @@ type discardSabotage struct {
 }
 
 var discardSabotages = []discardSabotage{
-	{"value read", [][2]string{{"if ( !whole || report->malformed ) { root_reset( value ); return 0; }", "if ( !whole ) { return 0; }"}},
-		[]string{"value"}},
-	{"region read", [][2]string{{"if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink) || report->malformed) {", "if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink)) {"}},
-		[]string{"region"}},
-	{"retaining read", [][2]string{{"retention)||report->malformed){", "retention)){"}},
+	{"value read", [][2]string{{"if ( table_report_finish( report, whole ) ) { root_reset( value ); return 0; }", "if ( table_report_finish( report, whole ) ) { return 0; }"}},
+		[]string{"value", "strict"}},
+	{"region read", [][2]string{{"if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink) || table_report_finish(report,1)) {", "if(!schema_probe_graph_load_graph_(&reader,(Graph *)(void *)region,&nodes,directory,&sink)) {"}},
+		[]string{"region", "region strict"}},
+	{"retaining read", [][2]string{{" memset(region,0,(size_t)total);\n table_retain_reset(retain,NULL,NULL);\n return NULL;\n } /* damage discards the whole load, the retention store too (§4) */", " return (const Graph *)(const void *)region;\n } /* SABOTAGED: the retaining read kept the damaged load */"}},
 		[]string{"retain"}},
-	{"builder read", [][2]string{{"if(!ok || report->malformed) { graph_reset(root); return 0; }", "if(!ok) { return 0; }"}},
+	{"builder read", [][2]string{{"if(!ok || table_report_finish(report,ok)) { report->refused=1; graph_reset(root); return 0; }", "if(!ok || table_report_finish(report,ok)) { report->refused=1; return 0; }"}},
 		[]string{"builder"}},
-	{"text read", [][2]string{{"if ( value != NULL ) { root_reset( value ); } /* damage discards the whole load (§4) */", "/* SABOTAGED */"}},
+	{"text read", [][2]string{{"if ( value != NULL ) { root_reset( value ); } /* a refusal discards the whole load (§4) */", "if ( value != NULL ) { } /* SABOTAGED */"}},
 		[]string{"text"}},
-	{"graph text read", [][2]string{{"if ( root != NULL ) { graph_reset( root ); } /* damage discards the whole load (§4) */", "(void) root; /* SABOTAGED */"}},
+	{"graph text read", [][2]string{{"root = graph_builder_root( builder ); if ( root != NULL ) { graph_reset( root ); } /* a refusal discards the whole load (§4) */", "root = graph_builder_root( builder ); (void) root; /* SABOTAGED */"}},
 		[]string{"graph text"}},
 }
 

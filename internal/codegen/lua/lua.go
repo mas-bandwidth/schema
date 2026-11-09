@@ -551,13 +551,30 @@ func FloatLiteral(v float64) string {
 }
 
 // ByteString renders bytes as a Lua string literal: printable ASCII as
-// itself, every other byte as \xNN.
+// itself, every other byte as \xNN, in the quote the pinned StyLua writes
+// under make/lua-stylua.toml (quote_style = "AutoPreferDouble"): double
+// quotes unless the value carries more double quotes than single quotes, when
+// single quotes need fewer escapes. The gate holds the generated text to
+// StyLua's output, so this is decided here, not by rewording it later.
 func ByteString(b []byte) string {
+	dq, sq := 0, 0
+	for _, c := range b {
+		switch c {
+		case '"':
+			dq++
+		case '\'':
+			sq++
+		}
+	}
+	q := byte('"')
+	if dq > sq {
+		q = '\''
+	}
 	var s strings.Builder
-	s.WriteByte('"')
+	s.WriteByte(q)
 	for _, c := range b {
 		switch {
-		case c == '"' || c == '\\':
+		case c == '\\' || c == q:
 			s.WriteByte('\\')
 			s.WriteByte(c)
 		case c >= 0x20 && c < 0x7f:
@@ -566,7 +583,7 @@ func ByteString(b []byte) string {
 			fmt.Fprintf(&s, "\\x%02x", c)
 		}
 	}
-	s.WriteByte('"')
+	s.WriteByte(q)
 	return s.String()
 }
 

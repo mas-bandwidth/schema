@@ -153,11 +153,11 @@ using namespace probe;
 #define SAVE(v,b,n) root_fixed_save(&(v),1,b,n)
 #define MEASURE(v) root_fixed_measure(1)
 #define RESET(v) root_reset(&(v))
-#define JSON(v,b,n,r) root_from_json_tolerant(&(v),b,n,r)
-#define LEAF_LOAD(v,b,n,r) leaf_load_tolerant(&(v),b,n,r)
+#define JSON(v,b,n,r) root_from_json(&(v),b,n,r)
+#define LEAF_LOAD(v,b,n,r) leaf_load(&(v),b,n,r)
 #define REPORT_RESET(v) memset(&(v),0,sizeof(v))
-#define CLEAN_LOAD(r) (!(r).malformed && !(r).refused && !(r).unknown && !(r).kind_mismatch && !(r).clamped && !(r).widened && !(r).duplicate)
-#define CLEAN_JSON(r) (!(r).malformed)
+#define CLEAN_LOAD(r) (!(r).refused && !(r).unknown && !(r).widened)
+#define CLEAN_JSON(r) (!(r).refused)
 #endif
 int main(void) {
  const uint8_t empty[] = {@EMPTY@}, full[] = {@FULL@}, minimal[] = {@MINIMAL@};
@@ -254,7 +254,7 @@ class Program {
   for(int i=0;i<8;i++) {
    bool populated=i%2==0;var wire=populated?full:minimal;report=new TableReport();
    var loaded=new Root[]{new Root()};
-   Check(Schema.RootFixedLoad(loaded,wire,plan,report)==1&&!report.Malformed&&!report.Refused&&report.Unknown==0&&report.KindMismatch==0&&report.Clamped==0&&report.Widened==0&&report.Duplicate==0);
+   Check(Schema.RootFixedLoad(loaded,wire,plan,report)==1&&!report.Refused&&report.Unknown==0&&report.Widened==0);
    value=loaded[0];var p=value.Payload;
    Check(p.Leaf.ValuesCount==1&&p.RowsCount==1&&p.Rows[0].ValuesCount==(populated?2:1)&&p.Rows[1].ValuesCount==0);
    Check(p.Leaf.Marker==7&&p.Rows[0].Marker==7);
