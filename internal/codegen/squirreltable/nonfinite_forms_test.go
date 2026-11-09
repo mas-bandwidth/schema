@@ -389,8 +389,8 @@ var nfFormsSabotages = []struct {
 	kinds      []string
 }{
 	{"message-read", "schema_table_message.nut", [][2]string{
-		{"if((raw&0x7ff0000000000000)==0x7ff0000000000000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}", ""},
-		{"if((raw&0x7f800000)==0x7f800000){if(r.nonFinite==null)r.nonFinite=fd.nf;return 0.0;}", ""},
+		{"if((raw&0x7ff0000000000000)==0x7ff0000000000000){refuseRead(r,\"non_finite_float: \"+fd.nf);return 0.0;}", ""},
+		{"if((raw&0x7f800000)==0x7f800000){refuseRead(r,\"non_finite_float: \"+fd.nf);return 0.0;}", ""},
 	}, []string{"msg-read"}},
 	{"message-write", "schema_table_message.nut", [][2]string{
 		{"    if (!finite) { w.reason = \"non_finite_float: \" + fd.nf; w.bad = true; return; }\n", ""},
