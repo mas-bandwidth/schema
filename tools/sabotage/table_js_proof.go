@@ -15,10 +15,15 @@ func init() {
 
 	// §4 DAMAGE DISCARDS THE WHOLE LOAD: the variable form's load hands back
 	// the root it decoded around the damage, and a retaining load keeps its
-	// store, while the report still says malformed.
+	// store, while the report still says damaged. Under the one read there are
+	// two guards that discard: the damage flag and the strict mark, so the
+	// control removes both and either one alone cannot hide the value.
 	sabotages["js-discard-dropped"] = []edit{{
-		old: "  if (report.malformed) {\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+		old: "  if (report.damaged) {\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 		new: "  if (false) { // SABOTAGED: the discard is gone\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+	}, {
+		old: "  // THE ONE READ REFUSES THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.5): a\n  // changed kind, a value or a length out of range, a repeated key and a blob\n  // named from two slots hand back nothing; err() names which.\n  if (TableVariableStrictMark(report) !== strictBefore) {\n    report.damaged = carried;\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
+		new: "  // SABOTAGED: the strict discard is gone\n  if (false) {\n    report.damaged = carried;\n    if (retain !== null) { retain.reset(); }\n    return null;\n  }",
 	}}
 
 	// §4 on the message form: damage inside a body delivers the bodies before
