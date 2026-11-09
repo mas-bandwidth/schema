@@ -414,6 +414,16 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 			continue
 		}
 
+		// A versioning row re-runs probes the SCHEMA_SLOW unit row already
+		// selects; without a corpus those tests skip. SCHEMA_REQUIRE_CORPUS=1
+		// and no SCHEMA_SLOW=1 is that re-run. It is not a slow-gate step:
+		// counting it would select the tests twice, and the slow-gate grammar
+		// does not parse -timeout or the toolchain assignments on the line.
+		// A step that also sets SCHEMA_SLOW=1 stays in the accounting.
+		if strings.Contains(fullRun, "SCHEMA_REQUIRE_CORPUS=1") && !strings.Contains(fullRun, "SCHEMA_SLOW=1") && !stepEnvSetsSlow(rs.envLines) {
+			continue
+		}
+
 		// Step condition: explicitly disabled steps must not count as enabled;
 		// unresolved execution conditions cannot certify coverage.
 		if !isStepConditionEnabled(rs.ifCond, groups) {
@@ -454,6 +464,17 @@ func parseWorkflowContent(file, content string) ([]ciStep, error) {
 		})
 	}
 	return steps, nil
+}
+
+func stepEnvSetsSlow(envLines []string) bool {
+	for _, el := range envLines {
+		parts := strings.SplitN(el, ":", 2)
+		if len(parts) == 2 && strings.TrimSpace(parts[0]) == "SCHEMA_SLOW" {
+			val := strings.Trim(strings.TrimSpace(parts[1]), `"'`)
+			return val == "1"
+		}
+	}
+	return false
 }
 
 func isStepConditionEnabled(ifCond string, groups map[string]bool) bool {

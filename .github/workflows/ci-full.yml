@@ -214,6 +214,21 @@ jobs:
     #                     tools/slowgatescan's TestCIFullVersioningRowsPerLeg
     #                     holds that.
     #
+    #   versioning-elixir was still one row on run 42567880192 (job
+    #   128998296599): whole job 173s, 2026-11-09T05:38:18Z to
+    #   2026-11-09T05:41:11Z. The corpus compile was 6s (g++ 05:38:34Z to
+    #   05:38:40Z). `go test -run TestFixedVersioning` was 146.548s. That
+    #   test moved to five rows: NEW-READS-OLD and OLD-REFUSES-NEW each
+    #   split into the first 13 and last 13 versionRows, and every other
+    #   TestFixedVersioning test on versioning-elixir-rest. Each row still
+    #   builds the corpus. Per-row seconds were not in that log (no -v).
+    #
+    #   versioning-js on the same run (job 128998296625) was whole job 118s,
+    #   05:40:19Z to 05:42:17Z. The go test was 6.056s. g++ of
+    #   fixedform_dump.cpp was 70s on that row (05:40:37Z to 05:41:47Z) and
+    #   6s on the elixir row above. Splitting the 6s test would compile the
+    #   dump again, so the JavaScript leg stays one row.
+    #
     # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
     # unit-rest row ran 14m55s against this 15-minute cap: the complement's
     # `go test` took 7m26s, nearly all of it ./compiler (441 s; the next
@@ -231,7 +246,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-1, versioning-conformance-2, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-1, versioning-conformance-2, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir-new-1, versioning-elixir-new-2, versioning-elixir-old-1, versioning-elixir-old-2, versioning-elixir-rest, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -629,23 +644,49 @@ jobs:
         if: matrix.group == 'versioning-cs'
         run: make tables-cs-leg tables-cs-versioning
 
-      # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
-      # Elixir, one per row per column, run with the leg's own toolchain: the
-      # runner's Elixir and OTP are handed in as PLAIN PATHS, because the
-      # harness spawns the binary itself rather than going through a shell
-      # launcher. The corpus it reads is the one the Rust step above already
-      # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
-      # Elixir a failure rather than a silent skip.
+      # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6), FIVE ROWS. Run
+      # 42567880192's single versioning-elixir job was 173s, of which
+      # `go test -run TestFixedVersioning` was 146.548s and the corpus
+      # compile was 6s. NEW-READS-OLD and OLD-REFUSES-NEW each walk all 26
+      # versionRows (internal/codegen/elixirtable/fixedversioning_test.go);
+      # each is one row for the first 13 names and one row for the last 13.
+      # versioning-elixir-rest is every other TestFixedVersioning test.
+      # The recipe is the one in make/elixir.mk's tables-elixir-versioning,
+      # with -run/-skip in place of the single pattern, so the corpus is
+      # still built first and SCHEMA_REQUIRE_CORPUS=1 still makes a missing
+      # corpus or a missing Elixir a failure. ELIXIR and ERL_BIN are plain
+      # paths, as that recipe passes them. setup-beam stays the hosted
+      # fallback; a fleet runner already has the toolchain on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning-elixir' && runner.environment == 'github-hosted'
+        if: (matrix.group == 'versioning-elixir-new-1' || matrix.group == 'versioning-elixir-new-2' || matrix.group == 'versioning-elixir-old-1' || matrix.group == 'versioning-elixir-old-2' || matrix.group == 'versioning-elixir-rest') && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
-      - name: the Elixir leg reads backward over every versioning row
-        if: matrix.group == 'versioning-elixir'
+      - name: the Elixir leg, NEW-READS-OLD, first half of the version rows
+        if: matrix.group == 'versioning-elixir-new-1'
         run: |
-          make tables-elixir-versioning \
-            ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(array_bounded_grow|array_elem_widen|array_fixed_grow|bits_grow|bytes_grow|constant_grow|enum_append|enum_width|field_append|field_deprecate|field_undeprecate|fixed_I_grow|fixed_I_grow_element)$'
+      - name: the Elixir leg, NEW-READS-OLD, second half of the version rows
+        if: matrix.group == 'versioning-elixir-new-2'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningNewReadsOld/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add|range_widen|rename_without_was|string_grow|uint_widen|union_append|union_arm_payload_widen|wstring_grow)$'
+      - name: the Elixir leg, OLD-REFUSES-NEW, first half of the version rows
+        if: matrix.group == 'versioning-elixir-old-1'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(array_bounded_grow|array_elem_widen|array_fixed_grow|bits_grow|bytes_grow|constant_grow|enum_append|enum_width|field_append|field_deprecate|field_undeprecate|fixed_I_grow|fixed_I_grow_element)$'
+      - name: the Elixir leg, OLD-REFUSES-NEW, second half of the version rows
+        if: matrix.group == 'versioning-elixir-old-2'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioningOldRefusesNew/^(flags_append|float_widen|int_widen|keyed_array_enum_append|nested_append|optional_add|range_widen|rename_without_was|string_grow|uint_widen|union_append|union_arm_payload_widen|wstring_grow)$'
+      - name: the Elixir leg, every other versioning test
+        if: matrix.group == 'versioning-elixir-rest'
+        run: |
+          make tables-fixedform-corpus
+          SCHEMA_REQUIRE_CORPUS=1 ELIXIR="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning' -skip '^(TestFixedVersioningNewReadsOld|TestFixedVersioningOldRefusesNew)$'
 
       # THE SAME SUITE ON THE LUAU LEG (§5.7 step 6). Its probes are generated
       # Luau, one per row per column, run under the pinned interpreter, which

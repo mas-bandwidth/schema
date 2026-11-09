@@ -68,6 +68,35 @@ func TestCIFullGoTestRunsEveryTestExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestCorpusRerunIsNotASlowGateStep: a versioning row's go test sets
+// SCHEMA_REQUIRE_CORPUS=1 and not SCHEMA_SLOW. The unit row already selects
+// those tests. The re-run must not come back as a second selector, and a
+// step that does set SCHEMA_SLOW=1 must not be hidden by the same check.
+func TestCorpusRerunIsNotASlowGateStep(t *testing.T) {
+	t.Parallel()
+	const head = "jobs:\n  go-test:\n    strategy:\n      matrix:\n        group: [ unit-elixir, versioning-elixir-rest ]\n    steps:\n"
+	rerun := head + "      - name: unit\n        if: matrix.group == 'unit-elixir'\n        env:\n          SCHEMA_SLOW: '1'\n        run: go test ./internal/codegen/elixirtable\n" +
+		"      - name: rerun\n        if: matrix.group == 'versioning-elixir-rest'\n        run: |\n          make tables-fixedform-corpus\n          SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/elixirtable/ -count=1 -timeout 600s -run 'TestFixedVersioning'\n"
+	steps, err := parseWorkflowContent("ci-full.yml", rerun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 1 {
+		t.Fatalf("corpus re-run returned %d slow-gate steps, want 1 (the SCHEMA_SLOW unit row)", len(steps))
+	}
+	if !steps[0].enabled || !steps[0].selector("./internal/codegen/elixirtable", "TestFixedVersioningFloor") {
+		t.Fatal("the unit row no longer selects the elixir package")
+	}
+	armed := head + "      - name: both\n        if: matrix.group == 'unit-elixir'\n        run: SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/elixirtable\n"
+	steps, err = parseWorkflowContent("ci-full.yml", armed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 1 {
+		t.Fatalf("SCHEMA_SLOW=1 beside SCHEMA_REQUIRE_CORPUS=1 returned %d steps, want 1 (it must not be hidden)", len(steps))
+	}
+}
+
 // TestShardAccountingRefusesAGapAndAnOverlap is the reversed witness for the
 // test above: a -run row whose -skip twin uses a different pattern leaves one
 // test in no row and puts another in two, and a complement that does not drop
