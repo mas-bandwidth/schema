@@ -19,16 +19,17 @@ import (
 // THE TEXT LIST IN THE TEXT FORM (docs/SPEC-TABLES.md §2.13, §16.2), held to
 // internal/tabletext's readTextList and writeTextList: a plain list's element
 // is its string in the value model, so the reader places strings and the
-// writer spells them; an unbounded element is never clamped; a list with a
-// total keeps the prefix that fits it, the first element past it counted
-// clamped once and named in the reason. Each case is read by the Go engine
-// and by moo:
+// writer spells them; an unbounded element is never clamped; a list past its
+// total is out of range, and the one read refuses it whole. Each case is read
+// by the Go engine and by moo, and the verdict is the contract (docs/rulings.json
+// refusal-verdict-only: a reason name is the reader's own):
 //
-//	FromJson's report                == the engine's
+//	FromJson's verdict (read/refused) == the engine's
+//	and, for a text both read:
 //	ToJson of what FromJson read      == the engine's text
 //	Save of what FromJson read        == the engine's wire
 //	ToJson of the engine's wire, read
-//	tolerantly after its framing      == the engine's text
+//	by the one read (ReadStrict)      == the engine's text
 const textListSchema = `package probe
 
 table Lists
@@ -68,19 +69,16 @@ func textListUnit(t *testing.T) *ir.Unit {
 	return u
 }
 
-// textListWant is the engine's answer for one case: the report line in the
-// probe's spelling, the canonical text and the wire.
-func textListWant(t *testing.T, u *ir.Unit, c textListCase) (report, text, wire string) {
+// textListWant is the engine's answer for one case: the verdict, and for a
+// text it reads the canonical text and the wire.
+func textListWant(t *testing.T, u *ir.Unit, c textListCase) (verdict, text, wire string) {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(c.root))
 	var r tabletext.Report
-	ok := m.Read(inst, []byte(c.text), &r)
-	verdict := "refused"
-	if ok {
-		verdict = "read"
+	if !m.Read(inst, []byte(c.text), &r) {
+		return "refused", "", ""
 	}
-	report = fmt.Sprintf("%d,%d,%d,%d,%d,%v,%s,%s", r.Unknown, 0, r.Widened, 0, 0, r.Refused, verdict, r.Reason)
 	out, err := m.Write(inst)
 	if err != nil {
 		t.Fatalf("%s: the engine does not write it: %v", c.name, err)
@@ -91,7 +89,7 @@ func textListWant(t *testing.T, u *ir.Unit, c textListCase) (report, text, wire 
 		t.Fatalf("%s: the engine does not encode it: %v", c.name, err)
 	}
 	// the canonical text ends in one newline, as every golden does (§16.3)
-	return report, string(out) + "\n", string(b)
+	return "read", string(out) + "\n", string(b)
 }
 
 // textListRun runs every case through moo with runtime overriding runtime
@@ -120,8 +118,7 @@ local function run(mod: any, root: string, input: buffer, wire: buffer)
 	local value = mod["New" .. root]()
 	local report: any = {}
 	local ok = mod[root .. "FromJson"](value, input, report)
-	hexs(string.format("%d,%d,%d,%d,%d,%s,%s,%s", report.unknown, 0, report.widened,
-		0, 0, tostring(report.damaged), if ok then "read" else "refused", report.reason or ""))
+	hexs(if ok then "read" else "refused")
 	hexs(text(mod, root, value))
 	local bytes, why = Save.save(d, value)
 	hexs(if bytes ~= nil then buffer.tostring(bytes) else "save refused: " .. tostring(why and why.name))
@@ -130,7 +127,7 @@ local function run(mod: any, root: string, input: buffer, wire: buffer)
 end
 `)
 	inputs := map[string][]byte{}
-	type want struct{ report, text, wire string }
+	type want struct{ verdict, text, wire string }
 	wants := make([]want, len(textListCases))
 	for i, c := range textListCases {
 		r, tx, w := textListWant(t, u, c)
@@ -158,8 +155,10 @@ end
 		got := lines[4*i : 4*i+4]
 		w := wants[i]
 		switch {
-		case got[0] != w.report:
-			bad = append(bad, fmt.Sprintf("%s: FromJson reported %s, the engine %s", c.name, got[0], w.report))
+		case got[0] != w.verdict:
+			bad = append(bad, fmt.Sprintf("%s: FromJson %s, the engine %s", c.name, got[0], w.verdict))
+		case w.verdict == "refused":
+			// a refused read lands no value: nothing more to compare
 		case got[1] != w.text:
 			bad = append(bad, fmt.Sprintf("%s: ToJson of the read value wrote\n%s\nthe engine\n%s", c.name, got[1], w.text))
 		case got[2] != w.wire:
@@ -173,7 +172,6 @@ end
 
 // TestMooJsonTextLists: every case answers as the engine does.
 func TestMooJsonTextLists(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the generated text form)")
 	t.Parallel()
 	for _, b := range textListRun(t, nil) {
@@ -185,7 +183,6 @@ func TestMooJsonTextLists(t *testing.T) {
 // a time, in the runtime the emitter embeds, and requires the gate red on the
 // cases that rule decides and green on the rest.
 func TestMooJsonTextListsNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs a sabotaged text form)")
 	t.Parallel()
 	controls := []struct {
@@ -201,10 +198,10 @@ func TestMooJsonTextListsNegativeControl(t *testing.T) {
 		// an unbounded element is clamped at zero bytes
 		{"unbounded", "json.moo", "scanStored(r, tl.bound)", "scanStored(r, if tl.bound < 0 then 0 else tl.bound)",
 			[]string{"within"}},
-		// a list's total is never kept
+		// a list's total is never kept, so a list past it reads
 		{"total", "json.moo", "if placed > before and fd.total ~= nil then", "if false then",
 			[]string{"over_total"}},
-		// the tolerant read is handed the trailer with the file
+		// the one read is handed the trailer with the file
 		{"integrity", "table_load.moo", "\tlocal out = buffer.create(n - 4)\n\tbuffer.copy(out, 0, b, 0, n - 4)\n\treturn out\n", "\treturn b\n",
 			[]string{"sealed"}},
 	}

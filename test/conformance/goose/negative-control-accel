@@ -8,27 +8,34 @@
 # surface stays green:
 #
 #   cook-open    Open stops checking the cook's two reserved words (M8):
-#                cook-forgery and cook-reason go red; cook, cook-write and
+#                cook-forgery goes red; cook, cook-write and
 #                every block surface stay green
 #   block-pitch  Open stops holding an array's pitch to this build's (M7: the
 #                stride a row is reached by is the instance's, asserted once):
-#                forgery and block-reason go red; block, block-dump and every
+#                forgery goes red; block, block-dump and every
 #                cook surface stay green
 #   cook-order   the writer ignores the byte order it is handed (§7.6: the
 #                order is the target's, a parameter of the write): cook-write
 #                goes red; every read surface stays green
 #   block-order  Open stops reading the prologue's byte-order word (§19.2;
 #                docs/PORTING.md I7: a block whose magic is intact and whose
-#                order word says the other order): forgery and block-reason go
+#                order word says the other order): forgery goes
 #                red (block_byte_order); block-foreign, which reverses the
 #                magic, stays green with every other surface
-#   cook-order-word  the same for the cook's header word (§7): cook-forgery and
-#                cook-reason go red (cook_byte_order_*); cook-foreign stays
+#   cook-order-word  the same for the cook's header word (§7): cook-forgery
+#                goes red (cook_byte_order_*); cook-foreign stays
 #                green with every other surface
 #   cook-numbering  the region writer numbers a node every time an edge
 #                reaches it, not the first time only (§3.1, §7.6): cook-write
 #                goes red on every graph that shares a node or a blob; every
 #                read surface stays green
+#
+# The harness retired the cook-reason and block-reason surfaces (its
+# surfaces list in test/conformance/harness/run.go no longer carries them,
+# and readthenwrite_test.go asserts they stay retired), so no harness log
+# line for them can ever go red or green. The refusal verdicts they named
+# are now carried by the forgery and cook-forgery surfaces alone, which is
+# where these controls require the red.
 #
 # usage: test/conformance/goose/negative-control-accel <mode>
 # The working directory is the repository root.
@@ -38,43 +45,43 @@ cook-open)
 	file=cook_form.goose
 	from='    if accel_u64(b, 48) != 0 { return TableRefuseReservedNotZero; }'
 	to=''
-	red="cook-forgery cook-reason"
-	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
+	red="cook-forgery"
+	green="cook cook-foreign cook-write block block-foreign block-dump forgery"
 	;;
 block-pitch)
 	file=block_form.goose
 	from='    if pitch != stride as u64 { return TableRefuseBadLayout; }'
 	to=''
-	red="forgery block-reason"
-	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-reason cook-write"
+	red="forgery"
+	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-write"
 	;;
 cook-order)
 	file=cook_form.goose
 	from='        let shift = if big { w - 1 - i } else { i };'
 	to='        let shift = i;'
 	red="cook-write"
-	green="cook cook-foreign cook-forgery cook-reason block block-foreign block-dump forgery block-reason"
+	green="cook cook-foreign cook-forgery block block-foreign block-dump forgery"
 	;;
 block-order)
 	file=block_form.goose
 	from='    if accel_u64(b, 16) != TableBlockByteOrder { return TableRefuseNotACook; }'
 	to=''
-	red="forgery block-reason"
-	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-reason cook-write"
+	red="forgery"
+	green="block block-foreign block-dump cook cook-foreign cook-forgery cook-write"
 	;;
 cook-order-word)
 	file=cook_form.goose
 	from='    if accel_u64(b, 16) != TableCookByteOrder { return TableRefuseNotACook; }'
 	to=''
-	red="cook-forgery cook-reason"
-	green="cook cook-foreign cook-write block block-foreign block-dump forgery block-reason"
+	red="cook-forgery"
+	green="cook cook-foreign cook-write block block-foreign block-dump forgery"
 	;;
 cook-numbering)
 	file=cook_write.goose
 	from='    if c.index[wire] != 0 { return; }'
 	to=''
 	red="cook-write"
-	green="cook cook-foreign cook-forgery cook-reason block block-foreign block-dump forgery block-reason"
+	green="cook cook-foreign cook-forgery block block-foreign block-dump forgery"
 	;;
 *)
 	echo "usage: $0 cook-open|block-pitch|cook-order|block-order|cook-order-word|cook-numbering" >&2
@@ -96,7 +103,7 @@ done
 cat >"$nc/driver" <<'EOF'
 #!/bin/sh
 if [ "$2" = list ]; then
-	printf 'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\n'
+	printf 'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n'
 	exit 0
 fi
 exec test/conformance/goose/driver "$@"

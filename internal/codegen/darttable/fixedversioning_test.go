@@ -818,17 +818,16 @@ func TestFixedCompiledPlanTagPastArmSet(t *testing.T) {
   forged.setRange(at0 + recordBytes, forged.length, data, at0);
   forged[at0 + recordBytes + 8] = 9;
   final n = LOAD(values, values.length, forged, forged.length, plan, report);
-  check(n == 2, 'the two-record file did not read: n=$n ${why(report)}');
-  check(report.refused == 0,
-      'a forged TAG is not a refusal: ${why(report)}');
-  check(values[0].pick.type == 1 && values[0].pick.alpha.m == 7,
-      'record 0 lost the arm the writer named: ${values[0].pick.type} '
-      '${values[0].pick.alpha.m}');
-  check(values[1].pick.type == 0,
-      'a tag past the arm set reported an arm — the PREVIOUS record\'s: '
+  // UNDER THE ONE READ (docs/plans/strict-only.md) a tag past the writer's
+  // arm set refuses the WHOLE read as out_of_range: record 1 never reports
+  // record 0's arm, and record 0 does not stay landed either.
+  check(n == -1, 'a forged TAG refuses the two-record read: n=$n ${why(report)}');
+  check(report.refused == t.TableFixedRefusal.outOfRange,
+      'the refusal is named out_of_range: ${why(report)}');
+  check(values[0].pick.type == 0 && values[1].pick.type == 0,
+      'REFUSE is total — no record keeps an arm: ${values[0].pick.type} '
       '${values[1].pick.type}');
-  check(report.unknown == 1,
-      'a tag past the writer\'s arm set counts unknown exactly once: ${why(report)}');
+  check(report.unknown == 0, 'a refusal moves no counter: ${why(report)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0,
 		filepath.Join(corpus, "old_union_append.bin"), body)

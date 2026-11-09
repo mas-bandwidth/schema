@@ -475,8 +475,58 @@ exhaustive over every record in the byte domain. The runs are recorded in
 Text and blob lengths, ranged scalars, enum ordinals and the plan's own
 compile; batches of more than one record (the "total over the batch" rule is
 held here as the one-record case of "nothing lands before every check
-passes"). A model checked here does not prove any reader; the concrete proof is
+passes"; tla/FixedBatch holds the loop over records). A model checked here does not prove any reader; the concrete proof is
 the fixed-form corpus and its negative controls (§5.7).
+
+# tla/FixedBatch
+
+A LAYOUT model of the fixed form's LOAD over a whole batch
+(docs/FIXED-FORM-ALGORITHM.md §5.3, TOTAL OVER THE BATCH), with the arithmetic
+the Squirrel reader carries (internal/codegen/squirreltable/fixedform.go,
+emitFixedRead): `H` header bytes, then records of `R` bytes, record `k`'s value
+byte at `H + k*R`, then a ragged tail of `0..R-1` bytes; `rest = len - H`,
+`rest % R != 0` refuses, `count = rest / R`, `count` past the caller's rows
+refuses. Record `k` decodes into `scratch[k]`; only after the last record has
+decoded does the commit loop land `out[k] := scratch[k]` for `k < count`. The
+caller hands `N + 1` poisoned rows, so a write past `count` is seen. A record is
+a value (`1`, `2`) or bad (`0`, any body condition). The ORACLE is the file's
+meaning: refused when the tail is ragged or any record is bad, otherwise rows
+`0..n-1` hold the values and every other row its poison.
+
+## Properties
+
+- **TypeOK** — every variable in its finite domain.
+- **OneVerdict** — the read refuses exactly the files the meaning refuses with
+  every caller row untouched, and otherwise lands exactly the meaning with every
+  row past the batch untouched.
+- **ReadsValueBytes** — every byte the decode reads is a record's value byte.
+
+## Reversed witnesses
+
+| cfg | switch | invariant violated | counterexample |
+|---|---|---|---|
+| `MCFixedBatchLandDuringDecode.cfg` | `LandDuringDecode` | `OneVerdict` | `vals = <<1, 0>>`: record 0 decodes straight into `out[0]`, record 1 refuses, and row 0 keeps the value; the bug the Squirrel reader had at e254a5cba |
+| `MCFixedBatchCommitShort.cfg` | `CommitShort` | `OneVerdict` | `vals = <<1>>`: the commit loop stops at `count - 1` and the one record never lands |
+| `MCFixedBatchStrideOff.cfg` | `StrideOff` | `ReadsValueBytes` | `vals = <<1, 0>>`: record 1 addressed at `H + 1*(R-1)` reads record 0's filler byte |
+| `MCFixedBatchNoTailCheck.cfg` | `NoTailCheck` | `OneVerdict` | an empty batch with a one-byte ragged tail reads as zero records |
+
+## Running
+
+```
+nice -n 19 java -Xmx1g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCFixedBatch.cfg -metadir "$JOB/tlc-MCFixedBatch" FixedBatch
+```
+
+`MCFixedBatch.cfg` is `N = 3` (four caller rows), `R = 2`, `H = 1`, exhaustive.
+The runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+Which body condition refuses (tla/FixedLive holds one record's check loop), the
+header and layout checks before the frame, and the per-field member copy of
+the commit. The code is not yet trace-bound to the model. A model checked here
+does not prove any reader; the concrete proof is
+internal/codegen/squirreltable/fixedtotal_test.go and its negative control.
 
 # tla/NodeExtent
 
