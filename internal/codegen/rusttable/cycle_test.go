@@ -95,16 +95,10 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
 
 	unreachedWire := bytes.Clone(midWire)
 	unreachedWire[9] = 0
-	overwrittenWire := make([]byte, len(selfWire)+3)
-	copy(overwrittenWire[:7], selfWire[:7])
-	copy(overwrittenWire[7:13], []byte{3, 17, 1, 3, 17, 0})
-	copy(overwrittenWire[13:], selfWire[10:])
-	for i := 13; i+2 < len(overwrittenWire); i++ {
-		if overwrittenWire[i] == 3 && overwrittenWire[i+1] == 17 && overwrittenWire[i+2] == 2 {
-			overwrittenWire[i+2] = 0
-			break
-		}
-	}
+	overwrittenWire := make([]byte, 0, len(selfWire))
+	overwrittenWire = append(overwrittenWire, selfWire[:7]...)
+	overwrittenWire = append(overwrittenWire, 3, 17, 1, 3, 17, 0)
+	overwrittenWire = append(overwrittenWire, selfWire[26:]...)
 
 	body := fmt.Sprintf(`
     const SELF_WIRE: [u8; %d] = [%s];

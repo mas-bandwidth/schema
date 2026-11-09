@@ -150,9 +150,13 @@ final class _JParse {
         i++;
         return m;
       }
+      // A REPEATED KEY IS DAMAGE in every object of the text, a skipped
+      // unknown value's included (docs/plans/strict-only.md decision 5)
+      final keys = <String>{};
       while (true) {
         ws();
         final k = str();
+        if (!keys.add(k)) throw FormatException('text_damaged: repeated key', s, i);
         ws();
         expect(0x3A);
         ws();

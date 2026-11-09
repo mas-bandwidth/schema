@@ -756,11 +756,10 @@ local utf8Sequence = function(s, i) {
 };
 
 local HEX = "0123456789abcdef";
-local FFFD = format("%c%c%c", 0xef, 0xbf, 0xbd);
 
 // ONE JSON STRING from bytes (write.go writeString): the escapes, a control
-// byte as \u00XX, and a byte that is not part of a well-formed sequence as
-// U+FFFD, so the text is always valid UTF-8 (§16.3)
+// byte as \u00XX, and a byte that is not part of a well-formed sequence is
+// refused (null, §16.3)
 local jsonString = function(s) {
   local out = ["\""];
   local run = 0;
@@ -786,7 +785,7 @@ local jsonString = function(s) {
     else if (c < 0x20) esc = "\\u00" + CH[HEX[c >> 4]] + CH[HEX[c & 0xf]];
     else if (c >= 0x80) {
       local w = utf8Sequence(s, i);
-      if (w < 0) esc = FFFD;
+      if (w < 0) return null;
       else { i += w; continue; }
     }
     if (esc != null) {
@@ -805,10 +804,9 @@ local jsonString = function(s) {
 
 // WIDE TEXT IN THE TEXT (docs/SPEC-TABLES.md §16.2): the code units
 // TRANSCODED at the boundary into one JSON string. A well-formed pair is its
-// astral code point; storage built in code holding an unpaired surrogate
-// writes it as U+FFFD (§16.3's maximal-subpart rule, one per unit), and a zero
-// unit writes `\u0000` through jsonString. A slot that is not a code unit, an
-// integer in [0, 0xFFFF], has no text spelling: null, and the write refuses.
+// astral code point; storage built in code holding an unpaired surrogate or a
+// slot that is not a code unit, an integer in [0, 0xFFFF], has no text
+// spelling: null, and the write refuses (§16.3).
 local wideJsonString = function(units) {
   if (typeof units != "array") return null;
   local bs = [];
@@ -822,7 +820,7 @@ local wideJsonString = function(units) {
       code = 0x10000 + ((u - 0xD800) << 10) + (units[i + 1] - 0xDC00);
       i++;
     } else if (u >= 0xD800 && u <= 0xDFFF) {
-      code = 0xFFFD;
+      return null;
     }
     if (code < 0x80) bs.append(code);
     else if (code < 0x800) bs.extend([0xc0 | (code >> 6), 0x80 | (code & 0x3f)]);
@@ -1054,7 +1052,9 @@ writeMap = function(T, d, val, depth, g, out) {
   for (local i = 0; i < n; i++) {
     local ent = val[order[i]];
     if (i > 0) out.append(",");
-    out.append(indent(depth + 1) + jsonString(mapKeyText(kd, ent[kd.member])) + ": ");
+    local ks = jsonString(mapKeyText(kd, ent[kd.member]));
+    if (ks == null) return false;
+    out.append(indent(depth + 1) + ks + ": ");
     if (vd.optional && !ent[vd.member + "Present"]) { out.append("null"); continue; }
     if (!writeField(T, vd, ent[vd.member], depth + 1, g, out)) return false;
   }
@@ -1085,7 +1085,9 @@ local writeTextArray = function(T, d, val, depth, out) {
     out.append(indent(depth + 1));
     local rec = elemAt(T, d.elem, val, i);
     if (d.textlist == 2 && (rec == null || !rec.ValuePresent)) { out.append("null"); continue; }
-    out.append(jsonString(rec == null ? "" : rec.Value));
+    local s = jsonString(rec == null ? "" : rec.Value);
+    if (s == null) return false;
+    out.append(s);
   }
   out.append(indent(depth) + "]");
   return true;
@@ -1093,15 +1095,23 @@ local writeTextArray = function(T, d, val, depth, out) {
 
 writeField = function(T, d, val, depth, g, out) {
   switch (d.shape) {
-    case "sblob":
+    case "sblob": {
       if (val == null) { out.append("null"); return true; }
-      out.append(jsonString(val));
+      local s = jsonString(val);
+      if (s == null) return false;
+      out.append(s);
       return true;
+    }
     case "bblob":
       if (val == null) { out.append("null"); return true; }
       out.append(b64Text(val));
       return true;
-    case "str": out.append(jsonString(val)); return true;
+    case "str": {
+      local s = jsonString(val);
+      if (s == null) return false;
+      out.append(s);
+      return true;
+    }
     case "wstr": {
       local w = wideJsonString(val);
       if (w == null) return false;
@@ -1134,7 +1144,12 @@ writeField = function(T, d, val, depth, g, out) {
         if (i > 0) out.append(",");
         out.append(indent(depth + 1));
         local x = elemAt(T, e, val, i);
-        if (e.shape == "str") { out.append(jsonString(x)); continue; }
+        if (e.shape == "str") {
+          local s = jsonString(x);
+          if (s == null) return false;
+          out.append(s);
+          continue;
+        }
         if (e.shape == "sblob" || e.shape == "bblob") {
           if (!writeField(T, e, x, depth + 1, g, out)) return false;
           continue;
@@ -1213,7 +1228,12 @@ writeScalar = function(T, d, val, depth, g, out) {
       out.append(t);
       return true;
     }
-    case "str": out.append(jsonString(val)); return true;
+    case "str": {
+      local s = jsonString(val);
+      if (s == null) return false;
+      out.append(s);
+      return true;
+    }
     case "wstr": {
       local w = wideJsonString(val);
       if (w == null) return false;

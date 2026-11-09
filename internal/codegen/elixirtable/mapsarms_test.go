@@ -37,36 +37,40 @@ func TestMapsAndUnionArmsOnTheTableWireElixir(t *testing.T) {
 	units := []struct {
 		name, schema string
 		instances    []instance
+		// fixed marks a unit whose roots are declared fixed tables: their
+		// Table wire is form 3 and their corpus is the conformance one.
+		// The other units' roots are variable and stay on form 1.
+		fixed bool
 	}{
 		{"mapdemo", "tables/maps", []instance{
 			{"map_full", "Fleet"}, {"map_empty", "Fleet"}, {"map_cells", "Cells"}, {"map_chunks", "Chunks"},
 			{"map_crews", "Crews"}, {"map_depth", "Depth"}, {"map_docs", "Docs"}, {"map_pairs", "Pairs"},
 			{"map_slots", "Slots"}, {"map_spans", "Spans"}, {"map_text", "Text"}, {"map_trails", "Trails"},
 			{"map_runs", "Runs"},
-		}},
+		}, false},
 		// tables/arms declares `union Carry` in Carry.schema: the packet
 		// emitter's file module steps aside to <Ns>.CarryFile
 		// (internal/codegen/elixir), so the unit generates whole.
 		{"armdemo", "tables/arms", []instance{
 			{"arms_gate", "Gate"}, {"arms_holder", "Holder"}, {"arms_hand", "Hand"}, {"arms_chain", "Chain"},
 			{"arms_nest", "Nest"}, {"arms_ring", "Ring"}, {"arms_rack", "Rack"}, {"arms_tray", "Tray"},
-		}},
+		}, false},
 		{"messagedemo", "tables/messages", []instance{
 			{"message_open", "ToolMessage"}, {"message_transaction", "ToolMessage"}, {"message_ping", "ToolMessage"},
 			{"message_save", "ToolMessage"}, {"message_empty", "ToolMessage"}, {"message_batch", "ToolMessage"},
 			{"message_trace", "ToolMessage"}, {"message_arms", "ToolMessage"}, {"message_arm_edits", "ToolMessage"},
 			{"message_ack", "ToolMessage"},
-		}},
+		}, true},
 		{"scalars", "tables/scalars", []instance{
 			{"scalars_full", "SimState"}, {"scalars_default", "SimState"}, {"scalars_edges", "SimState"},
-		}},
+		}, true},
 		// examples-wide declares `fixed table Caption` in Caption.schema: the
 		// packet emitter's file module steps aside to Wide.CaptionFile for the
 		// fixed form's struct module Wide.Caption, so the unit generates whole.
 		{"widedemo", "examples-wide", []instance{
 			{"wide_empty", "Caption"}, {"wide_title", "Caption"}, {"wide_sites", "Caption"},
 			{"wide_narrow_arm", "Caption"}, {"wide_stamp", "Stamp"},
-		}},
+		}, true},
 	}
 	for _, uu := range units {
 		u := uu
@@ -107,6 +111,9 @@ end
 `)
 			for _, in := range u.instances {
 				wire := filepath.Join(root, "testdata", "wire", "tables", in.name+".bin")
+				if u.fixed {
+					wire = filepath.Join(root, "testdata", "conformance", "tables", "wire", in.name+".bin")
+				}
 				fmt.Fprintf(&probe, `
 try do
   name = %[1]q

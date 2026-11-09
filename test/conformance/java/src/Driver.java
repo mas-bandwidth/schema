@@ -909,10 +909,15 @@ public final class Driver {
     private static int surfaceFraming(String out) throws IOException {
         for (String[] f : kind("framing")) {
             try {
-                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                // THE FILE'S FORM BYTE PICKS THE READER (§3): a form 1 file of a
+                // root declared fixed is read by its variable load, which is the
+                // reader the framing rows' id-table rules hold; only a form 3
+                // file goes to the fixed form's load
+                byte[] wire = Files.readAllBytes(Paths.get(f[4]));
+                FixedCodec fixed = wire.length > 0 && wire[0] == 3 ? fixedCodec(f[2], f[3]) : null;
                 if (fixed != null) {
                     Object report = fixed.report();
-                    int read = fixed.load(fixed.newValues(), Files.readAllBytes(Paths.get(f[4])), report);
+                    int read = fixed.load(fixed.newValues(), wire, report);
                     String line = fixedLine(fixed, report, read);
                     boolean noValue = f.length > 5 && f[5].equals("no-value");
                     if (!fixedReadSucceeded(fixed, report, read) || noValue) { spill(out, f[1], line); }
@@ -922,13 +927,16 @@ public final class Driver {
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1]); continue; }
                 Object report = codec.report();
-                Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                Object value = codec.load(wire, report);
                 boolean refused = codec.flag(report, "refused") || codec.flag(report, "damaged") || value == null;
                 boolean noValue = f.length > 5 && f[5].equals("no-value");
                 byte[] head = (refused ? "refused\n" : "read\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 if (refused || noValue) { spill(out, f[1], head); continue; }
                 byte[] text = codec.toJson(value);
-                if (text == null) return failInt(f[1] + ": toJson refused the value");
+                // a value the read handed back that the text writer refuses
+                // (a cycle a sabotaged reader let through) answers the read
+                // line alone: the row goes red, the other rows still answer
+                if (text == null) { spill(out, f[1], head); continue; }
                 byte[] both = new byte[head.length + text.length];
                 System.arraycopy(head, 0, both, 0, head.length);
                 System.arraycopy(text, 0, both, head.length, text.length);

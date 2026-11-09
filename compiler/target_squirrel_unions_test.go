@@ -7,6 +7,7 @@ package compiler
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,25 +19,22 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
-// squirrelUnionPrelude loads the Go oracle's bytes through the emitted load
-// runtime, saves the value, loads the saved bytes and saves them again: the
+// squirrelUnionPrelude loads the Go oracle's bytes through the emitted strict
+// read (docs/SPEC-TABLES.md §6.5), saves the value, loads the saved bytes and saves them again: the
 // two hex lines are the save and the round trip's save (docs/SPEC-TABLES.md
 // §3).
-const squirrelUnionPrelude = `local inputs = dofile("inputs.nut", true);
+const squirrelUnionPrelude = squirrelVerdict + `local inputs = dofile("inputs.nut", true);
 local schema = dofile("schema_module.nut", true);
 local T = schema.require("%s");
 local L = schema.require("schema_table_load");
 local S = schema.require("schema_table_save");
-local report = {
-  unknown = 0, kindMismatch = 0, widened = 0, clamped = 0,
-  duplicate = 0, malformed = false, refused = false
-};
-local v = L.loadTolerant(T, "L", inputs["oracle"], report);
-if (v == null) { print("load-failed\n"); return; }
+local report = {};
+local v = L.load(T, "L", inputs["oracle"], report);
+if (::verdict(v, report) != "accepted") { print("load-failed\n"); return; }
 local b = S.save(T, "L", v);
 if (b == null) { print("save-failed\n"); return; }
-local v2 = L.loadTolerant(T, "L", b, report);
-if (v2 == null) { print("reload-failed\n"); return; }
+local v2 = L.load(T, "L", b, report);
+if (::verdict(v2, report) != "accepted") { print("reload-failed\n"); return; }
 local b2 = S.save(T, "L", v2);
 if (b2 == null) { print("resave-failed\n"); return; }
 ::hexline(b);
@@ -46,22 +44,26 @@ if (b2 == null) { print("resave-failed\n"); return; }
 func TestSquirrelCarriesUnionsInTableClosures(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name, src, json string
+		name, src, json     string
+		wrongSrc, wrongJSON string // the same field at another kind
 	}{
 		{
 			"union table arm",
 			"package probe\n\ntype Inner\n{\n    x int32\n}\nunion Pick\n{\n    alpha Inner\n    beta int32\n}\ntable L\n{\n    u Pick\n}\n",
 			`{"u":{"alpha":{"x":7}}}`,
+			"package probe\n\ntable L\n{\n    u int32\n}\n", `{"u":5}`,
 		},
 		{
 			"payload-free arm",
 			"package probe\n\ntype Fire\n{\n    target uint16\n}\n\nunion Weapon\n{\n    laser Fire\n    ram\n}\n\ntable L\n{\n    fire Weapon\n}\n",
 			`{"fire":{"ram":null}}`,
+			"package probe\n\ntable L\n{\n    fire int32\n}\n", `{"fire":5}`,
 		},
 		{
 			"array of unions",
 			"package probe\n\ntype Ping\n{\n    nonce uint32\n}\n\ntype Pong\n{\n    nonce uint32\n}\n\nunion Reply\n{\n    ping Ping\n    pong Pong\n}\n\nfixed table L\n{\n    history [..4]Reply\n}\n",
 			`{"history":[{"ping":{"nonce":1}},{"pong":{"nonce":2}}]}`,
+			"", "", // a fixed root: the refusal is a tag past the union's arms
 		},
 	}
 	for _, tc := range cases {
@@ -107,6 +109,26 @@ func TestSquirrelCarriesUnionsInTableClosures(t *testing.T) {
 			if !bytes.Equal(lines[1], lines[0]) {
 				t.Errorf("a value saved and loaded back did not save the same bytes\nfirst %x\nsecond %x", lines[0], lines[1])
 			}
+			if tc.wrongSrc != "" {
+				squirrelStrictRefusal(t, u, files, "L", tc.wrongSrc, tc.wrongJSON)
+				return
+			}
+			// THE FIXED ROOT'S REFUSAL: the first element's arm tag set past
+			// the union's last arm is out of range (docs/SPEC-TABLES.md §3.4,
+			// §6.5); its negative control drops the emitted tag check.
+			if len(oracle) < 20 || oracle[0] != 3 {
+				t.Fatalf("the oracle's fixed wire has no form-3 header: %x", oracle)
+			}
+			layout := int(binary.LittleEndian.Uint32(oracle[16:20]))
+			tagAt := 20 + layout + 8 + 4 // the record's hash, then the count
+			if tagAt >= len(oracle) || oracle[tagAt] != 1 {
+				t.Fatalf("the first arm tag is not at %d in %x", tagAt, oracle)
+			}
+			bad := bytes.Clone(oracle)
+			bad[tagAt] = 3
+			bladed := squirrelBladed(t, files, "ProbeTables.nut",
+				"      if (v.History[i].Type < 0 || v.History[i].Type > 2) return \"out_of_range\";\n", "")
+			squirrelRefusalControl(t, u, files, "L", bad, bladed)
 		})
 	}
 }

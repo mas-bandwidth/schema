@@ -587,7 +587,76 @@ impl TableNodeReader {
         post_order
     }
 
-    pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
+    pub fn has_unreachable(&self, edges: &[Vec<usize>]) -> bool {
+        if !self.good || self.slots.is_empty() {
+            return false;
+        }
+        let n = edges.len();
+        let mut reached = vec![false; n];
+        let mut stack = vec![0usize];
+        reached[0] = true;
+        for k in 0..self.slots.len() {
+            if matches!(self.slots[k], TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building)
+                && self.blob_named.get(k).copied().unwrap_or(false)
+                && k + 1 < n
+            {
+                reached[k + 1] = true;
+                stack.push(k + 1);
+            }
+        }
+        while let Some(u) = stack.pop() {
+            for &t in &edges[u] {
+                if t < n && !reached[t] {
+                    reached[t] = true;
+                    stack.push(t);
+                }
+            }
+        }
+        for k in 0..self.slots.len() {
+            match self.slots[k] {
+                TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building => {
+                    if k + 1 >= n || !reached[k + 1] {
+                        return true;
+                    }
+                }
+                TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) | TableNodeSlot::Null => {
+                    if !self.blob_named.get(k).copied().unwrap_or(false) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub fn note_unknown_payload(&mut self, kind: u8, payload: &[u8], report: &mut TableReport) {
+        let mut off = 0usize;
+        match kind {
+            17 => {
+                let Some(index) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off != payload.len() { report.damaged = true; return; }
+                if !self.good || index == 0 { return; }
+                if index == 1 { report.damaged = true; return; }
+                if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }
+                let k = (index - 2) as usize;
+                if matches!(self.slots[k], TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_)) {
+                    self.name_blob(index, report);
+                } else {
+                    if self.blob_named.len() < self.slots.len() {
+                        self.blob_named.resize(self.slots.len(), false);
+                    }
+                    self.blob_named[k] = true;
+                }
+            }
+            14 | 16 => {
+                let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if n < 2 || off + n as usize != payload.len() { report.damaged = true; }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn node_slot(&mut self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
         }
@@ -601,7 +670,13 @@ impl TableNodeReader {
             return None;
         }
         match &self.slots[k] {
-            TableNodeSlot::Null => None,
+            TableNodeSlot::Null => {
+                if self.blob_named.len() < self.slots.len() {
+                    self.blob_named.resize(self.slots.len(), false);
+                }
+                self.blob_named[k] = true;
+                None
+            }
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
                 if *t == want { Some(k + 1) } else { report.damaged = true; None }
