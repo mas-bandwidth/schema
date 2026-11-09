@@ -635,10 +635,25 @@ func t18Expect(m manifestRow) map[string]string {
 // PASS IS THE READER'S). The reference's writer stores what it is handed and
 // does not enforce the range it declares, so a manifest value past the READER's
 // own declared range (a float32 `min`/`max`, an integer's or fixed-point's raw
-// range, ir.TableRawRange) lands clamped to that bound and counts exactly one.
+// range, ir.TableRawRange) is past the bound under the strict read.
 // It answers what the reader must land, read off the reader's schema and never
 // from a literal here, and whether the value was past the bound.
 func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
+	return t18BoundOf(reader, root, path, value, false)
+}
+
+// t18WriterBound is the writer's declared bound for the one bounded kind whose
+// range survives into the compiled plan: an integer or fixed-point field. A
+// forged value outside the WRITER's range refuses the whole load even when it
+// lies inside the reader's widened range (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// the range_widen vectors). A compressed float's writer bound does NOT survive
+// (schema#1164 ruling B), so that kind answers false here and t18Bound alone
+// decides it.
+func t18WriterBound(writer *ir.Unit, root, path, value string) (string, bool) {
+	return t18BoundOf(writer, root, path, value, true)
+}
+
+func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (string, bool) {
 	var st *ir.Struct
 	for _, r := range fixedRoots(reader) {
 		if r.Name == root {
@@ -659,6 +674,9 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 			continue
 		}
 		if f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+			if writerOnly {
+				return "", false
+			}
 			v := math.Float32frombits(uint32(n.Uint64()))
 			switch {
 			case float64(v) > f.FMax:
@@ -688,11 +706,10 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 // Each manifest row whose schema the Java target emits is loaded with the
 // row's own unit through the Java leg's GENERATED load and compared value for
 // value against the manifest: a forged file (hostile_*, past_*) against its
-// forged values, every other file against `values=`. A value past the
-// READER's own declared bound (a forged past_ value, and the two fixed-point rows
-// the reference writes outside their declared range) REFUSES the whole load
-// under the strict read (the bound read off the reader's schema), and is
-// asserted so. A row the Java
+// forged values, every other file against `values=`. A value past the bound
+// the plan carries -- the READER's for a compressed float, the WRITER's for a
+// ranged integer or fixed-point (t18Bound and t18WriterBound) -- REFUSES the
+// whole load under the strict read, and is asserted so. A row the Java
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.
 func t18R27(t *testing.T) {
@@ -800,13 +817,18 @@ func t18R27(t *testing.T) {
 			}
 		} else {
 			reader := t18LoadUnit(t, tk.r.reader)
+			writer := t18LoadUnit(t, tk.r.writer)
 			keys := make([]string, 0, len(want))
 			for k := range want {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				if _, past := t18Bound(reader, m.Root, k, want[k]); past {
+				_, past := t18Bound(reader, m.Root, k, want[k])
+				if !past {
+					_, past = t18WriterBound(writer, m.Root, k, want[k])
+				}
+				if past {
 					pastKeys = append(pastKeys, m.File+":"+k+"="+want[k])
 					pastBound++
 				}
@@ -841,7 +863,7 @@ func t18R27(t *testing.T) {
 		loaded = append(loaded, m.File)
 	}
 	t.Logf("R27: compared %d rows value for value against the manifest (%d values): %s", len(loaded), values, strings.Join(loaded, " "))
-	t.Logf("R27: %d manifest values are past the reader's own declared bound and refuse their load: %s", len(pastKeys), strings.Join(pastKeys, " "))
+	t.Logf("R27: %d manifest values are past the bound the plan carries and refuse their load: %s", len(pastKeys), strings.Join(pastKeys, " "))
 	t.Logf("R27: %d rows refused or not emitted, named and not loaded: %s", len(refused), strings.Join(refused, "; "))
 }
 
