@@ -701,6 +701,72 @@ func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (str
 	return "", false
 }
 
+// TestFixedJavaT18BoundReadsThePlan is the pure-Go half of R27's bound choice:
+// an integer or fixed-point bound is the WRITER's when the plan carries it,
+// while a compressed float's bound is the READER's alone (schema#1164 ruling
+// B). It reads two hand-written units, so it needs neither the C++ corpus nor
+// a JDK and still pins the decision t18R27 makes over the shared manifest.
+func TestFixedJavaT18BoundReadsThePlan(t *testing.T) {
+	t.Parallel()
+	oldInt := unitFrom(t, `package probe
+
+fixed table RangeWiden
+{
+    v     int32 = 0 | min = 0, max = 100
+    vals  [4]int32 | min = 0, max = 100
+    u     uint64 = 10 | min = 10, max = 1000
+}
+`)
+	newInt := unitFrom(t, `package probe
+
+fixed table RangeWiden
+{
+    v     int32 = 0 | min = 0, max = 200
+    vals  [4]int32 | min = 0, max = 200
+    u     uint64 = 10 | min = 0, max = 2000
+}
+`)
+	oldFloat := unitFrom(t, `package probe
+
+fixed table CfloatRangeWiden
+{
+    aim float32 | min = -1, max = 1, resolution = 0.01
+}
+`)
+	newFloat := unitFrom(t, `package probe
+
+fixed table CfloatRangeWiden
+{
+    aim float32 | min = -2, max = 2, resolution = 0.01
+}
+`)
+	for _, tc := range []struct {
+		name       string
+		writer     *ir.Unit
+		reader     *ir.Unit
+		root       string
+		path       string
+		value      string
+		writerPast bool
+		readerPast bool
+	}{
+		{"an integer inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.v", "150", true, false},
+		{"a fixed array element inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.vals[2]", "150", true, false},
+		{"a uint64 inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.u", "1500", true, false},
+		{"a compressed float past the writer, inside the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "1.5|0x3FC00000", false, false},
+		{"a compressed float past the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "5.0|0x40A00000", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, got := t18WriterBound(tc.writer, tc.root, tc.path, tc.value); got != tc.writerPast {
+				t.Errorf("t18WriterBound(%s) = %v, want %v", tc.path, got, tc.writerPast)
+			}
+			if _, got := t18Bound(tc.reader, tc.root, tc.path, tc.value); got != tc.readerPast {
+				t.Errorf("t18Bound(%s) = %v, want %v", tc.path, got, tc.readerPast)
+			}
+		})
+	}
+}
+
 // t18R27: java/R27 "the manifest is the wire" — FIXED-FORM-ALGORITHM §5.9 #32
 // and #37 ("assert the manifest, never read the dump") over SPEC-TABLES §3.4.
 // Each manifest row whose schema the Java target emits is loaded with the
