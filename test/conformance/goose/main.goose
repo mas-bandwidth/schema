@@ -179,7 +179,7 @@ fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
         let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-        if report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk || (f.len >= 6 && f[5] == "refused") {
+        if report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk {
             answer(f[1], "refused\n");
             continue;
         }

@@ -118,8 +118,9 @@ func verdictGlue(ns string, mods []string) string {
 	return b.String()
 }
 
-// verdictManifest derives the manifest lines one surface's rows of a unit: the
-// committed rows with every path made absolute (the real harness does the same).
+// verdictManifest derives the manifest lines one surface's rows of a unit, with
+// paths made absolute. A framing line is framing, name, unit, root, and wire:
+// the verdict and the value are withheld, so a refusal comes from the load.
 func verdictManifest(t *testing.T, surface, unit string) string {
 	t.Helper()
 	abs, err := filepath.Abs(root)
@@ -142,11 +143,7 @@ func verdictManifest(t *testing.T, surface, unit string) string {
 		case f[0] == "report" && len(f) >= 5 && f[2] == unit:
 			fmt.Fprintf(&b, "report %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]))
 		case f[0] == "framing" && len(f) >= 7 && f[2] == unit:
-			val := "-"
-			if f[6] != "-" {
-				val = filepath.Join(abs, f[6])
-			}
-			fmt.Fprintf(&b, "framing %s %s %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]), f[5], val)
+			fmt.Fprintf(&b, "framing %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]))
 		case f[0] == "retain" && len(f) >= 7 && f[2] == unit:
 			fmt.Fprintf(&b, "retain %s %s %s %s %s %s\n", f[1], f[2], f[3], filepath.Join(abs, f[4]), f[5], f[6])
 		case f[0] == "json-hostile" && len(f) >= 6 && f[2] == unit:
