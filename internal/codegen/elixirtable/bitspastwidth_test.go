@@ -72,8 +72,11 @@ defmodule BitsProbe do
 
   def refused(wire, label) do
     case Bitspastwidth.Table.load("Root", wire) do
-      {:error, :out_of_range, _report} -> :ok
-      other -> check(false, label <> ": got " <> inspect(other))
+      {:error, :out_of_range, report} ->
+        check(report.reason == "out_of_range: mask", label <> ": reason " <> inspect(report))
+
+      other ->
+        check(false, label <> ": got " <> inspect(other))
     end
   end
 
@@ -82,8 +85,11 @@ defmodule BitsProbe do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
 
     case Bitspastwidth.Table.load_retain("Root", wire, store, report) do
-      {:error, :out_of_range, _report, _retain} -> :ok
-      other -> check(false, label <> ": got " <> inspect(other))
+      {:error, :out_of_range, report, _retain} ->
+        check(report.reason == "out_of_range: mask", label <> ": reason " <> inspect(report))
+
+      other ->
+        check(false, label <> ": got " <> inspect(other))
     end
   end
 end
