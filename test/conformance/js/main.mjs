@@ -806,12 +806,12 @@ async function wireFuzzCodec(unit, root) {
       fail(unit + "." + root + ": the variable wire surface " + root + f + " is missing from " + path);
     }
   }
-  return {
+  return fixedCodec(generated, load, unit, root, path, {
     load: m[root + "Load"], loadMeasure: m[root + "LoadMeasure"], save: m[root + "Save"],
     loadRetain: m[root + "LoadRetain"], saveRetain: m[root + "SaveRetain"],
     report: () => new m.TableVariableReport(),
     retainStore: () => new m.TableVariableRetain(new Uint8Array(1 << 20), new Array((1 << 20) / 8)),
-  };
+  });
 }
 
 async function wireCodec(unit, root) {
@@ -1258,7 +1258,7 @@ async function wireFuzz() {
       // A --retain roster binds only a root whose retaining pair exists, as
       // the Go leg's findRetentionCodec does; it never falls back to Load.
       const codec = await wireFuzzCodec(unit, root);
-      const retaining = codec !== null && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
+      const retaining = codec !== null && !codec.fixed && typeof codec.loadRetain === "function" && typeof codec.saveRetain === "function";
       if (codec !== null && (retain !== 1 || retaining)) {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
@@ -1370,9 +1370,11 @@ async function wireFuzz() {
       report.oor = rep.oor;
       report.repeated = rep.repeated;
       report.damaged = rep.damaged;
-      // Storage-cap rejection is an out-of-band builder failure, not a
-      // wire-form refusal in the shared report protocol.
-      report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
+      // A variable report names its refusal through err(), as the Go leg's
+      // Report.Refused() (Err() != nil) does, including a count past the
+      // storage cap; damage names itself in the malformed byte, not here.
+      // A fixed report has no err(); its refused flag is the name.
+      report.refused = !rep.damaged && (!loaded || (typeof rep.err === "function" ? rep.err() !== null : Boolean(rep.refused)));
       report.retained = rep.retained;
       report.retainLost = rep.retainLost;
       report.reason = rep.reason;
