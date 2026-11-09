@@ -58,7 +58,7 @@ func cppFramingManifestRows(t *testing.T, root string) []cppFramingRow {
 		t.Fatal(err)
 	}
 	var rows []cppFramingRow
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Fields(line)
 		if len(f) != 7 || f[0] != "framing" {
 			continue
