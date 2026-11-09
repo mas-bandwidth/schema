@@ -127,6 +127,35 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		t.Fatal("a deleted strict read invocation in the real C++ artifact passed the twin gate: the scan is defined but never called")
 	}
 
+	// HIDDEN FROM THE COMPILER IS NOT THE READ. canonicalize deletes comments
+	// and preprocessor before the diff, so a scan that survives only in a
+	// comment or under #if 0 is erased from the runtime. The gate's own checks
+	// must strip them too, or the raw text keeps satisfying the check while the
+	// runtime loses its whole-read refusal.
+	const scanDef = "inline bool TableFixedRefuseScan"
+	hidden := []struct {
+		name   string
+		needle string
+		wrap   func(t *testing.T, src, needle string) string
+	}{
+		{"the C++ scan definition is commented out", scanDef, commentTwinSpan},
+		{"the C++ scan definition is wrapped in #if 0", scanDef, disableTwinSpan},
+		{"the C++ scan invocation is commented out", scanCall, commentTwinSpan},
+		{"the C++ scan invocation is wrapped in #if 0", scanCall, disableTwinSpan},
+	}
+	for _, fault := range hidden {
+		if !strings.Contains(cppSrc, fault.needle) {
+			t.Fatalf("the real C++ artifact no longer carries the strict read clause for %q", fault.name)
+		}
+		broken := fault.wrap(t, cppSrc, fault.needle)
+		if broken == cppSrc {
+			t.Fatalf("the planted C++ fault did not apply: %s", fault.name)
+		}
+		if left := twinLeftover(t, cSrc, broken, root); len(left) == 0 {
+			t.Fatalf("a strict read hidden in a comment or #if 0 passed the twin gate: %s", fault.name)
+		}
+	}
+
 	cFaults := []struct{ name, from, to string }{
 		{
 			"the C count refusal loses its count",
@@ -151,4 +180,40 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 			t.Fatalf("a dropped strict read in the real C artifact passed the twin gate: %s", fault.name)
 		}
 	}
+}
+
+// twinSpan bounds the declaration at needle through its matching closing brace
+// in the real header, so a fault can hide or delete a whole function or block
+// without guessing its body.
+func twinSpan(t *testing.T, src, needle string) (start, end int) {
+	t.Helper()
+	start = strings.Index(src, needle)
+	if start < 0 {
+		t.Fatalf("the real C++ artifact no longer carries %q", needle)
+	}
+	open := strings.Index(src[start:], "{")
+	if open < 0 {
+		t.Fatalf("the real C++ artifact no longer opens a block for %q", needle)
+	}
+	end = matchingBrace(src, start+open)
+	if end < 0 {
+		t.Fatalf("the real C++ artifact no longer closes the block for %q", needle)
+	}
+	return start, end
+}
+
+// commentTwinSpan wraps the real span in a block comment. The bytes stay in
+// the artifact, as they do when someone comments a call out.
+func commentTwinSpan(t *testing.T, src, needle string) string {
+	t.Helper()
+	start, end := twinSpan(t, src, needle)
+	return src[:start] + "/* " + src[start:end+1] + " */" + src[end+1:]
+}
+
+// disableTwinSpan wraps the real span in #if 0. The bytes stay in the
+// artifact, as they do when someone disables a call for a build.
+func disableTwinSpan(t *testing.T, src, needle string) string {
+	t.Helper()
+	start, end := twinSpan(t, src, needle)
+	return src[:start] + "#if 0\n" + src[start:end+1] + "\n#endif" + src[end+1:]
 }

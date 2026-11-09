@@ -767,7 +767,11 @@ func stripPendingCBoundScan(s string) string {
 // hasStrictCountTextScan reports whether s carries the strict count/text
 // scan at all. A missing scan is not a weakened one: stripPendingCBoundScan
 // leaves nothing behind to diff, so the gate must name its absence itself.
+// Comments and preprocessor are removed first: canonicalize deletes them
+// before the diff, so a scan that survives only in a comment or under #if 0
+// is not the read and must not satisfy this check.
 func hasStrictCountTextScan(s string) bool {
+	s = stripPreprocessor(stripComments(s))
 	for _, name := range []string{"TableFixedRefuseScan", "table_fixed_refuse_scan"} {
 		i := strings.Index(s, name+"(")
 		if i < 0 {
@@ -794,6 +798,7 @@ func hasStrictCountTextScan(s string) bool {
 // nothing to compare and pass. The invocation and its refusal return are held
 // in the whole source, past that boundary.
 func hasStrictCountTextScanCall(s string) bool {
+	s = stripPreprocessor(stripComments(s))
 	s = applyIdents(s)
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.Join(strings.Fields(s), " ")
