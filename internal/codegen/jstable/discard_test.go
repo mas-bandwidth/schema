@@ -146,6 +146,33 @@ console.log("ok");
 	}
 }
 
+// strictOnlyFraming names the framing rows whose manifest line pins an answer
+// the one read retires (docs/plans/strict-only.md (b), framing rows), copied
+// from test/conformance/harness/framing_test.go's framingStrictRefusals. They
+// are the conformance framing surface's: the wire-alone walk refuses them, and
+// the JavaScript variable read does not carry that walk yet. The damage-discard
+// gate's control removes the decoded value's discard, so it stays on the rows
+// the read refused before strict-only.
+var strictOnlyFraming = map[string]bool{
+	"frame_kind_mismatch_skips_by_wire_kind": true,
+	"frame_repeat_last_wins":                 true,
+	"array_L0_inert":                         true,
+	"array_L1_inert":                         true,
+	"array_count_bound_plus_one":             true,
+	"array_header_crosses_L_kind_mismatch":   true,
+	"array_elem_kind_mismatch":               true,
+	"map_header_crosses_L_kind_mismatch":     true,
+	"map_L1_inert":                           true,
+	"keyed_header_crosses_L_kind_mismatch":   true,
+	"keyed_elem_kind_mismatch":               true,
+	"keyed_L1_inert":                         true,
+	"node_table_twice":                       true,
+	"node_index_null":                        true,
+	"frame_unknown_id_length":                true,
+	"frame_unknown_id_reference":             true,
+	"node_unknown_to_fixed_reader":           true,
+}
+
 // TestDamageDiscardsTheWholeLoadJavaScript is the JavaScript leg's gate for
 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that meets
 // damage hands back nothing to use and its report refuses the read.
@@ -156,11 +183,13 @@ console.log("ok");
 //     damage is gone), and FromJson answer null on text that does not read.
 //     The same wires undamaged load, so a reader that refused everything would
 //     be red here too.
-//   - framing: every `framing` row of the conformance manifest whose verdict is
-//     refused (docs/LAYERS/1-framing.md) and whose bytes carry the variable
-//     form, through Load and LoadRetain of the row's root, answers null with
-//     the store empty. A row whose first byte is another form is the form
-//     gate's, not this one's.
+//   - framing: every `framing` row of the conformance manifest that the read
+//     already refused before strict-only (docs/LAYERS/1-framing.md) and whose
+//     bytes carry the variable form, through Load and LoadRetain of the row's
+//     root, answers null with the store empty. A row whose first byte is
+//     another form is the form gate's, not this one's, and the rows strict-only
+//     newly refuses are the conformance framing surface's (see strictOnlyFraming
+//     below). An empty file is damage on every read and stays.
 //
 // The message batch's half is TestMessageFormBatchJavaScript/damage: a damaged
 // batch delivers no body. Red if any read hands back what it decoded.
@@ -243,15 +272,27 @@ if (m.GraphLoadRetain(wire("graph.bin"), kept, kr) === null || kept.count === 0 
 			if _, ok := units[fs[2]]; !ok {
 				t.Fatalf("framing row %s names unit %s, which this gate does not load: add it", fs[1], fs[2])
 			}
+			// THE ROWS STRICT-ONLY NEWLY REFUSES ARE THE CONFORMANCE FRAMING
+			// SURFACE'S (docs/plans/strict-only.md (b), framing rows;
+			// test/conformance/harness/framing_test.go, framingStrictRefusals):
+			// their refusal is a condition the wire-alone walk sees inside a
+			// field the declaration cannot name. This gate is DAMAGE DISCARDS
+			// THE WHOLE LOAD, whose control removes the decoded value's
+			// discard, so it keeps the rows the read refused before strict-only,
+			// as the retired `malformed` verdict selected them.
+			if strictOnlyFraming[fs[1]] {
+				continue
+			}
 			// This gate walks the VARIABLE form: a row whose first byte names
 			// another form is the form gate's, and a fixed-class root answers
-			// its defaults there rather than discarding (§3).
+			// its defaults there rather than discarding (§3). An empty file is
+			// damage on every read, so it stays.
 			wirePath := filepath.Join(repo, fs[4])
 			first, err := os.ReadFile(wirePath)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(first) == 0 || first[0] != 1 {
+			if len(first) != 0 && first[0] != 1 {
 				continue
 			}
 			rows[fs[2]] = append(rows[fs[2]], row{fs[1], fs[3], wirePath})
