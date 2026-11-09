@@ -6,6 +6,8 @@ package compiler
 
 import (
 	"encoding/hex"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,16 +42,6 @@ func TestSquirrelCarriesTableWireDefaults(t *testing.T) {
 	if st == nil {
 		t.Fatal("the probe unit declares no table L")
 	}
-	dir := t.TempDir()
-	out := filepath.Join(dir, "probe")
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	inputs := map[string][]byte{}
 	want := map[string][]byte{}
 	for _, c := range cases {
@@ -66,50 +58,82 @@ func TestSquirrelCarriesTableWireDefaults(t *testing.T) {
 		inputs[c.name+".json"] = []byte(c.json)
 	}
 
-	probe := `local inputs = dofile("inputs.nut", true);
+	probe := squirrelVerdict + `local inputs = dofile("inputs.nut", true);
 local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require("ProbeTables");
 local S = schema.require("schema_table_save");
 local L = schema.require("schema_table_load");
 local J = schema.require("schema_table_json");
-local fresh = function() {
-  return { unknown = 0, kindMismatch = 0, widened = 0, clamped = 0, duplicate = 0,
-    malformed = false, refused = false };
-};
 foreach (key in ["default", "set"]) {
-  local r = fresh();
+  local r = {};
   local v = J.FromJson(T, "L", inputs[key + ".json"], r);
-  if (r.malformed) { print(key + " json-refused\n"); continue; }
+  if (::verdict(v, r) != "accepted") { print(key + " json-refused\n"); continue; }
   local b = S.save(T, "L", v);
   hexline(b);
-  local lr = fresh();
+  local lr = {};
   local loaded = L.load(T, "L", b, lr);
-  if (lr.malformed) { print(key + " load-refused\n"); continue; }
+  if (::verdict(loaded, lr) != "accepted") { print(key + " load-refused\n"); continue; }
   hexline(S.save(T, "L", loaded));
   print(key + " " + (v.S == loaded.S ? "same" : "different") + "\n");
 }
 `
-	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(probe), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n")
-	if len(lines) != len(cases)*3 {
-		t.Fatalf("the probe printed %d lines for %d cases: %q", len(lines), len(cases)*3, lines)
-	}
-	for i, c := range cases {
-		for phase := range 2 {
-			got, err := hex.DecodeString(lines[3*i+phase])
-			if err != nil {
-				t.Errorf("%s phase %d is not hex: %q", c.name, phase, lines[3*i+phase])
-				continue
-			}
-			if string(got) != string(want[c.name]) {
-				t.Errorf("%s phase %d differs from tablewire\n got %x\nwant %x", c.name, phase, got, want[c.name])
+	// check runs the probe over one set of emitted files and answers every
+	// way it differs from the Go oracle.
+	check := func(files map[string][]byte) []string {
+		dir := t.TempDir()
+		out := filepath.Join(dir, "probe")
+		if err := os.MkdirAll(out, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for name, data := range files {
+			if err := os.WriteFile(filepath.Join(out, name), data, 0o600); err != nil {
+				t.Fatal(err)
 			}
 		}
-		if verdict := lines[3*i+2]; verdict != c.name+" same" {
-			t.Errorf("%s: saved and loaded values differ: %q", c.name, verdict)
+		if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(probe), 0o600); err != nil {
+			t.Fatal(err)
 		}
-		t.Logf("%s: %d bytes, saved and loaded back at its default", c.name, len(want[c.name]))
+		lines := strings.Split(strings.TrimRight(string(sqrun.Run(t, dir, "main.nut", inputs)), "\n"), "\n")
+		if len(lines) != len(cases)*3 {
+			return []string{fmt.Sprintf("the probe printed %d lines for %d cases: %q", len(lines), len(cases)*3, lines)}
+		}
+		var bad []string
+		for i, c := range cases {
+			for phase := range 2 {
+				got, err := hex.DecodeString(lines[3*i+phase])
+				if err != nil {
+					bad = append(bad, fmt.Sprintf("%s phase %d is not hex: %q", c.name, phase, lines[3*i+phase]))
+					continue
+				}
+				if string(got) != string(want[c.name]) {
+					bad = append(bad, fmt.Sprintf("%s phase %d differs from tablewire\n got %x\nwant %x", c.name, phase, got, want[c.name]))
+				}
+			}
+			if verdict := lines[3*i+2]; verdict != c.name+" same" {
+				bad = append(bad, fmt.Sprintf("%s: saved and loaded values differ: %q", c.name, verdict))
+			}
+		}
+		return bad
 	}
+	for _, e := range check(files) {
+		t.Error(e)
+	}
+
+	// NEGATIVE CONTROL: the emitted descriptor loses its declared default, so
+	// the writer no longer elides "hi"; the probe must go red against the
+	// oracle's elided wire.
+	const defAnchor = `def = "hi"`
+	module := string(files["ProbeTables.nut"])
+	if n := strings.Count(module, defAnchor); n != 1 {
+		t.Fatalf("the default's anchor %q is in the emitted module %d times, want 1", defAnchor, n)
+	}
+	bladed := maps.Clone(files)
+	bladed["ProbeTables.nut"] = []byte(strings.Replace(module, defAnchor, `def = null`, 1))
+	if bad := check(bladed); len(bad) == 0 {
+		t.Error("negative control: with the declared default dropped from the descriptor the probe still agrees with the oracle")
+	}
+
+	// THE STRICT READ REFUSES what the root cannot hold, with its negative
+	// control (docs/SPEC-TABLES.md §6.5).
+	squirrelStrictRefusal(t, u, files, "L", "package probe\n\ntable L\n{\n    s int32\n}\n", `{"s":5}`)
 }
