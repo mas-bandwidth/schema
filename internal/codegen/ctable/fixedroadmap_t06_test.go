@@ -331,8 +331,8 @@ func cT06FullWidthLanes(t *testing.T) {
 	}
 }
 
-// c/C12 — "bool byte != 0". Algorithm §4.5: a bool lands as byte != 0,
-// normalised to the language's own true; a forged 0x02 is not a bool holding 2.
+// c/C12 — "bool byte != 0". Algorithm §4.5 fix 2: a bool byte other than
+// 0 or 1 refuses wire_damaged; a forged 0x02 is not a bool holding 2.
 func cT06BoolByte(t *testing.T) {
 	setup := `
     v.flag = 0;
@@ -344,8 +344,8 @@ func cT06BoolByte(t *testing.T) {
     FORGE_U8( offsetof( Hbb, flag ), 0x02 );`
 	body := `
     if ( n != -1 ) { printf( "C12: n=%lld, not a refusal\n", (long long) n ); return 1; }
-    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
-        { printf( "C12: a bool byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+        { printf( "C12: a bool byte other than 0 or 1 is not refused wire_damaged\n" ); return 1; }
     if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
         { printf( "C12: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_hostile_bool", nil, 0, setup, forge, body)
@@ -354,9 +354,9 @@ func cT06BoolByte(t *testing.T) {
 	}
 }
 
-// c/C13 — "present flag byte != 0". Algorithm §4.5: a present flag lands as
-// byte != 0, normalised to the language's own true; a forged 0x02 marks the
-// optional present, never a byte holding 2.
+// c/C13 — "present flag byte != 0". Algorithm §4.5 fix 2: a present byte
+// other than 0 or 1 refuses wire_damaged; a forged 0x02 never marks the
+// optional present and is never a byte holding 2.
 func cT06PresentByte(t *testing.T) {
 	setup := `
     v.link_present = 0;
@@ -366,8 +366,8 @@ func cT06PresentByte(t *testing.T) {
     FORGE_U8( 4, 0x02 ); /* the present byte rides at body offset 4, right after lead */`
 	body := `
     if ( n != -1 ) { printf( "C13: n=%lld, not a refusal\n", (long long) n ); return 1; }
-    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
-        { printf( "C13: a present byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+        { printf( "C13: a present byte other than 0 or 1 is not refused wire_damaged\n" ); return 1; }
     if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
         { printf( "C13: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_optional_add", nil, 0, setup, forge, body)
@@ -376,10 +376,10 @@ func cT06PresentByte(t *testing.T) {
 	}
 }
 
-// c/R17 — "a bool or present byte that is not 0/1 normalises and counts
-// nothing". The two clauses of C12 and C13 together: 0x02 normalises to 1 AND
-// no counter moves — the bool/present op is not a bound, so it owes clamped == 0
-// and widened == 0 while the bool array's eight forged 0x02 bytes all land 1.
+// c/R17 — "a bool or present byte that is not 0/1 refuses wire_damaged".
+// The two clauses of C12 and C13 together: every forged 0x02 (scalar bool,
+// present byte and each bool-array byte) refuses wire_damaged, no value lands
+// and no counter moves.
 func cT06NormaliseCountsNothing(t *testing.T) {
 	setup := `
     v.flag = 1;
@@ -396,8 +396,8 @@ func cT06NormaliseCountsNothing(t *testing.T) {
     }`
 	body := `
     if ( n != -1 ) { printf( "R17: n=%lld, not a refusal\n", (long long) n ); return 1; }
-    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
-        { printf( "R17: a bool or present byte other than 0 or 1 is not refused\n" ); return 1; }
+    if ( !r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+        { printf( "R17: a bool or present byte other than 0 or 1 is not refused wire_damaged\n" ); return 1; }
     if ( memcmp( &back[0], &fresh, sizeof( back[0] ) ) != 0 )
         { printf( "R17: a refusal landed a value\n" ); return 1; }`
 	out, err := cRunSelfBuilt(t, "VNEW_hostile_bool", nil, 0, setup, forge, body)
