@@ -976,11 +976,28 @@ jobs:
   # budget; each row now runs one half in parallel. The goose row runs the
   # conformance harness's tagged half alone. The matrix key is `group`, the
   # one tools/slowgatescan credits for a row-conditioned step.
+  #
+  # PER-COMMIT SMOKE, FULL LEGS ON THE SCHEDULE (2026-11-09, run 42578064640
+  # on this branch at 137604aac). Splitting the moo leg in two was not
+  # enough on a fleet runner: the moo-compiler row was cancelled at the
+  # 15-minute cap (912 s), the moo-table row ran 859 s (the mootable package
+  # alone 673 s; one test, TestMooCookWriteNegativeControls, 586 s), and
+  # only the goose row finished, at 100 s. No subdivision of rows fits a
+  # single 586 s test under the 110 s per-commit budget, so the full tagged
+  # legs now run only on this workflow's schedule trigger (the nightly
+  # tier), in this same job and matrix, through the same full targets.
+  # Every other event (push, labelled PR, workflow_dispatch) runs a fast
+  # smoke per row instead: the tagged build compiles and its
+  # registration/admission tests run (the compiler's Moo tests, the moo
+  # table descriptors load, the harness's tagged-admission test), which is
+  # the per-commit answer to "does this diff break the tagged legs".
+  # Nothing is dropped: what leaves per-commit runs on the schedule here,
+  # and `make test-moo-tagged` still runs the whole moo leg locally.
   leg-tagged:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1009,25 +1026,38 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # the pins the compiler's and table rows run generated code under
-      # (go-test's compiler rows install the same two), and the moo pin both
-      # moo rows run. The goose row needs none of them.
+      # The full (schedule) moo rows run generated code under the Luau and
+      # Squirrel pins (go-test's compiler rows install the same two); the
+      # per-commit smokes and the goose row need neither. The moo pin itself
+      # both moo rows run under on every event.
       - name: install the Luau and Squirrel pins
-        if: matrix.group != 'goose'
+        if: github.event_name == 'schedule' && matrix.group != 'goose'
         run: make dist-luau dist-squirrel
       - uses: ./.github/actions/moo
         if: matrix.group != 'goose'
 
+      - name: the moo leg's compiler under schema_leg_moo (smoke)
+        if: matrix.group == 'moo-compiler' && github.event_name != 'schedule'
+        run: make test-moo-tagged-compiler-smoke
+
       - name: the moo leg's compiler under schema_leg_moo
-        if: matrix.group == 'moo-compiler'
+        if: matrix.group == 'moo-compiler' && github.event_name == 'schedule'
         run: make test-moo-tagged-compiler
 
+      - name: the moo leg's table and conformance packages under schema_leg_moo (smoke)
+        if: matrix.group == 'moo-table' && github.event_name != 'schedule'
+        run: make test-moo-tagged-table-smoke
+
       - name: the moo leg's table and conformance packages under schema_leg_moo
-        if: matrix.group == 'moo-table'
+        if: matrix.group == 'moo-table' && github.event_name == 'schedule'
         run: make test-moo-tagged-table
 
+      - name: the conformance harness under schema_leg_goose (smoke)
+        if: matrix.group == 'goose' && github.event_name != 'schedule'
+        run: make test-goose-tagged-harness-smoke
+
       - name: the conformance harness under schema_leg_goose
-        if: matrix.group == 'goose'
+        if: matrix.group == 'goose' && github.event_name == 'schedule'
         run: make test-goose-tagged-harness
 
   generated:
