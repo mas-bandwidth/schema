@@ -891,8 +891,8 @@
     },
     {
       "name": "cs-block-home",
-      "when": "pull-request",
-      "why": "the C# block-home control (docs/SPEC-TABLES.md §19.2): the emitted-for-the-unit home taken out of the block emitter, so a unit whose block runtime has nowhere to land must fail to compile. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "when": "nightly",
+      "why": "the C# block-home control (docs/SPEC-TABLES.md §19.2): the emitted-for-the-unit home taken out of the block emitter, so a unit whose block runtime has nowhere to land must fail to compile. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42588004197, the one-target row finished at 139 s wall with no assertion failure (job 2026-11-09T09:05:39Z-09:07:58Z, the control went red and the job succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
       "targets": [
         "tables-block-home-negative-control"
       ],
@@ -909,8 +909,8 @@
     },
     {
       "name": "cs-cook-lengths",
-      "when": "pull-request",
-      "why": "the C# cook-open lengths control: the length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "when": "nightly",
+      "why": "the C# cook-open lengths control: the length check taken out of the reader, so the forgery battery must go red on a forgery. One sabotaged generate and one dotnet build of test/cs-cook. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42588004197, the one-target row finished at 173 s wall with no assertion failure (job 2026-11-09T09:05:25Z-09:08:18Z, the control went red and the job succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
       "targets": [
         "tables-cook-open-cs-lengths-negative-control"
       ],
