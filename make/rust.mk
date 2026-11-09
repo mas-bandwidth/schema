@@ -1748,3 +1748,28 @@ test-rust: tables-rust-json-bom
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-rust/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE WRITER'S RANGE REFUSES (STRICT 100; docs/FIXED-FORM-ALGORITHM.md §4.5).
+# TestFixedVersioningRangeWidenHostile reads the three forged writer's-range
+# vectors and requires an out_of_range refusal of the whole batch. The control
+# takes the fixed load's `held` refusal out through go test -overlay, so a
+# value past the WRITER's range lands; the test must go red on exactly that.
+RUST_RANGE_NC := build/rust-range-widen-nc
+.PHONY: tables-rust-range-widen-negative-control
+tables-rust-range-widen-negative-control: tables-fixedform-corpus
+	@rm -rf $(RUST_RANGE_NC) && mkdir -p $(RUST_RANGE_NC)
+	@sed -e 's|g.pf("        if report.held != 0 {\\n")|g.pf("        if false \&\& report.held != 0 { // NEGATIVE CONTROL\\n")|' \
+		internal/codegen/rusttable/fixedform.go > $(RUST_RANGE_NC)/fixedform.go.txt
+	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_RANGE_NC)/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL: the Rust writer's-range sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_RANGE_NC)/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(RUST_RANGE_NC)/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_RANGE_NC)/overlay.json \
+			-run '^TestFixedVersioningRangeWidenHostile$$' ./internal/codegen/rusttable > $(RUST_RANGE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the writer's-range refusal is gone and the gate stayed green"; \
+		cat $(RUST_RANGE_NC)/log; exit 1; \
+	fi
+	@grep -q "a value past the WRITER's range was read, not refused" $(RUST_RANGE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_RANGE_NC)/log; exit 1; }
+	@echo "negative control: a Rust fixed read that lands a value past the writer's range turns TestFixedVersioningRangeWidenHostile RED"
