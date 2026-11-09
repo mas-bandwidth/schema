@@ -207,6 +207,30 @@ func TestMooJsonGoldensRoundTrip(t *testing.T) {
 	}
 }
 
+// TestMooJsonGoldensRoundTripNegativeControl indents the writer one space a
+// level instead of two and requires the round trip red on the write-back and
+// never on the read: the reader takes any whitespace, so the break is the
+// writer's.
+func TestMooJsonGoldensRoundTripNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
+	t.Parallel()
+	src := string(Runtime()["json.moo"])
+	const site = `s = "\n" .. string.rep("  ", depth)`
+	if strings.Count(src, site) != 1 {
+		t.Fatal("the control's site moved: json.moo no longer indents at " + site)
+	}
+	bad := jsonGoldenRun(t, map[string][]byte{"json.moo": []byte(strings.Replace(src, site, `s = "\n" .. string.rep(" ", depth)`, 1))})
+	if len(bad) == 0 {
+		t.Fatal("the round trip stayed green with the writer's indent broken: it cannot see the writer's spelling")
+	}
+	for _, b := range bad {
+		if strings.Contains(b, "the golden read reported") {
+			t.Errorf("the writer's indent broke the read: %s", b)
+		}
+	}
+	t.Logf("the round trip red on %d write-backs", len(bad))
+}
+
 func jsonGoldenRun(t *testing.T, runtime map[string][]byte) []string {
 	t.Helper()
 	m := readTextManifest(t)
@@ -254,19 +278,26 @@ func TestMooJsonHostileVerdicts(t *testing.T) {
 	}
 }
 
-// TestMooJsonHostileVerdictsNegativeControl plants out the keyed object's
-// repeated-key refusal for a key that names no slot and requires exactly the
-// two trees that repeat one (keyed-duplicate-none, keyed-duplicate-unknown)
-// red: the verdicts see a reader that accepts a repeated key.
+// TestMooJsonHostileVerdictsNegativeControl plants out both refusals of a
+// repeated key that names no slot: seenKeys, before the slot lookup, and
+// unknownSeen, after it. Either one alone still refuses keyed-duplicate-none
+// and keyed-duplicate-unknown, so the control requires exactly those two
+// trees red, and no others: the verdicts see a reader that accepts the repeat.
 func TestMooJsonHostileVerdictsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
 	t.Parallel()
 	src := string(Runtime()["json.moo"])
-	const site = "\t\telseif unknownSeen[name] then\n\t\t\tr.bad = true -- a repeated key refuses\n\t\t\treturn false\n"
-	if !strings.Contains(src, site) {
-		t.Fatal("the control's site moved: json.moo's readKeyed no longer refuses a repeated key that names no slot")
+	sites := []string{
+		"\t\tif seenKeys[name] then\n\t\t\tr.bad = true\n\t\t\tif r.report.reason == nil then\n\t\t\t\tr.report.reason = \"a repeated key\"\n\t\t\tend\n\t\t\treturn false\n\t\tend\n",
+		"\t\telseif unknownSeen[name] then\n\t\t\tr.bad = true -- a repeated key refuses\n\t\t\treturn false\n",
 	}
-	broken := strings.Replace(src, site, "", 1)
+	broken := src
+	for _, site := range sites {
+		if !strings.Contains(broken, site) {
+			t.Fatal("the control's site moved: json.moo's readKeyed no longer refuses a repeated key that names no slot")
+		}
+		broken = strings.Replace(broken, site, "", 1)
+	}
 	bad := hostileVerdictRun(t, map[string][]byte{"json.moo": []byte(broken)})
 	var names []string
 	for _, b := range bad {
@@ -303,7 +334,9 @@ func hostileVerdictRun(t *testing.T, runtime map[string][]byte) []string {
 		res := textRun(t, u, cases, inputs, runtime)
 		for i, h := range byUnit[key] {
 			got := res[i][0]
-			// the report's columns: u,k,w,c,d,damaged,verdict,reason
+			// the report's columns: u,k,w,c,d,damaged,verdict,reason.
+			// only the verdict is the contract (docs/rulings.json
+			// refusal-verdict-only), never the counters or the reason.
 			cols := strings.SplitN(got, ",", 8)
 			if len(cols) != 8 {
 				t.Fatalf("%s (%s %s): the probe printed %q", h.name, key, h.root, got)

@@ -80,13 +80,13 @@ end
 				fmt.Fprintf(&probe, `
 {name,root,input,text,wire,le,be}={%q,%q,%q,%q,Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower)}
 {:ok,value,r}=T.from_json(root,input)
-Probe.check(true and r.kind_mismatch==0,name<>" JSON report")
+Probe.check(true and r.reason == "" and r.unknown==0 and r.widened==0,name<>" JSON report")
 {:ok,^text}=T.to_json(root,value)
 {:ok,^wire}=T.save(root,value)
 {:ok,loaded,_}=T.load(root,wire)
 {:ok,^text}=T.to_json(root,loaded)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:ok,held,r,store}=T.load_retain(root,wire,store,zero)
 {:ok,^wire,_,_}=T.save_retain(root,held,store,r)
 {size,:ok}=T.cook_measure_reason(root,value)

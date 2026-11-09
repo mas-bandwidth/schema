@@ -24,7 +24,9 @@ C_HOSTILE_BUILD    := build/c-hostile
 C_HOSTILE_FINDINGS ?= test/c-hostile/known-findings.tsv
 C_HOSTILE_SANITIZE ?= -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
 C_HOSTILE_CFLAGS   := -std=c99 -Wall -Wextra -Werror -O1 -ffp-contract=off $(C_HOSTILE_SANITIZE)
-C_HOSTILE_JOBS     ?= 4
+# One sanitizer translation unit per core. Four-wide left the fleet runner's
+# other cores idle and the per-commit job died inside this compile.
+C_HOSTILE_JOBS     ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 8)
 
 C_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \

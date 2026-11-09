@@ -68,7 +68,7 @@ var textTotalClauses = []struct{ file, clause, broken string }{
 
 const textTotalSchema = "package texttotal\n\ntable Handover\n{\n    rules [..4]string(8) | total = 8\n    first []?string(8) | total = 4\n}\n"
 
-// the writer's view of the same table: no total, a wider M and count
+// the writer's view of the same table: no total, a wider M and count.
 const textTotalWriter = "package texttotal\n\ntable Handover\n{\n    rules [..8]string(16)\n    first []?string(16)\n}\n"
 
 func TestGooseTextTotal(t *testing.T) {

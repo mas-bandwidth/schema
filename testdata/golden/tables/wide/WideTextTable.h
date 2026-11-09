@@ -1020,10 +1020,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -3376,7 +3388,11 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -4279,7 +4295,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
@@ -4547,7 +4567,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -4701,7 +4722,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;

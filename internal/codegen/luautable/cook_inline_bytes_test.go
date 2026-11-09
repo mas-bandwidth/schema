@@ -27,6 +27,7 @@ import (
 var paddedCookTexts = []string{
 	`{}`,
 	`{"marker":7,"stamp":1234567890123,"blob":"AAECAwQFBgcICQoL","rows":[{"tag":1,"value":2.5,"flag":true,"id":99,"label":"first","slots":[1,2,3,4],"counter":-3},{"tag":2,"slots":[65535,0,0,9]}]}`,
+	paddedCookBuilt,
 }
 
 // paddedCookBuilt is the frame paddedCookProbe builds field by field, its
@@ -166,7 +167,7 @@ func runLuauErr(t *testing.T, dir, main string, inputs map[string][]byte) ([]byt
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		return stdout.Bytes(), fmt.Errorf("%v: %s", err, stderr.Bytes())
+		return stdout.Bytes(), fmt.Errorf("%w: %s", err, stderr.Bytes())
 	}
 	return stdout.Bytes(), nil
 }

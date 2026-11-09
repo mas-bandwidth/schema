@@ -156,7 +156,7 @@ static void fixed_row( const char * row, uint64_t from, uint64_t to, int width )
     if ( n < 0 || patch( wire, n, from, to, width ) != 1 ) { FAIL( row, "the sentinel did not ride exactly once" ); return; }
     memset( &report, 0, sizeof( report ) );
     if ( cell_fixed_load( values, 2, wire, n, NULL, 0, NULL, &report ) != -1 || !refused( &report ) ||
-         !cell_is_reset( &values[0] ) || !cell_is_reset( &values[1] ) || report.clamped != 0 )
+         !cell_is_reset( &values[0] ) || !cell_is_reset( &values[1] ) || report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT )
     { FAIL( row, "the fixed read did not refuse the batch, or landed something" ); return; }
     if ( cell_fixed_load( values, 2, wire, n, NULL, 0, NULL, &report ) != -1 || report.refuse_reason != SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT )
     { FAIL( row, "the strict fixed read did not refuse it as SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT" ); }

@@ -58,18 +58,34 @@ static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
 {
-    if ( raw == NULL ) { len = -1; return NULL; }
+    if ( raw == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
-    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
-    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    if ( u > (uint32_t) INT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) )
+    {
+        len = -1;
+        return NULL;
+    }
     len = (int32_t) u;
     return (const char *) ( raw + 8 );
 }
 
 inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
     return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
@@ -78,13 +94,25 @@ inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRe
 }
 inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
 {
-    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
-    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    if ( ref.value == 0 )
+    {
+        len = 0;
+        return schema_table_empty_text_ + 8;
+    }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
 }
 inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
 {
-    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    if ( ctx.arena == NULL )
+    {
+        len = -1;
+        return NULL;
+    }
     return schema_table_text_at_( *ctx.arena, ref, len );
 }
 
@@ -94,7 +122,11 @@ inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, con
     if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
     if ( len > 0 && text == NULL ) { return false; }
     if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
-    if ( len == 0 ) { slot.value = 0; return true; }
+    if ( len == 0 )
+    {
+        slot.value = 0;
+        return true;
+    }
     uint32_t at = 0;
     uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
     if ( dst == NULL ) { return false; }
@@ -184,7 +216,11 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
     int32_t len = 0;
     const char * bytes = schema_table_text_at_( ctx, src, len );
     if ( bytes == NULL ) { return false; }
-    if ( len == 0 ) { dst.value = 0; return true; }
+    if ( len == 0 )
+    {
+        dst.value = 0;
+        return true;
+    }
     at = ( at + 7 ) & ~(int64_t) 7;
     const int64_t need = TableAlignUp64( 9 + (int64_t) len );
     if ( at + need > capacity ) { return false; }
@@ -203,9 +239,17 @@ inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, Tabl
 inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
 {
     uint64_t len = 0;
-    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    if ( !r.getleb( len ) || !r.room( len ) )
+    {
+        r.offset = r.size;
+        return true;
+    }
     r.offset += (int64_t) len;
-    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len > (uint64_t) kTableBlobMaxLength )
+    {
+        reason = blob_over_size_cap;
+        return false;
+    }
     if ( len == 0 ) { return true; }
     at = ( at + 7 ) & ~(int64_t) 7;
     at += TableAlignUp64( 9 + (int64_t) len );
@@ -487,7 +531,7 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.pf("%s    at += (int64_t) cursor.count * (int64_t) sizeof( %s ); // the whole array FIRST\n", ind, entry.Name)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%[1]s        if ( !%[2]sExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -550,7 +594,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    if ( !cursor.ok ) { return false; }\n", ind)
 			g.pf("%s    at = ( at + %d ) & ~(int64_t) %d;\n", ind, alignOfEntry(g.unit, entry)-1, alignOfEntry(g.unit, entry)-1)
 			g.pf("%s    const int64_t bytes = (int64_t) cursor.count * (int64_t) sizeof( %s );\n", ind, entry.Name)
-			g.pf("%s    if ( at + bytes > capacity ) { TableMapRelease( cursor ); return false; }\n", ind)
+			g.pf("%[1]s    if ( at + bytes > capacity )\n%[1]s    {\n%[1]s        TableMapRelease( cursor );\n%[1]s        return false;\n%[1]s    }\n", ind)
 			g.pf("%s    %s * placed = (%s *) ( extent + at );\n", ind, entry.Name, entry.Name)
 			g.pf("%s    at += bytes;\n", ind)
 			g.pf("%s    %s.count = cursor.count;\n", ind, slot)
@@ -561,7 +605,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			if g.isVar(entry.Name) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ )\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name)
+				g.pf("%[1]s        if ( !%[2]sExtentPack( ctx, *cursor[i], placed[i], extent, at, capacity ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n", ind)
@@ -654,14 +698,14 @@ func (g *tableGen) emitUnionWireExtent(un *ir.Union) {
 	g.pf("// %sWireArmExtent: the extent one %s value's set arm commands, from the FRAMING alone (§2.6, §6.5).\n", un.Name, un.Name)
 	g.pf("inline bool %sWireArmExtent( TableReader & r, int64_t & at, TableRefuseReason & reason )\n{\n", un.Name)
 	g.pf("    uint64_t arm_ref = 0;\n")
-	g.pf("    if ( !r.getleb( arm_ref ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.getleb( arm_ref ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    if ( arm_ref == 0 ) { return true; } // None: the reference is the whole payload\n")
-	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( r.ids == NULL || arm_ref > (uint64_t) r.ids->count )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint64_t arm_id = r.ids->at( arm_ref );\n")
-	g.pf("    if ( !r.has( 1 ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.has( 1 ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    r.offset += 1; // the arm's kind byte\n")
 	g.pf("    uint64_t arm_len = 0;\n")
-	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) ) { r.offset = r.size; return true; }\n")
+	g.pf("    if ( !r.getleb( arm_len ) || !r.room( arm_len ) )\n    {\n        r.offset = r.size;\n        return true;\n    }\n")
 	g.pf("    const uint8_t * arm_body = r.buffer + r.offset;\n")
 	g.pf("    r.offset += (int64_t) arm_len;\n")
 	g.pf("    switch ( arm_id )\n    {\n")
@@ -939,7 +983,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			if g.hasExtent(entry) {
 				g.pf("%s    for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order\n%s    {\n", ind, ind)
-				g.pf("%s        if ( !%sCookExtent( ctx, region, extent, at, array + i * %d, *cursor[i], order ) ) { TableMapRelease( cursor ); return false; }\n", ind, entry.Name, el.Size)
+				g.pf("%[1]s        if ( !%[2]sCookExtent( ctx, region, extent, at, array + i * %[3]d, *cursor[i], order ) )\n%[1]s        {\n%[1]s            TableMapRelease( cursor );\n%[1]s            return false;\n%[1]s        }\n", ind, entry.Name, el.Size)
 				g.pf("%s    }\n", ind)
 			}
 			g.pf("%s    TableMapRelease( cursor );\n%s}\n", ind, ind)
@@ -1189,15 +1233,6 @@ func (g *tableGen) emitUnreachedExtentRefusal(f *ir.Field, ref *ir.Struct, subje
 		subject, f.Name, f.ArrayBound, f.Name)
 	g.pf("        if ( !TableExtentUnreachedEmpty( %sExtent( ctx, %s.%s[i] ) ) ) { return false; }\n", ref.Name, subject, f.Name)
 	g.pf("    }\n")
-}
-
-// alignOfList is one list element's alignment in the region, which is where
-// a list's carved array begins.
-func alignOfList(u *ir.Unit, f *ir.Field) int64 {
-	if _, align := ir.ListElementLayout(u, f); align > 0 {
-		return align
-	}
-	return 8
 }
 
 // A union element has the same hidden-slot obligation as a nested table.

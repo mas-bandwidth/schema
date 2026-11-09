@@ -115,8 +115,8 @@ func TestJavaBlobSharedReportCensus(t *testing.T) {
 		for _, b := range wire {
 			elems = append(elems, fmt.Sprintf("(byte) 0x%02x", b))
 		}
-		body.WriteString(fmt.Sprintf("        check(%q, new byte[]{%s}, %q, %t);\n",
-			tc.Name, strings.Join(elems, ", "), tc.Saved, refused[tc.Name]))
+		fmt.Fprintf(&body, "        check(%q, new byte[]{%s}, %q, %t);\n",
+			tc.Name, strings.Join(elems, ", "), tc.Saved, refused[tc.Name])
 	}
 
 	driver := fmt.Sprintf(`import %s.*;

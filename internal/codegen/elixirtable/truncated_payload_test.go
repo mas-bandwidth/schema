@@ -64,7 +64,7 @@ func TestTruncatedFieldPayloadElixir(t *testing.T) {
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
- unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise(%q<>inspect(result))
+ unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).reason=="wire_damaged",do: raise(%q<>inspect(result))
 end
 `, hex.EncodeToString(wire), fmt.Sprintf("truncated %s/%s/kind%d/%d ", field, row.name, row.kind, n))
 			}
@@ -99,7 +99,7 @@ wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 for result<-[T.load("RootConfig",wire),T.load_retain("RootConfig",wire,store,zero)] do
- unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise("pinned nested float "<>inspect(result))
+ unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).reason=="wire_damaged",do: raise("pinned nested float "<>inspect(result))
 end
 IO.puts("PINNED_NESTED_FLOAT_OK")
 `, hex.EncodeToString(wire))

@@ -3275,7 +3275,11 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -4178,7 +4182,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
@@ -4446,7 +4454,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -4600,7 +4609,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -5681,10 +5697,12 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         if ( !map.once || entry.type_id != ~target ||
             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
-            report->refused = true; report->refuse_reason = kind_mismatch;
+            report->refused = true;
+            report->refuse_reason = kind_mismatch;
             return;
         }
-        report->refused = true; report->refuse_reason = blob_shared;
+        report->refused = true;
+        report->refuse_reason = blob_shared;
     }
     else if ( map.once && ( target == kTableBytesTypeId || target == kTableStringTypeId ) )
     {
@@ -7964,7 +7982,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -7973,7 +7992,11 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -7981,10 +8004,16 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                     r.report->damaged = true;
                     memset( value.name, 0, sizeof( value.name ) );
                     value.name_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 32 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -8012,7 +8041,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8035,7 +8065,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8063,7 +8094,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8091,7 +8123,8 @@ inline bool AssetLoadBody( TableReader & r, const TableNodeMap & nodes, Asset & 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8310,7 +8343,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8319,7 +8353,11 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -8327,10 +8365,16 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                     r.report->damaged = true;
                     memset( value.name, 0, sizeof( value.name ) );
                     value.name_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 32 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -8343,7 +8387,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8371,7 +8416,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8399,7 +8445,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -8427,7 +8474,8 @@ inline bool CatalogLoadBody( TableReader & r, const TableNodeMap & nodes, Catalo
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -9221,7 +9269,9 @@ inline void AssetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
 {
     switch ( type_id )
     {
-        case 0x8e4e6dccfe5f64fbull: AssetLoadBody( r, nodes, *(Asset *) at ); break; // Asset
+        case 0x8e4e6dccfe5f64fbull:
+            AssetLoadBody( r, nodes, *(Asset *) at );
+            break; // Asset
         case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
         case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
         default: break;
@@ -10057,7 +10107,9 @@ inline void CatalogNodeBody( uint64_t type_id, TableReader & r, const TableNodeM
 {
     switch ( type_id )
     {
-        case 0x8e4e6dccfe5f64fbull: AssetLoadBody( r, nodes, *(Asset *) at ); break; // Asset
+        case 0x8e4e6dccfe5f64fbull:
+            AssetLoadBody( r, nodes, *(Asset *) at );
+            break; // Asset
         case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
         case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
         default: break;
@@ -10867,7 +10919,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10876,7 +10929,11 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -10884,10 +10941,16 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                     r.report->damaged = true;
                     memset( value.name, 0, sizeof( value.name ) );
                     value.name_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 32 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -10915,7 +10978,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10938,7 +11002,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10966,7 +11031,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -10994,7 +11060,8 @@ inline bool AssetLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, As
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11220,7 +11287,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11229,7 +11297,11 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): malformed counts, and damage
                 // discards the whole load
                 if ( !TableUtf8Valid( r.buffer + r.offset, len ) )
@@ -11237,10 +11309,16 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                     r.report->damaged = true;
                     memset( value.name, 0, sizeof( value.name ) );
                     value.name_length = 0;
-                    r.offset += (int64_t) len; break;
+                    r.offset += (int64_t) len;
+                    break;
                 }
                 uint64_t keep = len;
-                if ( keep > 32 ) { keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary (§3)
+                if ( keep > 32 )
+                {
+                    keep = (uint64_t) TableUtf8Clamp( r.buffer + r.offset, len, 32 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // at a code point boundary (§3)
                 memcpy( value.name, r.buffer + r.offset, (size_t) keep );
                 value.name[keep] = 0;
                 value.name_length = (int32_t) keep;
@@ -11253,7 +11331,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11281,7 +11360,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11309,7 +11389,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11337,7 +11418,8 @@ inline bool CatalogLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, 
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -11391,7 +11473,9 @@ inline void AssetNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 {
     switch ( type_id )
     {
-        case 0x8e4e6dccfe5f64fbull: AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) ); break; // Asset
+        case 0x8e4e6dccfe5f64fbull:
+            AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) );
+            break; // Asset
         case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
         case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
         default: break;
@@ -11766,7 +11850,9 @@ inline void CatalogNodeBodyRetain( uint64_t type_id, TableReader & r, const Tabl
 {
     switch ( type_id )
     {
-        case 0x8e4e6dccfe5f64fbull: AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) ); break; // Asset
+        case 0x8e4e6dccfe5f64fbull:
+            AssetLoadBodyRetain( r, nodes, *(Asset *) at, retain, TableRetainPathRoot( (const void *) at, node ) );
+            break; // Asset
         case kTableBytesTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *bytes
         case kTableStringTypeId: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *string
         default: break;
@@ -12252,9 +12338,18 @@ inline bool AssetCookLayout( const TableNumbering & numbering, TableCookRegion &
         int64_t node_align = 0;
         switch ( numbering.entries[k].type_id )
         {
-            case 0x8e4e6dccfe5f64fbull: size = 72; node_align = 8; break; // Asset
-            case kTableBytesTypeId: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 0; node_align = 8; break; // *bytes
-            case kTableStringTypeId: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 1; node_align = 8; break; // *string
+            case 0x8e4e6dccfe5f64fbull:
+                size = 72;
+                node_align = 8;
+                break; // Asset
+            case kTableBytesTypeId:
+                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 0;
+                node_align = 8;
+                break; // *bytes
+            case kTableStringTypeId:
+                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 1;
+                node_align = 8;
+                break; // *string
             default: return false;
         }
         offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
@@ -12333,7 +12428,9 @@ inline bool AssetCookFrom( const Ctx & ctx, const Asset & root, void * out, uint
                 const void * node = numbering.entries[k].node;
                 switch ( numbering.entries[k].type_id )
                 {
-                    case 0x8e4e6dccfe5f64fbull: ok = AssetCookBody( ctx, region, at, *(const Asset *) node, order ); break; // Asset
+                    case 0x8e4e6dccfe5f64fbull:
+                        ok = AssetCookBody( ctx, region, at, *(const Asset *) node, order );
+                        break; // Asset
                     case kTableBytesTypeId:
                     {
                         const TableBlob * blob = (const TableBlob *) node; // *bytes
@@ -12348,7 +12445,9 @@ inline bool AssetCookFrom( const Ctx & ctx, const Asset & root, void * out, uint
                         table_cook_bytes( at + kTableBlobHeader, (const void *) ( blob + 1 ), (int64_t) blob->length, (int64_t) blob->length );
                         break;
                     }
-                    default: ok = false; break;
+                    default:
+                        ok = false;
+                        break;
                 }
             }
             // the ATTRIBUTION part: the node directory (§6.3), one entry per node
@@ -12436,9 +12535,18 @@ inline bool CatalogCookLayout( const TableNumbering & numbering, TableCookRegion
         int64_t node_align = 0;
         switch ( numbering.entries[k].type_id )
         {
-            case 0x8e4e6dccfe5f64fbull: size = 72; node_align = 8; break; // Asset
-            case kTableBytesTypeId: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 0; node_align = 8; break; // *bytes
-            case kTableStringTypeId: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 1; node_align = 8; break; // *string
+            case 0x8e4e6dccfe5f64fbull:
+                size = 72;
+                node_align = 8;
+                break; // Asset
+            case kTableBytesTypeId:
+                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 0;
+                node_align = 8;
+                break; // *bytes
+            case kTableStringTypeId:
+                size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + 1;
+                node_align = 8;
+                break; // *string
             default: return false;
         }
         offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
@@ -12517,7 +12625,9 @@ inline bool CatalogCookFrom( const Ctx & ctx, const Catalog & root, void * out, 
                 const void * node = numbering.entries[k].node;
                 switch ( numbering.entries[k].type_id )
                 {
-                    case 0x8e4e6dccfe5f64fbull: ok = AssetCookBody( ctx, region, at, *(const Asset *) node, order ); break; // Asset
+                    case 0x8e4e6dccfe5f64fbull:
+                        ok = AssetCookBody( ctx, region, at, *(const Asset *) node, order );
+                        break; // Asset
                     case kTableBytesTypeId:
                     {
                         const TableBlob * blob = (const TableBlob *) node; // *bytes
@@ -12532,7 +12642,9 @@ inline bool CatalogCookFrom( const Ctx & ctx, const Catalog & root, void * out, 
                         table_cook_bytes( at + kTableBlobHeader, (const void *) ( blob + 1 ), (int64_t) blob->length, (int64_t) blob->length );
                         break;
                     }
-                    default: ok = false; break;
+                    default:
+                        ok = false;
+                        break;
                 }
             }
             // the ATTRIBUTION part: the node directory (§6.3), one entry per node

@@ -151,6 +151,18 @@ export const TableFixedRefusal = Object.freeze({
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
   IntegrityMismatch: 19,
+  // THE FOUR CONTENT BOUND RULINGS (docs/FIXED-FORM-ALGORITHM.md §4.5,
+  // §4.6): a count past the plan's bound, a text length past its cap, and a
+  // ranged scalar, a bits(N), a union tag or an enum ordinal past the set.
+  // Each REFUSES BY NAME and writes not one destination byte. They are not
+  // §4's six events: nothing was decoded and there is nothing to count.
+  CountOverBound: 20,
+  LengthOverBound: 21,
+  OutOfRange: 22,
+  // A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 REFUSES BY NAME (docs/SPEC-TABLES.md
+  // §4, §6.5, §4.5): no writer emits one, and 0x02 is neither stored verbatim
+  // nor normalized to true. It is a check-loop refusal, not a bounds-pass one.
+  WireDamaged: 23,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -176,6 +188,10 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
     case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
+    case TableFixedRefusal.CountOverBound: return "count_over_bound";
+    case TableFixedRefusal.LengthOverBound: return "length_over_bound";
+    case TableFixedRefusal.OutOfRange: return "out_of_range";
+    case TableFixedRefusal.WireDamaged: return "wire_damaged";
     default: return "???";
   }
 }
@@ -421,6 +437,16 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
             TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (expected >>> 0)) { holds = false; break; }
       }
       if (!holds) { continue; }
+      for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
+        if (remap[at + 1] === -1 && src[srcAt + remap[at]] > 1) {
+          report.refused = TableFixedRefusal.WireDamaged;
+          return;
+        }
+      }
+    }
+    if (guard !== TableFixedNoGuard && expected === -1 && src[srcAt + guard] > 1) {
+      report.refused = TableFixedRefusal.WireDamaged;
+      return;
     }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
@@ -454,9 +480,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         break;
       }
       case TableFixedOpCount: {
-        let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.oor++; }
-        else if (v > size) { v = size; report.oor++; }
+        // A COUNT PAST THE PLAN'S BOUND IS A REFUSAL BY NAME (§4.5), never a
+        // clamp: the bound is the WRITER's own for the lineage entry, and a
+        // forged count is not a number this writer could have written. It
+        // refuses before any destination byte is written.
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -469,9 +498,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // (docs/SPEC-TABLES.md §3.4).
         const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;
         const cap = (size / unit) | 0;
-        let v = TableFixedGetU32(src, s) | 0;
-        if (v < 0) { v = 0; report.oor++; }
-        else if (v > cap) { v = cap; report.oor++; }
+        // A TEXT LENGTH PAST THE CAP IS A REFUSAL BY NAME (§4.5), never a
+        // clamp: the cap is the WRITER's own for the lineage entry, and a
+        // forged length is not a count this writer could have written. It
+        // refuses before any destination byte is written.
+        const v = TableFixedGetU32(src, s) | 0;
+        if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
         // 11): UTF-8 validity over v bytes, never over N; wide code units over
         // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
@@ -503,14 +535,14 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const extent = remap[table];
         let v = 0;
         if (hi !== 0 || lo > extent) {
-          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE, as a
-          // count past its bound is: it lands None AND COUNTS ONE oor, on
-          // THIS plan exactly as the identity plan's projection counts it
-          // (§5.4, §4.6, and §5.8 row 12 — the reference counts on neither
-          // compiled path). A variant the writer DOES carry and this reader
-          // cannot name is a different thing: it resolves to None through the
-          // table and counts nothing, because nothing was out of range.
-          report.oor++;
+          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE
+          // (§4.6): it refuses BY NAME and writes not one destination byte,
+          // exactly as the identity plan's bounds pass refuses the same forged
+          // bytes. A variant the writer DOES carry and this reader cannot name
+          // is a different thing: it resolves to None through the table and
+          // refuses nothing, because nothing was out of range.
+          report.refused = TableFixedRefusal.OutOfRange;
+          return;
         } else if (lo !== 0) {
           v = remap[table + lo];
         }
@@ -550,10 +582,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
-        // that set lands None (already written just above) and COUNTS, so the
-        // compiled plan counts it exactly as the identity plan's decode bound
-        // does and the SAME forged bytes land the SAME oor == 1 on either
-        // plan (schema#1254, §5.4, §5.8 row 12). The source read is bounded
+        // that set refuses out_of_range (§4.6), exactly as the identity plan's
+        // bounds pass refuses the same forged bytes. The source read is bounded
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
         // its own.
@@ -561,7 +591,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
-          if (raw > arms) { report.oor++; }
+          // A TAG PAST THE WRITER'S OWN ARM SET IS OUT OF RANGE (§4.6): it
+          // refuses BY NAME, never a silent oor count.
+          if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
         break;
       }

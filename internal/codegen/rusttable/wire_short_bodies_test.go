@@ -64,7 +64,9 @@ func buildShortBodiesAndUnreachableVectors(t *testing.T, u *ir.Unit) []shortBody
 		// Prepend a valid unknown scalar field so retaining loads must clear
 		// captured records when a later short body or unreachable node refuses.
 		unk := append(append(ref(ir.TableWireId("unknown_prefix")), byte(ir.TableKindI32)), 7, 0, 0, 0)
-		body := append(unk, build(ref)...)
+		body := make([]byte, len(unk))
+		copy(body, unk)
+		body = append(body, build(ref)...)
 		body = append(body, 0)
 		wire := append([]byte{1}, body...)
 		for _, id := range ids {

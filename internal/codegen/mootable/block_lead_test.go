@@ -3,6 +3,7 @@ package mootable_test
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,9 +36,7 @@ func mooBlockLeadVerdicts(t *testing.T, sabotage bool) (matched, mismatched int)
 				t.Fatal("alignment sabotage anchor must occur exactly once")
 			}
 			files := map[string][]byte{}
-			for name, data := range g.files {
-				files[name] = data
-			}
+			maps.Copy(files, g.files)
 			files[name] = bytes.Replace(src, anchor, []byte("-- SABOTAGED: the caller base is not checked"), 1)
 			g = writeUnit(t, g.unit, files)
 		}

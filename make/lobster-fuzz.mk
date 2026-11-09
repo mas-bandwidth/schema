@@ -153,3 +153,14 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 	@./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' --replay testdata/conformance/tables/wire/v1_cfg.bin --unit tblv1 --root Cfg
 	@./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' --replay testdata/wire/tables/retain_rt2.bin --unit tblrt1 --root Node
 	@echo 'lobster wire-fuzz controls: fixed refusal, unguarded save, omitted retained fields and admitted message damage each diverge; diagnostic-only and unplanted controls stay green'
+
+# THE VERDICT PIPE is the strict-read gate. The builder arm is one load
+# (the whole value or a refusal). The retain arm is the retaining write-back.
+# SCHEMA_SLOW=1 is required so slowtest.Gate does not skip. The negative
+# control plants its fault in the generated artifact the VM compiles.
+.PHONY: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control
+tables-lobster-wire-fuzz-verdict:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipe$$'
+tables-lobster-wire-fuzz-verdict-negative-control:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 40m ./internal/codegen/lobstertable/ -run '^TestLobsterWireFuzzVerdictPipeNegativeControl$$'
+test-lobster: tables-lobster-wire-fuzz-verdict tables-lobster-wire-fuzz-verdict-negative-control

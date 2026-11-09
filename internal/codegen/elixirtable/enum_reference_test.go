@@ -81,7 +81,7 @@ func TestEnumCollectionReferencesElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if ok == c.damaged || tablewire.ReadRefusal(e) != c.damaged || (!c.damaged && int(report.Unknown) != c.unknown) {
+			if ok == c.damaged || tablewire.ReadRefusal(e) != c.damaged || (!c.damaged && report.Unknown != c.unknown) {
 				t.Fatalf("%s/%s oracle: %v %+v %v", field, c.name, ok, report, e)
 			}
 			canonical := ""
@@ -97,19 +97,20 @@ func TestEnumCollectionReferencesElixir(t *testing.T) {
 			}
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  if %t do
-  unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise(%q<>inspect(result))
+  unless elem(result,0)==:error and is_atom(elem(result,1)) and elem(result,2).reason != "",do: raise(%q<>inspect(result))
+  if tuple_size(result)==4,do: (unless elem(result,3).records==[] and elem(result,3).used==0 and elem(result,3).ids==[],do: raise(%q<>" retain not empty "<>inspect(result)))
  else
-  unless elem(result,0)==:ok and true and elem(result,2).unknown==%d and elem(result,2).kind_mismatch==0,do: raise(%q<>inspect(result))
+  unless elem(result,0)==:ok and true and elem(result,2).unknown==%d and elem(result,2).reason=="",do: raise(%q<>inspect(result))
   expected_lost=if tuple_size(result)==4,do: elem(result,2).unknown,else: 0
   unless elem(result,2).retain_lost==expected_lost,do: raise("excluded enum loss "<>inspect(result))
   {:ok,text}=T.to_json("Root",elem(result,1))
   unless text==%q,do: raise("enum value "<>text)
  end
 end
-`, hex.EncodeToString(wire), c.damaged, field+"/"+c.name+" ", c.unknown, field+"/"+c.name+" ", canonical)
+`, hex.EncodeToString(wire), c.damaged, field+"/"+c.name+" ", field+"/"+c.name+" ", c.unknown, field+"/"+c.name+" ", canonical)
 		}
 	}
 	probe.WriteString("IO.puts(\"ENUM_REFERENCES_OK\")\n")
@@ -122,8 +123,9 @@ end
 }
 
 // Union-array elements have both an element-index step and an arm step in
-// their retain path. A replaced occurrence discards its old records without
-// loss; an edited surviving array loses only records belonging to removed items.
+// their retain path. A body naming the same field id twice is damage and
+// refuses the whole retaining load; an intact array keeps its records, and
+// an edited surviving array loses only records belonging to removed items.
 func TestRetainedUnionArrayBodiesElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir retaining union arrays preserve and replace nested record paths")
 	u := unitFrom(t, `package unionretain
@@ -178,7 +180,23 @@ func TestRetainedUnionArrayBodiesElixir(t *testing.T) {
 		store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 		var load, save tabletext.Report
 		ok, e := tablewire.DecodeRetain(m, v, c.wire, &store, &load)
-		if e != nil || !ok || load.Refused || int(load.Retained) != c.retained || load.Unknown != 2 || load.RetainLost != 0 {
+		if c.name != "intact" {
+			// The same field id twice in one body is damage: the Go
+			// retaining reader refuses the whole load, and so does Elixir.
+			if ok || e == nil || !load.Refused || load.Reason == "" || !tablewire.ReadRefusal(e) {
+				t.Fatalf("%s load refusal: %v %v %+v", c.name, ok, e, load)
+			}
+			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
+ unless elem(result,0)==:error and is_atom(elem(result,1)) and elem(result,2).reason != "",do: raise(%q<>" refusal "<>inspect(result))
+ if tuple_size(result)==4,do: (unless elem(result,3).records==[] and elem(result,3).used==0 and elem(result,3).ids==[],do: raise(%q<>" retain not empty "<>inspect(result)))
+end
+`, hex.EncodeToString(c.wire), c.name+" ", c.name+" ")
+			continue
+		}
+		if e != nil || !ok || load.Refused || load.Retained != c.retained || load.Unknown != 2 || load.RetainLost != 0 {
 			t.Fatalf("%s load: %v %v %+v", c.name, ok, e, load)
 		}
 		want, e := tablewire.EncodeRetain(m, v, &store, &save)
@@ -190,7 +208,7 @@ func TestRetainedUnionArrayBodiesElixir(t *testing.T) {
 		}
 		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 {:ok,value,report,store}=T.load_retain("Root",wire,store,zero)
 unless report.retained==2 and report.unknown==2 and report.retain_lost==0, do: raise("load %s "<>inspect(report))
 {:ok,saved,report,_}=T.save_retain("Root",value,store,zero)

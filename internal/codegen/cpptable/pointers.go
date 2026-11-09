@@ -116,16 +116,6 @@ func blobTerminated(f *ir.Field) bool { return f.Type.Kind == ir.TString }
 
 // blobTypeIdConst is the generated runtime's name for a byte buffer's reserved
 // type id (docs/SPEC-TABLES.md §3.1).
-// blobTypeId is the RESERVED node type id a byte buffer's record rides under
-// (docs/SPEC-TABLES.md §2.5, §3.1), as a value — what blobTypeIdConst spells
-// as the emitted constant's name.
-func blobTypeId(f *ir.Field) uint64 {
-	if f.Type.Kind == ir.TString {
-		return ir.StringWireTypeId
-	}
-	return ir.BytesWireTypeId
-}
-
 func blobTypeIdConst(f *ir.Field) string {
 	if f.Type.Kind == ir.TString {
 		return "kTableStringTypeId"
@@ -421,10 +411,13 @@ func (g *tableGen) emitEdgeWalk(st *ir.Struct, v edgeVisitor) {
 		}
 		if open != "" {
 			g.pf("    if ( %s )\n    {\n", open)
-		}
-		g.emitEdgeOf(f, v)
-		if open != "" {
+			savedIndent := g.indent
+			g.indent = savedIndent + "    "
+			g.emitEdgeOf(f, v)
+			g.indent = savedIndent
 			g.pf("    }\n")
+		} else {
+			g.emitEdgeOf(f, v)
 		}
 	}
 }
@@ -799,7 +792,7 @@ func (g *tableGen) emitPack(st *ir.Struct) {
 		g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used )\n{\n", st.Name, st.Name, st.Name)
 		g.pf("    memcpy( (void *) &dst, (const void *) &src, sizeof( %s ) ); // trivially copyable, by construction\n", st.Name)
 		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx; (void) seen; (void) base; (void) capacity; (void) used;\n")
+			g.pf("    (void) ctx;\n    (void) seen;\n    (void) base;\n    (void) capacity;\n    (void) used;\n")
 		}
 	}
 	g.emitEdgeWalk(st, edgeVisitor{
@@ -1501,7 +1494,7 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 	// and what -Wunused-parameter otherwise refuses. The switch is not
 	// emitted: an empty `default` is C4065 under MSVC /W4 /WX.
 	if !g.anyExtent && nodeDispatchEmpty(reachable, blobs) {
-		g.pf("    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
+		g.pf("    (void) r;\n    (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
 		g.pf("    (void) type_id;\n")
 	}
 	if g.retain && len(reachable) == 0 {
@@ -1522,7 +1515,7 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 					call = fmt.Sprintf("%sLoadBodyRetain( r, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
 				}
 			}
-			g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.WireName()), call, t.Name)
+			g.pf("        case 0x%016[1]xull:\n            %[2]s;\n            break; // %[3]s\n", ir.TableWireId(t.WireName()), call, t.Name)
 		}
 		for _, b := range blobs {
 			// the bytes verbatim; the storage's zeros are a string's terminator
@@ -1716,7 +1709,7 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 		// integrity_mismatch, and no region is sized from the file; then the
 		// framing is read without it (the Go oracle's tableIntegrityOpen,
 		// internal/codegen/gotable/integrity.go).
-		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) ) { if ( reason_out != NULL ) { *reason_out = integrity_mismatch; } return -1; }\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n        if ( reason_out != NULL ) { *reason_out = integrity_mismatch; }\n        return -1;\n    }\n")
 		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);\n")

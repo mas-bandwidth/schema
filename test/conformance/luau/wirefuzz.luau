@@ -596,16 +596,10 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	end
 	if not measureRefused then
 		if retain then
-			v, kept = (u.retain :: any).loadRetainWalk(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
+			v, kept = (u.retain :: any).LoadRetain(root, wire, report, RETAIN_CAPACITY, RETAIN_ID_CAPACITY)
 		else
-			v = load.loadWalk(root, wire, report)
+			v = load.load(root, wire, report)
 		end
-	end
-	-- A FIXED root always loads (test/conformance/README.md, "The wire-fuzz
-	-- driver"): its Load fills a value and reports, so a refused or damaged
-	-- wire answers the root at its defaults.
-	if v == nil and desc ~= nil and not desc.variable then
-		v = desc.new()
 	end
 	local saved = nil
 	if v ~= nil then
@@ -623,8 +617,8 @@ local function answer(u: Unit, root: string, wire: buffer, retain: boolean?): bu
 	buffer.writei32(b, 9, report.widened or 0)
 	buffer.writei32(b, 13, report.clamped or 0)
 	buffer.writei32(b, 17, report.duplicate or 0)
-	buffer.writeu8(b, 21, if report.malformed then 1 else 0)
-	buffer.writeu8(b, 22, if (report.refused or 0) > 0 then 1 else 0)
+	buffer.writeu8(b, 21, if report.malformed or measureRefused then 1 else 0)
+	buffer.writeu8(b, 22, if (report.refused or 0) > 0 or (v == nil and not report.malformed and not measureRefused) then 1 else 0)
 	buffer.writeinteger(b, 23, integer.create(measure))
 	buffer.writei32(b, 31, if retain then (report :: any).retained or 0 else 0)
 	buffer.writei32(b, 35, if retain then (report :: any).retainLost or 0 else 0)

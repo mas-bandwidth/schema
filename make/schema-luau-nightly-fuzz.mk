@@ -605,8 +605,8 @@ LUAU_NF_STRICT := -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversi
 $(LUAU_NF_HOST): tools/luaufuzzhost/main.cpp $(LUAU_SRC)/.stamp
 	@rm -rf $(LUAU_NF_HOST_OBJ) && mkdir -p $(LUAU_NF_HOST_OBJ)
 	@cd $(LUAU_SRC) && ls Common/src/*.cpp Ast/src/*.cpp Bytecode/src/*.cpp Compiler/src/*.cpp VM/src/*.cpp \
-		| xargs -P 4 -I{} sh -c 'o=$(CURDIR)/$(LUAU_NF_HOST_OBJ)/$$(echo {} | tr / _).o; \
-			nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG $(LUAU_NF_STRICT) $(patsubst -I%,-I$(CURDIR)/%,$(LUAU_NF_HOST_INC)) -c {} -o "$$o" 2>"$$o.log"'
+		| xargs -P 4 -n 1 sh -c 'o=$(CURDIR)/$(LUAU_NF_HOST_OBJ)/$$(echo "$$1" | tr / _).o; \
+			nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG $(LUAU_NF_STRICT) $(patsubst -I%,-I$(CURDIR)/%,$(LUAU_NF_HOST_INC)) -c "$$1" -o "$$o" 2>"$$o.log"' sh
 	@echo "luaufuzzhost: vendored Luau $(LUAU_VERSION): $$(cat $(LUAU_NF_HOST_OBJ)/*.log | grep -c 'warning:') warning lines (roadmap schema-luau-fuzzhost-vendored-warnings)"
 	@nice -n 19 $(CXX) -std=c++17 -O2 -DNDEBUG $(LUAU_NF_STRICT) -Werror $(patsubst -I%,-isystem %,$(LUAU_NF_HOST_INC)) -c tools/luaufuzzhost/main.cpp -o $(LUAU_NF_HOST_OBJ)/main.o
 	@$(CXX) -o $@ $(LUAU_NF_HOST_OBJ)/*.o -lm -lpthread

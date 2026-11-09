@@ -1647,9 +1647,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
-                          if strict_flag?() and node_bin != nil, do: throw(:wire_damaged)
-                          # a node table riding twice: the LAST is the
-                          # numbering (§3 last-wins; framing N7)
+                          # a node table riding twice is the same field id
+                          # twice in one body: damage (§3, §4)
+                          if node_bin != nil, do: throw(:wire_damaged)
                           entries(rest3, ids, allowed, transport, acc, payload)
                         else
                           {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
@@ -1907,8 +1907,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        _ ->
+        :malformed ->
+          # the directory already refused a malformed record before any
+          # body was read (directory_report), so this is never taken
           :null
+
+        _ ->
+          # a record this reader cannot name under a known pointer is a
+          # kind mismatch, not a null (§3.1, §4): the writer of a known
+          # pointer field names a record of the field's own type
+          {:value, :wrong_type}
       end
     end
   end
@@ -1940,22 +1948,24 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     # A refusal must retain exactly the diagnostic prefix already earned.
     report = directory_report(nodes, empty_report(), false)
 
-    {records, report} =
+    {records, report, node_fields} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{}, report}, fn
-        {{:table, name, body}, idx}, {records, report} ->
-          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
+      |> Enum.reduce({%{}, report, %{}}, fn
+        {{:table, name, body}, idx}, {records, report, node_fields} ->
+          {node_desc, fields_of_node, node_ok} = decoded_fields(name, body, ids)
 
           {_status, value, own_report} =
             carry_count_report(report, fn ->
               in_read_holder(idx, fn ->
-                decode(node_desc, node_fields, nodes, ids, node_ok)
+                decode(node_desc, fields_of_node, nodes, ids, node_ok)
               end)
             end)
 
           if not node_ok, do: throw(:wire_damaged)
-          {Map.put(records, idx, value), merge_report(report, own_report)}
+
+          {Map.put(records, idx, value), merge_report(report, own_report),
+           Map.put(node_fields, idx, fields_of_node)}
 
         _, state ->
           state
@@ -1968,7 +1978,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     report = merge_report(report, own_report)
 
-    if strict_flag?(), do: strict_reachable!(records, root)
+    strict_wire_reachable!(fields, node_fields, nodes, ids)
 
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     {assemble_directory(records), report}
@@ -2052,6 +2062,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids, terminated) do
+    # the same field id twice in one body is damage (§3, §4): no field
+    # lands, however well each occurrence would read on its own
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report} =
       Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
                                                                        {_status, value, report} ->
@@ -2438,7 +2453,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = %{f | elem_kind: elem_kind}
+              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2839,8 +2854,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
-    if strict_flag?() and rest != <<>>, do: throw(:wire_damaged)
+  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
+    # Bytes left inside an array's L after its elements are damage (§3, §4).
+    # A widened element kind reads at the wire width, and the rest of the L
+    # is the writer's wider slots, skipped with the body (§2.9, §4).
+    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
+      do: throw(:wire_damaged)
+
     {Enum.reverse(acc), report}
   end
 
@@ -4249,11 +4269,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls. Every
-  # other byte — the card's multibyte UTF-8 included — rides raw.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
+  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
+  # well-formed sequence is not text: no read puts it into storage, so a
+  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
+  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
+  # (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
+
+  defp json_escape(<<c, _::binary>> = bin, acc) when c >= 0x80 do
+    case bin do
+      <<ch::utf8, rest::binary>> -> json_escape(rest, [<<ch::utf8>> | acc])
+      _ -> throw(:invalid_value)
+    end
+  end
 
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
@@ -6395,6 +6426,9 @@ const variableRetainSource = `
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
   defp decode_retain(desc, fields, nodes, ids, retain, report, path, terminated) do
+    if length(fields) != length(Enum.uniq_by(fields, fn {id, _kind, _payload} -> id end)),
+      do: throw(:wire_damaged)
+
     {status, value, report, retain} =
       Enum.reduce_while(fields, {:cont, Map.new(), report, retain}, fn {id, kind, payload},
                                                                        {_status, value, report,
@@ -7115,8 +7149,23 @@ const variableRetainSource = `
     end
   end
 
-  defp node_value_retain(nodes, idx, ids, f, report, retain),
-    do: {node_value(nodes, idx, ids, f), report, retain}
+  defp node_value_retain(nodes, idx, ids, f, report, retain) do
+    # a record of a type this reader cannot name at all reads null and is
+    # kept by the retaining store (§6.6); a record of the wrong named type
+    # under a known pointer is damage, as on the plain read (§3.1, §4)
+    value =
+      case node_value(nodes, idx, ids, f) do
+        {:value, :wrong_type} ->
+          if Enum.at(nodes, idx - 2) in [:unknown, :malformed],
+            do: :null,
+            else: {:value, :wrong_type}
+
+        other ->
+          other
+      end
+
+    {value, report, retain}
+  end
 
   defp decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated) do
     report = directory_report(nodes, report, true)
@@ -7126,13 +7175,13 @@ const variableRetainSource = `
       |> Enum.with_index(2)
       |> Enum.reduce({%{}, report, retain}, fn
         {{:table, name, body}, idx}, {records, report, retain} ->
-          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
+          {node_desc, fields_of_node, node_ok} = decoded_fields(name, body, ids)
 
           {_status, value, report, retain} =
             in_read_holder(idx, fn ->
               decode_retain(
                 node_desc,
-                node_fields,
+                fields_of_node,
                 nodes,
                 ids,
                 retain,

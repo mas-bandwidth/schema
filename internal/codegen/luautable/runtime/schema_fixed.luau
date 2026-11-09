@@ -398,6 +398,28 @@ local function readScalar(f: any, w: Node, buf: buffer, at: number): any
 	return v
 end
 
+-- cmp128 orders two 128-bit pairs { lo, hi }: -1, 0 or 1. shl128 shifts one
+-- left by n bits (a fixed-point bound in value units onto its raw storage).
+local function cmp128(a: any, b: any, unsigned: boolean): number
+	if a.hi ~= b.hi then
+		local less = if unsigned then integer.ult(a.hi, b.hi) else integer.lt(a.hi, b.hi)
+		return if less then -1 else 1
+	end
+	if a.lo == b.lo then return 0 end
+	return if integer.ult(a.lo, b.lo) then -1 else 1
+end
+
+local function shl128(a: any, n: number): any
+	if n >= 64 then
+		return { lo = 0i, hi = integer.lshift(a.lo, integer.create(n - 64)) }
+	end
+	local ni = integer.create(n)
+	return {
+		lo = integer.lshift(a.lo, ni),
+		hi = integer.bor(integer.lshift(a.hi, ni), integer.rshift(a.lo, integer.create(64 - n))),
+	}
+end
+
 local function lessThan(a: any, b: any, isSigned: boolean): boolean
 	if typeof(a) == "integer" and typeof(b) == "integer" then
 		if isSigned then return integer.lt(a, b) end
@@ -414,7 +436,15 @@ end
 -- writer's; an older writer's own narrower ranges ride its lineage entry.
 local function bounds(f: any, v: any, cx: Cx): any
 	local lo, hi = f.lo, f.hi
-	if lo ~= nil and hi ~= nil and typeof(lo) ~= "table" then
+	if lo ~= nil and hi ~= nil and typeof(lo) == "table" and typeof(v) == "table" then
+		-- a 128-bit range on its two halves (§4.6), the high halves compared
+		-- signed (or unsigned), the low halves always unsigned
+		if f.fbits ~= nil and f.fbits > 0 then
+			lo, hi = shl128(lo, f.fbits), shl128(hi, f.fbits)
+		end
+		local unsigned = f.signed == false
+		if cmp128(v, lo, unsigned) < 0 or cmp128(v, hi, unsigned) > 0 then error(outOfRange(f), 0) end
+	elseif lo ~= nil and hi ~= nil and typeof(lo) ~= "table" then
 		if f.fbits ~= nil and f.fbits > 0 then
 			if typeof(lo) == "integer" then
 				lo = integer.lshift(lo, integer.create(f.fbits))
@@ -430,6 +460,9 @@ local function bounds(f: any, v: any, cx: Cx): any
 		local isSigned = f.signed ~= false
 		if f.s == "float" then
 			if v == v and (v < lo or v > hi) then error(outOfRange(f), 0) end
+			-- a ranged float's -0 lands as +0, uncounted (docs/SPEC-TABLES.md
+			-- §3.3, the special values)
+			if v == 0 then v = 0 end
 		elseif lessThan(v, lo, isSigned) or lessThan(hi, v, isSigned) then
 			error(outOfRange(f), 0)
 		end
@@ -773,7 +806,8 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 	end
 end
 
-function writeOne(f: any, n: Node, value: any, buf: buffer)
+local writeStruct: (d: any, n: Node, value: any, buf: buffer) -> ()
+local function writeOne(f: any, n: Node, value: any, buf: buffer)
 	local slot = f.slot
 	local own = value
 	if slot ~= nil then own = value[slot] end
@@ -856,7 +890,7 @@ local function deprecatedValue(f: any, value: any, record: any): any
 	return nil
 end
 
-function writeStruct(d: any, n: Node, value: any, buf: buffer)
+writeStruct = function(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)

@@ -264,15 +264,15 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 		}
 		encode = func() ([]byte, error) { return tablewire.EncodeMessages(r.model, batch) }
 	}
-	// Region decode on fixed or variable checks framing first.
-	if r.variable && !r.message && !r.builder {
-		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
+	// Region decode on fixed or variable checks framing and storage cap first.
+	if !r.message {
+		if size, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); size > ir.MaxSizeBytes || (r.variable && !r.builder && refused) {
 			ans.report = Counts{Refused: true}
 			return ans, nil
 		}
 	}
 	ok, derr := decode()
-	strictOK := strictReportClean(&rep) && (r.message || strictWireCheckForRoot(r.def, data))
+	strictOK := strictReportClean(&rep) && ((r.message && strictMessageSkipDepthOK(r.def, r.vocabulary, data)) || (!r.message && strictWireCheckForRoot(r.def, data)))
 	if !strictOK || derr != nil || !ok {
 		rep.Refused = true
 	}
@@ -477,13 +477,20 @@ func (reply legReply) accepted() bool {
 	return reply.loaded && !reply.report.Refused && !reply.report.Malformed
 }
 
-// wireVerdict compares only acceptance and the complete accepted write-back.
-// The root and wire size remain parameters while callers migrate the transport.
+// wireVerdict compares the read verdict and the complete accepted write-back.
+// Under strict-only a refused load's report IS the refusal (docs/plans/strict-only.md):
+// the leg must name the refusal — malformed for damage, refused for a named
+// form — so a driver that drops the report does not pass merely by returning no
+// root. The root and wire size remain parameters while callers migrate the
+// transport.
 func wireVerdict(_ *wireRoot, reply legReply, ans oracleAnswer, _ int) string {
 	if accepted := reply.accepted(); accepted != ans.accepted {
 		return fmt.Sprintf("read acceptance differs: the leg says %t, the oracle says %t", accepted, ans.accepted)
 	}
 	if !ans.accepted {
+		if !reply.report.Refused && !reply.report.Malformed {
+			return "the oracle refuses the wire; the leg's report does not name the refusal"
+		}
 		return ""
 	}
 	if ans.encFail {

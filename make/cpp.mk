@@ -337,7 +337,7 @@ tables-cpp-format: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-format.sh $(CPP_FOR
 	if [ "$$v" != "$(CLANG_FORMAT_MAJOR)" ]; then \
 		echo "tables-cpp-clean: $(CLANG_FORMAT) is major $$v; the gate is pinned to $(CLANG_FORMAT_PIN) (major $(CLANG_FORMAT_MAJOR)) — install it, or pass CLANG_FORMAT=<that binary>"; exit 1; \
 	fi; \
-	OUT=build/cpp-clean-format CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) check $(CPP_CLEAN_TREES)
+	OUT=build/cpp-clean-format LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) check $(CPP_CLEAN_TREES)
 
 tables-cpp-warnings: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-warnings.sh make/checks/cpp-clean-one.sh $(CPP_WARN_ALLOW)
 	@if ! $(CLANGXX) --version 2>/dev/null | grep -qi clang; then \
@@ -349,7 +349,7 @@ tables-cpp-warnings: $(CPP_CLEAN_STAMPS) make/checks/cpp-clean-warnings.sh make/
 
 # what the two ratchets should hold today (a maintainer's tool, never a gate)
 tables-cpp-clean-census: $(CPP_CLEAN_STAMPS)
-	@OUT=build/cpp-clean-census-format CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) census $(CPP_CLEAN_TREES) > build/cpp-format-census.txt
+	@OUT=build/cpp-clean-census-format LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_FORMAT_ALLOW) census $(CPP_CLEAN_TREES) > build/cpp-format-census.txt
 	@OUT=build/cpp-clean-census-warn CLANGXX=$(CLANGXX) SERIALIZE_DIR=$(SERIALIZE) sh make/checks/cpp-clean-warnings.sh $(CPP_WARN_ALLOW) census $(CPP_CLEAN_TREES) > build/cpp-warn-census.txt
 	@echo "wrote build/cpp-format-census.txt ($$(wc -l < build/cpp-format-census.txt | tr -d ' ') files) and build/cpp-warn-census.txt ($$(wc -l < build/cpp-warn-census.txt | tr -d ' ') files)"
 
@@ -401,7 +401,7 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 		{ echo "NEGATIVE CONTROL CANNOT RUN: clang-format $(CLANG_FORMAT_PIN) does not resolve (CLANG_FORMAT = $(CLANG_FORMAT)), and a drift control without the formatter proves nothing"; exit 1; }
 	@rm -rf $(CPP_CLEAN_CONTROL)/format && mkdir -p $(CPP_CLEAN_CONTROL)/format && : > $(CPP_CLEAN_CONTROL)/format/empty.txt
 	./bin/schema generate --lang cpp --out $(CPP_CLEAN_CONTROL)/format/clean examples
-	@OUT=$(CPP_CLEAN_CONTROL)/format/guard CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_CLEAN_CONTROL)/format/empty.txt check $(CPP_CLEAN_CONTROL)/format/clean > $(CPP_CLEAN_CONTROL)/format/guard.out 2>&1 || \
+	@OUT=$(CPP_CLEAN_CONTROL)/format/guard LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_CLEAN_CONTROL)/format/empty.txt check $(CPP_CLEAN_CONTROL)/format/clean > $(CPP_CLEAN_CONTROL)/format/guard.out 2>&1 || \
 		{ echo "NEGATIVE CONTROL FAILED: the unsabotaged packet emitter's output is not format-clean, so this control would watch a tree that was red anyway"; cat $(CPP_CLEAN_CONTROL)/format/guard.out; exit 1; }
 	go run ./tools/sabotage -name cpp-clean-format-drift -out $(CPP_CLEAN_CONTROL)/format/cpp.gotext internal/codegen/cpp/cpp.go
 	@printf '{"Replace":{"%s/internal/codegen/cpp/cpp.go":"%s/$(CPP_CLEAN_CONTROL)/format/cpp.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(CPP_CLEAN_CONTROL)/format/overlay.json
@@ -409,7 +409,7 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 	$(CPP_CLEAN_CONTROL)/format/schema generate --lang cpp --out $(CPP_CLEAN_CONTROL)/format/sabotaged examples
 	@grep -q '^struct [A-Za-z0-9_]* {$$' $(CPP_CLEAN_CONTROL)/format/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
-	@if OUT=$(CPP_CLEAN_CONTROL)/format/red CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_CLEAN_CONTROL)/format/empty.txt check $(CPP_CLEAN_CONTROL)/format/sabotaged > $(CPP_CLEAN_CONTROL)/format/red.out 2>&1; then \
+	@if OUT=$(CPP_CLEAN_CONTROL)/format/red LC_ALL=C CLANG_FORMAT=$(CLANG_FORMAT) sh make/checks/cpp-clean-format.sh $(CPP_CLEAN_CONTROL)/format/empty.txt check $(CPP_CLEAN_CONTROL)/format/sabotaged > $(CPP_CLEAN_CONTROL)/format/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C++ left the format gate green"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; \
 	fi
 	@grep -q 'clang-format drift in .*/format/sabotaged/Types\.h' $(CPP_CLEAN_CONTROL)/format/red.out || \

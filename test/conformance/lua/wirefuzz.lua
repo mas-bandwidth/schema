@@ -79,8 +79,8 @@ local function load_unit(key)
   for name in pairs(package.loaded) do before[name] = true end
   local saved_path = package.path
   package.path = dir .. "/?.lua"
-  local ok, T, L, S = pcall(function()
-    return require(module), require("load"), require("save")
+  local ok, T, L, S, F = pcall(function()
+    return require(module), require("load"), require("save"), require("fixed")
   end)
   package.path = saved_path
   for name in pairs(package.loaded) do
@@ -90,7 +90,7 @@ local function load_unit(key)
     io.stderr:write("wirefuzz.lua: unit " .. key .. ": " .. tostring(T) .. "\n")
     return false
   end
-  u = { T = T, load = L, save = S }
+  u = { T = T, load = L, save = S, fixed = F }
   units[key] = u
   return u
 end
@@ -127,7 +127,8 @@ stdout:flush()
 
 -- ONE MUTANT. A VARIABLE root is sized by the runtime's LoadMeasure before it
 -- is loaded, as a region caller sizes it (§6.5), and a refusal there means no
--- load; a FIXED root always loads and answers measure -1. A runtime that
+-- load; a FIXED-CLASS root rides form 3 (§3.4) and is read by the fixed
+-- reader, always loading or refusing, and answers measure -1. A runtime that
 -- carries no LoadMeasure answers -1 for every root, and the harness names that
 -- disagreement itself; this driver never computes a measure of its own. Until
 -- it does, a variable no-root reply reads to the harness as a LoadMeasure
@@ -141,8 +142,28 @@ local function answer(entry, wire)
                    outOfRange = 0, widened = 0, repeatedKey = 0 }
   local loaded, measure, saved = false, -1, nil
   local T, L, S = entry.unit.T, entry.unit.load, entry.unit.save
+  if not entry.desc.variable then
+    -- THE FIXED READ (docs/SPEC-TABLES.md §3.4): one read, the whole value or
+    -- a refusal, exactly the variable load's contract. The fixed reader
+    -- reports the counters the variable walk would (unknown, widened,
+    -- out-of-range clamped); the refusal is the report's, and the saved bytes
+    -- are the fixed writer's.
+    local F = entry.unit.fixed
+    local ok, rows, _, _, widened, clamped, unknown = pcall(F.load, T, entry.root, wire, false)
+    if ok and rows ~= nil and rows[1] ~= nil then
+      loaded = true
+      report.unknown = unknown or 0
+      report.widened = widened or 0
+      report.outOfRange = clamped or 0
+      local sok, b = pcall(T.FixedSave, entry.root, rows)
+      if sok and b ~= nil then saved = b end
+    else
+      report.refused = 1
+    end
+    return loaded, report, measure, saved
+  end
   local measured = true
-  if entry.desc.variable and L.LoadMeasure ~= nil then
+  if L.LoadMeasure ~= nil then
     measure = L.LoadMeasure(T, entry.root, wire) or -1
     measured = measure >= 0
   end

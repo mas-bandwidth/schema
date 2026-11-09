@@ -70,10 +70,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\t\t\t\tr.Report.Refuse(TableRefuseMissingRequired, missingReq)\n")
 		g.pf("\t\t\t\treturn false\n")
 		g.pf("\t\t\t}\n")
-		g.pf("\t\t\treturn true\n")
+		g.pf("\t\t\tif r.Offset != int64(len(r.Buffer)) { %s; return false }; return true\n", damaged)
 		g.pf("\t\t}\n")
 	} else {
-		g.pf("\t\tif ref == 0 { return true }\n")
+		g.pf("\t\tif ref == 0 { if r.Offset != int64(len(r.Buffer)) { %s; return false }; return true }\n", damaged)
 	}
 	g.pf("\t\tfieldID, ok := r.Resolve(ref); if !ok || !r.Has(1) { %s; return false }\n", damaged)
 	// a repeated field id in one body is damage, checked as the body decodes
@@ -157,7 +157,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	g.pf("\tr, verdict := tableOpenChecked(data, read)\n")
 	g.pf("\tif verdict != TableOpenOk || !%sLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {\n", n)
-	g.pf("\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)
+	g.pf("\t\tif verdict == TableOpenOk { read.Verdict = TableOpenDamaged }\n\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)
 	g.pf("// %sReadStrict is %sLoad under a second spelling (docs/SPEC-TABLES.md §6.5): the value, or the typed reason.\n", n, n)
 	g.pf("func %sReadStrict(wire []byte)(*%s,error){value:=&%s{};var report TableReport;if !%sLoad(value,wire,&report){return nil,report.Err()};return value,nil}\n\n", n, g.storageName(n), g.storageName(n), n)
 }
@@ -261,7 +261,9 @@ func (g *tableGen) emitReadArray(f *ir.Field, ind string, keyed bool) {
 		g.pf("%selem, ok := sub.Body(); if !ok { %s }\n", j, stop)
 		g.pf("%svar slot %s; if !slot.TableEnumValue(key) { r.Report.Unknown++;", j, f.KeyEnum)
 		if g.retain {
-			g.pf("if r.Retain!=nil{r.Report.RetainLost++};")
+			g.pf("if r.Retain!=nil{r.Report.RetainLost++};if !tableWireSkipFramed(&elem.tableRetainPlainReader,elemKind,false){return false};")
+		} else {
+			g.pf("if !tableWireSkipFramed(&elem,elemKind,false){return false};")
 		}
 		g.pf("continue }\n")
 		g.retainReadPath("elem", "r", "int(slot)-1")
@@ -355,9 +357,10 @@ func (g *tableGen) emitReadUnion(un *ir.Union, expr, rdr, ind string, element ..
 		g.retainReadPath(arm, rdr, fmt.Sprint(ordinal+1))
 		g.emitReadArm(v, g.unionArmExpr(un, v, expr), arm, "armKind", j)
 	}
-	g.pf("%sdefault:r.Report.Unknown++\n", i)
 	if g.retain {
-		g.pf("if r.Retain!=nil{r.Report.RetainLost++}\n")
+		g.pf("%sdefault:r.Report.Unknown++;if r.Retain!=nil{r.Report.RetainLost++}\nif !tableWireSkipFramed(&%s.tableRetainPlainReader,armKind,true){return false}\n", i, arm)
+	} else {
+		g.pf("%sdefault:r.Report.Unknown++;if !tableWireSkipFramed(&%s,armKind,true){return false}\n", i, arm)
 	}
 	g.pf("%s}\n", i)
 	g.emitCarveReturn(rdr, arm, i)

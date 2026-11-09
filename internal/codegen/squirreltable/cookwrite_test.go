@@ -21,18 +21,15 @@ const cookWritePrelude = `local inputs = dofile("inputs.nut", true);
 local run = function(mod, root, key, unit, source = null, alias = null) {
   local schema = dofile(unit + "/schema_module.nut", true);
   local T = schema.require(mod);
-  local L = schema.require("schema_table_load");
-  local report = {
-    unknown = 0, mismatch = 0, widened = 0, oor = 0,
-    repeated = 0, bodyDamaged = false, refused = false
-  };
+  local R = schema.require("schema_table_refusal");
+  local report = {};
   // an explicit JSON input is the value (test/conformance/README.md, cook
   // writes use explicit value construction); a share option then makes two
   // populated blobs one in-memory object, legal in memory and refused on
   // the wire
   local value = (key + ".json") in inputs
     ? schema.require("schema_table_json").FromJson(T, root, inputs[key + ".json"], {})
-    : L.loadWalk(T, root, inputs[key + ".wire"], report);
+    : R.ReadStrict(T, root, inputs[key + ".wire"], report);
   if (value == null) { print(key + " load refused\n"); return; }
   if (source != null) {
     local member = {};

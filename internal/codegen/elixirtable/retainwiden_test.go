@@ -38,20 +38,20 @@ func TestRetainingUnionArmWideningElixir(t *testing.T) {
 	probe.WriteString("alias Armwiden.Table,as: T\n")
 	for _, field := range []string{"choice", "choices", "wrapped"} {
 		for _, tc := range []struct {
-			name, arm                  string
-			kind                       byte
-			payload                    []byte
-			widened, clamped, mismatch int
-			malformed                  bool
+			name, arm string
+			kind      byte
+			payload   []byte
+			widened   int
+			refused   bool
 		}{
-			{"signed", "number", ir.TableKindI16, []byte{7, 0}, 1, 0, 0, false},
-			{"unsigned", "positive", ir.TableKindU16, []byte{250, 255}, 1, 0, 0, false},
-			{"float", "real", ir.TableKindF32, binary.LittleEndian.AppendUint32(nil, math.Float32bits(1.5)), 1, 0, 0, false},
-			{"clamped", "bounded", ir.TableKindI16, []byte{7, 0}, 1, 1, 0, false},
-			{"narrowing", "number", ir.TableKindI64, binary.LittleEndian.AppendUint64(nil, 7), 0, 0, 1, false},
-			{"incompatible", "number", ir.TableKindBool, []byte{1}, 0, 0, 1, false},
-			{"short", "number", ir.TableKindI16, []byte{7}, 0, 0, 0, true},
-			{"long", "number", ir.TableKindI16, []byte{7, 0, 0}, 0, 0, 0, true},
+			{"signed", "number", ir.TableKindI16, []byte{7, 0}, 1, false},
+			{"unsigned", "positive", ir.TableKindU16, []byte{250, 255}, 1, false},
+			{"float", "real", ir.TableKindF32, binary.LittleEndian.AppendUint32(nil, math.Float32bits(1.5)), 1, false},
+			{"clamped", "bounded", ir.TableKindI16, []byte{7, 0}, 0, true},
+			{"narrowing", "number", ir.TableKindI64, binary.LittleEndian.AppendUint64(nil, 7), 0, true},
+			{"incompatible", "number", ir.TableKindBool, []byte{1}, 0, true},
+			{"short", "number", ir.TableKindI16, []byte{7}, 0, true},
+			{"long", "number", ir.TableKindI16, []byte{7, 0, 0}, 0, true},
 		} {
 			ids := []string{field, tc.arm}
 			ref := byte(2)
@@ -82,7 +82,7 @@ func TestRetainingUnionArmWideningElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			ok, e := tablewire.Decode(m, v, wire, &report)
-			if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || int(report.Widened) != tc.widened {
+			if ok == tc.refused || tablewire.ReadRefusal(e) != tc.refused || (!tc.refused && report.Widened != tc.widened) || (tc.refused && (!report.Refused || report.Reason == "")) {
 				t.Fatalf("%s/%s independent report: %v %v %+v", field, tc.name, ok, e, report)
 			}
 			canonical := ""
@@ -95,19 +95,18 @@ func TestRetainingUnionArmWideningElixir(t *testing.T) {
 			}
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  report=elem(result,2)
- unless report.widened==%d and report.clamped==%d and report.kind_mismatch==%d and report.malformed==%t,do: raise(%q<>inspect(result))
  if %t do
-  unless elem(result,0)==:error and elem(result,1)==:malformed,do: raise("damage verdict "<>inspect(result))
+  unless elem(result,0)==:error and report.reason != "",do: raise(%q<>"damage verdict "<>inspect(result))
  else
-  unless elem(result,0)==:ok,do: raise("clean verdict "<>inspect(result))
+  unless elem(result,0)==:ok and report.widened==%d and report.reason == "",do: raise(%q<>"clean verdict "<>inspect(result))
   {:ok,text}=T.to_json("Root",elem(result,1))
   unless text==%q,do: raise("widened value "<>text)
  end
 end
-`, hex.EncodeToString(wire), tc.widened, tc.clamped, tc.mismatch, tc.malformed, field+"/"+tc.name+" ", tc.malformed, canonical)
+`, hex.EncodeToString(wire), tc.refused, field+"/"+tc.name+" ", tc.widened, field+"/"+tc.name+" ", canonical)
 		}
 	}
 	probe.WriteString("IO.puts(\"UNION_ARM_WIDENING_OK\")\n")
@@ -145,11 +144,11 @@ func TestPinnedUnionArmWideningElixir(t *testing.T) {
 	probe := fmt.Sprintf(`alias Messagedemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("ToolMessage",wire),T.load_retain("ToolMessage",wire,store,zero)] do
  unless elem(result,0)==:ok,do: raise("widening verdict "<>inspect(result))
  report=elem(result,2)
- unless report.widened==1 and report.kind_mismatch==0 and report.clamped==0 and report.retain_lost==0,do: raise("widening report "<>inspect(report))
+ unless report.widened==1 and report.reason == "" and report.retain_lost==0,do: raise("widening report "<>inspect(report))
  {:ok,saved}=T.save("ToolMessage",elem(result,1))
  unless Base.encode16(saved,case: :lower)==%q,do: raise("widening value "<>inspect(saved))
 end

@@ -201,7 +201,8 @@ func TestLuauUnitViewNegativeControl(t *testing.T) {
 		t.Parallel()
 		u, files := load(t, "tables/examples")
 		patch(t, files, regexp.MustCompile(`,optional=(?:true|false),doc="(?:[^"\\\n]|\\.)+"`), func(s string) string {
-			return s[:strings.Index(s, `,doc="`)] + `,doc=""`
+			before, _, _ := strings.Cut(s, `,doc="`)
+			return before + `,doc=""`
 		})
 		red(t, u, files, "doc=")
 	})

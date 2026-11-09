@@ -96,7 +96,6 @@ func fixedTable(m *Module, st *ir.Struct) {
 	if lineage != nil {
 		handed = lineage[st.Name]
 	}
-	strict := true
 	entries, floor := generateLineage(handed, FixedLineageEntry{
 		Wire: hash, Layout: layout, Record: rec,
 	})
@@ -105,7 +104,7 @@ func fixedTable(m *Module, st *ir.Struct) {
 
 	emitFixedWrite(m, st, w)
 	emitFixedDeprecatedCheck(m, st)
-	emitFixedRead(m, st, w, strict)
+	emitFixedRead(m, st)
 	emitFixedWriteBody(m, st)
 	emitFixedDecodeBody(m, st)
 }
@@ -321,7 +320,7 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("};\n\n")
 }
 
-func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
+func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
@@ -352,28 +351,6 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
 	m.Printf("  if (L < 21 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-	if !strict {
-		m.Printf("  local n = _rt_fixed.u32le(b, 20);\n")
-		m.Printf("  if (n < 1 || n != (L - 4) / 17 || 4 + n * 17 != L) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  if (b[20 + 4 + 8] != 13) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
-		m.Printf("  local rb = 8 + _rt_fixed.u32le(b, 20 + 4 + 9);\n")
-		m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
-		m.Printf("  local rest = len - 20 - L;\n")
-		m.Printf("  if (rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
-		m.Printf("  local count = rest / rb;\n")
-		m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
-		m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
-		m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
-		m.Printf("  for (local k = 0; k < count; k++) {\n")
-		m.Printf("    local at = 20 + L + k * rb;\n")
-		m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
-		m.Printf("    local why = _M.%sFixedDecodeBody(out[k], b, at + 8, at + rb);\n", st.Name)
-		m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
-		m.Printf("  }\n")
-		m.Printf("  return count;\n")
-		m.Printf("};\n\n")
-		return
-	}
 	// SELECT BY HASH, never by parsing a stranger's layout (§5.3 steps 4-8).
 	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 	m.Printf("  local pick = -1;\n")
@@ -393,16 +370,38 @@ func emitFixedRead(m *Module, st *ir.Struct, w *fixedWalk, strict bool) {
 	m.Printf("  local count = rest / rb;\n")
 	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
 	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
-	// EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS
-	// (docs/FIXED-FORM-ALGORITHM.md §5.3; FIXED-FORM-VERSIONING-TESTS row 9):
-	// a forged hash on the LAST record refuses no_layout with not one
-	// destination byte written, exactly as on the first.
-	m.Printf("  for (local k = 0; k < count; k++)\n")
-	m.Printf("    if (_rt_fixed.u64le(b, 20 + L + k * rb) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
+	// TOTAL OVER THE BATCH (docs/FIXED-FORM-ALGORITHM.md §5.3; tla/FixedBatch):
+	// every record's hash is checked, and the record decoded and checked
+	// (live counts, lengths, text, bool and present bytes, floats, this
+	// reader's and the writer's ranges) into
+	// a FRESH row of the scratch batch, and only when the last record has
+	// passed does the commit loop land the scratch rows into out[0..count-1]
+	// (FIXED-FORM-VERSIONING-TESTS row 9: a forged hash on the LAST record
+	// writes not one destination byte). A refusal on record k leaves every row of the caller's `out` untouched,
+	// out[0..k-1] exactly as much as out[k], and the counters zero. A fresh
+	// row also holds a field an older writer did not carry at the
+	// constructor's declared default (§5.2), never at a reused row's value.
+	m.Printf("  local d = e.decode;\n")
+	m.Printf("  local s = array(count);\n")
+	m.Printf("  for (local k = 0, at = 20 + L; k < count; k++, at += rb) {\n")
+	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
+	m.Printf("    local v = _M.%s();\n", st.Name)
+	m.Printf("    local why = d(v, b, at + 8, at + rb);\n")
+	m.Printf("    if (why != null) { _M.FixedReason = why; _M.FixedWidened <- 0; return -1; }\n")
+	m.Printf("    s[k] = v;\n")
+	m.Printf("  }\n")
+	// The commit lands each scratch row INTO the caller's row, member by
+	// member, so out[k] keeps its identity (a caller that holds out[k] reads
+	// the landed values) and a nested row is the scratch row's own.
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
-	m.Printf("    local at = 20 + L + k * rb;\n")
-	m.Printf("    local why = e.decode == null ? null : e.decode(out[k], b, at + 8, at + rb);\n")
-	m.Printf("    if (why != null) { _M.FixedReason = why; return -1; }\n")
+	m.Printf("    local o = out[k], v = s[k];\n")
+	for _, f := range st.Fields {
+		mem := squirrel.Member(f)
+		m.Printf("    o.%s = v.%s;\n", mem, mem)
+		if f.Type.Optional {
+			m.Printf("    o.%sPresent = v.%sPresent;\n", mem, mem)
+		}
+	}
 	m.Printf("  }\n")
 	m.Printf("  return count;\n")
 	m.Printf("};\n\n")

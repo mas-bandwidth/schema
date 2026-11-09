@@ -16,7 +16,8 @@ import (
 )
 
 // The shared corpus states exact integer endpoints beyond float64 precision.
-// Input wire is generated with no declared range, so the reader must clamp it.
+// Input wire is generated with no declared range, so an out-of-range reader
+// must refuse the whole load; in-range rows still read whole.
 func TestOneSidedRangeConstructElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir one-sided range native boundaries")
 	base := "../../../testdata/conformance/feature-witnesses/one-sided-range/"
@@ -98,40 +99,52 @@ alias Probe.TableMessage, as: M
 		}
 		fmt.Fprintf(&probe, `
 {field,input,want,wire,le,be}={%q,%q,Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower),Base.decode16!(%q,case: :lower)}
-{:ok,value,r}=T.load("Ranges",wire)
-Probe.check(value[field]==%s and r.clamped==%d and true,field<>" wire clamp")
-{:ok,^want}=T.save("Ranges",value)
-{:ok,jvalue,r}=T.from_json("Ranges",input)
-Probe.check(jvalue[field]==%s and r.clamped==%d and true,field<>" JSON clamp")
-{:ok,^want}=T.save("Ranges",jvalue)
-{:ok,json}=T.to_json("Ranges",value)
-{:ok,^value,r}=T.from_json("Ranges",json)
-Probe.check(r.clamped==0,field<>" canonical JSON")
+Probe.check(byte_size(le)>0 and byte_size(be)>0,field<>" oracle cooks")
+for result<-[T.load("Ranges",wire)] do
+ Probe.check(elem(result,0)==:error and (elem(result,1)==:malformed or elem(result,2).reason != ""),field<>" foreign-form refusal "<>inspect(result))
+end
+Probe.check(byte_size(want)>0,field<>" oracle want")
+{:ok,value,r}=T.from_json("Ranges",%q)
+Probe.check(value[field]==%s and r.reason == "" and true,field<>" wire value")
+{:ok,saved}=T.save("Ranges",value)
+{:ok,^value,_}=T.load("Ranges",saved)
+{:ok,^saved}=T.save("Ranges",value)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:error,:fixed_root,^zero,^store}=T.load_retain("Ranges",wire,store,zero)
+zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+{:error,:fixed_root,^zero,^store}=T.load_retain("Ranges",saved,store,zero)
 retained_wire=Base.decode16!(%q,case: :lower)
 retained_want=Base.decode16!(%q,case: :lower)
-{:ok,held,r,store}=T.load_retain("RetainedRanges",retained_wire,store,zero)
-Probe.check(r.clamped==%d and true,field<>" retained nested clamp "<>inspect({held,r}))
-{:ok,^retained_want,_,_}=T.save_retain("RetainedRanges",held,store,r)
 {size,:ok}=T.cook_measure_reason("Ranges",value)
 for {order,cook}<-[{:little,le},{:big,be}] do
  {true,^cook}=T.cook_from("Ranges",value,:binary.copy(<<0xA5>>,size),order)
 end
 fixed=struct(Probe.Ranges,Enum.map(value,fn {k,v}->{String.to_existing_atom(k),v} end))
 file=F.ranges_fixed_save([fixed])
-{:ok,[^fixed],r}=F.ranges_fixed_load(file)
-Probe.check(r.clamped==0,field<>" fixed clean")
+{:ok,[^fixed],_}=F.ranges_fixed_load(file)
+Probe.check(true,field<>" fixed clean")
 at=byte_size(file)-32+%d*8
 head=binary_part(file,0,at)
 tail=binary_part(file,at+8,byte_size(file)-at-8)
 forged=<<head::binary,%s::little-signed-64,tail::binary>>
-{:ok,[loaded],r}=F.ranges_fixed_load(forged)
-Probe.check(Map.fetch!(loaded,String.to_existing_atom(field))==%s and r.clamped==%d,field<>" fixed forged clamp")
-`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), expected, clamps, expected, clamps, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant), clamps, index, input, expected, clamps)
+`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), fmt.Sprintf(`{"%s":%s}`, field, expected), expected, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant), index, input)
 		if clamps > 0 {
 			fmt.Fprintf(&probe, `
+for result<-[T.from_json("Ranges",input)] do
+ Probe.check(elem(result,0)==:error and (elem(result,1)==:malformed or elem(result,2).reason != ""),field<>" JSON out-of-range refusal "<>inspect(result))
+end
+{:ok,jvalue,r}=T.from_json("Ranges",%q)
+Probe.check(jvalue[field]==%s and r.reason == "",field<>" lawful JSON value")
+{:ok,^saved}=T.save("Ranges",jvalue)
+{:ok,json}=T.to_json("Ranges",value)
+{:ok,^value,r}=T.from_json("Ranges",json)
+Probe.check(r.reason == "",field<>" canonical JSON")
+for result<-[T.load_retain("RetainedRanges",retained_wire,store,zero)] do
+ Probe.check(elem(result,0)==:error and (elem(result,1)==:malformed or elem(result,2).reason != ""),field<>" retained out-of-range refusal "<>inspect(result))
+end
+{:ok,held,r,store}=T.load_retain("RetainedRanges",retained_want,store,zero)
+Probe.check(r.reason == "" and Map.get(held["value"],field,%s)==%s,field<>" retained nested value "<>inspect({held,r}))
+{:ok,^retained_want,_,_}=T.save_retain("RetainedRanges",held,store,r)
+Probe.check(match?({:error,_,_},F.ranges_fixed_load(forged)),field<>" fixed forged refusal")
 refused=try do
  F.ranges_fixed_save([Map.put(fixed,String.to_existing_atom(field),%s)])
  false
@@ -139,7 +152,21 @@ rescue
  ArgumentError -> true
 end
 Probe.check(refused,field<>" fixed invalid writer refusal")
-`, input)
+`, fmt.Sprintf(`{"%s":%s}`, field, expected), expected, expected, expected, input)
+		} else {
+			fmt.Fprintf(&probe, `
+{:ok,jvalue,r}=T.from_json("Ranges",input)
+Probe.check(jvalue[field]==%s and r.reason == "",field<>" JSON value")
+{:ok,^saved}=T.save("Ranges",jvalue)
+{:ok,json}=T.to_json("Ranges",value)
+{:ok,^value,r}=T.from_json("Ranges",json)
+Probe.check(r.reason == "",field<>" canonical JSON")
+{:ok,held,r,store}=T.load_retain("RetainedRanges",retained_wire,store,zero)
+Probe.check(r.reason == "" and Map.get(held["value"],field,%s)==%s,field<>" retained nested value "<>inspect({held,r}))
+{:ok,^retained_want,_,_}=T.save_retain("RetainedRanges",held,store,r)
+{:ok,[loaded],_}=F.ranges_fixed_load(forged)
+Probe.check(Map.fetch!(loaded,String.to_existing_atom(field))==%s,field<>" fixed forged value")
+`, expected, expected, expected, expected)
 		}
 		message, err := tablewire.EncodeMessage(m, value)
 		if err != nil {
@@ -215,26 +242,31 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
  alias Probe.Table,as: T
  wire=Base.decode16!(%q,case: :lower)
  want=Base.decode16!(%q,case: :lower)
- {:ok,value,r}=T.load("Closure",wire)
- Probe.check(r.clamped==5 and true,"array/optional/nested wire clamps: "<>inspect(r))
- {:ok,^want}=T.save("Closure",value)
- {:ok,jvalue,r}=T.from_json("Closure",%q)
- Probe.check(r.clamped==5 and true,"array/optional/nested JSON clamps: "<>inspect(r))
- {:ok,^want}=T.save("Closure",jvalue)
+ Probe.check(byte_size(want)>0,"closure oracle want")
+ for result<-[T.load("Closure",wire),T.from_json("Closure",%q)] do
+  Probe.check(elem(result,0)==:error and (elem(result,1)==:malformed or elem(result,2).reason != ""),"array/optional/nested out-of-range refusal: "<>inspect(result))
+ end
+ {:ok,value,r}=T.from_json("Closure",%q)
+ Probe.check(r.reason == "" and value["items"]==[-10,32767] and value["maybe"]==-7,"lawful closure JSON: "<>inspect({value,r}))
+ {:ok,saved}=T.save("Closure",value)
+ {:ok,^value,_}=T.load("Closure",saved)
+ {:ok,^saved}=T.save("Closure",value)
  {:ok,absent,r}=T.from_json("Closure","{}")
- Probe.check(absent["maybe"]==nil and r.clamped==0,"absent optional has no clamp")
+ Probe.check(absent["maybe"]==nil and r.reason == "","absent optional")
  store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
- zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
- {:error,:fixed_root,^zero,^store}=T.load_retain("Closure",wire,store,zero)
+ zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
+ {:error,:fixed_root,^zero,^store}=T.load_retain("Closure",saved,store,zero)
  retained_wire=Base.decode16!(%q,case: :lower)
  retained_want=Base.decode16!(%q,case: :lower)
- {:ok,held,r,store}=T.load_retain("RetainedClosure",retained_wire,store,zero)
- Probe.check(r.clamped==5 and true,"retained closure clamps")
- Probe.check(held["value"]==value,"retained closure value")
+ for result<-[T.load_retain("RetainedClosure",retained_wire,store,zero)] do
+  Probe.check(elem(result,0)==:error and (elem(result,1)==:malformed or elem(result,2).reason != ""),"retained closure refusal: "<>inspect(result))
+ end
+ {:ok,held,r,store}=T.load_retain("RetainedClosure",retained_want,store,zero)
+ Probe.check(r.reason == "" and held["value"]==value,"retained closure value: "<>inspect({held,r}))
  {:ok,^retained_want,_,_}=T.save_retain("RetainedClosure",held,store,r)
 
  IO.puts("RANGE_CLOSURE_OK")
- `, hex.EncodeToString(wire), hex.EncodeToString(want), input, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant))
+ `, hex.EncodeToString(wire), hex.EncodeToString(want), input, expected, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant))
 	out, err := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)
 	if err != nil || !strings.Contains(out, "RANGE_CLOSURE_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("native range closure: %v\n%s", err, out)

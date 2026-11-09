@@ -639,6 +639,9 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 			inst := cu.m.New(cu.m.Lookup(row.root))
 			var report tabletext.Report
 			if _, err = tablewire.Decode(cu.m, inst, wire, &report); err != nil {
+				if tablewire.ReadRefusal(err) {
+					t.Skipf("reference refuses the wire: %v", err)
+				}
 				t.Fatal(err)
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})

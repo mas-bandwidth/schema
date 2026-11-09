@@ -223,6 +223,10 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -388,6 +392,9 @@ func WideBlobLoad(value *WideBlob, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !WideBlobLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		WideBlobReset(value)
 		return false
@@ -581,6 +588,10 @@ func WideBlobLoadBodyRetain(r *TableRetainReader, value *WideBlob) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)

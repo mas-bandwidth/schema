@@ -9,12 +9,12 @@ import (
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6,
-// bill §12.5). A ranged integer read through a COMPILED lane is oor first
+// bill §12.5). A ranged integer read through a COMPILED lane is held first
 // to the range ITS WRITER declared, the lineage entry the file was written
-// under, and then to this reader's own range in the projection; each clamp
-// that fires counts once. The writer's ranges and their match onto this
-// reader's fields are the compiler's own (ir.TableFixedWriterRanges,
-// ir.TableFixedWriterField), shared by every leg.
+// under, and then to this reader's own range in the projection; each build
+// REFUSES out_of_range rather than clamping. The writer's ranges and their
+// match onto this reader's fields are the compiler's own
+// (ir.TableFixedWriterRanges, ir.TableFixedWriterField), shared by every leg.
 
 // fixedWriterBound is one writer range resolved onto this reader's image: the
 // reader's field, the image offset of one leaf (a fixed array has a row per
@@ -63,8 +63,8 @@ func fixedWriterBoundsOf(f, w *ir.Field, at int64) []fixedWriterBound {
 		half := new(big.Int).Lsh(one, bits-1)
 		smin, smax = new(big.Int).Neg(half), new(big.Int).Sub(half, one)
 	}
-	low := lo.Cmp(smin) > 0 && !(rok && lo.Cmp(rlo) == 0)
-	high := hi.Cmp(smax) < 0 && !(rok && hi.Cmp(rhi) == 0)
+	low := lo.Cmp(smin) > 0 && (!rok || lo.Cmp(rlo) != 0)
+	high := hi.Cmp(smax) < 0 && (!rok || hi.Cmp(rhi) != 0)
 	if !low && !high {
 		return nil
 	}
@@ -108,8 +108,7 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 	g.pf("// one pass per lineage entry whose writer declared a range this reader holds\n")
 	g.pf("// wider. It runs on a compiled lane's image after the plan and before the\n")
 	g.pf("// projection, so a forged value past what that writer could have written\n")
-	g.pf("// lands the WRITER's bound and counts, and the projection then holds this\n")
-	g.pf("// reader's own range.\n")
+	g.pf("// REFUSES out_of_range — the writer's range is the bound, never a clamp.\n")
 	names := make([]string, len(all))
 	for i, rows := range all {
 		if len(rows) == 0 {
@@ -120,7 +119,6 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 		g.pf("function %s(view, report) {\n", names[i])
 		for _, b := range rows {
 			get, le := fixedGetter(b.field.Type)
-			set, _ := fixedSetter(b.field.Type)
 			endian := ""
 			if le {
 				endian = ", true"
@@ -129,14 +127,16 @@ func (g *fixedModule) emitWriterBounds(st *ir.Struct, entries []FixedLineageEntr
 			lo, hi := jsIntLit(b.lo, asBig), jsIntLit(b.hi, asBig)
 			g.pf("  {\n")
 			g.pf("    const n = view.%s(%d%s);\n", get, b.at, endian)
-			kw := "if"
-			if b.low {
-				g.pf("    if (n < %s) { view.%s(%d, %s%s); report.oor++; }\n", lo, set, b.at, lo, endian)
-				kw = "else if"
+			cond := ""
+			switch {
+			case b.low && b.high:
+				cond = fmt.Sprintf("n < %s || n > %s", lo, hi)
+			case b.low:
+				cond = fmt.Sprintf("n < %s", lo)
+			case b.high:
+				cond = fmt.Sprintf("n > %s", hi)
 			}
-			if b.high {
-				g.pf("    %s (n > %s) { view.%s(%d, %s%s); report.oor++; }\n", kw, hi, set, b.at, hi, endian)
-			}
+			g.pf("    if (%s) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", cond)
 			g.pf("  }\n")
 		}
 		g.pf("}\n")

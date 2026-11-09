@@ -752,25 +752,31 @@ decode_old_value = function(T, d, node, buf, pos, rep)
   error("fixed: unknown shape " .. tostring(s))
 end
 
--- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4): the fixed form carries its
--- own rule, and a RANGED integer past its declared bound is the `out_of_range`
--- refusal. The plain name walks what it decoded once.
-local function strict_value(T, d, v)
+-- THE STRICT SET (docs/SPEC-TABLES.md §6.5, §3.4; docs/FIXED-FORM-ALGORITHM.md
+-- §4.6): the fixed form carries its own rule, and a RANGED integer past the
+-- writer's declared bound (or this reader's when the entry carries no writer
+-- range) is the `out_of_range` refusal. The plain name walks what it decoded
+-- once.
+local function strict_value(T, d, v, ranges, wr)
   if v == nil then return end
   local s = d.shape
   if s == "int" then
-    if d.lo ~= nil and d.hi ~= nil then
+    local lo, hi = d.lo, d.hi
+    if wr ~= nil then
+      lo, hi = wr.lo, wr.hi
+    end
+    if lo ~= nil and hi ~= nil then
       if d.signed then
-        if v < d.lo or v > d.hi then error("out_of_range", 0) end
+        if v < lo or v > hi then error("out_of_range", 0) end
       else
-        if math.ult(v, d.lo) or math.ult(d.hi, v) then error("out_of_range", 0) end
+        if math.ult(v, lo) or math.ult(hi, v) then error("out_of_range", 0) end
       end
     end
   elseif s == "table" then
     local desc = T.Tables[d.target]
     if desc == nil then return end
     for _, f in ipairs(desc.fields) do
-      strict_value(T, f, v[f.name])
+      strict_value(T, f, v[f.name], nil, ranges and ranges[f.id] or nil)
     end
   elseif s == "union" then
     local tag = v.tag or 0
@@ -781,7 +787,7 @@ local function strict_value(T, d, v)
     end
   elseif s == "array" then
     for i = 1, #v do
-      strict_value(T, d.elem, v[i])
+      strict_value(T, d.elem, v[i], nil, wr)
     end
   end
 end
@@ -860,7 +866,7 @@ local function read_impl(T, name, buf, strict)
     value = decode_old_table(T, name, entry.tree, buf, at + 8)
     -- the identity walk refuses its bounds as it decodes; an older writer's
     -- plan is held to them after (§4.6)
-    if strict then strict_value(T, { shape = "table", target = name }, value) end
+    if strict then strict_value(T, { shape = "table", target = name }, value, entry.ranges) end
   else
     value = decode_table(T, name, buf, at + 8, rootSize)
   end
@@ -989,7 +995,7 @@ local function load_impl(T, name, buf, strict, cap)
       v = decode_old_table(T, name, entry.tree, buf, at + 8, rep)
       -- the identity walk refuses its bounds as it decodes; an older
       -- writer's plan is held to them after (§4.6)
-      if strict then strict_value(T, { shape = "table", target = name }, v) end
+      if strict then strict_value(T, { shape = "table", target = name }, v, entry.ranges) end
     else
       v = decode_table(T, name, buf, at + 8, rootSize)
     end

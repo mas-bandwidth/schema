@@ -338,6 +338,10 @@ func RootConfigLoadBody(r *TableReader, value *RootConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -521,6 +525,9 @@ func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RootConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		RootConfigReset(value)
 		return false
@@ -802,6 +809,10 @@ func RootConfigLoadBodyRetain(r *TableRetainReader, value *RootConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1171,6 +1182,10 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1373,6 +1388,9 @@ func WeaponConfigLoadBody(r *TableReader, value *WeaponConfig) bool {
 						}
 					default:
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&payload8, armKind, true) {
+							return false
+						}
 					}
 				}
 			}
@@ -1403,6 +1421,9 @@ func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) boo
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !WeaponConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		WeaponConfigReset(value)
 		return false
@@ -1596,6 +1617,10 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1803,6 +1828,9 @@ func WeaponConfigLoadBodyRetain(r *TableRetainReader, value *WeaponConfig) bool 
 						r.Report.Unknown++
 						if r.Retain != nil {
 							r.Report.RetainLost++
+						}
+						if !tableWireSkipFramed(&payload6.tableRetainPlainReader, armKind, true) {
+							return false
 						}
 					}
 				}
@@ -2238,6 +2266,10 @@ func LoadoutConfigLoadBody(r *TableReader, value *LoadoutConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -2587,6 +2619,9 @@ func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) b
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !LoadoutConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		LoadoutConfigReset(value)
 		return false
@@ -3043,6 +3078,10 @@ func LoadoutConfigLoadBodyRetain(r *TableRetainReader, value *LoadoutConfig) boo
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -3724,6 +3763,10 @@ func ProfileConfigLoadBody(r *TableReader, value *ProfileConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4130,6 +4173,9 @@ func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) b
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ProfileConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		ProfileConfigReset(value)
 		return false
@@ -4476,6 +4522,10 @@ func ProfileConfigLoadBodyRetain(r *TableRetainReader, value *ProfileConfig) boo
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4972,6 +5022,10 @@ func AttachmentLoadBody(r *TableReader, value *AttachmentRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5080,6 +5134,9 @@ func AttachmentLoad(value *AttachmentRow, data []byte, report *TableReport) bool
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !AttachmentLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		AttachmentReset(value)
 		return false
@@ -5156,6 +5213,10 @@ func AttachmentLoadBodyRetain(r *TableRetainReader, value *AttachmentRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5336,6 +5397,10 @@ func BuffLoadBody(r *TableReader, value *BuffRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5409,6 +5474,9 @@ func BuffLoad(value *BuffRow, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !BuffLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		BuffReset(value)
 		return false
@@ -5474,6 +5542,10 @@ func BuffLoadBodyRetain(r *TableRetainReader, value *BuffRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5619,6 +5691,10 @@ func DebuffLoadBody(r *TableReader, value *DebuffRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5707,6 +5783,9 @@ func DebuffLoad(value *DebuffRow, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !DebuffLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		DebuffReset(value)
 		return false
@@ -5772,6 +5851,10 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5917,7 +6000,7 @@ func WeaponConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	{
 		es := src + 17
 		ed := dst + uint32(unsafe.Offsetof(WeaponConfig{}.Effect))
-		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(EffectRow{}.Type)), Size: 1, DstSize: uint8(unsafe.Sizeof(Effect{}.Type)), Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
 		n++
 		{ // arm buff, ordinal 1
 			guardAt := n
@@ -7064,7 +7147,7 @@ func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntr
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -7354,7 +7437,7 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -7748,7 +7831,7 @@ func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFix
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -8189,7 +8272,7 @@ func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFix
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1

@@ -99,7 +99,7 @@ func csKindMovedRefusal(files map[string][]byte) error {
 	if identity < 0 || compile < 0 || accept < 0 {
 		return fmt.Errorf("LineagePlans' shape moved: identity=%d compile=%d accept=%d", identity, compile, accept)
 	}
-	if !(identity < compile && compile < gi && gi < accept) {
+	if identity >= compile || compile >= gi || gi >= accept {
 		return fmt.Errorf("the moved-kind refusal is not between the compile and the plan acceptance: identity=%d compile=%d guard=%d accept=%d", identity, compile, gi, accept)
 	}
 	if c := strings.Count(n, "lane.Entries = buffer;"); c != 1 {

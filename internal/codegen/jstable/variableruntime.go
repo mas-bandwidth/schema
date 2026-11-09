@@ -682,12 +682,24 @@ function TableVariableLoad(c, bytes, report, retain) {
       if (nc === undefined) {
         report.unknown++;
         if (retain !== null) { report.retainLost++; }
-        st.nodes.push(null);
+        if (rec.tid === TableStringBlobId) {
+          if (!TableVariableUtf8Decode(rec.body).ok) { report.damaged = true; }
+          st.nodes.push(null);
+        } else if (rec.tid === TableBytesBlobId) {
+          st.nodes.push(null);
+        } else {
+          st.nodes.push({ kind: "u", body: rec.body });
+        }
         continue;
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
     }
     for (const n of st.nodes) {
+      if (n !== null && n.kind === "u") {
+        const hdr = new TableVariableWriter(); hdr.leb(n.body.length); hdr.raw(n.body);
+        if (!TableVariableCheckUnknown(hdr.b, 0, hdr.len, 13, table, st, report)) { report.damaged = true; }
+        continue;
+      }
       if (n === null || n.kind !== "t") { continue; }
       // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
       // the node's own identity, so its unknown fields ride back into the same
@@ -760,7 +772,7 @@ function TableVariableResolve(st, report) {
       } else {
         if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
-        if (n !== null) {
+        if (n !== null && n.kind !== "u") {
           if (d.s === "sblob") {
             if (n.kind === "s") { str = n; } else { report.mismatch++; }
           } else if (d.s === "bblob") {
@@ -886,7 +898,7 @@ function TableVariableCyclic(count, from, to) {
 // skipped by its kind and counted unknown (and retained when the caller opted
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
-function TableVariableCheckUnknown(b, from, to, kind, table, st) {
+function TableVariableCheckUnknown(b, from, to, kind, table, st, report) {
   const sub = new TableVariableReader(b, from, to);
   if (kind === 17) {
     const idx = sub.leb();
@@ -894,6 +906,8 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     if (idx > 1) {
       if (!st.good || idx - 2 >= st.nodes.length) { return false; }
       if (st.reached !== undefined) { st.reached.add(idx - 2); }
+      const n = st.nodes[idx - 2];
+      if (n !== null && (n.kind === "s" || n.kind === "b")) { if (n.named) { report.sharedBlob++; } else { n.named = true; } }
     }
     return true;
   }
@@ -910,8 +924,67 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
       const k = sub.u8();
       const f = sub.at;
       if (!TableVariableSkip(sub, k)) { return false; }
-      if (!TableVariableCheckUnknown(b, f, sub.at, k, table, st)) { return false; }
+      if (!TableVariableCheckUnknown(b, f, sub.at, k, table, st, report)) { return false; }
     }
+  }
+  if (kind === 14) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to || L < 2) { return false; }
+    const ek = sub.u8(), count = sub.leb();
+    if (sub.bad || count > 0x7fffffff) { return false; }
+    for (let i = 0; i < count; i++) {
+      const f = sub.at;
+      if (!TableVariableSkip(sub, ek)) { return false; }
+      if (!TableVariableCheckUnknown(b, f, sub.at, ek, table, st, report)) { return false; }
+    }
+    return sub.at === to;
+  }
+  if (kind === 15) {
+    const arm = sub.leb();
+    if (sub.bad) { return false; }
+    if (arm === 0) { return sub.at === to; }
+    if (arm > table.length || sub.at >= to) { return false; }
+    const ak = sub.u8(), al = sub.leb();
+    if (sub.bad || sub.at + al !== to) { return false; }
+    if (ak === 13 || ak === 14 || ak === 16 || ak === 31) {
+      const hdr = new TableVariableWriter(); hdr.leb(al); hdr.raw(b.subarray(sub.at, to));
+      return TableVariableCheckUnknown(hdr.b, 0, hdr.len, ak, table, st, report);
+    }
+    return TableVariableCheckUnknown(b, sub.at, to, ak, table, st, report);
+  }
+  if (kind === 16) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to || L < 2) { return false; }
+    const ek = sub.u8(), count = sub.leb();
+    if (sub.bad || count > 0x7fffffff) { return false; }
+    let rode = null;
+    for (let i = 0; i < count; i++) {
+      const key = sub.leb();
+      if (sub.bad || key === 0 || key > table.length) { return false; }
+      if (rode === null) { rode = [key]; } else if (rode.includes(key)) { return false; } else { rode.push(key); }
+      const sl = sub.leb();
+      if (sub.bad || sub.at + sl > to) { return false; }
+      const send = sub.at + sl;
+      if (ek === 13 || ek === 14 || ek === 16 || ek === 31) {
+        const hdr = new TableVariableWriter(); hdr.leb(sl); hdr.raw(b.subarray(sub.at, send));
+        if (!TableVariableCheckUnknown(hdr.b, 0, hdr.len, ek, table, st, report)) { return false; }
+      } else if (!TableVariableCheckUnknown(b, sub.at, send, ek, table, st, report)) { return false; }
+      sub.at = send;
+    }
+    return sub.at === to;
+  }
+  if (kind === 31) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to || L < 2) { return false; }
+    const kk = sub.u8(), count = sub.leb();
+    if (sub.bad || count > 0x7fffffff) { return false; }
+    for (let i = 0; i < count; i++) {
+      if (!TableVariableSkip(sub, kk)) { return false; }
+      const f = sub.at;
+      if (!TableVariableSkip(sub, 13)) { return false; }
+      if (!TableVariableCheckUnknown(b, f, sub.at, 13, table, st, report)) { return false; }
+    }
+    return sub.at === to;
   }
   return true;
 }
@@ -932,7 +1005,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
     if (r.bad) { report.damaged = true; return false; }
-    if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
+    if (ref === 0) { if (r.at !== r.end) { report.damaged = true; return false; } return TableVariableRequireSeen(c, v, seen, report); }
     if (ref > table.length) { report.damaged = true; return false; }
     if (rode === null) { rode = [ref]; } else if (rode.includes(ref)) { report.damaged = true; return false; } else { rode.push(ref); }
     if (r.at >= r.end) { report.damaged = true; return false; }
@@ -954,7 +1027,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       report.unknown++;
       const from = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
-      if (!TableVariableCheckUnknown(r.b, from, r.at, kind, table, st)) { report.damaged = true; return false; }
+      if (!TableVariableCheckUnknown(r.b, from, r.at, kind, table, st, report)) { report.damaged = true; return false; }
       if (retain !== null) {
         // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
         // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
@@ -1250,18 +1323,20 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       }
     } else {
       const out = [];
-      let total = 0;
+      let total = 0, oorTotal = false;
       for (let i = 0; i < keep; i++) {
         const before = report.oor;
         if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
         if (fd.tl) {
           if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
           total += TableVariableTextListLength(out[i]);
-          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); break; }
+          if (fd.total > 0 && total > fd.total) { out.length = i; oorTotal = true; TableVariableTextListClamp(fd, report); break; }
         }
       }
       v[fd.n] = out;
+      if (oorTotal) { sub.at = sub.end; }
     }
+    if (ek === fd.ek && keep === count && sub.at !== sub.end) { report.damaged = true; return false; }
   } else {
     report.damaged = true;
     return false;
@@ -1641,16 +1716,90 @@ function TableVariableFormatG(v, prec) {
   return (neg ? "-" : "") + s;
 }
 
+// the float32 a decimal token names, correctly rounded from the token
+// itself; x is the token's correctly-rounded double (tabletext placeFloat,
+// strconv.ParseFloat(tok, 32); docs/SPEC-TABLES.md §16.2). Number() then
+// Math.fround() rounds twice, and the two roundings part company exactly where
+// the double lands ON a float32 rounding midpoint, so a tie is broken by the
+// exact decimal, compared with the double in integer arithmetic.
+function TableVariableF32OfToken(tok, x) {
+  const f = Math.fround(x);
+  if (f === x || Number.isNaN(x)) { return f; }
+  const b = new DataView(new ArrayBuffer(8));
+  const step = (v, up) => {
+    if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+    if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+    if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+    b.setFloat32(0, v, true);
+    const u = b.getUint32(0, true);
+    b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
+    return b.getFloat32(0, true);
+  };
+  const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+  const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
+  if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
+  // the tie: the sign of (token - x), both exact rationals
+  const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+  if (m === null) { return f; }
+  const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+  if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+  let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+  b.setFloat64(0, x, true);
+  const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+  const ex = (hiw >>> 20) & 0x7ff;
+  let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+  let e2 = ex === 0 ? -1074 : ex - 1075;
+  if (ex !== 0) { mant |= 1n << 52n; }
+  let right = x < 0 ? -mant : mant;
+  if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+  if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+  if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
+  return left > right ? hi : lo;
+}
+
 // the SHORTEST precision that reads back as the same value at the field's own
 // width; a non-finite value has no JSON spelling and the writer refuses (null)
 function TableVariableFloatText(v, single) {
   if (!Number.isFinite(v)) { return null; }
+  const f32OfToken = (tok, x) => {
+    const f = Math.fround(x);
+    if (f === x || Number.isNaN(x)) { return f; }
+    const b = new DataView(new ArrayBuffer(8));
+    const step = (val, up) => {
+      if (val === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+      if (val === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+      if (val === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+      b.setFloat32(0, val, true);
+      const u = b.getUint32(0, true);
+      b.setUint32(0, (val > 0) === up ? u + 1 : u - 1, true);
+      return b.getFloat32(0, true);
+    };
+    const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+    const at = (val) => (val === Infinity ? 2 ** 128 : val === -Infinity ? -(2 ** 128) : val);
+    if (at(lo) + at(hi) !== 2 * x) { return f; }
+    const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+    if (m === null) { return f; }
+    const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+    if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+    let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+    b.setFloat64(0, x, true);
+    const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+    const ex = (hiw >>> 20) & 0x7ff;
+    let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+    let e2 = ex === 0 ? -1074 : ex - 1075;
+    if (ex !== 0) { mant |= 1n << 52n; }
+    let right = x < 0 ? -mant : mant;
+    if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+    if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+    if (left === right) { return f; }
+    return left > right ? hi : lo;
+  };
   const low = single ? 6 : 15, high = single ? 9 : 17;
   for (let digits = low; ; digits++) {
     const text = TableVariableFormatG(v, digits);
     if (digits >= high) { return text; }
     const back = Number(text);
-    if (single ? Math.fround(back) === v : back === v) { return text; }
+    if (single ? f32OfToken(text, back) === v : back === v) { return text; }
   }
 }
 
@@ -1686,6 +1835,9 @@ function TableVariableToJson(c, v) {
   TableVariableEntryCache = new Map();
   try {
     return TableVariableToJsonWalk(c, v);
+  } catch (e) {
+    if (e instanceof RangeError && e.message === "TableVariableNotText") { return null; }
+    throw e;
   } finally {
     TableVariableEntryCache = outer;
   }
@@ -1762,7 +1914,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       return true;
     case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
     // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
-    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    // tabletext writeWString), and an unpaired surrogate refuses the write
     case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
@@ -1776,7 +1928,14 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       for (let i = 0; i < n; i++) {
         if (i > 0) { out.push(","); }
         out.push(ind);
-        if (fd.tl) { out.push(val[i].value === null ? "null" : TableVariableJsonString(val[i].value)); }
+        if (fd.tl) {
+          if (val[i].value === null) { out.push("null"); }
+          else {
+            const s = TableVariableJsonString(val[i].value, true);
+            if (s === null) { return false; }
+            out.push(s);
+          }
+        }
         else if (!TableVariableJsonScalar(fd.e, val[i], depth + 1, g, out)) { return false; }
       }
       out.push("\n" + "  ".repeat(depth) + "]");
@@ -2421,42 +2580,6 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       holder[key] = false;
       return true;
     case "float": {
-      // the float32 a decimal token names, correctly rounded from the token
-      // itself; x is the token's correctly-rounded double
-      const f32OfToken = (tok, x) => {
-        const f = Math.fround(x);
-        if (f === x || Number.isNaN(x)) { return f; }
-        const b = new DataView(new ArrayBuffer(8));
-        const step = (v, up) => {
-          if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
-          if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
-          if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
-          b.setFloat32(0, v, true);
-          const u = b.getUint32(0, true);
-          b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
-          return b.getFloat32(0, true);
-        };
-        const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
-        const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
-        if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
-        // the tie: the sign of (token - x), both exact rationals
-        const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
-        if (m === null) { return f; }
-        const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
-        if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
-        let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
-        b.setFloat64(0, x, true);
-        const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
-        const ex = (hiw >>> 20) & 0x7ff;
-        let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
-        let e2 = ex === 0 ? -1074 : ex - 1075;
-        if (ex !== 0) { mant |= 1n << 52n; }
-        let right = x < 0 ? -mant : mant;
-        if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
-        if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
-        if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
-        return left > right ? hi : lo;
-      };
       const n = inp.number();
       if (n === null) { inp.bad = true; return false; }
       let x = Number(n.tok);
@@ -2475,7 +2598,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // a float32 rounding midpoint — the band between FLT_MAX and the
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
-        x = ranged ? Math.fround(x) : f32OfToken(n.tok, x);
+        x = ranged ? Math.fround(x) : TableVariableF32OfToken(n.tok, x);
         if (!Number.isFinite(x)) { report.mismatch++; return true; }
       }
       holder[key] = x;

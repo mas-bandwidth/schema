@@ -331,8 +331,13 @@ jobs:
         name: the tables-<lang>-release targets the Makefile and make/*.mk carry
         run: |
           # and every leg's release wire-fuzz gate, from the leg list
-          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>)
-          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; } | sort -u | jq -R . | jq -sc .)
+          # make/wire-fuzz-release.mk holds (tables-wire-fuzz-release-<leg>),
+          # plus the 100,000-mutant per-leg wire-fuzz campaigns moved from
+          # ci-full.yml (card green-fit-fuzz-smoke: C# fuzz (region) 135 s,
+          # C# fuzz (wire), Dart fuzz (wire) 142 s in run 42556155793, with
+          # the C# build step at 117 s capped and 148 s nightly; ci-full.yml
+          # keeps the seeded N=2000 per-commit smoke).
+          targets=$( { grep -hoE '^tables-[a-z0-9]+-release:' Makefile make/*.mk | sed 's/:$//'; sed -n 's/^WIRE_FUZZ_RELEASE_LEGS *:= *//p' make/wire-fuzz-release.mk | tr ' ' '\n' | sed 's/^/tables-wire-fuzz-release-/'; printf '%s\n' tables-cs-wire-fuzz tables-cs-region-fuzz tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain tables-dart-wire-fuzz; } | sort -u | jq -R . | jq -sc .)
           echo "$targets"
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
 
@@ -910,7 +915,8 @@ jobs:
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            2>&1 | tee controls.log || status=1
+            >controls.log 2>&1 || status=1
+          cat controls.log
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
             grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
@@ -930,3 +936,74 @@ jobs:
   schema-legs:
     name: schema legs (certify)
     uses: ./.github/workflows/leg.yml
+
+  # THE FULL BIG-ENDIAN BATTERY AND CONTROLS (green-be-nightly). Per-commit CI
+  # keeps the smokes. Run 42581682964 at ecc2d21ba measured the full Go harness
+  # conformance-big-endian at 127 s job wall (make step 96 s), past the 110 s
+  # per-commit budget, so that harness runs here with the full C++ battery
+  # (tables-big-endian-tables-full, card 282 s), its full corpus host-order
+  # control (tables-big-endian-control-full, card 322 s) and the Go host-order
+  # control (conformance-big-endian-negative-control, card 250 s). Same pinned
+  # ubuntu-24.04 archive and s390x/qemu pins. The slowest per-commit row after
+  # the split is c-control at 103 s, and the per-commit go row is now the
+  # three-unit conformance-big-endian-smoke (8.7 s with bin/schema warm on
+  # amd-2, 2026-11-09), so every per-commit row fits the 110 s budget.
+  # Big-endian reds stay with green-be-message-form, green-be-control and
+  # green-conf-go-big-endian.
+  big-endian:
+    name: big-endian (${{ matrix.leg }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: tables-full
+            target: tables-big-endian-tables-full
+          - leg: control-full
+            target: tables-big-endian-control-full
+          - leg: go-control
+            target: conformance-big-endian-negative-control
+          - leg: go
+            target: conformance-big-endian
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: where this runner keeps the Go build cache
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      - name: the pinned cross toolchain and emulator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
+            qemu-user=1:8.2.2+ds-0ubuntu1.18
+
+      - name: what the pins resolved to
+        run: |
+          s390x-linux-gnu-g++-13 --version | head -1
+          qemu-s390x --version | head -1
+          dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
+
+      - name: Check out the serialize runtimes (pinned releases)
+        run: |
+          cd ..
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - name: ${{ matrix.target }}
+        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13

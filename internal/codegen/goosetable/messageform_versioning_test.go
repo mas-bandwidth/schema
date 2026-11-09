@@ -89,7 +89,6 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 					t.Fatalf("the older writer refused %s", why)
 				}
 				batch = goEncodeAcross(t, older, writer, root, oldBatch, n)
-				refused = ""
 			}
 			if batch == nil {
 				batch, refused = gooseMsgFromFixed(t, writer, root, file, n, true)

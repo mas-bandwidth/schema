@@ -17,13 +17,13 @@ package mootable_test
 //	copy     the caller gives a slot that shared a buffer its own buffer of
 //	         the same bytes: the save writes two records, the reference's
 //	         bytes
-//	shared   one node named from two slots loads with one blob_shared counted
-//	         and is refused by name on save, plain and retaining; so is one
-//	         buffer the caller names from two slots
+//	shared   one node named from two slots is refused by the strict read as
+//	         blob_shared, plain and retaining; so is one buffer the caller
+//	         names from two slots (its save refuses the share)
 //
 // TestMooStringIdentityNegativeControl plants identity-by-content in the save
 // (a blob whose bytes equal an earlier blob's is refused as shared) and drops
-// the blob_shared refusal, and requires each to turn its own rows red.
+// the blob_shared save refusal, and requires each to turn its own rows red.
 
 import (
 	"encoding/binary"
@@ -81,10 +81,21 @@ local function identity(name: string, edit: string)
 	local v = load.load("Root", wire, report)
 	if v == nil then
 		print(name .. "/" .. edit .. " refused")
+		if edit == "plain" then
+			local rr = load.newReport()
+			local store = Rt.newStore(1048576)
+			local rv = Rt.LoadRetain("Root", wire, rr, store)
+			if rv == nil then
+				print(name .. "/retain refused")
+			else
+				print(name .. "/retain loaded")
+			end
+		end
 		return
 	end
 	if edit == "copy" then
-		-- the second slot gets a buffer of its own over the same bytes
+		-- share the first slot's buffer, then give the second slot its own
+		v.B = v.A
 		v.B = buffer.fromstring(buffer.tostring(v.A))
 	elseif edit == "one-buffer" then
 		-- the caller names the first slot's buffer from the second
@@ -114,11 +125,14 @@ local function built(text: string)
 end
 `
 
-// identityRow is one saved row's expectation: the refusal name ("" for
-// none) and, when it saves, the bytes; a blob_shared row's count is refusal.
+// identityRow is one saved row's expectation: when loadRefusal is set the
+// strict read refuses the wire (the probe prints "<name>/<edit> refused");
+// otherwise the save either refuses by name (refusal) or writes the reference's
+// bytes (wire). A blob_shared row's count is refusal.
 type identityRow struct {
-	refusal string
-	wire    []byte
+	refusal     string
+	wire        []byte
+	loadRefusal bool
 }
 
 // stringIdentityGate runs the gate and answers its red list. mutate, when
@@ -162,44 +176,38 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 		name := fmt.Sprintf("decoded%d", i)
 		in[name] = wire
 		fmt.Fprintf(&main, "identity(%q, \"plain\")\n", name)
-		want[name+"/plain"] = identityRow{"", wire}
-		want[name+"/retain"] = identityRow{"", wire}
-		want[name+"/blob_shared"] = identityRow{"0", nil}
+		want[name+"/plain"] = identityRow{wire: wire}
+		want[name+"/retain"] = identityRow{wire: wire}
+		want[name+"/blob_shared"] = identityRow{refusal: "0"}
 		if text == `{"a":"same","b":"same"}` {
 			fmt.Fprintf(&main, "identity(%q, \"one-buffer\")\n", name)
-			want[name+"/one-buffer"] = identityRow{"blob_shared", nil}
+			want[name+"/one-buffer"] = identityRow{refusal: "blob_shared"}
+			fmt.Fprintf(&main, "identity(%q, \"copy\")\n", name)
+			want[name+"/copy"] = identityRow{wire: wire}
 		}
 	}
 	for _, text := range []string{"", "same"} {
 		fmt.Fprintf(&main, "built(%q)\n", text)
-		want[fmt.Sprintf("built%d/plain", len(text))] = identityRow{"", encode(fmt.Sprintf(`{"a":%q,"b":%q}`, text, text))}
+		want[fmt.Sprintf("built%d/plain", len(text))] = identityRow{wire: encode(fmt.Sprintf(`{"a":%q,"b":%q}`, text, text))}
 	}
 	// ONE empty-string node named from both root slots (the Dart leg's
-	// committed shape): the reference reads it and counts one blob_shared,
-	// and refuses to write it
+	// committed shape): the strict read refuses it as blob_shared, and a
+	// world in which it read would count one blob_shared and refuse to write
+	// it
 	shared := []byte{1, 1, 17, 2, 2, 17, 2, 3, 12, 3, 1, 4, 0, 0}
 	for _, id := range []uint64{ir.TableWireId("a"), ir.TableWireId("b"), ir.TableNodeWireId, ir.StringWireTypeId, 4} {
 		shared = binary.LittleEndian.AppendUint64(shared, id)
 	}
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, v, shared, &r); !ok || err != nil {
+	if ok, err := tablewire.Decode(m, v, shared, &r); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the reference reads the shared string as %+v %v", r, err)
-	}
-	if _, err := tablewire.Encode(m, v); err == nil || !strings.Contains(err.Error(), "blob_shared") {
-		t.Fatalf("the reference writes the shared string: %v", err)
-	}
-	v.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte("")}
-	detached, err := tablewire.Encode(m, v)
-	if err != nil {
-		t.Fatal(err)
 	}
 	in["shared"] = shared
 	main.WriteString("identity(\"shared\", \"plain\")\nidentity(\"shared\", \"copy\")\n")
-	want["shared/plain"] = identityRow{"blob_shared", nil}
-	want["shared/retain"] = identityRow{"blob_shared", nil}
-	want["shared/blob_shared"] = identityRow{"1", nil}
-	want["shared/copy"] = identityRow{"", detached}
+	want["shared/plain"] = identityRow{loadRefusal: true}
+	want["shared/copy"] = identityRow{loadRefusal: true}
+	want["shared/retain"] = identityRow{loadRefusal: true}
 
 	got := map[string][]string{}
 	for line := range strings.SplitSeq(g.run(t, main.String(), in), "\n") {
@@ -215,6 +223,10 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 		switch {
 		case !ok:
 			bad = append(bad, name+": no answer")
+		case w.loadRefusal:
+			if len(f) != 1 || f[0] != "refused" {
+				bad = append(bad, fmt.Sprintf("%s: the load did not refuse (%q)", name, f))
+			}
 		case len(f) == 1 && f[0] == "refused":
 			bad = append(bad, name+": the load refused")
 		case strings.HasSuffix(name, "/blob_shared"):
@@ -249,7 +261,6 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 }
 
 func TestMooStringIdentity(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, b := range stringIdentityGate(t, nil) {
@@ -262,10 +273,9 @@ func TestMooStringIdentity(t *testing.T) {
 //   - identity BY CONTENT: a blob whose bytes equal an earlier blob's is
 //     refused as shared, so two buffers of equal text read as one: the
 //     decoded and built rows with equal strings must go red;
-//   - the blob_shared refusal is dropped, so one buffer named twice is
-//     written once and referenced twice: the shared rows must go red.
+//   - the save's blob_shared refusal is dropped, so one buffer named twice
+//     is written once and referenced twice: the one-buffer row must go red.
 func TestMooStringIdentityNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, ctl := range []struct {
@@ -279,7 +289,7 @@ func TestMooStringIdentityNegativeControl(t *testing.T) {
 		{"no-shared-refusal",
 			"\t\t\t\treturn nil, { name = \"blob_shared\", field = e.field }\n",
 			"",
-			[]string{"shared/plain", "shared/retain", "decoded1/one-buffer"}},
+			[]string{"decoded1/one-buffer"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
@@ -291,7 +301,8 @@ func TestMooStringIdentityNegativeControl(t *testing.T) {
 			})
 			red := map[string]bool{}
 			for _, b := range bad {
-				red[b[:strings.Index(b, ":")]] = true
+				name, _, _ := strings.Cut(b, ":")
+				red[name] = true
 			}
 			for _, row := range ctl.red {
 				if !red[row] {
