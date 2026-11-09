@@ -73,12 +73,9 @@ reds() { grep -E '^[a-z-]+ +FAIL' "$1" | awk '{print $1}' | tr '\n' ' '; }
 
 n=0
 for f in "$gen"/*/schema_load.luau; do
-	sed -i.orig '/^[[:space:]]*resolve(report)$/a\
-	report.unknown = report.unknown + 1
-' "$f"
-	rm -f "$f.orig"
-	grep -q '^	report.unknown = report.unknown + 1$' "$f" || {
-		echo "negative control failed: no resolve(report) line in $f to plant after; the sabotage would be vacuous" >&2; exit 1; }
+	perl -i -pe 's/^(\s*)(_?report)\.unknown = \2\.unknown \+ 1$/$1$2.unknown = $2.unknown + 1; $2.malformed = true/' "$f"
+	grep -q '\.unknown + 1; .*\.malformed = true' "$f" || {
+		echo "negative control failed: no unknown-field line in $f to plant after; the sabotage would be vacuous" >&2; exit 1; }
 	n=$((n + 1))
 done
 if [ "$n" -eq 0 ]; then echo "negative control failed: no generated schema_load.luau to sabotage" >&2; exit 1; fi
@@ -87,8 +84,8 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 	exit 1
 fi
 got=$(reds "$out/load.log")
-if [ "$got" != "report retain " ]; then
-	echo "negative control failed: the luau load sabotage turned [$got] red, want [report retain ]" >&2
+if [ "$got" != "framing retain retain-save " ]; then
+	echo "negative control failed: the luau load sabotage turned [$got] red, want [framing retain retain-save ]" >&2
 	cat "$out/load.log" >&2
 	exit 1
 fi
@@ -113,9 +110,9 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 	exit 1
 fi
 got=$(reds "$out/accel.log")
-if [ "$got" != "forgery cook-forgery cook-reason block-reason " ]; then
-	echo "negative control failed: the luau reader sabotage turned [$got] red, want [forgery cook-forgery cook-reason block-reason ]" >&2
+if [ "$got" != "forgery cook-forgery " ]; then
+	echo "negative control failed: the luau reader sabotage turned [$got] red, want [forgery cook-forgery ]" >&2
 	cat "$out/accel.log" >&2
 	exit 1
 fi
-echo "Luau table negative control: the load sabotage turns exactly report and retain red; the reader sabotage exactly forgery, cook-forgery, cook-reason and block-reason"
+echo "Luau table negative control: the load sabotage turns exactly framing, retain and retain-save red; the reader sabotage exactly forgery and cook-forgery"

@@ -1073,7 +1073,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 .PHONY: tables-c-soak-negative-control
 tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
-	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
+	@sed 's|            case_load( \&cases\[i\], codec, value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            case_load( \&cases[i], codec, value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
@@ -1143,7 +1143,7 @@ tables-c-ref-ordinal-negative-control:
 .PHONY: tables-c-strict-load-negative-control
 tables-c-strict-load-negative-control:
 	@rm -rf build/c-strict-load-nc && mkdir -p build/c-strict-load-nc
-	@sed -e 's|    return reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
+	@sed -e 's|    return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
 		internal/codegen/ctable/cook.go > build/c-strict-load-nc/cook.go.txt
 	@grep -q SABOTAGED build/c-strict-load-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
