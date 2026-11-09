@@ -558,6 +558,10 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     }
     for (const e of ents) { m.set(e.key, e.value); }
     if (st !== null && st.maps !== undefined) { st.maps.push({ m, ents }); }
+  } else {
+    report.damaged = true;
+    r.at = end;
+    return false;
   }
   r.at = end;
   return true;
@@ -570,7 +574,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
   const end = r.at + L;
-  if (L < 2) { r.at = end; return true; }
+  if (L < 2) { report.damaged = true; r.at = end; return false; }
   // the same parent-buffer header as a map's and an array's (decode.go keyed,
   // subTo; docs/SPEC-TABLES.md §3): a count spelled past the body leaves the
   // entry span empty rather than negative

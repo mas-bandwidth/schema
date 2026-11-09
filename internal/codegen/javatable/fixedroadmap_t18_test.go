@@ -635,10 +635,25 @@ func t18Expect(m manifestRow) map[string]string {
 // PASS IS THE READER'S). The reference's writer stores what it is handed and
 // does not enforce the range it declares, so a manifest value past the READER's
 // own declared range (a float32 `min`/`max`, an integer's or fixed-point's raw
-// range, ir.TableRawRange) lands clamped to that bound and counts exactly one.
+// range, ir.TableRawRange) is past the bound under the strict read.
 // It answers what the reader must land, read off the reader's schema and never
 // from a literal here, and whether the value was past the bound.
 func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
+	return t18BoundOf(reader, root, path, value, false)
+}
+
+// t18WriterBound is the writer's declared bound for the one bounded kind whose
+// range survives into the compiled plan: an integer or fixed-point field. A
+// forged value outside the WRITER's range refuses the whole load even when it
+// lies inside the reader's widened range (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// the range_widen vectors). A compressed float's writer bound does NOT survive
+// (schema#1164 ruling B), so that kind answers false here and t18Bound alone
+// decides it.
+func t18WriterBound(writer *ir.Unit, root, path, value string) (string, bool) {
+	return t18BoundOf(writer, root, path, value, true)
+}
+
+func t18BoundOf(reader *ir.Unit, root, path, value string, writerOnly bool) (string, bool) {
 	var st *ir.Struct
 	for _, r := range fixedRoots(reader) {
 		if r.Name == root {
@@ -652,6 +667,24 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 	}
 	n, ok := t18Number(value)
 	if !ok {
+		return "", false
+	}
+	if writerOnly {
+		// THE PLAN CARRIES ir.TableFixedWriterRanges, so the writer's decision
+		// reads that same list: a shape or width it leaves out bounds nothing,
+		// and a compressed float never appears in it (schema#1164 ruling B).
+		for _, r := range ir.TableFixedWriterRanges(st) {
+			if r.Name != name {
+				continue
+			}
+			lo, hi := big.NewInt(r.Lo), big.NewInt(r.Hi)
+			switch {
+			case n.Cmp(hi) > 0:
+				return hi.String(), true
+			case n.Cmp(lo) < 0:
+				return lo.String(), true
+			}
+		}
 		return "", false
 	}
 	for _, f := range st.Fields {
@@ -683,16 +716,81 @@ func t18Bound(reader *ir.Unit, root, path, value string) (string, bool) {
 	return "", false
 }
 
+// TestFixedJavaT18BoundReadsThePlan is the pure-Go half of R27's bound choice:
+// an integer or fixed-point bound is the WRITER's when the plan carries it,
+// while a compressed float's bound is the READER's alone (schema#1164 ruling
+// B). It reads two hand-written units, so it needs neither the C++ corpus nor
+// a JDK and still pins the decision t18R27 makes over the shared manifest.
+func TestFixedJavaT18BoundReadsThePlan(t *testing.T) {
+	t.Parallel()
+	oldInt := unitFrom(t, `package probe
+
+fixed table RangeWiden
+{
+    v     int32 = 0 | min = 0, max = 100
+    vals  [4]int32 | min = 0, max = 100
+    u     uint64 = 10 | min = 10, max = 1000
+}
+`)
+	newInt := unitFrom(t, `package probe
+
+fixed table RangeWiden
+{
+    v     int32 = 0 | min = 0, max = 200
+    vals  [4]int32 | min = 0, max = 200
+    u     uint64 = 10 | min = 0, max = 2000
+}
+`)
+	oldFloat := unitFrom(t, `package probe
+
+fixed table CfloatRangeWiden
+{
+    aim float32 | min = -1, max = 1, resolution = 0.01
+}
+`)
+	newFloat := unitFrom(t, `package probe
+
+fixed table CfloatRangeWiden
+{
+    aim float32 | min = -2, max = 2, resolution = 0.01
+}
+`)
+	for _, tc := range []struct {
+		name       string
+		writer     *ir.Unit
+		reader     *ir.Unit
+		root       string
+		path       string
+		value      string
+		writerPast bool
+		readerPast bool
+	}{
+		{"an integer inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.v", "150", true, false},
+		{"a fixed array element inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.vals[2]", "150", true, false},
+		{"a uint64 inside the writer and the reader", oldInt, newInt, "RangeWiden", "r0.u", "1500", true, false},
+		{"a compressed float past the writer, inside the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "1.5|0x3FC00000", false, false},
+		{"a compressed float past the reader", oldFloat, newFloat, "CfloatRangeWiden", "r0.aim", "5.0|0x40A00000", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, got := t18WriterBound(tc.writer, tc.root, tc.path, tc.value); got != tc.writerPast {
+				t.Errorf("t18WriterBound(%s) = %v, want %v", tc.path, got, tc.writerPast)
+			}
+			if _, got := t18Bound(tc.reader, tc.root, tc.path, tc.value); got != tc.readerPast {
+				t.Errorf("t18Bound(%s) = %v, want %v", tc.path, got, tc.readerPast)
+			}
+		})
+	}
+}
+
 // t18R27: java/R27 "the manifest is the wire" — FIXED-FORM-ALGORITHM §5.9 #32
 // and #37 ("assert the manifest, never read the dump") over SPEC-TABLES §3.4.
 // Each manifest row whose schema the Java target emits is loaded with the
 // row's own unit through the Java leg's GENERATED load and compared value for
 // value against the manifest: a forged file (hostile_*, past_*) against its
-// forged values, every other file against `values=`. A value past the
-// READER's own declared bound (a forged past_ value, and the two fixed-point rows
-// the reference writes outside their declared range) REFUSES the whole load
-// under the strict read (the bound read off the reader's schema), and is
-// asserted so. A row the Java
+// forged values, every other file against `values=`. A value past the bound
+// the plan carries -- the READER's for a compressed float, the WRITER's for a
+// ranged integer or fixed-point (t18Bound and t18WriterBound) -- REFUSES the
+// whole load under the strict read, and is asserted so. A row the Java
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.
 func t18R27(t *testing.T) {
@@ -800,13 +898,18 @@ func t18R27(t *testing.T) {
 			}
 		} else {
 			reader := t18LoadUnit(t, tk.r.reader)
+			writer := t18LoadUnit(t, tk.r.writer)
 			keys := make([]string, 0, len(want))
 			for k := range want {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
 			for _, k := range keys {
-				if _, past := t18Bound(reader, m.Root, k, want[k]); past {
+				_, past := t18Bound(reader, m.Root, k, want[k])
+				if !past {
+					_, past = t18WriterBound(writer, m.Root, k, want[k])
+				}
+				if past {
 					pastKeys = append(pastKeys, m.File+":"+k+"="+want[k])
 					pastBound++
 				}
@@ -841,7 +944,7 @@ func t18R27(t *testing.T) {
 		loaded = append(loaded, m.File)
 	}
 	t.Logf("R27: compared %d rows value for value against the manifest (%d values): %s", len(loaded), values, strings.Join(loaded, " "))
-	t.Logf("R27: %d manifest values are past the reader's own declared bound and refuse their load: %s", len(pastKeys), strings.Join(pastKeys, " "))
+	t.Logf("R27: %d manifest values are past the bound the plan carries and refuse their load: %s", len(pastKeys), strings.Join(pastKeys, " "))
 	t.Logf("R27: %d rows refused or not emitted, named and not loaded: %s", len(refused), strings.Join(refused, "; "))
 }
 
