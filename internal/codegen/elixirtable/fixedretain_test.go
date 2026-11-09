@@ -54,8 +54,10 @@ for data<-[wire,<<>>,<<255>>] do
 end
 unless T.measure_retain("Stamp",%%{"value"=>17},store)=={:error,:fixed_root},do: raise("fixed measure must refuse by name")
 unless T.save_retain("Stamp",%%{"value"=>17},store,report)==expected,do: raise("fixed save must refuse by name without changing report or stores")
-{:ok,value,_}=T.load("Stamp",wire)
-{:ok,^wire}=T.save("Stamp",value)
+alias Fixedretain.ProbeFixed, as: F
+{:ok, values, _report} = F.stamp_fixed_load(wire)
+saved = F.stamp_fixed_save(values)
+unless saved == wire, do: raise("fixed plain canonical wire")
 `, hex.EncodeToString(wire))
 			if mixed {
 				for _, tc := range []struct{ root, input string }{
@@ -132,30 +134,28 @@ func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := tabletext.NewModel(u)
-	value := m.New(u.Tables["ToolMessage"])
-	var report tabletext.Report
-	ok, err := tablewire.Decode(m, value, wire, &report)
-	if err != nil || !ok || report.Refused {
-		t.Fatalf("fixed pin: %v %v %+v", ok, err, report)
+	fixedModel := tabletext.NewModel(u)
+	fixedValue := fixedModel.New(u.Tables["ToolMessage"])
+	var fixedReport tabletext.Report
+	ok, err := tablewire.Decode(fixedModel, fixedValue, wire, &fixedReport)
+	if ok || err == nil || !fixedReport.Refused || fixedReport.Reason != "previous_form" {
+		t.Fatalf("fixed pin: a form-1 file at a fixed root must refuse previous_form: ok=%v err=%v report=%+v", ok, err, fixedReport)
 	}
-	want, err := tablewire.Encode(m, value)
-	if err != nil || len(want) != 82 {
-		t.Fatalf("fixed writer pin: %d %v", len(want), err)
-	}
+	// Form 1 at a fixed root is previous_form, above. The variable codec
+	// refuses this hostile file too, by name, and retention refuses before
+	// it looks at the value. A landed value with a kind_mismatch count is
+	// the retired answer.
 	probe := fmt.Sprintf(`alias Messagedemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:ok,value,report}=T.load("ToolMessage",wire)
-unless report.kind_mismatch==1 and true,do: raise("fixed plain report")
-{:ok,written}=T.save("ToolMessage",value)
-unless Base.encode16(written,case: :lower)==%q,do: raise("fixed plain canonical wire")
+{:error,:malformed,report}=T.load("ToolMessage",wire)
+unless report.reason=="wire_damaged", do: raise("hostile kind must refuse: " <> inspect(report))
 {:error,:fixed_root,^zero,^store}=T.load_retain("ToolMessage",wire,store,zero)
-{:error,:fixed_root}=T.measure_retain("ToolMessage",value,store)
-{:error,:fixed_root,^zero,^store}=T.save_retain("ToolMessage",value,store,zero)
+{:error,:fixed_root}=T.measure_retain("ToolMessage",%%{},store)
+{:error,:fixed_root,^zero,^store}=T.save_retain("ToolMessage",%%{},store,zero)
 IO.puts("FIXED_MESSAGE_RETAIN_REFUSAL_OK")
-`, hex.EncodeToString(wire), hex.EncodeToString(want))
+`, hex.EncodeToString(wire))
 	out := runCompleteUnitProbe(t, u, probe)
 	if !strings.Contains(out, "FIXED_MESSAGE_RETAIN_REFUSAL_OK") {
 		t.Fatal(out)

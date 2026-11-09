@@ -355,6 +355,18 @@ produced is defined. Counters stand only on a read that returns.
 (F7); a node record of a type the root cannot place counts once at the record
 and not once per pointer (T7).**
 
+**The no-writer vectors.** Input no writer produces (R5, H2, H3, H8, L5) is
+damage on every read. The vectors `frame_repeat_id`,
+`frame_repeat_unknown_id`, `nested_repeat_id`, `array_L0_short`,
+`array_L1_short`, `array_header_crosses_L_foreign_kind`,
+`map_header_crosses_L_foreign_kind`, `map_repeat_key`,
+`map_entry_key_twice`, `map_L1_short`, `keyed_header_crosses_L_foreign_kind`,
+`keyed_repeat_slot`, `keyed_repeat_unknown_slot` and `keyed_L1_short` pin
+those bytes under their refusal names in `testdata/wire/tables/framing/`,
+held by the harness's `TestNoWriterFramingVectorsRefused` and by the
+engine's `TestNoWriter*` gates in `internal/tablewire`; the older tolerant
+names keep their manifest rows until that file is re-pinned.
+
 ## FINDINGS, and how each was settled
 
 Each finding is settled by a ruling or by the spec's own rule for a

@@ -49,7 +49,7 @@ func run(argv []string, wall, grace time.Duration) (int, error) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 
-	stopSig := syscall.Signal(syscall.SIGTERM)
+	stopSig := syscall.SIGTERM
 	s := state{}
 	command := 0
 	for s.phase != phaseDone {
