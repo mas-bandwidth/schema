@@ -592,6 +592,11 @@ func fixedFieldChecked(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
+	if f.Type.Optional {
+		// an optional wrapper carries a PRESENT BYTE, which is checked for
+		// wire_damaged like a bool (§4.5) before any payload is project.
+		return true
+	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || fixedIsFloat(f.Type) || f.Type.Kind == ir.TBool {
 		return true
 	}

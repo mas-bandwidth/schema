@@ -18,7 +18,6 @@ package jstable
 // reports ten done verdicts over tests that never executed.
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/ir"

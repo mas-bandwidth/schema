@@ -219,10 +219,11 @@ func t05E9(t *testing.T) {
 //
 //   - widened once per entry per record: the widen op moves it, once, and no
 //     fold across a widen run;
-//   - clamped once per entry per record for a count and for a text length;
-//   - a forged ordinal remapped to None counts on BOTH plans: the compiled
-//     plan's ordinal op and the identity projection each count it once, and the
-//     same forged bytes land the same `clamped == 1` on either;
+//   - a count or text length past the writer's bound refuses by name
+//     (§4.5), never a clamp that counts;
+//   - a forged ordinal remapped to None refuses on BOTH plans: the compiled
+//     plan's ordinal op and the identity projection each refuse out_of_range
+//     (§4.6);
 //   - copy and const move nothing on the clean path.
 func t05R16(t *testing.T) {
 	_, src := t02Table(t, `package probe
@@ -270,23 +271,23 @@ fixed table T
 		t.Errorf("R16: the record loop moves `unknown` %d time(s); §5.4 counts it once per endpoint and never per record", n)
 	}
 
-	// clamped once per entry, per record: a count clamp and a text clamp each
-	// count once, at the one site that reads the number.
-	if !strings.Contains(t02Norm(run), "else if (v > size) { v = size; report.oor++; }") {
-		t.Error("R16: the count op does not clamp once to the writer's bound the plan carries")
+	// a count past the writer's bound refuses count_over_bound, once, at the
+	// one site that reads the number.
+	if !strings.Contains(t02Norm(run), "if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }") {
+		t.Error("R16: the count op does not refuse count_over_bound at the writer's bound")
 	}
 	if !strings.Contains(t02Norm(run), "const cap = (size / unit) | 0;") ||
-		!strings.Contains(t02Norm(run), "else if (v > cap) { v = cap; report.oor++; }") {
-		t.Error("R16: the text op does not clamp its length once in the USED units (§3.4)")
+		!strings.Contains(t02Norm(run), "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }") {
+		t.Error("R16: the text op does not refuse length_over_bound once in the USED units (§3.4)")
 	}
 
-	// A forged ordinal remapped to None counts on BOTH plans: the compiled
-	// plan's ordinal op counts it, and the identity projection counts it too.
-	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.oor++; }") {
-		t.Error("R16: the compiled plan does not count a forged ordinal remapped to None")
+	// A forged ordinal remapped to None refuses on BOTH plans: the compiled
+	// plan's ordinal op and the identity projection each refuse out_of_range.
+	if !strings.Contains(t02Norm(run), "if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }") {
+		t.Error("R16: the compiled plan does not refuse a forged ordinal remapped to None")
 	}
-	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.rank > 3) { value.rank = 0; report.oor++; }") {
-		t.Error("R16: the identity projection does not count a forged ordinal remapped to None")
+	if !strings.Contains(t02Norm(jsFn(src, "TFixedDecode")), "if (value.rank > 3) { report.refused = TableFixedRefusal.OutOfRange; return; }") {
+		t.Error("R16: the identity projection does not refuse a forged ordinal remapped to None")
 	}
 
 	// copy moves nothing on the clean path: its case body names no counter.
@@ -300,20 +301,26 @@ fixed table T
 	if !strings.Contains(t02Norm(compile), "TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);") {
 		t.Error("R16: the optional wrapper's present byte is not a COPY that moves nothing (§5.4)")
 	}
-	// const moves nothing except the forged-ordinal guard it carries.
+	// const moves nothing except the forged-ordinal refusal it carries.
 	constCase := t02Block(t, run, "case TableFixedOpConst: {", "break;")
-	if n := strings.Count(constCase, "report.oor++"); n != 1 {
-		t.Errorf("R16: the CONST op counts %d time(s), want only the forged-ordinal guard", n)
+	if n := strings.Count(constCase, "report.oor++"); n != 0 {
+		t.Errorf("R16: the CONST op counts %d time(s), want none: the forged tag refuses by name", n)
+	}
+	if n := strings.Count(constCase, "report.refused = TableFixedRefusal.OutOfRange"); n != 1 {
+		t.Errorf("R16: the CONST op carries %d forged-ordinal refusals, want the one guard", n)
 	}
 	if n := strings.Count(constCase, "report.widened++") + strings.Count(constCase, "report.unknown++"); n != 0 {
 		t.Error("R16: the CONST op moves widened or unknown; a const moves neither")
 	}
 	// ordinal lands its value and moves nothing: the remap to None is the bounds
-	// pass's to count (§5.4 line 961), and the single counter in the case body IS
-	// that guard — no second count, and no other op counter.
+	// pass's to refuse (§4.6), and the single refusal in the case body IS that
+	// guard — no second refusal, and no other op counter.
 	ordinalCase := t02Block(t, run, "case TableFixedOpOrdinal: {", "break;")
-	if n := strings.Count(ordinalCase, "report.oor++"); n != 1 {
-		t.Errorf("R16: the ORDINAL op carries %d clamped sites, want only the bounds pass's forged guard", n)
+	if n := strings.Count(ordinalCase, "report.oor++"); n != 0 {
+		t.Errorf("R16: the ORDINAL op counts %d clamped sites, want none: the forged ordinal refuses by name", n)
+	}
+	if n := strings.Count(ordinalCase, "report.refused = TableFixedRefusal.OutOfRange"); n != 1 {
+		t.Errorf("R16: the ORDINAL op carries %d forged-ordinal refusals, want the bounds pass's one guard", n)
 	}
 	if n := strings.Count(ordinalCase, "report.widened") + strings.Count(ordinalCase, "report.unknown") +
 		strings.Count(ordinalCase, "report.mismatch") + strings.Count(ordinalCase, "report.repeated"); n != 0 {
@@ -324,9 +331,9 @@ fixed table T
 // t05R18: R18 [owed] "a clamp that cannot fire is not emitted and nothing moves"
 // (docs/FIXED-FORM-ALGORITHM.md §4.6; fixedClampEnds answers which ends a
 // DataView load can actually lose). A bound sitting on the storage width's own
-// limit is a comparison no loaded value can fail, so no clamp statement is
-// emitted for it and no `clamped` is ever owed; a bound INSIDE the storage
-// width is emitted, on the end that can fire.
+// limit is a comparison no loaded value can fail, so no refusal statement is
+// emitted for it; a bound INSIDE the storage width is emitted, on the end that
+// can fire.
 func t05R18(t *testing.T) {
 	// Vacuous: min = 0 and max = the uint32 ceiling are the storage width's own
 	// ends, so neither comparison can be lost.
@@ -337,11 +344,11 @@ fixed table T
     x uint32 | min = 0, max = 4294967295
 }
 `)
-	if decode := jsFn(vacuous, "TFixedDecode"); strings.Contains(decode, "report.oor") {
-		t.Errorf("R18: a clamp that cannot fire was emitted:\n%s", decode)
+	if decode := jsFn(vacuous, "TFixedDecode"); strings.Contains(decode, "report.refused") {
+		t.Errorf("R18: a refusal that cannot fire was emitted:\n%s", decode)
 	}
 
-	// Not vacuous: min = 1 is inside the width, so the low clamp IS emitted.
+	// Not vacuous: min = 1 is inside the width, so the low refusal IS emitted.
 	_, live := t02Table(t, `package probe
 
 fixed table T
@@ -349,16 +356,16 @@ fixed table T
     x uint32 = 1 | min = 1, max = 2
 }
 `)
-	if decode := jsFn(live, "TFixedDecode"); !strings.Contains(decode, "report.oor") {
-		t.Errorf("R18: a clamp that CAN fire was elided:\n%s", decode)
+	if decode := jsFn(live, "TFixedDecode"); !strings.Contains(decode, "report.refused = TableFixedRefusal.OutOfRange") {
+		t.Errorf("R18: a refusal that CAN fire was elided:\n%s", decode)
 	}
 }
 
-// t05C3: C3 [verify] "text length clamp" (docs/SPEC-TABLES.md §3.4: a `string(N)`
-// or `bytes(N)` field rides a used length then that many units; the reader
-// clamps the length to ITS OWN declared capacity, counting one `clamped`
-// (docs/FIXED-FORM-ALGORITHM.md §5.4)). The emitted decode reads the length once
-// and clamps it at both ends against the reader's own `N`.
+// t05C3: C3 [verify] "text length refuses past the cap" (docs/SPEC-TABLES.md
+// §3.4: a `string(N)` or `bytes(N)` field rides a used length then that many
+// units; the reader REFUSES a length past ITS OWN declared capacity by name
+// (docs/FIXED-FORM-ALGORITHM.md §4.5)). The emitted decode reads the length once
+// and refuses at the reader's own `N` before any byte lands.
 func t05C3(t *testing.T) {
 	_, src := t02Table(t, `package probe
 
@@ -368,9 +375,9 @@ fixed table T
 }
 `)
 	decode := jsFn(src, "TFixedDecode")
-	want := "if (n < 0) { n = 0; report.oor++; } else if (n > 8) { n = 8; report.oor++; }"
+	want := "if (n < 0 || n > 8) { report.refused = TableFixedRefusal.LengthOverBound; return; }"
 	if !strings.Contains(t02Norm(decode), want) {
-		t.Errorf("C3: the text length is not clamped once at both ends to the reader's own 8:\n%s", decode)
+		t.Errorf("C3: the text length is not refused once at the reader's own 8:\n%s", decode)
 	}
 }
 
@@ -410,12 +417,12 @@ fixed table T
 }
 
 // t05R24: R24 [owed] "ill-formed text in the USED units refuses by name
-// (text_ill_formed); text is counted in bytes with the clamp in units; slack is
-// unspecified on read and not a refusal" (docs/FIXED-FORM-ALGORITHM.md §4.5 fix
-// 11; docs/SPEC-TABLES.md §3.4). All three clauses are sites of the emitted
-// runtime: the content refusal by name, the clamp in units (`cap = size /
-// unit`), and the check over the used units (`v * unit`) and never the slack
-// (`size`).
+// (text_ill_formed); text is counted in bytes with the refusal in units; slack
+// is unspecified on read and not a refusal" (docs/FIXED-FORM-ALGORITHM.md
+// §4.5 fix 11; docs/SPEC-TABLES.md §3.4). All three clauses are sites of the
+// emitted runtime: the content refusal by name, the length refusal in units
+// (`cap = size / unit`), and the check over the used units (`v * unit`) and
+// never the slack (`size`).
 func t05R24(t *testing.T) {
 	_, src := t02Table(t, `package probe
 
@@ -426,10 +433,10 @@ fixed table T
 `)
 	t02Has(t, t02Norm(src), "report.refused = TableFixedRefusal.TextIllFormed", "R24 ill-formed text refuses by name")
 	t02Has(t, t02Norm(src), "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
-	// THE CLAMP IS IN UNITS: the declared bound `size` in bytes, divided by the
-	// unit width, is the cap the used length is clamped to.
-	t02Has(t, t02Norm(src), "const cap = (size / unit) | 0;", "R24 the clamp is in units")
-	t02Has(t, t02Norm(src), "else if (v > cap) { v = cap; report.oor++; }", "R24 the length clamps once in units")
+	// THE LENGTH REFUSAL IS IN UNITS: the declared bound `size` in bytes,
+	// divided by the unit width, is the cap the used length is refused past.
+	t02Has(t, t02Norm(src), "const cap = (size / unit) | 0;", "R24 the refusal is in units")
+	t02Has(t, t02Norm(src), "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }", "R24 the length refuses once in units")
 	// THE CONTENT CHECK HOLDS THE USED UNITS (v * unit) AND NOT THE SLACK (size):
 	// slack is unspecified on read and is not a refusal.
 	t02Has(t, t02Norm(src), ", v * unit)) { report.refused = TableFixedRefusal.TextIllFormed", "R24 the content check holds the used units and not the slack")

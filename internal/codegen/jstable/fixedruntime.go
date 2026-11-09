@@ -153,7 +153,7 @@ export const TableFixedRefusal = Object.freeze({
   IntegrityMismatch: 19,
   // THE FOUR CONTENT BOUND RULINGS (docs/FIXED-FORM-ALGORITHM.md §4.5,
   // §4.6): a count past the plan's bound, a text length past its cap, and a
-  // ranged scalar, `bits(N)`, union tag or enum ordinal past the plan's set.
+  // ranged scalar, a bits(N), a union tag or an enum ordinal past the set.
   // Each REFUSES BY NAME and writes not one destination byte. They are not
   // §4's six events: nothing was decoded and there is nothing to count.
   CountOverBound: 20,
