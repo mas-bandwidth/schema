@@ -584,6 +584,33 @@ tables-json-negative-control: bin/schema test/tables/json_negative_main.cpp
 		-Ibuild/json-sabotage test/tables/json_negative_main.cpp build/json-sabotage/TablesTable.cpp -o build/schema_test_json_negative
 	./build/schema_test_json_negative
 
+# THE WRITER REFUSES STORAGE THAT IS NOT TEXT (docs/SPEC-TABLES.md §16.14 W0):
+# ill-formed UTF-8 in a narrow field answers -1 from ToJson and its measure,
+# never a U+FFFD. The negative control takes the refusal out of a copy of the
+# generated walk and requires the gate to go red on the refusal row by name.
+.PHONY: tables-json-write-refusal tables-json-write-refusal-negative-control
+tables-json-write-refusal: bin/schema test/tables/json_write_refusal_main.cpp
+	@rm -rf build/json-write-refusal && mkdir -p build/json-write-refusal
+	./bin/schema generate --lang cpp --out build/json-write-refusal tables/examples
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-write-refusal test/tables/json_write_refusal_main.cpp build/json-write-refusal/TablesTable.cpp -o build/schema_test_json_write_refusal
+	./build/schema_test_json_write_refusal
+
+tables-json-write-refusal-negative-control: bin/schema test/tables/json_write_refusal_main.cpp
+	@rm -rf build/json-write-refusal-sabotage && mkdir -p build/json-write-refusal-sabotage
+	./bin/schema generate --lang cpp --out build/json-write-refusal-sabotage tables/examples
+	@sed -i.bak 's|out.invalid = true; // not text: the write refuses|out.invalid = false; // SABOTAGED|' build/json-write-refusal-sabotage/TablesTable.cpp
+	@grep -q 'out.invalid = false; // SABOTAGED' build/json-write-refusal-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL FAILED: the sabotage did not apply"; exit 1; }
+	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
+		-Ibuild/json-write-refusal-sabotage test/tables/json_write_refusal_main.cpp build/json-write-refusal-sabotage/TablesTable.cpp -o build/schema_test_json_write_refusal_sabotage
+	@if ./build/schema_test_json_write_refusal_sabotage > build/json-write-refusal-sabotage.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the write-refusal gate passed with the refusal taken out"; \
+		cat build/json-write-refusal-sabotage.log; exit 1; \
+	fi
+	@grep -q 'FAIL json write refusal: ill-formed UTF-8' build/json-write-refusal-sabotage.log || \
+		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on the refusal row"; cat build/json-write-refusal-sabotage.log; exit 1; }
+	@echo "negative control: the write-refusal gate goes red with the refusal taken out"
+
 # THE DOC AND TAGS COST OBSERVABLES, AND THE TWO SAME-DECLARATION PAIRS
 # (docs/SPEC-TABLES.md §8.7). The two cost claims §8.1 makes about the
 # annotation columns are held by observables, not by inspection: a printer
@@ -3687,6 +3714,8 @@ test: toolchain build/schema_test build/schema_test_guard build/schema_test_tabl
 	$(MAKE) tables-json-walk
 	$(MAKE) tables-json-graph-walk
 	$(MAKE) tables-json-negative-control
+	$(MAKE) tables-json-write-refusal
+	$(MAKE) tables-json-write-refusal-negative-control
 	$(MAKE) tables-doctags
 	$(MAKE) tables-doctags-negative-controls
 	$(MAKE) tables-view

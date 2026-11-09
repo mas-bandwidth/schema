@@ -1053,6 +1053,7 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                report.unknown += 1;\n")
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }\n")
+	fmt.Fprintf(b, "                nodes.note_unknown_payload(kind, &wire[start..*off], report);\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
 	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
 	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
@@ -1364,7 +1365,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s}\n", i3)
 	fmt.Fprintf(b, "%s    }\n", i2)
 	fmt.Fprintf(b, "%s}\n", i2)
-	fmt.Fprintf(b, "%s}\n", i1)
+	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1)
 	fmt.Fprintf(b, "%s*off = sub; // excess elements and slack skip via the length\n", i1)
 	fmt.Fprintf(b, "%s}\n", in)
 }
@@ -1995,6 +1996,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // pointer slots, the unreached records included. Each vertex is entered\n")
 	fmt.Fprintf(b, "    // once, so the walk is linear; the whole load is refused.\n")
 	fmt.Fprintf(b, "    if report.cycle_on_save { report.damaged = true; return None; }\n")
+	fmt.Fprintf(b, "    if !report.cycle_on_save && nodes.has_unreachable(&edges) { report.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the strict one too, and outranks\n")
 	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")
 	fmt.Fprintf(b, "    // lands and nothing retained is kept.\n")
