@@ -1757,7 +1757,7 @@ tables-elixir-discard:
 
 tables-elixir-discard-negative-control:
 	@rm -rf $(ELIXIR_DISCARD_NC) && mkdir -p $(ELIXIR_DISCARD_NC)
-	@sed -e 's|if not terminated, do: throw(:wire_damaged)|if false, do: throw(:wire_damaged)|' \
+	@sed -e 's|{:cont, \[\], throw(:wire_damaged)}|{:cont, [], report}|g' \
 		internal/codegen/elixirtable/variableform.go > $(ELIXIR_DISCARD_NC)/variableform.go.txt
 	@cmp -s internal/codegen/elixirtable/variableform.go $(ELIXIR_DISCARD_NC)/variableform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Elixir discard sabotage patched nothing"; exit 1; } || true
