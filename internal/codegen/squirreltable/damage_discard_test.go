@@ -18,11 +18,7 @@ const squirrelFileDiscard = `  if (report.bodyDamaged) {
     return null;
   }
 `
-const squirrelBatchDiscard = `  if(walked!=count || r.nonFinite!=null) {
-    for(local i=0;i<count;i++)storage[i]=d.make();
-    if(r.nonFinite!=null)return refuse(report,"non_finite_float: "+r.nonFinite);
-    return 0;
-  }
+const squirrelBatchDiscard = `  for(local i=0;i<r.written;i++)storage[i]=d.make();
 `
 
 func squirrelDamageProbe(t *testing.T, patchFile, anchor string) string {
@@ -60,8 +56,8 @@ print(fr.bodyDamaged && value==null ? "file discarded\n" : "file kept\n");
 local B=dofile("backend/schema_module.nut",true).require(%q); local v={};local ar={};B.AnnounceRead(v,I["ann"],ar);
 local storage=[B.Envelope(),B.Envelope(),B.Envelope()];local mr={};local n=B.EnvelopeLoadMessages(storage,v,I["wire"],mr);
 print(mr.bodyDamaged && n==0 && storage[0].Payload.Type==0 && storage[1].Payload.Type==0 ? "batch discarded\n" : "batch kept\n");
-local tailValues=[B.LoginRequest()];local previous=tailValues[0];local tr={};local delivered=B.LoginRequestLoadMessages(tailValues,v,I["tail"],tr);
-print(tr.bodyDamaged && delivered==0 && tailValues[0]!=previous ? "tail discarded\n" : "tail kept\n");`, mod, back)
+local tailValues=[B.LoginRequest()];local tr={};local delivered=B.LoginRequestLoadMessages(tailValues,v,I["tail"],tr);
+print(tr.bodyDamaged && delivered==0 && tailValues[0].PlayerId==0 && tailValues[0].ClientBuild==0 ? "tail discarded\n" : "tail kept\n");`, mod, back)
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(program))
 	bad, err := hex.DecodeString(unionElemResetMutant)
 	if err != nil {
@@ -85,7 +81,9 @@ func TestSquirrelDamageDiscardsValues(t *testing.T) {
 func TestSquirrelDamageDiscardNegativeControl(t *testing.T) {
 	for _, c := range []struct{ file, anchor, want string }{
 		{"messages/schema_table_load.nut", squirrelFileDiscard, "file kept batch discarded tail discarded"},
-		{"backend/schema_table_message.nut", squirrelBatchDiscard, "file discarded batch kept tail kept"},
+		// the damaged batch's first body carries no payload, so its row reads
+		// the same reset or kept; the tail batch's fully read body shows it
+		{"backend/schema_table_message.nut", squirrelBatchDiscard, "file discarded batch discarded tail kept"},
 	} {
 		t.Run(c.file, func(t *testing.T) {
 			if got := squirrelDamageProbe(t, c.file, c.anchor); got != c.want {

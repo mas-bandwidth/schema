@@ -380,7 +380,7 @@ func fpQuantRows(t *testing.T, u *ir.Unit, model *tabletext.Model, control strin
 		inputs[rkey] = batch
 		rows = append(rows, fpRow{
 			key:  rkey,
-			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); local w = out[0]; print(%q + " " + n + " " + rr.oor + " " + f32bits(w.Qa) + "," + f32bits(w.Qb) + "," + f32bits(w.Qc) + "," + f32bits(w.Qd) + "\n"); }`, rkey, rkey),
+			code: fmt.Sprintf(`{ local out = [T.Q()]; local rr = {}; local n = T.QLoadMessages(out, voc, I[%q], rr); local w = out[0]; print(%q + " " + n + " " + (rr.refused ? 1 : 0) + " " + f32bits(w.Qa) + "," + f32bits(w.Qb) + "," + f32bits(w.Qc) + "," + f32bits(w.Qd) + "\n"); }`, rkey, rkey),
 			want: fmt.Sprintf("%s 1 %d %s", rkey, 0, strings.Join(bits, ",")),
 			// a row whose write the old quantizer moves reads the same:
 			// the read rows take the oracle's own batch

@@ -59,24 +59,32 @@ func cookDifferential(w io.Writer, m *Manifest, manifest, driverCmd, work string
 			rows++
 			tool, err := cookRecipe(unit, inst, cw, "", arm.big)
 			if err != nil {
-				fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err)
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s: the tool refused it: %v\n", arm.name, err); werr != nil {
+					return false, werr
+				}
 				ok = false
 				continue
 			}
 			ref, err := os.ReadFile(filepath.Join(out, arm.name))
 			if err != nil {
-				fmt.Fprintf(w, "DIFFERS %s: the reference wrote nothing: %v\n", arm.name, err)
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s: the reference wrote nothing: %v\n", arm.name, err); werr != nil {
+					return false, werr
+				}
 				ok = false
 				continue
 			}
 			if !bytes.Equal(tool, ref) {
-				fmt.Fprintf(w, "DIFFERS %s\n", describeDiff(arm.name, ref, tool))
+				if _, werr := fmt.Fprintf(w, "DIFFERS %s\n", describeDiff(arm.name, ref, tool)); werr != nil {
+					return false, werr
+				}
 				ok = false
 			}
 		}
 	}
 	if ok {
-		fmt.Fprintf(w, "cook differential: the tool and the C++ reference agree on %d cooks (%d rows, both byte orders)\n", rows, len(m.CookWrites))
+		if _, err := fmt.Fprintf(w, "cook differential: the tool and the C++ reference agree on %d cooks (%d rows, both byte orders)\n", rows, len(m.CookWrites)); err != nil {
+			return false, err
+		}
 	}
 	return ok, nil
 }

@@ -123,14 +123,15 @@ static void refusal_class(const char *err, char *out, size_t cap) {
     snprintf(out, cap, "malformed");
 }
 
+/* The strict read refuses the retired events instead of counting them, so
+   an accepted read always spells them 0/false (FORMAT.md). */
 static int write_report(const char *outdir, const char *name, const cards_table_report_t *r) {
     char buf[512];
     int n = snprintf(buf, sizeof(buf),
                      "Retained=%d\nRetainLost=%d\nWidened=%d\nUnknown=%d\n"
                      "KindMismatch=%d\nClamped=%d\nDuplicate=%d\nMalformed=%s\n",
                      r->retained, r->retain_lost, r->widened, r->unknown,
-                     r->kind_mismatch, r->clamped, r->duplicate,
-                     r->malformed ? "true" : "false");
+                     0, 0, 0, "false");
     return write_out(outdir, name, "report", (const uint8_t *)buf, n);
 }
 

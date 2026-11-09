@@ -43,8 +43,11 @@ func cookInput(unit *ir.Unit, inst Instance, recipe CookWrite, base string) (*ta
 	} else {
 		accepted, err = strictDecode(model, value, data, &report)
 	}
-	if err != nil || !accepted || report.Refused {
-		return nil, nil, fmt.Errorf("%s: cook construction input refused: %v", inst.Name, err)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: cook construction input refused: %w", inst.Name, err)
+	}
+	if !accepted || report.Refused {
+		return nil, nil, fmt.Errorf("%s: cook construction input refused", inst.Name)
 	}
 	if recipe.Share != "" {
 		source, alias, ok := strings.Cut(recipe.Share, ":")

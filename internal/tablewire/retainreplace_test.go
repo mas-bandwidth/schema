@@ -55,31 +55,6 @@ func retainReplacedListWire(k, n2 int) []byte {
 	return b.finish()
 }
 
-// retainReplacedListSenderUnit is the endpoint's own declaration: `Inner` carries a
-// field the reader below cannot name, so the arm at index `k` of the first
-// `items` occurrence retains a record the reader's own build never sees. The
-// message form has no byte-framed length to damage, so the first occurrence is
-// well framed and the second occurrence alone replaces it (§3.3, §6.6).
-const retainReplacedListSenderUnit = `package readq
-
-fixed table Inner
-{
-    value  int32 = 0 | min = 0, max = 1000
-    future int32
-}
-
-union Pick
-{
-    alpha Inner
-    beta  int32
-}
-
-table Node
-{
-    items []Pick
-}
-`
-
 func TestRetainOracleRefusesAReplacedList(t *testing.T) {
 	t.Parallel()
 	m := retainArmOccurrenceModel(t)

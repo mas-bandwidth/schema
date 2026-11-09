@@ -31,6 +31,10 @@ func float32Corpus(n int) []uint32 {
 		math.Float32bits(1), math.Float32bits(0.1), math.Float32bits(1.0 / 3), math.Float32bits(-266744.625),
 		math.Float32bits(16777216), math.Float32bits(1e10), math.Float32bits(1e-10), math.Float32bits(123456789),
 		math.Float32bits(0.0001), math.Float32bits(0.00001), math.Float32bits(999999.94), math.Float32bits(9999999),
+		// the only positive float32 magnitudes whose shortest text differs when
+		// the read-back rounds twice (through a double, then narrowed) rather
+		// than once at float32 (docs/SPEC-TABLES.md §16.14, W12)
+		0x15ae43fe, 0x15ae43fd, 0x95ae43fe,
 	}
 	for k := -149; k <= 127; k++ {
 		out = append(out, math.Float32bits(float32(math.Ldexp(1, k))))
@@ -114,6 +118,47 @@ func TestMooJsonFloatWriteNegativeControl(t *testing.T) {
 		t.Fatal("the sabotaged tie rule wrote every text the engine writes: the differential cannot see a tie")
 	}
 	t.Logf("the sabotaged tie rule differs on %d of %d texts", diff, len(want32)+len(want64))
+}
+
+// TestMooJsonFloat32ReadBackNegativeControl puts back the twice-rounded
+// read-back (parse to the nearest double, then narrow) and requires the
+// differential red on exactly the double-round magnitudes and nothing else.
+func TestMooJsonFloat32ReadBackNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs a sabotaged json.moo)")
+	t.Parallel()
+	src := string(Runtime()["json.moo"])
+	broken := src
+	for _, r := range [][2]string{
+		{"q, if single then F32 else F64)", "q, F64)"},
+		{"return float32Bits(qh, ql, e) == bits", "local M, me = float64Parts(float64Bits(qh, ql, e))\n\t\tlocal nh, nl, ne = roundBinary(M, { 1 }, me, 24, -149)\n\t\treturn float32Bits(nh, nl, ne) == bits"},
+	} {
+		if !strings.Contains(broken, r[0]) {
+			t.Fatal("the control's site moved: json.moo's readsBack no longer holds " + r[0])
+		}
+		broken = strings.Replace(broken, r[0], r[1], 1)
+	}
+	got32, got64, want32, want64 := floatWriteRun(t, map[string][]byte{"json.moo": []byte(broken)})
+	for i := range want64 {
+		if got64[i] != want64[i] {
+			t.Fatalf("the float32 sabotage moved float64 #%d: %q, the engine %q", i, got64[i], want64[i])
+		}
+	}
+	c32 := float32Corpus(3000)
+	var differ []uint32
+	for i := range want32 {
+		if got32[i] != want32[i] {
+			differ = append(differ, c32[i]&0x7fffffff)
+		}
+	}
+	if len(differ) == 0 {
+		t.Fatal("the twice-rounded read-back wrote every text the engine writes: the differential cannot see W12")
+	}
+	for _, b := range differ {
+		if b != 0x15ae43fe && b != 0x15ae43fd {
+			t.Fatalf("the twice-rounded read-back differs on %08x, not a double-round magnitude", b)
+		}
+	}
+	t.Logf("the twice-rounded read-back differs on %d texts, all double-round magnitudes", len(differ))
 }
 
 func floatWriteRun(t *testing.T, runtime map[string][]byte) (got32, got64, want32, want64 []string) {
