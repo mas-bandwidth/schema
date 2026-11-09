@@ -97,6 +97,14 @@ func TestGoTestgenBoundProbes(t *testing.T) {
 		out, err := runGeneratedUnit(t, u, "package "+u.Package+"\n", func(files map[string][]byte) {
 			maps.Copy(files, tests)
 			src := files["KeyedTable.go"]
+			// The form-1 guard in TeamConfigLoad refuses before LoadBody, so a
+			// bound removed only from LoadBody would stay invisible. gofmt writes
+			// that guard as a block. Lift the block; the probe then sees the bound.
+			guard := []byte("\tif len(data) > 0 && data[0] == 1 {\n\t\tread.Refuse(TableRefusePreviousForm, \"\")\n\t\tTeamConfigReset(value)\n\t\treturn false\n\t}\n")
+			if !bytes.Contains(src, guard) {
+				t.Fatal("no TeamConfig form-1 Load guard")
+			}
+			src = bytes.Replace(src, guard, nil, 1)
 			at := bytes.Index(src, []byte("func TeamConfigLoadBody(r *TableReader"))
 			if at < 0 {
 				t.Fatal("no TeamConfigLoadBody")

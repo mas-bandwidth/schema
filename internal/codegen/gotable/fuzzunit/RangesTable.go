@@ -899,9 +899,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 	}
 }
 
-// RangedSigned also carries the FIXED form (form 3): RangedSignedFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedSigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// RangedSignedFixedLoad reads form 3.
 // RangedSignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -913,6 +914,11 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		RangedSignedReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2657,9 +2663,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 	}
 }
 
-// RangedUnsigned also carries the FIXED form (form 3): RangedUnsignedFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedUnsigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// RangedUnsignedFixedLoad reads form 3.
 // RangedUnsignedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -2671,6 +2678,11 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		RangedUnsignedReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -3920,9 +3932,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 	}
 }
 
-// RangedWidths also carries the FIXED form (form 3): RangedWidthsFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// RangedWidths is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// RangedWidthsFixedLoad reads form 3.
 // RangedWidthsLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -3934,6 +3947,11 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		RangedWidthsReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

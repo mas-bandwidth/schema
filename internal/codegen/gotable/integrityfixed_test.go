@@ -210,16 +210,34 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 	if err != nil || text != base64.StdEncoding.EncodeToString(kw) {
 		t.Fatalf("FixedRowSaveText = (%q, %v)", text, err)
 	}
+	// Form 1 is previous_form at a fixed root, trailer included. The value
+	// round-trips through FixedLoad, which is where the trailer is checked.
 	var got FixedRow
 	var r TableReport
-	if !FixedRowLoad(&got, kw, &r) || r != (TableReport{}) || got != row {
-		t.Fatalf("FixedRowLoad round trip: got=%+v report=%+v", got, r)
+	if FixedRowLoad(&got, kw, &r) || r.Reason != "previous_form" || got != (FixedRow{}) {
+		t.Fatalf("form-1 Load: got=%+v report=%+v", got, r)
 	}
-	if gotStrict, err := FixedRowReadStrict(kw); err != nil || *gotStrict != row {
-		t.Fatalf("FixedRowReadStrict: got=%+v err=%v", gotStrict, err)
+	if _, err := FixedRowReadStrict(kw); !errors.Is(err, TableRefuseUnknownForm) {
+		t.Fatalf("form-1 ReadStrict: %v", err)
 	}
-	if gotText, err := FixedRowLoadText(text, &r); err != nil || r != (TableReport{}) || *gotText != row {
-		t.Fatalf("FixedRowLoadText: got=%+v report=%+v err=%v", gotText, r, err)
+	if back, err := FixedRowLoadText(text, &r); err == nil || back != nil || r.Reason != "previous_form" || !errors.Is(err, TableRefuseUnknownForm) {
+		t.Fatalf("form-1 LoadText: %v %+v", err, r)
+	}
+	fw := make([]byte, FixedRowFixedMeasure(1))
+	if FixedRowFixedSave([]FixedRow{row}, fw) != int64(len(fw)) {
+		t.Fatal("fixed save")
+	}
+	batch := make([]FixedRow, 1)
+	plan := make([]TableFixedEntry, int(FixedRowFixedPlanMax))
+	var fr TableReport
+	if n := FixedRowFixedLoad(batch, fw, plan, &fr); n != 1 || fr != (TableReport{}) || batch[0] != row {
+		t.Fatalf("fixed round trip: n=%d %+v %+v", n, fr, batch)
+	}
+	bad3 := append([]byte(nil), fw...)
+	bad3[len(bad3)/2] ^= 0x01
+	flipped := []FixedRow{{Value: -99}}
+	if n := FixedRowFixedLoad(flipped, bad3, plan, &fr); n != -1 || fr.Reason != "integrity_mismatch" {
+		t.Fatalf("fixed flip: n=%d %+v", n, fr)
 	}
 	for i := range kw {
 		for _, x := range []byte{0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff} {
@@ -239,26 +257,26 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 				}
 				continue
 			}
-			if rr != (TableReport{Verdict: TableOpenDamaged, Refusal: TableRefuseIntegrityMismatch, Reason: "integrity_mismatch"}) {
-				t.Fatalf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, rr)
+			if rr.Reason != "previous_form" {
+				t.Fatalf("byte %d ^ 0x%02x: report %+v, want previous_form", i, x, rr)
 			}
-			if _, err := FixedRowReadStrict(bad); !errors.Is(err, TableRefuseIntegrityMismatch) {
-				t.Fatalf("byte %d ^ 0x%02x: FixedRowReadStrict err = %v, want TableRefuseIntegrityMismatch", i, x, err)
+			if _, err := FixedRowReadStrict(bad); !errors.Is(err, TableRefuseUnknownForm) {
+				t.Fatalf("byte %d ^ 0x%02x: FixedRowReadStrict err = %v, want unknown_form", i, x, err)
 			}
 			var tr TableReport
-			if _, err := FixedRowLoadText(base64.StdEncoding.EncodeToString(bad), &tr); !errors.Is(err, TableRefuseIntegrityMismatch) {
-				t.Fatalf("byte %d ^ 0x%02x: FixedRowLoadText err = %v, want TableRefuseIntegrityMismatch", i, x, err)
+			if _, err := FixedRowLoadText(base64.StdEncoding.EncodeToString(bad), &tr); !errors.Is(err, TableRefuseUnknownForm) || tr.Reason != "previous_form" {
+				t.Fatalf("byte %d ^ 0x%02x: FixedRowLoadText err = %v report %+v", i, x, err, tr)
 			}
 		}
 	}
 	var pr TableReport
 	var pout PlainFixedRow
-	if PlainFixedRowLoad(&pout, kw, &pr) || !(pr.Refusal.Error() == "wire_damaged" || pr.Refusal.Error() == "malformed") {
+	if PlainFixedRowLoad(&pout, kw, &pr) || pr.Reason != "previous_form" || pout != (PlainFixedRow{}) {
 		t.Fatalf("trailered form-1 wire under keyless PlainFixedRowLoad: %+v", pr)
 	}
 	var kr TableReport
 	var kout FixedRow
-	if FixedRowLoad(&kout, pw, &kr) || kr.Reason != "integrity_mismatch" {
+	if FixedRowLoad(&kout, pw, &kr) || kr.Reason != "previous_form" || kout != (FixedRow{}) {
 		t.Fatalf("trailerless form-1 wire under keyed FixedRowLoad: %+v", kr)
 	}
 }

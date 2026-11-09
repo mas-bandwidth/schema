@@ -61,11 +61,38 @@ fixed table Root { x int32 }
 		}
 		compileOmitted(t, u, `package probe
 import "testing"
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestCoreStillLives(t *testing.T){
 	var r Root; r.X=9
 	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
 	var got Root;var rep TableReport
-	if !RootLoad(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
+	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
 }`, FormCook)
 	})
 	t.Run("GenerateOmitting_nothing_is_omitted", func(t *testing.T) {
@@ -86,11 +113,38 @@ fixed table Root { x int32 }
 		}
 		compileOmitted(t, u, `package probe
 import "testing"
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
 func TestCoreStillLives(t *testing.T){
 	var r Root; r.X=9
 	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
 	var got Root;var rep TableReport
-	if !RootLoad(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
+	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
 }`, 0)
 	})
 	t.Run("message_form_round_trips", func(t *testing.T) {

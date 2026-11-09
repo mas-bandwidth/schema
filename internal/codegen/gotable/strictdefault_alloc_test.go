@@ -123,11 +123,11 @@ func TestPlainReadsAlloc(t *testing.T) {
 		}
 	})
 	measure("fixed Load", func() {
-		if !FixLoad(&fv, fixClean, &r) {
+		if FixLoad(&fv, fixClean, &r) || r.Reason != "previous_form" {
 			t.Fatal("fixed Load")
 		}
 	}, func() {
-		if !FixLoad(&fv, fixClean, &r) {
+		if FixLoad(&fv, fixClean, &r) || r.Reason != "previous_form" {
 			t.Fatal("fixed LoadTolerant")
 		}
 	})

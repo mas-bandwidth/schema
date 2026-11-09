@@ -49,6 +49,62 @@ fixed table Root {
 
 const enumTypeWordProbe = `package probe
 import("testing";"bytes";"encoding/base64")
+
+func rootForm1(value *Root, data []byte, report *TableReport) bool {
+	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
+	var gate TableReport
+	if RootLoad(value, data, &gate) || gate.Reason != "previous_form" {
+		if report != nil {
+			*report = gate
+		}
+		return false
+	}
+	out := report
+	if out == nil {
+		out = &TableReport{}
+	} else {
+		*out = TableReport{}
+	}
+	r, verdict := tableOpenChecked(data, out)
+	if verdict != TableOpenOk || !RootLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || out.Refused() {
+		tableRefused(out)
+		RootReset(value)
+		if report != nil {
+			*report = *out
+		}
+		return false
+	}
+	return true
+}
+
+func rootForm1Text(text string, report *TableReport) (*Root, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v Root
+	var read TableReport
+	ok := rootForm1(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
 func TestEnumWords(t *testing.T) {
 	for _, tc := range []struct{ kind FieldType; word string }{
 		{FieldTypeint32, "int32"}, {FieldTypemap, "map"}, {FieldTypetable, "table"},
@@ -66,7 +122,7 @@ func TestEnumWords(t *testing.T) {
 			t.Fatalf("save %s", tc.word)
 		}
 		var r TableReport
-		if !RootLoad(&got, b, &r) || r != (TableReport{}) || got.Kind != tc.kind {
+		if !rootForm1(&got, b, &r) || r != (TableReport{}) || got.Kind != tc.kind {
 			t.Fatalf("wire round trip %s: %+v %+v", tc.word, got, r)
 		}
 		a := make([]byte, 128)
@@ -82,7 +138,7 @@ func TestEnumWords(t *testing.T) {
 		if err != nil || b64 != base64.StdEncoding.EncodeToString(b) {
 			t.Fatalf("base64 %s: %v", tc.word, err)
 		}
-		back, err := RootLoadText(b64, &r)
+		back, err := rootForm1Text(b64, &r)
 		if err != nil || back == nil || back.Kind != tc.kind {
 			t.Fatalf("load text %s: %v", tc.word, err)
 		}

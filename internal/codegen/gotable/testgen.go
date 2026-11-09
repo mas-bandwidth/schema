@@ -45,9 +45,10 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			testgenRoundTrip(&body, st, variable[st.Name], samples)
+			fixedForm := testgenHasFixedForm(u, st)
+			testgenRoundTrip(&body, st, variable[st.Name], fixedForm, samples)
 			testgenDamage(&body, st, variable[st.Name], samples)
-			if err := testgenBoundProbes(&body, st, variable[st.Name]); err != nil {
+			if err := testgenBoundProbes(&body, st, variable[st.Name], fixedForm); err != nil {
 				return nil, err
 			}
 		}
@@ -583,11 +584,24 @@ func testgenFixedDecimal(raw *big.Int, frac int) string {
 	return r.FloatString(max(frac, 1))
 }
 
+// testgenHasFixedForm reports whether this root emits FixedLoad and FixedSave.
+// It is the emitter's own hasFixedForm, so a generated test calls those
+// functions only when the file actually declares them.
+func testgenHasFixedForm(u *ir.Unit, st *ir.Struct) bool {
+	return (&tableGen{unit: u}).hasFixedForm(st)
+}
+
 // testgenRoundTrip writes Test<Name>GenRoundTrip: every sample read equal
-// through the binary wire, base64 text and JSON text (§16.11).
-func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []tgSample) {
+// through the binary wire, base64 text and JSON text (§16.11). A fixed-class
+// root's form-1 file is previous_form at Load; a root that emits FixedLoad
+// round-trips the value there instead.
+func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable, fixedForm bool, samples []tgSample) {
 	n := st.Name
-	fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s back through the binary wire,\n// base64 text and JSON text, each equal to what was written (SPEC-TABLES §16.11).\n", n, n)
+	if variable {
+		fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s back through the binary wire,\n// base64 text and JSON text, each equal to what was written (SPEC-TABLES §16.11).\n", n, n)
+	} else {
+		fmt.Fprintf(b, "\n// Test%sGenRoundTrip reads every sample of %s. A form-1 file at this fixed\n// root is previous_form at Load and LoadText (SPEC-TABLES §3.4). The value\n// round-trips through FixedLoad when this root emits it, and through JSON\n// (SPEC-TABLES §16.11).\n", n, n)
+	}
 	fmt.Fprintf(b, "func Test%sGenRoundTrip(t *testing.T) {\n\tt.Parallel()\n\tsamples := []struct{ name, text string }{\n", n)
 	for _, s := range samples {
 		fmt.Fprintf(b, "\t\t{%q, %s},\n", s.name, s.expr)
@@ -599,9 +613,20 @@ func testgenRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples 
 	b.WriteString("\t\t\tsame := func(leg string, got *" + n + ") {\n\t\t\t\tt.Helper()\n\t\t\t\tgotWire, gotJson := save(leg, got)\n")
 	b.WriteString("\t\t\t\tif !bytes.Equal(gotWire, wire) {\n\t\t\t\t\tt.Fatalf(\"%s: the value read saves to %x, the sample saved to %x\", leg, gotWire, wire)\n\t\t\t\t}\n")
 	b.WriteString("\t\t\t\tif !bytes.Equal(gotJson, jsonText) {\n\t\t\t\t\tt.Fatalf(\"%s: the value read writes %s, the sample wrote %s\", leg, gotJson, jsonText)\n\t\t\t\t}\n\t\t\t}\n")
-	fmt.Fprintf(b, "\t\t\tgot, err := %sReadStrict(wire)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"binary: ReadStrict: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"binary\", got)\n", n)
-	fmt.Fprintf(b, "\t\t\ttext, err := %sSaveText(v)\n\t\t\tif err != nil || text != base64.StdEncoding.EncodeToString(wire) {\n\t\t\t\tt.Fatalf(\"base64: SaveText is not the base64 of the wire: %%v\", err)\n\t\t\t}\n", n)
-	fmt.Fprintf(b, "\t\t\tgot, err = %sLoadText(text, nil)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"base64: LoadText: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"base64\", got)\n", n)
+	if variable {
+		fmt.Fprintf(b, "\t\t\tgot, err := %sReadStrict(wire)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"binary: ReadStrict: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"binary\", got)\n", n)
+		fmt.Fprintf(b, "\t\t\ttext, err := %sSaveText(v)\n\t\t\tif err != nil || text != base64.StdEncoding.EncodeToString(wire) {\n\t\t\t\tt.Fatalf(\"base64: SaveText is not the base64 of the wire: %%v\", err)\n\t\t\t}\n", n)
+		fmt.Fprintf(b, "\t\t\tgot, err = %sLoadText(text, nil)\n\t\t\tif err != nil || got == nil {\n\t\t\t\tt.Fatalf(\"base64: LoadText: %%v\", err)\n\t\t\t}\n\t\t\tsame(\"base64\", got)\n", n)
+	} else {
+		fmt.Fprintf(b, "\t\t\tvar form1 %s\n\t\t\tvar br TableReport\n\t\t\tif %sLoad(&form1, wire, &br) || br.Reason != \"previous_form\" {\n\t\t\t\tt.Fatalf(\"binary: form-1 Load of a fixed root: want previous_form, got %%+v\", br)\n\t\t\t}\n", n, n)
+		if fixedForm {
+			fmt.Fprintf(b, "\t\t\tneed := %sFixedMeasure(1)\n\t\t\tfw := make([]byte, need)\n\t\t\tif %sFixedSave([]%s{*v}, fw) != need {\n\t\t\t\tt.Fatalf(\"binary: FixedSave refused\")\n\t\t\t}\n", n, n, n)
+			fmt.Fprintf(b, "\t\t\tback := make([]%s, 1)\n\t\t\tplan := make([]TableFixedEntry, int(%sFixedPlanMax))\n\t\t\tvar fr TableReport\n\t\t\tif nread := %sFixedLoad(back, fw, plan, &fr); nread != 1 || fr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"binary: FixedLoad: n=%%d %%+v\", nread, fr)\n\t\t\t}\n", n, n, n)
+			fmt.Fprintf(b, "\t\t\tagain := make([]byte, need)\n\t\t\tif %sFixedSave(back, again) != need || !bytes.Equal(again, fw) {\n\t\t\t\tt.Fatalf(\"binary: FixedLoad did not write back its own bytes\")\n\t\t\t}\n", n)
+		}
+		fmt.Fprintf(b, "\t\t\ttext, err := %sSaveText(v)\n\t\t\tif err != nil || text != base64.StdEncoding.EncodeToString(wire) {\n\t\t\t\tt.Fatalf(\"base64: SaveText is not the base64 of the wire: %%v\", err)\n\t\t\t}\n", n)
+		fmt.Fprintf(b, "\t\t\tvar tr TableReport\n\t\t\tif got, err := %sLoadText(text, &tr); got != nil || tr.Reason != \"previous_form\" {\n\t\t\t\tt.Fatalf(\"base64: form-1 LoadText of a fixed root: want previous_form, got %%v %%+v\", err, tr)\n\t\t\t}\n", n)
+	}
 	testgenFromJSON(b, n, variable, "jsonText", "j", "jr")
 	b.WriteString("\t\t\tif !ok || jr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"json: FromJSON of ToJSON's text: report %+v\", jr)\n\t\t\t}\n\t\t\tsame(\"json\", j)\n")
 	b.WriteString("\t\t})\n\t}\n}\n")
@@ -623,8 +648,13 @@ func testgenDamage(b *strings.Builder, st *ir.Struct, variable bool, samples []t
 	testgenSampleAt(b, "\t", n, variable, high)
 	fmt.Fprintf(b, "\twire := make([]byte, %sMeasure(v))\n\tif len(wire) < 2 || %sSave(v, wire) != int64(len(wire)) {\n\t\tt.Fatal(\"save of the high sample\")\n\t}\n", n, n)
 	b.WriteString("\tfor _, cut := range [][]byte{wire[:1], wire[:len(wire)-1]} {\n")
-	fmt.Fprintf(b, "\t\tif got, err := %sReadStrict(cut); got != nil || !(errors.Is(err, TableRefuseWireDamaged) || errors.Is(err, TableRefuseTruncated)) {\n", n)
-	b.WriteString("\t\t\tt.Fatalf(\"truncated wire of %d bytes: %v, want wire_damaged or truncated\", len(cut), err)\n\t\t}\n\t}\n")
+	if variable {
+		fmt.Fprintf(b, "\t\tif got, err := %sReadStrict(cut); got != nil || !(errors.Is(err, TableRefuseWireDamaged) || errors.Is(err, TableRefuseTruncated)) {\n", n)
+		b.WriteString("\t\t\tt.Fatalf(\"truncated wire of %d bytes: %v, want wire_damaged or truncated\", len(cut), err)\n\t\t}\n\t}\n")
+	} else {
+		fmt.Fprintf(b, "\t\tvar cutValue %s\n\t\tvar cr TableReport\n\t\tif %sLoad(&cutValue, cut, &cr) || cr.Reason != \"previous_form\" {\n", n, n)
+		b.WriteString("\t\t\tt.Fatalf(\"truncated form-1 wire of a fixed root, %d bytes: %+v, want previous_form\", len(cut), cr)\n\t\t}\n\t}\n")
+	}
 	b.WriteString("\tfor _, form := range []byte{2, 9, 255} {\n\t\tflipped := bytes.Clone(wire)\n\t\tflipped[0] = form\n")
 	fmt.Fprintf(b, "\t\tif got, err := %sReadStrict(flipped); got != nil || !errors.Is(err, TableRefuseUnknownForm) {\n", n)
 	b.WriteString("\t\t\tt.Fatalf(\"form byte %d: %v, want unknown_form\", form, err)\n\t\t}\n\t}\n")

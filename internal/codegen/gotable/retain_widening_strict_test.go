@@ -165,13 +165,7 @@ func TestGoRetainAndWideningStrictNegativeControl(t *testing.T) {
 	reports, retains := goReportAndRetainRows(t, root)
 
 	t.Run("widening_no_file_form", func(t *testing.T) {
-		bin := buildSabotagedGoDriver(
-			t,
-			root,
-			"test/conformance/go/fixed.go",
-			`bind("tabledemo", "WideBlob", noFileForm)`,
-			`// SABOTAGED: WideBlob left on its variable-form load`,
-		)
+		bin := buildWideBlobOpenedDriver(t, root)
 		wrong := strictCellsHold(t, root, bin, reports, retains)
 		want := "report/previous_form_wide_blob: got verdict read, want refused"
 		if len(wrong) != 1 || wrong[0] != want {
