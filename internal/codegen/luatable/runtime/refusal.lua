@@ -98,13 +98,17 @@ function R.ReadStrict(T, name, bytes, integrity)
   if type(bytes) ~= "string" then refuse("wire_damaged", name) end
   local form = #bytes >= 1 and bytes:byte(1) or nil
   local fixed = T.Fixed and T.Fixed[name]
+  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): form 3 is the fixed form and
+  -- only a root with a compiled layout reads it; a form-1 file at a fixed
+  -- class is previous_form, refused before anything decodes. Form 1 is the
+  -- file form a VARIABLE table carries.
+  local fixedclass = T.Tables[name] ~= nil and T.Tables[name].variable == false
 
-  -- THE FORM BYTE IS READ FIRST (§2.14's order, §6.5). Form 1 is the file
-  -- form EVERY table carries, fixed class or not; form 3 is the fixed form
-  -- and only a root with a compiled layout reads it. Every other byte is the
+  -- THE FORM BYTE IS READ FIRST (§2.14's order, §6.5). Every other byte is the
   -- one strict reason unknown_form, as TableReport.Err() answers for
   -- previous_form, newer_form and message_form_as_file alike.
   if form ~= nil and form == 3 and fixed ~= nil then return T.ReadFixed(name, bytes) end
+  if fixedclass and form == 1 then refuse("previous_form", name) end
   if form ~= nil and form ~= 1 then refuse("unknown_form", "form " .. string.format("%d", form)) end
 
   -- THE REQUIRED CHECK IS THE DESCRIPTOR'S (§2.14): a declaring root's check
