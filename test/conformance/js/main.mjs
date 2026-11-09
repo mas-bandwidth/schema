@@ -1305,7 +1305,6 @@ async function wireFuzz() {
           fail(unit + "." + root + ": own announcement was refused");
         }
         const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
-        const single = [values[0]];
         roster[i] = {
           message: true,
           run(wire) {
@@ -1327,10 +1326,11 @@ async function wireFuzz() {
               const prevBits = runtime.TableMessageSetRefBits(runtime.TableMessageWriteRefBitsHere);
               try {
                 const ignored = {};
-                const size = measureMessages(single, ignored);
+                const batch = values.slice(0, n);
+                const size = measureMessages(batch, ignored);
                 if (size >= 0) {
                   const out = new Uint8Array(size);
-                  if (saveMessages(single, out, ignored) === size) {
+                  if (saveMessages(batch, out, ignored) === size) {
                     saved = out;
                   }
                 }

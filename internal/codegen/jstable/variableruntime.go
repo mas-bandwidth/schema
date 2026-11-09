@@ -970,6 +970,16 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     const next = (kind === 13 || kind === 14 || kind === 16) ? depth + 1 : depth;
     return TableVariableNoteContent(sub.b, from, sub.at, kind, table, st, report, next);
   }
+  if (kind === 1) {
+    if (sub.at >= sub.end || sub.b[sub.at] > 1) { return false; }
+    sub.at += 1;
+    return true;
+  }
+  if (kind === 10 || kind === 11) {
+    const from = sub.at;
+    if (!TableVariableSkip(sub, kind)) { return false; }
+    return TableVariableRetainedFinite(sub.b, from, sub.at, kind);
+  }
   return TableVariableSkip(sub, kind);
 }
 
@@ -1062,6 +1072,16 @@ function TableVariableCheckUnknown(b, from, to, kind, table, st) {
     if (!TableVariableNotePayload(inner, kind, table, st, st.report, 0)) { return false; }
     return inner.at === to;
   }
+  if (kind === 12 || kind === 33 || kind === 32) {
+    const sub = new TableVariableReader(b, from, to);
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to) { return false; }
+    if (kind === 12) { return TableVariableUtf8Decode(b.subarray(sub.at, to)).ok; }
+    if (kind === 33) { return TableVariableWideDecode(b.subarray(sub.at, to)) !== null; }
+    return L === 0;
+  }
+  if (kind === 1) { return to - from === 1 && b[from] <= 1; }
+  if (kind === 10 || kind === 11) { return TableVariableRetainedFinite(b, from, to, kind); }
   return true;
 }
 
@@ -1138,7 +1158,9 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       // the escape kind 31 and the payload-free kind 32 at a named position take
       // this same rule and no other (§3)
       report.mismatch++;
+      const mismatchFrom = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
+      if (!TableVariableCheckUnknown(r.b, mismatchFrom, r.at, kind, table, st)) { report.damaged = true; return false; }
       continue;
     }
     const placed = TableVariableReadField(fd, r, table, v, report, st, retain, path);
