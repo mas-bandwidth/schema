@@ -271,8 +271,9 @@
     },
     {
       "name": "base-c-foreign",
-      "when": "pull-request",
-      "why": "The C foreign-byte-order sabotage rebuilds the complete driver. It was cancelled while compiling after the preceding C controls exhausted the old combined job; isolate it without raising the timeout.",
+      "when": "nightly",
+      "seconds": 256,
+      "why": "The C foreign-byte-order sabotage rebuilds the complete conformance driver and runs the harness. It is already one target, so no grouping can cut it. The control step measured 256 s when it was allowed to finish (run 42598278281, job 129096279656) and the job was killed at 137 s wall, exit 137, on run 42554833739, job 128960420378 (per-commit jobs finish in 2m). It moves to the nightly tier (certify.yml), where it still runs in full.",
       "targets": [
         "conformance-negative-control-c-foreign"
       ]
@@ -679,8 +680,9 @@
     },
     {
       "name": "python-toolchain",
-      "when": "pull-request",
-      "why": "the Python leg's pin check (docs/PORT-PYTHON.md, THE PIN), on the pins .github/actions/python restores into dist/: PYTHON pointed at the floor interpreter, MYPY pointed at a program that is not the locked mypy, and a copy of the leg's make files with a line that runs an interpreter from PATH, each of which must turn python-toolchain-check red by name. Three shell runs of the check, under 2 s together on a bench, so the row is the pins' cache restore.",
+      "when": "nightly",
+      "seconds": 140,
+      "why": "The control itself is three shell runs, about 1 s. The row's cost is the Python pin action the control exists to exercise (.github/actions/python). That action measured 113 s and the job was killed at 140 s wall, exit 137, on run 42554833739, job 128960420452, and 110 s of action inside a 140 s wall on run 42578656888. One target cannot be split away from the install. The pins' own speed is another card; this row moves to the nightly tier (certify.yml), where the control still runs in full.",
       "targets": [
         "python-toolchain-negative-control"
       ],
