@@ -8,10 +8,20 @@
 package main
 
 func init() {
-	sabotages["table-dart-wire-widen"] = []edit{{
-		old: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tif (elemKind != %d) r.report.widened++;\\n\", ind, declKind)",
-		new: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\t// SABOTAGED: the widened count is gone (%d)\\n\", ind, declKind)",
-	}}
+	sabotages["table-dart-wire-widen"] = []edit{
+		{
+			old: "\t\tdefault:\n\t\t\t// A smaller kind on the same ladder widens the whole array once (§4).\n\t\t\tg.pf(\"%s\\t\\tif (elemKind != %d && !_kindWidens(elemKind, %d)) { r.report.refuse('kind_mismatch'); r.pos = end; break; }\\n\", ind, declKind, declKind)",
+			new: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\t// SABOTAGED: the element kind check is gone (%d, %d)\\n\", ind, declKind, declKind)",
+		},
+		{
+			old: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tfinal _widenedBefore = r.report.widened;\\n\", ind)\n\t\t\tg.pf(\"%s\\t\\tif (elemKind != %d) r.report.widened++;\\n\", ind, declKind)",
+			new: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tfinal _widenedBefore = r.report.widened;\\n\", ind)\n\t\t\tg.pf(\"%s\\t\\t// SABOTAGED: the widened count is gone (%d)\\n\", ind, declKind)",
+		},
+		{
+			old: "\t\tg.pf(\"%s\\t\\t\\t} else { r.report.refuse('wire_damaged'); break; }\\n\", ind)\n\t}\n}",
+			new: "\t\tg.pf(\"%s\\t\\t\\t} else { arr.pos = arr.limit; break; }\\n\", ind)\n\t}\n}",
+		},
+	}
 }
 
 // THE DART LEG'S BLOCK-FORM CONTROL (docs/PORTING.md I11): the block Open
