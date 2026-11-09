@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // unformattedUnit is a unit no formatter would leave alone: doubled spaces
@@ -78,6 +80,7 @@ var targets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "
 // not the library's.
 func buildCLI(t *testing.T) string {
 	t.Helper()
+	slowtest.Gate(t, "go build and the compiled schema binary")
 	bin := filepath.Join(t.TempDir(), "schema")
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Dir = "."
@@ -146,6 +149,7 @@ func (s fileState) unchanged(t *testing.T, path, what string) {
 }
 
 func TestOnlyFmtWritesTheSchemaFile(t *testing.T) {
+	slowtest.Gate(t, "go build and the compiled schema binary")
 	bin := buildCLI(t)
 	work := t.TempDir()
 	dir, path := writeUnit(t, filepath.Join(work, "unit"))
@@ -176,6 +180,7 @@ func TestOnlyFmtWritesTheSchemaFile(t *testing.T) {
 }
 
 func TestUnformattedAndFormattedUnitsAgree(t *testing.T) {
+	slowtest.Gate(t, "go build and the compiled schema binary")
 	bin := buildCLI(t)
 	work := t.TempDir()
 	rawDir, rawPath := writeUnit(t, filepath.Join(work, "raw"))
@@ -251,6 +256,7 @@ func treeNames(t *testing.T, dir string) []string {
 }
 
 func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
+	slowtest.Gate(t, "go build and the compiled schema binary")
 	if os.Geteuid() == 0 {
 		t.Skip("root writes through a read-only directory, so the mode proves nothing")
 	}
@@ -284,6 +290,29 @@ func TestReadOnlyTreeRunsEveryReadingCommand(t *testing.T) {
 		out := filepath.Join(work, "generated", target)
 		run(t, bin, "generate", "--lang", target, "--out", out, dir)
 		before.unchanged(t, path, "schema generate --lang "+target)
+	}
+}
+
+// TestSubprocessTestsAreGated checks that the helper building and running
+// the compiled CLI is gated, so a default test run spawns no subprocess.
+func TestSubprocessTestsAreGated(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("main_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	start := strings.Index(text, "func buildCLI")
+	if start < 0 {
+		t.Fatal("buildCLI not found")
+	}
+	rest := text[start:]
+	end := strings.Index(rest, "\n}\n")
+	if end < 0 {
+		t.Fatal("buildCLI body not found")
+	}
+	if !strings.Contains(rest[:end], "slowtest.Gate(") {
+		t.Errorf("buildCLI spawns a subprocess but does not call slowtest.Gate")
 	}
 }
 
