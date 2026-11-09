@@ -187,9 +187,15 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
         []
 
       {_arm, <<kind, rest::binary>>} ->
-        case body(rest) do
-          {:ok, arm_payload, _after} -> wire_payload_refs(kind, arm_payload, ids)
-          :error -> []
+        case leb(rest) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
+            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            wire_payload_refs(kind, arm_payload, ids)
+
+          _ ->
+            []
         end
 
       _ ->
@@ -211,19 +217,31 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
 
   defp wire_elem_refs(_kind, _rest, 0, _keyed, _ids, acc), do: Enum.reverse(acc)
 
-  defp wire_elem_refs(kind, rest, n, keyed, ids, acc) when n > 0 do
-    rest =
-      if keyed do
-        case leb(rest) do
-          {_key, after_key} -> after_key
-          :error -> <<>>
-        end
-      else
-        rest
-      end
+  defp wire_elem_refs(kind, rest, n, true, ids, acc) when n > 0 do
+    with {_key, r1} <- leb(rest),
+         {l, r2} when byte_size(r2) >= l <- leb(r1) do
+      elem = binary_part(r2, 0, l)
+      after_elem = binary_part(r2, l, byte_size(r2) - l)
 
+      refs =
+        if kind == 13 do
+          wire_body_refs(elem, ids)
+        else
+          case wire_one_elem_refs(kind, elem, ids) do
+            {r, _} -> r
+            :error -> []
+          end
+        end
+
+      wire_elem_refs(kind, after_elem, n - 1, true, ids, refs ++ acc)
+    else
+      _ -> Enum.reverse(acc)
+    end
+  end
+
+  defp wire_elem_refs(kind, rest, n, false, ids, acc) when n > 0 do
     case wire_one_elem_refs(kind, rest, ids) do
-      {refs, after_elem} -> wire_elem_refs(kind, after_elem, n - 1, keyed, ids, refs ++ acc)
+      {refs, after_elem} -> wire_elem_refs(kind, after_elem, n - 1, false, ids, refs ++ acc)
       :error -> Enum.reverse(acc)
     end
   end
@@ -254,9 +272,16 @@ const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_frami
         {[], after_elem}
 
       {_arm, <<kind, after_kind::binary>>} ->
-        case body(after_kind) do
-          {:ok, arm_payload, after_elem} -> {wire_payload_refs(kind, arm_payload, ids), after_elem}
-          :error -> :error
+        case leb(after_kind) do
+          {l, content} when byte_size(content) >= l ->
+            inner = binary_part(content, 0, l)
+            framed = binary_part(after_kind, 0, byte_size(after_kind) - byte_size(content) + l)
+            after_elem = binary_part(content, l, byte_size(content) - l)
+            arm_payload = if kind in [12, 13, 14, 16, 33], do: framed, else: inner
+            {wire_payload_refs(kind, arm_payload, ids), after_elem}
+
+          _ ->
+            :error
         end
 
       _ ->
