@@ -122,6 +122,7 @@ func regionRow[T, R, C any](
 			n := loadMeasure(wire)
 			if n < 0 {
 				v.root = nil
+				rep.refused = true
 				return false
 			}
 			raw := make([]byte, n+63)
