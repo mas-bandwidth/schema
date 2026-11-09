@@ -1754,6 +1754,10 @@ build/tables-generated-rust/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
 # vectors and requires an out_of_range refusal of the whole batch. The control
 # takes the fixed load's `held` refusal out through go test -overlay, so a
 # value past the WRITER's range lands; the test must go red on exactly that.
+# The overlay key is $$PWD, not $(CURDIR): go names package files by the
+# logical working directory, so under a symlinked workdir (e.g. /tmp ->
+# /private/tmp) a $(CURDIR) key never matches and the sabotage silently
+# reaches no test binary, leaving the gate green.
 RUST_RANGE_NC := build/rust-range-widen-nc
 .PHONY: tables-rust-range-widen-negative-control
 tables-rust-range-widen-negative-control: tables-fixedform-corpus
@@ -1763,7 +1767,7 @@ tables-rust-range-widen-negative-control: tables-fixedform-corpus
 	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_RANGE_NC)/fixedform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Rust writer's-range sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/rusttable/fixedform.go":"%s/$(RUST_RANGE_NC)/fixedform.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(RUST_RANGE_NC)/overlay.json
+		"$$PWD" "$$PWD" > $(RUST_RANGE_NC)/overlay.json
 	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_RANGE_NC)/overlay.json \
 			-run '^TestFixedVersioningRangeWidenHostile$$' ./internal/codegen/rusttable > $(RUST_RANGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the writer's-range refusal is gone and the gate stayed green"; \
