@@ -865,9 +865,17 @@
     {
       "name": "cs-packet-clean",
       "when": "pull-request",
-      "why": "the C# clean gates' controls: the packet-clean gate's planted misindented block and unused private field (issue #547) and the tables-clean gate's planted misindented statement. Both run dotnet format and the SDK analyzers over generated units. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "why": "the C# packet-clean gate's planted misindented block and unused private field (issue #547). It runs dotnet format and the SDK analyzers over generated units. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42599851908, that pair was cancelled at 322 s wall (job 2026-11-09T10:26:56Z-10:32:18Z, the make step canceled, no assertion failure). This row is one target of that split. There is no per-target wall, so this is not a claim that the row fits.",
       "targets": [
-        "packet-clean-cs-negative-control",
+        "packet-clean-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables-clean",
+      "when": "pull-request",
+      "why": "the C# tables-clean gate's planted misindented statement. It runs dotnet format and the SDK analyzers over generated units. Split from cs-packet-clean, which held this target beside packet-clean-cs-negative-control. On this branch, run 42599851908, that pair was cancelled at 322 s wall (job 2026-11-09T10:26:56Z-10:32:18Z, the make step canceled, no assertion failure). This row is one target of that split. There is no per-target wall, so this is not a claim that the row fits.",
+      "targets": [
         "tables-cs-clean-negative-control"
       ],
       "dotnet": "pin"
@@ -885,8 +893,8 @@
     },
     {
       "name": "cs-cards-retain",
-      "when": "pull-request",
-      "why": "the retained-unknown-field control on the C# Card codec: the driver's test-only CARDS_CS_RETAIN_DROP switch hands the retaining load a store with no capacity, and the retain arm of the wire fuzzer must go red on the retention report while the plain arm stays green. It carries its own wire-fuzz run over build-conformance-cs. Split from the old cs-cards group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "when": "nightly",
+      "why": "the retained-unknown-field control on the C# Card codec: the driver's test-only CARDS_CS_RETAIN_DROP switch hands the retaining load a store with no capacity, and the retain arm of the wire fuzzer must go red on the retention report while the plain arm stays green. It carries its own wire-fuzz run over build-conformance-cs. Split from the old cs-cards group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall). On this branch, run 42599851908, the one-target row was cancelled at 322 s wall with no assertion failure (job 2026-11-09T10:27:07Z-10:32:29Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "cards-cs-retain-negative-control"
       ],
