@@ -489,8 +489,10 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 	// (docs/SPEC-TABLES.md §3.1), so the position advances by that and the
 	// walk does not descend into the referent
 	isStruct := false
+	isUnion := false
 	if f.Type.Kind == TNamed && !f.Type.Pointer {
 		_, isStruct = f.Type.Ref.(*Struct)
+		_, isUnion = f.Type.Ref.(*Union)
 	}
 	switch f.Array {
 	case ArrayFixed:
@@ -505,12 +507,14 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 				return e
 			}
 			return wireUnknown
+		case isUnion:
+			return wireUnknown
 		}
 		return pos.add(mulSize(f.ArrayBound, maxBitsScalar(f, nil)))
 	case ArrayCounted:
 		// count prefix, then count elements: the exit is static only when
 		// each element is a whole number of bytes
-		if f.Type.Kind == TString || f.Type.Kind == TBytes || isStruct || maxBitsScalar(f, nil)%8 != 0 {
+		if f.Type.Kind == TString || f.Type.Kind == TBytes || isStruct || isUnion || maxBitsScalar(f, nil)%8 != 0 {
 			return wireUnknown
 		}
 		return pos.add(BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)))
@@ -531,6 +535,8 @@ func afterField(f *Field, pos wirePos, m *alignMemo) wirePos {
 		// nested structs are analyzed on their own; here only the exit
 		// position matters
 		return structAlignExit(f.Type.Ref.(*Struct), pos, m)
+	case isUnion:
+		return wireUnknown
 	}
 	// every remaining scalar kind is fixed-width, and maxBitsScalar is exact
 	// for it (TInt/TBits/TBool/TFloat32±compressed/TFloat64/Enum/Flags)
