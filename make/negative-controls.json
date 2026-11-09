@@ -1475,6 +1475,15 @@
       "golangci": "2.12.2"
     },
     {
+      "name": "dart-strict",
+      "when": "pull-request",
+      "why": "the Dart leg's strict-read controls (STRICT 100), in a group of their own so they never push the dart row toward the per-commit cap. The forged-ordinal control lands a forged ordinal as None in the Dart fixed runtime through go test -overlay and requires TestFixedVersioningForgedOrdinalBothPlans red on the compiled plan: about 10 s on the studio once the fixed-form corpus is built.",
+      "targets": [
+        "tables-dart-forged-ordinal-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
       "name": "dart-nightly",
       "when": "nightly",
       "why": "the Dart nightly fuzzer's planted reader-bound control takes its own scheduled job with the card's pinned Dart 3.13.2 toolchain and 10-minute mutation budget; it never joins the shared nightly group or per-push controls.",
