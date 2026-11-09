@@ -594,6 +594,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sif *off > end || l > (end - *off) as u64 { report.damaged = true; return false; }\n", i1)
 		fmt.Fprintf(b, "%slet sub = *off + l as usize;\n", i1)
 		fmt.Fprintf(b, "%sif l < 2 {\n", i1)
+		fmt.Fprintf(b, "%s    report.damaged = true;\n", i1)
 		fmt.Fprintf(b, "%s    if %s.is_none() { %s = Some(%s); }\n", i1, field, field, defExpr)
 		fmt.Fprintf(b, "%s} else {\n", i1)
 		i2 := i1 + "    "
@@ -672,7 +673,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s                }\n", in)
 		fmt.Fprintf(b, "%s            }\n", in)
 		fmt.Fprintf(b, "%s        }\n", in)
-		fmt.Fprintf(b, "%s    }\n", in)
+		fmt.Fprintf(b, "%s    } else { report.damaged = true; }\n", in)
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
@@ -781,7 +782,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s}\n", i3) // else ek
 	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
 	fmt.Fprintf(b, "%s}\n", i2) // match
-	fmt.Fprintf(b, "%s}\n", i1) // if l >= 2
+	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in)
 }
@@ -916,7 +917,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s}\n", i3) // else ek
 	fmt.Fprintf(b, "%s}\n", i2) // Some(count)
 	fmt.Fprintf(b, "%s}\n", i2) // match
-	fmt.Fprintf(b, "%s}\n", i1) // if l >= 2
+	fmt.Fprintf(b, "%s} else { report.damaged = true; }\n", i1) // if l >= 2
 	fmt.Fprintf(b, "%s*off = sub;\n", i1)
 	fmt.Fprintf(b, "%s}\n", in) // else kind
 }
@@ -1108,7 +1109,7 @@ func (g *gen) emitArrayBodyReadChecked(b *strings.Builder, f *ir.Field, field, a
 	fmt.Fprintf(b, "%s}\n", i2)
 	fmt.Fprintf(b, "%s    }\n", in)
 	fmt.Fprintf(b, "%s}\n", in)
-	fmt.Fprintf(b, "%s}\n", ind)
+	fmt.Fprintf(b, "%s} else { report.damaged = true; %s = false; }\n", ind, okVar)
 }
 
 func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bound, ekVar string, ordinal int, ind string) {
