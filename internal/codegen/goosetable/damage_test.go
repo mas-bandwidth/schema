@@ -25,8 +25,11 @@ func TestGooseDamagedLoadReturnsNoRoot(t *testing.T) {
 		if len(fields) != 4 {
 			t.Fatalf("unexpected probe output: %q", line)
 		}
+		// node_index_null names no record from the root, so its one record
+		// is reached by no pointer: damage under the strict read (§6.5, THE
+		// GRAPH, DEFINED ONCE), as the framing corpus pins it
 		want := "0 1"
-		if fields[0] == "node_clean" || fields[0] == "node_index_null" {
+		if fields[0] == "node_clean" {
 			want = "1 0"
 		}
 		if strings.Join(fields[2:], " ") != want {
@@ -41,12 +44,21 @@ func TestGooseDamagedLoadNegativeControl(t *testing.T) {
 	if !strings.Contains(baseline, "node_count_disagrees plain 0 1") || !strings.Contains(baseline, "node_count_disagrees retain 0 1") {
 		t.Fatalf("control requires a clean refusing baseline:\n%s", baseline)
 	}
-	src := string(goosetable.Runtime()["wire_load.goose"])
-	const anchor = "    if report.body_damaged { return -1; }\n"
-	if strings.Count(src, anchor) != 1 {
-		t.Fatal("discard control anchor must occur exactly once")
+	// THE STRICT READ REFUSES DAMAGE IN THREE PLACES: the wire-alone check
+	// before any value is decoded, the decode's own discard, and the ranking
+	// at the end of the load. The control takes all three out of the emitted
+	// runtime and requires the partial roots.
+	changed := string(goosetable.Runtime()["wire_load.goose"])
+	for _, anchor := range [][2]string{
+		{"    let wfail, wnon = wire_check(file, 1, first, first, count as! i64, false);\n", "    let wfail: i64 = 0;\n    let wnon = false;\n"},
+		{"    if report.body_damaged { return -1; }\n", ""},
+		{"    let refusal = load_error(report, c.root_val);\n", "    let refusal = LoadRefuseOk;\n"},
+	} {
+		if strings.Count(changed, anchor[0]) != 1 {
+			t.Fatalf("discard control anchor must occur exactly once: %q", anchor[0])
+		}
+		changed = strings.Replace(changed, anchor[0], anchor[1], 1)
 	}
-	changed := strings.Replace(src, anchor, "", 1)
 	got := gooseDamageProbe(t, map[string][]byte{"wire_load.goose": []byte(changed)})
 	if !strings.Contains(got, "node_count_disagrees plain 1 1") || !strings.Contains(got, "node_count_disagrees retain 1 1") {
 		t.Fatalf("removing the real runtime discard did not expose the partial roots:\n%s", got)
@@ -121,16 +133,25 @@ func TestGooseCyclicWireIsDamage(t *testing.T) {
 	}
 }
 
-// The control takes the cycle check out of the emitted runtime and requires
-// every cycle vector to load.
+// The control takes the pointer-graph judgement out of the wire-alone check
+// (wc_graph, the one place the graph is judged) and requires every cycle
+// vector to load. Both of its graph rules go: each pinned cycle vector also
+// leaves a record no pointer reaches (the mutation that closed the cycle cut
+// the edge to it), and under the strict read an unreached record is damage
+// too (§6.5, THE GRAPH, DEFINED ONCE), so the cycle rule alone is never the
+// only reason these vectors are refused.
 func TestGooseCyclicWireNegativeControl(t *testing.T) {
 	t.Parallel()
-	src := string(goosetable.Runtime()["wire_load.goose"])
-	const anchor = " && !acyclic(c) { c.report.body_damaged = true; }"
-	if strings.Count(src, anchor) != 1 {
-		t.Fatal("cycle control anchor must occur exactly once")
+	changed := string(goosetable.Runtime()["wire_load.goose"])
+	for _, anchor := range [][2]string{
+		{"        if mark[t] == 1 { return wc_damage(w); } // a cycle\n", "        if mark[t] == 1 { continue; }\n"},
+		{"        if mark[k] == 0 { return wc_damage(w); } // a node record no pointer reaches\n", ""},
+	} {
+		if strings.Count(changed, anchor[0]) != 1 {
+			t.Fatalf("graph control anchor must occur exactly once: %q", anchor[0])
+		}
+		changed = strings.Replace(changed, anchor[0], anchor[1], 1)
 	}
-	changed := strings.Replace(src, anchor, " && false { c.report.body_damaged = true; }", 1)
 	for _, v := range gooseCycleVectors {
 		got := gooseCycleProbe(t, v, map[string][]byte{"wire_load.goose": []byte(changed)})
 		want := v[2] + " plain 1 0\n" + v[2] + " retain 1 0"

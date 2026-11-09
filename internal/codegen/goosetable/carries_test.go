@@ -115,10 +115,11 @@ fn main() {
     assert(arraydemo::HolderFromJson(h, "{\"list\":[{\"x\":11},{\"x\":13}]}", hrep));
     assert(h.List.GoalsCount == 2 && h.List.Goals[0].X == 11 && h.List.Goals[1].X == 13);
 
+    // An object where GoalList's array belongs is the wrong shape: the
+    // strict read refuses the whole text (docs/plans/strict-only.md).
     var hbad = arraydemo::NewHolder();
     var hbrep = schema_rt::JsonReport { .. };
-    assert(arraydemo::HolderFromJson(hbad, "{\"list\":{\"goals\":[]}}", hbrep));
-    assert(hbrep.mismatch == 1);
+    assert(!arraydemo::HolderFromJson(hbad, "{\"list\":{\"goals\":[]}}", hbrep));
 }
 `)
 	gooserun.Run(t, t.TempDir(), "main.goose", files)
