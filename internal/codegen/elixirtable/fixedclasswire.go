@@ -110,7 +110,7 @@ const fixedClassUnionFrom = `
             {atom, payload}
 
           desc ->
-            if Map.get(desc, :t) == :void,
+            if Map.get(desc, :t) == String.to_atom("void"),
               do: atom,
               else: {atom, fixed_class_value_from_table(desc, payload)}
         end

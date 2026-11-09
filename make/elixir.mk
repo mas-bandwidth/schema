@@ -269,7 +269,7 @@ CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_DUP := build/elixir-hostile-dup-negative
 ELIXIR_HOSTILE_DUP_SED := -e 's|if MapSet.member?(seen, name), do: throw(:wire_damaged)|if false and MapSet.member?(seen, name), do: throw(:wire_damaged)|'
 ELIXIR_HOSTILE_DUP_ROWS := dup-key-rejected-keyed keyed-duplicate-mixed keyed-duplicate-slot
 CONFORMANCE_NEGATIVE_ELIXIR_HOSTILE_F32 := build/elixir-hostile-f32-negative
-ELIXIR_HOSTILE_F32_SED := -e 's|e > 127 -> :error|e > 127 -> json_f32_bits(sign <<< 31 ||| 0x7F7FFFFF)|'
+ELIXIR_HOSTILE_F32_SED := -e 's@e > 127 -> :error@e > 127 -> json_f32_bits(sign <<< 31 ||| 0x7F7FFFFF)@'
 ELIXIR_HOSTILE_F32_ROWS := num-float32-midpoint num-float32-overflow
 
 # $(call ELIXIR_HOSTILE_CONTROL,dir,sedvar,rows,what)
