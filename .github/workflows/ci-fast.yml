@@ -809,11 +809,15 @@ jobs:
             # the leg-gate-lobster rows below.
             lobster) make tables-lobster-clean bench-lobster-gate ;;
             # the Squirrel card leg under the pinned interpreter
-            # (make/squirrel-cards.mk): the facade's unit tests, the card
-            # corpus on all nine surfaces, and the three negative controls
+            # (make/squirrel-cards.mk). This row is dist-squirrel plus the
+            # facade's unit tests. The card corpus and the three negative
+            # controls are leg-gate-squirrel, one part each: the combined
+            # step measured 132 s wall on run 42599413205 (job 129101577381),
+            # past the two-minute per-commit cap. Each part pays dist-squirrel
+            # because a job starts from a clean workspace.
+            # row-seconds test 93
             squirrel) make dist-squirrel
-                      make cards-squirrel-test cards-squirrel-conformance
-                      make cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control ;;
+                      make cards-squirrel-test ;;
             *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
           esac
 
@@ -911,4 +915,60 @@ jobs:
               # shellcheck disable=SC2086
               make $rest ;;
             *) echo "::error::leg-gate-lobster has no part '$PART'"; exit 1 ;;
+          esac
+
+  # THE SQUIRREL CARD LEG, IN ROWS. The leg-gate squirrel arm keeps
+  # dist-squirrel and cards-squirrel-test (row-seconds test 93). These two
+  # parts are the rest of that step, each its own job:
+  #   conformance — cards-squirrel-conformance
+  #   negative    — the three card negative controls
+  # row-seconds conformance 103
+  # row-seconds negative 104
+  leg-gate-squirrel:
+    needs: plan
+    if: contains(needs.plan.outputs.legs, '"squirrel"') && (github.event_name != 'pull_request' || (github.base_ref == 'main' && github.event.pull_request.head.repo.full_name == github.repository))
+    name: fixed form + versioning (squirrel ${{ matrix.part }})
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # the fleet's per-commit cap is two minutes; this bound only frees a hung
+    # runner sooner on a host that does not enforce it
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [ conformance, negative ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ reference dumps build/fixedform-corpus, every leg's oracle
+      - name: Check out the C++ serialize reference (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: the pinned Squirrel
+        run: |
+          set -euo pipefail
+          make dist-squirrel
+
+      - name: the squirrel card leg, ${{ matrix.part }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          case "$PART" in
+            conformance) make cards-squirrel-conformance ;;
+            negative) make cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control ;;
+            *) echo "::error::leg-gate-squirrel has no part '$PART'"; exit 1 ;;
           esac
