@@ -249,7 +249,6 @@ func stringIdentityGate(t *testing.T, mutate func(string) string) []string {
 }
 
 func TestMooStringIdentity(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, b := range stringIdentityGate(t, nil) {
@@ -265,7 +264,6 @@ func TestMooStringIdentity(t *testing.T) {
 //   - the blob_shared refusal is dropped, so one buffer named twice is
 //     written once and referenced twice: the shared rows must go red.
 func TestMooStringIdentityNegativeControl(t *testing.T) {
-	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_save.moo)")
 	t.Parallel()
 	for _, ctl := range []struct {
