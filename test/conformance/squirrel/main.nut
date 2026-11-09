@@ -169,6 +169,64 @@ local newReport = function() {
   return { unknown = 0, mismatch = 0, widened = 0, oor = 0, repeated = 0, bodyDamaged = false, refused = false };
 };
 
+// THE STRICT READ (docs/SPEC-TABLES.md §6.5, docs/plans/strict-only.md). One
+// call returns the whole value or null. The report carries the refusal's
+// name. loadWalk keeps a recovered value; these surfaces call load.
+local strictLoad = function(opened, root, bytes) {
+  local report = newReport();
+  local v = opened[0].require("schema_table_load").load(opened[1], root, bytes, report);
+  return [v, report];
+};
+
+// The schema name's storage member, read off the descriptor.
+local memberOf = function(T, root, schemaName) {
+  foreach (fd in T.Descriptors[root].fields) {
+    if (fd.name == schemaName) return fd.member;
+  }
+  return null;
+};
+
+// An accepted read writes `read`, the §16 text, and <case>.wire, the save of
+// that value. A refusal writes `refused` and no wire.
+
+// FRAMING's form-1 file at a fixed root is the variable read, and the save
+// that follows is this build's form 3 (docs/LAYERS/1-framing.md). ReadStrict
+// answers previous_form for that form byte. Clear fixed around the strict
+// read, then put the descriptor back before the save.
+local framingLoad = function(opened, root, bytes) {
+  local T = opened[1];
+  local d = T.Descriptors[root];
+  local fixedReader = d.fixed && ((root + "FixedLoad") in T);
+  if (!(fixedReader && bytes != null && bytes.len() >= 1 && (bytes[0] & 0xff) == 1)) {
+    return strictLoad(opened, root, bytes);
+  }
+  d.fixed = false;
+  local got;
+  try {
+    got = strictLoad(opened, root, bytes);
+  } catch (e) {
+    d.fixed = true;
+    throw e;
+  }
+  d.fixed = true;
+  return got;
+};
+
+local writeReadBack = function(T, root, v, cname) {
+  if (v == null) {
+    writeText(outdir + "/" + cname, "refused\n");
+    return;
+  }
+  local json = T[root + "ToJson"](v);
+  if (json == null) throw cname + ": ToJson refused the value";
+  local n = T[root + "Measure"](v);
+  local out = T[root + "Save"](v);
+  if (n < 0 || out == null || out.len() != n) throw cname + ": the write-back wire does not match the measure";
+  writeBytes(outdir + "/" + cname + ".wire", out);
+  writeText(outdir + "/" + cname, "read\n" + json);
+};
+
+
 // One unit is opened once per process: the module loader and the table module
 // are the same objects for every case of the unit, so a surface pays the
 // dofile once rather than once a case.
@@ -203,43 +261,29 @@ if (mode == "list") {
 local lines = manifestLines(readText(manifest));
 
 // THE EVOLUTION CLASS (reports.txt) and THE FRAMING VECTORS
-// (docs/LAYERS/1-framing.md): the tolerant load's report line, then the §16
-// text of the value it left, unless a framing row says `no-value` or the read
-// refused. Damaged input is discarded whole (docs/SPEC-TABLES.md §4): the
-// harness scores the report line alone there. A unit the target refused is the
-// one per-case absence; a crash is a failure, never an absence. A derived line
-// is `report <case> <unit> <root> <wire>` or
-// `framing <case> <unit> <root> <wire> [no-value]`.
+// (docs/LAYERS/1-framing.md): the strict read, then `read` and the §16 text,
+// or `refused` and nothing else. An accepted read also writes <case>.wire,
+// the canonical save of that value. A unit the target refused is the one
+// per-case absence; a crash is a failure, never an absence.
 if (mode == "report" || mode == "framing") {
   foreach (ln in lines) {
     local f = splitFields(ln);
     if (f.len() < 5 || f[0] != mode) continue;
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
-    local noValue = f.len() > 5 && f[5] == "no-value";
     if (!generated(unit)) { writeAbsent(cname); continue; }
     local opened = openUnit(unit);
-    local T = opened[1];
-    local L = opened[0].require("schema_table_load");
-    local report = newReport();
-    local v = L.loadWalk(T, root, readBytes(wirepath), report);
-    local m = (report.bodyDamaged || (v == null && !report.refused)) ? "true" : "false";
-    local text = report.unknown.tostring() + "," + report.mismatch.tostring() + "," +
-                 report.widened.tostring() + "," + report.oor.tostring() + "," +
-                 report.repeated.tostring() + "," + m + "," + (report.refused ? "refused" : "read") + "\n";
-    if (v != null && !report.refused && !report.bodyDamaged && !noValue) {
-      local json = T[root + "ToJson"](v);
-      if (json == null) throw cname + ": ToJson refused the value";
-      text += json;
-    }
-    writeText(outdir + "/" + cname, text);
+    local bytes = readBytes(wirepath);
+    local got = mode == "framing" ? framingLoad(opened, root, bytes) : strictLoad(opened, root, bytes);
+    writeReadBack(opened[1], root, got[0], cname);
   }
   return;
 }
 
-// LOAD THEN SAVE, the bytes. A writer that refuses the value BY NAME (§2.5:
-// one blob named from two slots is `blob_shared`, refused by every writer)
-// answers `<case>.absent` holding the name, which the harness scores as the
-// row's named refusal; a nameless refusal is a failure.
+// LOAD THEN SAVE, the bytes. The strict read refuses a file whose two slots
+// name one blob (§2.5, blob_shared). That row answers <case>.absent holding
+// the name. Any other refusal of a corpus instance is a failure. A writer
+// that refuses by name answers the same absence; a nameless refusal is a
+// failure.
 if (mode == "wire") {
   foreach (ln in lines) {
     local f = splitFields(ln);
@@ -248,11 +292,18 @@ if (mode == "wire") {
     if (!generated(unit)) { writeAbsent(cname); continue; }
     local opened = openUnit(unit);
     local T = opened[1];
-    local L = opened[0].require("schema_table_load");
     local S = opened[0].require("schema_table_save");
-    local report = newReport();
-    local v = L.loadWalk(T, root, readBytes(wirepath), report);
-    if (v == null || report.refused) throw cname + ": load refused " + wirepath;
+    local got = strictLoad(opened, root, readBytes(wirepath));
+    local v = got[0];
+    local report = got[1];
+    if (v == null) {
+      local shared = report.reason == "blob_shared" || (("sharedBlob" in report) && report.sharedBlob > 0);
+      if (shared) {
+        writeText(outdir + "/" + cname + ".absent", "blob_shared");
+        continue;
+      }
+      throw cname + ": load refused " + wirepath;
+    }
     local out = S.save(T, root, v);
     if (out == null) {
       if (S.SaveReason == null) throw cname + ": save refused the value";
@@ -265,11 +316,10 @@ if (mode == "wire") {
   return;
 }
 
-// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: the TOLERANT text read
-// of the pinned text, Save, the bytes; json-read and json-hostile call that
-// one entry point, fromJsonWalk (test/conformance/README.md). json-write:
-// Load the wire, ToJson, the text, and its ToJsonMeasure must be the text's
-// length.
+// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: FromJson, the strict
+// text read, of the pinned text, then Save, the bytes. json-write: the
+// strict load of the wire, ToJson, the text, and its ToJsonMeasure must be
+// the text's length.
 if (mode == "json-read" || mode == "json-write") {
   local write = mode == "json-write";
   foreach (ln in lines) {
@@ -281,7 +331,8 @@ if (mode == "json-read" || mode == "json-write") {
     local opened = openUnit(unit);
     local T = opened[1];
     if (write) {
-      local v = T[root + "Load"](readBytes(wirepath), newReport());
+      local got = strictLoad(opened, root, readBytes(wirepath));
+      local v = got[0];
       if (v == null) throw cname + ": load refused " + wirepath;
       local text = T[root + "ToJson"](v);
       if (text == null) throw cname + ": ToJson refused the value";
@@ -290,8 +341,8 @@ if (mode == "json-read" || mode == "json-write") {
     } else {
       local report = newReport();
       local J = opened[0].require("schema_table_json");
-      local v = J.fromJsonWalk(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
-      if (v == null || report.bodyDamaged) throw cname + ": fromJsonWalk refused the text";
+      local v = J.FromJson(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
+      if (v == null || report.bodyDamaged) throw cname + ": FromJson refused the text";
       local out = T[root + "Save"](v);
       if (out == null) throw cname + ": save refused the value";
       if (T[root + "Measure"](v) != out.len()) throw cname + ": Measure is not the save's length";
@@ -311,16 +362,18 @@ if (mode == "json-read" || mode == "json-write") {
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4]; local damage = f[5];
     local outname = cname + ".json";
     if (!generated(unit)) { writeAbsent(outname); continue; }
-    local T = openUnit(unit)[1];
-    local v = T[root + "Load"](readBytes(wirepath), newReport());
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local got = strictLoad(opened, root, readBytes(wirepath));
+    local v = got[0];
     if (v == null) throw cname + ": load refused " + wirepath;
     if (damage != "none") {
       local colon = damage.find(":");
       if (colon == null) throw cname + ": damage " + damage + " names no field";
       local kind = damage.slice(0, colon);
       local name = damage.slice(colon + 1);
-      local member = name.slice(0, 1).toupper() + name.slice(1);
-      if (!(member in v)) throw cname + ": damage " + damage + " names no text field of " + root;
+      local member = memberOf(T, root, name);
+      if (member == null || !(member in v)) throw cname + ": damage " + damage + " names no text field of " + root;
       if (kind == "narrow") v[member] = format("%c%c%c", 0x61, 0xff, 0x62);
       else if (kind == "wide") v[member] = [0x61, 0xd800, 0x62];
       else throw cname + ": unknown damage " + damage;
@@ -338,9 +391,9 @@ if (mode == "json-read" || mode == "json-write") {
   return;
 }
 
-// THE TEXT FORM's hostile battery (§16.2, §16.3, §17.5): the TOLERANT read of
-// <tree>/<root>.json, its report and the §16 text of the value it left, or
-// `refused` where the read was malformed.
+// THE TEXT FORM's hostile battery (§16.2, §16.3, §17.5): FromJson, the
+// strict text read. `read` and the §16 text, plus <case>.wire, or `refused`
+// and no wire.
 if (mode == "json-hostile") {
   foreach (ln in lines) {
     local f = splitFields(ln);
@@ -349,13 +402,9 @@ if (mode == "json-hostile") {
     if (!generated(unit)) { writeAbsent(cname); continue; }
     local opened = openUnit(unit);
     local J = opened[0].require("schema_table_json");
-    local r = newReport();
-    local v = J.fromJsonWalk(opened[1], root, readBytes(tree + "/" + root + ".json"), r);
-    if (r.bodyDamaged || v == null) { writeText(outdir + "/" + cname, "refused\n"); continue; }
-    local json = opened[1][root + "ToJson"](v);
-    if (json == null) throw cname + ": ToJson refused the value";
-    writeText(outdir + "/" + cname,
-      r.unknown + "," + r.mismatch + "," + r.widened + "," + r.oor + "," + r.repeated + ",false,read\n" + json);
+    local report = newReport();
+    local v = J.FromJson(opened[1], root, readBytes(tree + "/" + root + ".json"), report);
+    writeReadBack(opened[1], root, v, cname);
   }
   return;
 }
@@ -617,10 +666,12 @@ if (mode == "forgery" || mode == "cook-forgery" || mode == "block-reason" || mod
   return;
 }
 
-// THE COOK WRITER (§7.6): Load the instance's wire, Cook it little-endian
-// (order 1) and big-endian (order 2), the bytes as <instance> and
-// <instance>-be. A buffer one byte short must refuse and write nothing. The
-// expectation is the tool's file: `schema cook` is the reference.
+// THE COOK WRITER (§7.6). The derived line is
+// `cook-write <instance> <JSON input or -> <source or -> <alias or ->`.
+// Text input is FromJson; a dash is the strict load of the instance wire.
+// A share pair points the alias slot at the source slot's blob. Cook the
+// value little-endian (order 1) and big-endian (order 2). A buffer one byte
+// short must refuse and write nothing.
 if (mode == "cook-write") {
   local instances = {};
   foreach (ln in lines) {
@@ -635,13 +686,28 @@ if (mode == "cook-write") {
     local inst = instances[name];
     local unit = inst[2]; local root = inst[3];
     if (!generated(unit)) { writeAbsent(name); writeAbsent(name + "-be"); continue; }
-    local T = openUnit(unit)[1];
-    local report = newReport();
-    // the TOLERANT load, as the wire surface's: a blob two slots name
-    // (blob_shared) is refused by the strict read by name, and the cook of the
-    // value it holds is still the tool's file
-    local v = openUnit(unit)[0].require("schema_table_load").loadWalk(T, root, readBytes(inst[4]), report);
-    if (v == null || report.bodyDamaged || report.refused) throw name + ": the cook input did not load";
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local input = f.len() > 2 ? f[2] : "-";
+    local source = f.len() > 3 ? f[3] : "-";
+    local alias = f.len() > 4 ? f[4] : "-";
+    local v;
+    if (input != "-") {
+      local J = opened[0].require("schema_table_json");
+      local report = newReport();
+      v = J.FromJson(T, root, readBytes(input), report);
+      if (v == null) throw name + ": cook input text did not read";
+    } else {
+      local got = strictLoad(opened, root, readBytes(inst[4]));
+      v = got[0];
+      if (v == null) throw name + ": cook input did not load";
+    }
+    if (source != "-") {
+      local a = memberOf(T, root, source);
+      local b = memberOf(T, root, alias);
+      if (a == null || b == null || !(a in v) || !(b in v)) throw name + ": the share recipe " + source + ":" + alias + " did not apply";
+      v[b] = v[a];
+    }
     local size = T.CookMeasure(root, v);
     if (size < 1) throw name + ": CookMeasure refused the value";
     foreach (order in [1, 2]) {
@@ -703,11 +769,11 @@ if (mode == "message") {
 }
 
 // RETAIN-UNKNOWN (§6.6): LoadRetain the wire at the row's two capacities,
-// MeasureRetain, SaveRetain. `retain` prints the load's counters and the
-// retain_lost the save adds, `<retained>,<retain_lost>,<unknown> <save lost>`;
-// `retain-save` writes the saved bytes. `short` is one byte short of the last
-// record: load once at a roomy capacity, read what the store used, and load
-// again one byte under it. The id list's capacity is a count.
+// MeasureRetain, SaveRetain. `retain` prints the one read's verdict and the
+// §16 text of the known value (`read`), or `refused`. `retain-save` writes
+// the saved bytes. `short` is one byte short of the last record: load once
+// at a roomy capacity, read what the store used, and load again one byte
+// under it. The id list's capacity is a count.
 if (mode == "retain" || mode == "retain-save") {
   local saves = mode == "retain-save";
   foreach (ln in lines) {
@@ -733,7 +799,10 @@ if (mode == "retain" || mode == "retain-save") {
       throw name + ": capacity " + f[5] + " is neither full nor short";
     }
     local v = T[root + "LoadRetain"](wire, store, report);
-    if (v == null || report.bodyDamaged) throw name + ": LoadRetain failed";
+    if (v == null || report.bodyDamaged || report.refused) {
+      if (!saves) writeText(outdir + "/" + name, "refused\n");
+      continue;
+    }
     local retained = report.retained, lost = report.retainLost, unknown = report.unknown;
     local n = T[root + "MeasureRetain"](v, store);
     if (n < 0) throw name + ": MeasureRetain refused";
@@ -745,7 +814,11 @@ if (mode == "retain" || mode == "retain-save") {
     if (T[root + "SaveRetain"](v, store, again, second) != n || second.retainLost != saveLost) throw name + ": the save is not repeatable";
     for (local i = 0; i < n; i++) if (again[i] != out[i]) throw name + ": the save is not repeatable";
     if (saves) writeBytes(outdir + "/" + name, out);
-    else writeText(outdir + "/" + name, retained + "," + lost + "," + unknown + " " + saveLost + "\n");
+    else {
+      local json = T[root + "ToJson"](v);
+      if (json == null) throw name + ": ToJson refused the value";
+      writeText(outdir + "/" + name, "read\n" + json);
+    }
   }
   return;
 }
