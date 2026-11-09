@@ -78,7 +78,8 @@ const (
 	// cannot name and the decoded graph in the same walk; no tableWireVerify
 	// prepass is left (strict-engine.w8)
 	// -50: a message body tests a repeated field id or keyed slot with slices.Contains and ranges over its count (modernize-clean generated Go)
-	goExamplesLineBudget = 59478
+	// +231: a message save refuses ill-formed UTF-8 and UTF-16 text (NUL, a stray byte, an unpaired surrogate or a zero unit) the way the fixed writer does (SPEC.md §5.1 row 8, SPEC-TABLES §5)
+	goExamplesLineBudget = 59709
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
