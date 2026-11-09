@@ -2281,7 +2281,8 @@ local function wc_text(b, at, lim)
   local i = at + 1
   while i <= lim do
     local x = string.byte(b, i)
-    local need, lo, hi = 0, 0x80, 0xbf
+    local lo, hi = 0x80, 0xbf
+    local need
     if x == 0 then
       return false
     elseif x < 0x80 then

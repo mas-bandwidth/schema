@@ -139,7 +139,7 @@ func luaFramingVerdicts(t *testing.T, rows []luaFramingRow, units map[string][]s
 			list.WriteString(row.name + " " + row.root + "\n")
 		}
 		inputs["rows"] = []byte(list.String())
-		for _, line := range strings.Split(strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", inputs))), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(string(luarun.Run(t, dir, "main.lua", inputs))), "\n") {
 			name, verdict, _ := strings.Cut(line, " ")
 			got[name] = verdict
 		}
