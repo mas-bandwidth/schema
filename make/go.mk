@@ -667,10 +667,12 @@ conformance-big-endian: build/conformance-harness build/conformance-go-be
 # Every generated unit carries its own wire reader, and each one's 32-bit read
 # becomes binary.NativeEndian through `go build -overlay`, so no file under
 # build/ or the tree is written to. The leg is named `go` because it IS the Go
-# port: the corpus's carried-by rows name ports, not drivers. It runs in
-# ci-full.yml's big-endian job (row go-control), which installs the emulator;
-# the shared negative-control rows do not, so it is in the manifest's exclusion
-# list with that reason.
+# port: the corpus's carried-by rows name ports, not drivers. It measured 250 s
+# on the card, past the per-commit budget, so it runs nightly in certify.yml's
+# big-endian job (row go-control), which installs the emulator; per commit
+# ci-full.yml keeps only conformance-big-endian-smoke. The shared
+# negative-control rows install no emulator, so it is in the manifest's
+# exclusion list with that reason.
 GO_BE_NC := build/go-be-negative-control
 .PHONY: conformance-big-endian-negative-control
 conformance-big-endian-negative-control: build/conformance-harness build/conformance-go-be build/conformance-go

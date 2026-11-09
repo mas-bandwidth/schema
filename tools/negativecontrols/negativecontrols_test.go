@@ -394,7 +394,10 @@ func TestTheBigEndianJobIsShardedByUnit(t *testing.T) {
 		t.Errorf("the big-endian job runs tables-big-endian-negative-control as one row: that is exactly the serial leg-plus-control job #684 sharded away")
 	}
 	// The pieces the leg was made of must each be a row, and the control must
-	// still run as its own recipe or the pair that proves the leg is gone.
+	// still run as its own recipe or the pair that proves the leg is gone. The
+	// Go row is the per-commit smoke: the full harness and its host-order
+	// control left this budget for certify.yml's nightly big-endian job, where
+	// their measured 127 s and 250 s fit the nightly tier.
 	for _, want := range []string{
 		"tables-big-endian-tables",
 		"tables-big-endian-collections",
@@ -402,7 +405,7 @@ func TestTheBigEndianJobIsShardedByUnit(t *testing.T) {
 		"tables-c-big-endian",
 		"tables-big-endian-control-only",
 		"tables-c-big-endian-negative-control",
-		"conformance-big-endian",
+		"conformance-big-endian-smoke",
 	} {
 		if !got[want] {
 			t.Errorf("the big-endian matrix has no row for %s: the leg lost a unit or its control", want)
