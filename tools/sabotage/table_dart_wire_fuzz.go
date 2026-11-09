@@ -9,8 +9,8 @@ package main
 
 func init() {
 	sabotages["table-dart-wire-widen"] = []edit{{
-		old: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tif (elemKind != %d) r.report.widened++;\\n\", ind, declKind)",
-		new: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\t// SABOTAGED: the widened count is gone (%d)\\n\", ind, declKind)",
+		old: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tfinal _widenedBefore = r.report.widened;\\n\", ind)\n\t\t\tg.pf(\"%s\\t\\tif (elemKind != %d) r.report.widened++;\\n\", ind, declKind)",
+		new: "\t\tdefault:\n\t\t\tg.pf(\"%s\\t\\tfinal _widenedBefore = r.report.widened;\\n\", ind)\n\t\t\tg.pf(\"%s\\t\\t// SABOTAGED: the widened count is gone (%d)\\n\", ind, declKind)",
 	}}
 }
 
