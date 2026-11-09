@@ -223,8 +223,8 @@
     },
     {
       "name": "base-c-conformance",
-      "when": "pull-request",
-      "why": "The C JSON driver sabotage, alone: it overlay-rebuilds the compiler, regenerates the whole C table tree through it, rebuilds the complete C conformance driver and runs one harness leg. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall on the loaded fleet, past the 120 s per-commit rule), so the message and retain compiler probes that shared this job now run as base-c-conformance-message and base-c-conformance-retain in parallel rows.",
+      "when": "nightly",
+      "why": "The C JSON driver sabotage, alone: it overlay-rebuilds the compiler, regenerates the whole C table tree through it, rebuilds the complete C conformance driver and runs one harness leg. Split from the old three-target base-c-conformance group, whose control step measured 96 s on both run 42556155793 and run 42554833739 (127-134 s wall on the loaded fleet, past the 120 s per-commit rule), so the message and retain compiler probes that shared this job now run as base-c-conformance-message and base-c-conformance-retain in parallel rows. Moved nightly: alone on this branch its row measured 275 s wall (200 s control step) on run 42568368976 and 116 s wall (99 s control) on run 42578656888, so a single complete-driver compile cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full, while the message and retain probes stay on the pull request.",
       "targets": [
         "conformance-negative-control-c"
       ]
@@ -247,16 +247,16 @@
     },
     {
       "name": "base-c-wire",
-      "when": "pull-request",
-      "why": "The complete C wire roster rebuilt with a permissive LEB reader, alone: one complete C wire-fuzz driver compile against a scratch copy of the generated units, then the differential at seed 1. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall on the loaded fleet, past the 120 s per-commit rule); the widelist extent control that shared this job now runs as base-c-wire-widelist, because each target pays its own complete driver compile and the two compiles belong in parallel rows, not in one job.",
+      "when": "nightly",
+      "why": "The complete C wire roster rebuilt with a permissive LEB reader, alone: one complete C wire-fuzz driver compile against a scratch copy of the generated units, then the differential at seed 1. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall on the loaded fleet, past the 120 s per-commit rule); the widelist extent control that shared this job now runs as base-c-wire-widelist, because each target pays its own complete driver compile. Moved nightly: alone on this branch its row measured 141 s wall (118 s control step) on run 42568368976 and 149 s wall (122 s control) on run 42578656888, so it cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full.",
       "targets": [
         "tables-c-wire-fuzz-negative-control"
       ]
     },
     {
       "name": "base-c-wire-widelist",
-      "when": "pull-request",
-      "why": "The C widelist extent-alignment control, alone: the 16-byte extent alignment of 128-bit sequences removed in a scratch copy of the generated widelist unit, one complete C wire-fuzz driver compile against it, and the pinned widelist mutants replayed. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall), because each target pays its own complete driver compile and the two compiles belong in parallel rows, not in one job.",
+      "when": "nightly",
+      "why": "The C widelist extent-alignment control, alone: the 16-byte extent alignment of 128-bit sequences removed in a scratch copy of the generated widelist unit, one complete C wire-fuzz driver compile against it, and the pinned widelist mutants replayed. Split from the old two-target base-c-wire group, whose control step measured 83 s on run 42556155793 (135-145 s wall), because each target pays its own complete driver compile. Moved nightly: alone on this branch its row was cancelled at 318 s wall (232 s control step) on run 42568368976 and measured 127 s wall (110 s control) on run 42578656888, so it cannot fit the per-commit rule on the loaded fleet; it moves to the nightly tier (certify.yml), where it still runs in full.",
       "targets": [
         "tables-c-widelist-extent-align16-negative-control"
       ]
