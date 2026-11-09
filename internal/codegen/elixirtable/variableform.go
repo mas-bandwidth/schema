@@ -4254,11 +4254,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # json_escape spells one string's bytes the way RFC 8259 requires, so a text
   # this writer emits is readable by any conforming parser (§16.3): the escapes
-  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls. Every
-  # other byte — the card's multibyte UTF-8 included — rides raw.
+  # are \", \\, \b, \f, \n, \r, \t, and \u00XX for the other controls, and a
+  # well-formed multibyte UTF-8 sequence rides raw. A byte that opens no
+  # well-formed sequence is not text: no read puts it into storage, so a
+  # program did, and the whole write REFUSES (invalid_value, §16.14 W0) with
+  # nothing replaced. A wide string is held as UTF-8, so an unpaired surrogate
+  # (its generalized encoding, ED A0 80 for D800) refuses here too.
   defp json_escape(bin), do: json_escape(bin, [])
 
   defp json_escape(<<>>, acc), do: IO.iodata_to_binary(Enum.reverse(acc))
+
+  defp json_escape(<<c, _::binary>> = bin, acc) when c >= 0x80 do
+    case bin do
+      <<ch::utf8, rest::binary>> -> json_escape(rest, [<<ch::utf8>> | acc])
+      _ -> throw(:invalid_value)
+    end
+  end
 
   defp json_escape(<<c, rest::binary>>, acc) do
     esc =
