@@ -3972,7 +3972,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
 	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
-	@grep -Fq 'must refuse before entries without adding damage' build/map-builder-oracle.log
+	@grep -Fq 'must refuse count_over_extent_cap' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
 # KEY ORDER meets it: the byte compare against its pinned wire goes red while
@@ -4002,7 +4002,7 @@ tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 # tolerant-era form, no longer moves the verdict.)
 .PHONY: tables-maps-duplicate-negative-control
 tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
+	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it: the strict read refuses it as kind_mismatch, and the sabotaged
@@ -4027,7 +4027,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
-	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
+	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
 		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
