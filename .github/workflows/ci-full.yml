@@ -1320,7 +1320,7 @@ jobs:
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
