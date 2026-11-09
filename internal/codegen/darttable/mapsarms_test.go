@@ -111,6 +111,11 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 			if name, ok := strings.CutPrefix(a, "go-refusal="); ok {
 				r.refusal = name
 			}
+			if a == "wire-refused" {
+				// A wire-refused row names one blob from two slots; every
+				// writer refuses it as blob_shared (SPEC §2.5).
+				r.refusal = "blob_shared"
+			}
 		}
 		rows = append(rows, r)
 	}
@@ -150,9 +155,16 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 		}
 	}
 	sort.Strings(fixedNames)
+	// Only a root with a real Fixed codec in the artifact rides form 3;
+	// a fixed table past the form's bounds keeps form 1 and has none.
 	fixedRoots := map[string]bool{}
-	for _, st := range ir.TableFixedRoots(u) {
-		fixedRoots[st.Name] = true
+	for _, r := range rows {
+		fn := strings.ToLower(r.root[:1]) + r.root[1:]
+		for _, name := range fixedNames {
+			if strings.Contains(string(files[name]), "int "+fn+"FixedLoad(") {
+				fixedRoots[r.root] = true
+			}
+		}
 	}
 
 	roots := map[string]bool{}
@@ -167,7 +179,9 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 	var imports strings.Builder
 	imports.WriteString("import '" + wireName + "';\n")
 	for _, name := range fixedNames {
-		imports.WriteString("import '" + name + "';\n")
+		// Prefixed: the Fixed and Wire libraries define the same table
+		// classes, so an unprefixed import of both is ambiguous.
+		imports.WriteString("import '" + name + "' as f;\n")
 	}
 	var sw strings.Builder
 	for _, r := range names {
@@ -177,21 +191,28 @@ func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, re
 			// file and rides the Fixed codec — one record, one whole read or a
 			// refusal — never form 1.
 			sw.WriteString("    case '" + r + "':\n      {\n")
-			sw.WriteString("        final values = List<" + r + ">.generate(1, (_) => " + r + "());\n")
-			sw.WriteString("        final plan = " + fn + "FixedNewPlan();\n")
-			sw.WriteString("        final report = TableFixedReport();\n")
-			sw.WriteString("        if (" + fn + "FixedLoad(values, 1, wire, wire.length, plan, report) != 1 ||\n")
+			sw.WriteString("        final values = List<f." + r + ">.generate(1, (_) => f." + r + "());\n")
+			sw.WriteString("        final plan = f." + fn + "FixedNewPlan();\n")
+			sw.WriteString("        final report = f.TableFixedReport();\n")
+			sw.WriteString("        if (f." + fn + "FixedLoad(values, 1, wire, wire.length, plan, report) != 1 ||\n")
 			sw.WriteString("            report.refused != 0) {\n")
 			sw.WriteString("          throw StateError('fixed load refused');\n")
 			sw.WriteString("        }\n")
-			sw.WriteString("        final out = Uint8List(" + fn + "FixedMeasure(1));\n")
-			sw.WriteString("        if (" + fn + "FixedSave(values, 1, out) < 0) {\n")
+			sw.WriteString("        final out = Uint8List(f." + fn + "FixedMeasure(1));\n")
+			sw.WriteString("        if (f." + fn + "FixedSave(values, 1, out) < 0) {\n")
 			sw.WriteString("          throw StateError('fixed save refused');\n")
 			sw.WriteString("        }\n")
 			sw.WriteString("        return out;\n")
 			sw.WriteString("      }\n")
 		} else {
-			sw.WriteString("    case '" + r + "':\n      return " + fn + "WireSave(" + fn + "WireLoad(wire));\n")
+			// The strict read is one read: the whole value or a refusal
+			// named in the report, never a default resaved as form 1.
+			sw.WriteString("    case '" + r + "':\n      {\n")
+			sw.WriteString("        final report = TableWireReport();\n")
+			sw.WriteString("        final v = " + fn + "WireLoad(wire, report);\n")
+			sw.WriteString("        if (report.refused) throw StateError(report.refusal);\n")
+			sw.WriteString("        return " + fn + "WireSave(v);\n")
+			sw.WriteString("      }\n")
 		}
 	}
 	probe := `import 'dart:io';
