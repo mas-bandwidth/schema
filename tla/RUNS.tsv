@@ -42,3 +42,6 @@ MCCardVersioningTolerantRead.cfg	CardVersioning	counterexample	ReadIsWholeOrRefu
 MCPGroup.cfg	PGroup	exhaustive	-	64	30	5	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCPGroupKillOnlyLeader.cfg	PGroup	counterexample	NoSurvivor	30	22	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCPGroupNoGraceKill.cfg	PGroup	counterexample	StopEnds	74	38	5	13	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCWireCheckEdges.cfg	WireCheckEdges	exhaustive	-	3020658	313344	19	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCWireCheckEdgesFirstOffByOne.cfg	WireCheckEdges	counterexample	RangesHoldTheNodes	2290	1870	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCWireCheckEdgesStaleTail.cfg	WireCheckEdges	counterexample	NamesCountThisFile	2290	1870	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)

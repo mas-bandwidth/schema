@@ -259,7 +259,7 @@ jobs:
         if: matrix.group == 'versioning'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -1085,12 +1085,12 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
@@ -1103,7 +1103,7 @@ jobs:
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -1292,7 +1292,7 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -1366,7 +1366,7 @@ jobs:
       - name: read the node pin of the js conformance row
         run: echo "JS_NODE_PIN=$(jq -r .node test/conformance/js/ci.json)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.JS_NODE_PIN }}
 
@@ -1504,7 +1504,7 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
@@ -2314,12 +2314,12 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: (matrix.dotnet != '') && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: matrix.node != ''
         with:
           node-version: ${{ matrix.node }}
@@ -2332,7 +2332,7 @@ jobs:
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
