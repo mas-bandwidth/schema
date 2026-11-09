@@ -715,9 +715,9 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-1",
-      "when": "pull-request",
-      "why": "the C# port's conformance leg: the conformance driver's planted defects (wire and JSON), with the C# conformance build they need. Split three ways from one cs group when the merged stream's fourteen controls ran the job past its 5-minute timeout on the runner (the job was cancelled during the last control, about 4m40s after the controls began). One half of what was the `cs` group, cut again on 2026-10-28 because that group ran 201 s median and 230 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 171 s of control time over 4 controls). Measured about 126 s of control time on run 40684770225 and 88 s on run 40684250024: one control, so it cannot be cut further by grouping.",
+      "name": "cs-nightly",
+      "when": "nightly",
+      "why": "the C# port's conformance negative control (conformance-negative-control-cs): the conformance driver's planted defects (wire and JSON), with the C# conformance build they need. It is a single control at 126 s of control time on run 40684770225 and 88 s on run 40684250024 (quiet runners), already one third of the original `cs` group when that group ran 201 s median and 230 s max against the job's five-minute timeout over 14 ci-full runs; today, on the loaded fleet, its row runs 131-142 s wall and is killed at the 120 s per-commit rule. It has no other control to share a build with, so it cannot be cut further by grouping, and it moves here (certify.yml's nightly schedule) for that reason.",
       "targets": [
         "conformance-negative-control-cs"
       ],
@@ -735,50 +735,98 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-tables",
+      "name": "cs-tables-1",
       "when": "pull-request",
-      "why": "the C# table codec's controls: the pack gate, the message blob's endian, the fixed-form arm (a compiled plan landing a text field under the second arm), and the JSON text differential's planted divergence. Split from the cs group for its 5-minute timeout. With them, M12's byte-order control: one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red (one overlay build and one unit generated, a few seconds).",
+      "why": "the C# table codec's pack gate and fixed-form arm controls: the pack golden's framing elision and a compiled plan landing a text field under the second arm (armtext-negative-control). Both are test/cs-tables shell scripts over the generated tree; split from the old cs-tables group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "tables-cs-pack-negative-control",
-        "tables-cs-fixedform-arm-negative-control",
+        "tables-cs-fixedform-arm-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-tables-2",
+      "when": "pull-request",
+      "why": "the C# table codec's heavier controls: the JSON text differential's planted divergence (slowgate/proof over the cstable package) and M12's byte-order control (one fixed-form flat array read put back to an unguarded host-order bulk copy in the emitter, so the scan of the generated C# goes red, one overlay build and one unit generated). Split from the old cs-tables group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "tables-cs-json-differential-negative-control",
         "tables-cs-byte-order-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-finite",
+      "name": "cs-finite-float",
       "when": "pull-request",
-      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. A job of its own for the cs-tables group's 5-minute timeout; four probe builds, 8 s on the author's machine. The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it requires the unplanted corpus green, flips one passing accepted and one passing refused verdict in a scratch copy of the manifest, and requires the runner to go red naming both; one dispatch generation and one SDK build, about 10 s on the author's machine.",
+      "why": "the C# finite rule (docs/SPEC-TABLES.md §3.3): the form-1 read's raw-bits test, the fixed read's finite pass and the form-1 writer's refusal, each sabotaged in turn through a go build -overlay, must each redden exactly their own vector of one probe. Four probe builds, 8 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "tables-cs-finite-float-negative-control",
+        "tables-cs-finite-float-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-hostile-corpus",
+      "when": "pull-request",
+      "why": "the C# hostile-corpus control (docs/HOSTILE-CORPUS.md): it requires the unplanted corpus green, flips one passing accepted and one passing refused verdict in a scratch copy of the manifest, and requires the runner to go red naming both; one dispatch generation and one SDK build, about 10 s on the author's machine. Split from the old cs-finite group when that pair ran the row past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "schema-cs-runs-hostile-corpus-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-packet",
+      "name": "cs-packet-defaults",
       "when": "pull-request",
-      "why": "the C# packet families (arm defaults, defaults, UTF-8, wide), the finite-float read rule (float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors), the packet-clean gate's planted misindented block and unused private field, and the tables-clean gate's planted misindented statement (issue #547). Split from the cs group for its 5-minute timeout.",
+      "why": "the C# constructor-bytes packet families: arm defaults (make/checks/packet-arm-defaults.mk) and defaults. Each is one small compile off the generated tree; split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "packet-arm-defaults-cs-negative-control",
-        "packet-defaults-cs-negative-control",
+        "packet-defaults-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-textwide",
+      "when": "pull-request",
+      "why": "the C# packet text and wide families' harness bit-flip agreement against the C++ reference drivers: UTF-8 content validation (utf8.go sabotage) and wstring surrogate pairing (wstring.go sabotage), each rebuilt under an overlay, regenerated and run through the harness against the built C++ oracle. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control",
-        "packet-finite-cs-negative-control",
+        "packet-wide-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-finite",
+      "when": "pull-request",
+      "why": "the C# packet finite-float read rule: float-finite and double-finite each deleted in serialize.cs, each required to red exactly its own vectors. One build of test/cs under the SerializeConformanceControls switch and two deleted-rule runs; split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
+        "packet-finite-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-packet-clean",
+      "when": "pull-request",
+      "why": "the C# clean gates' controls: the packet-clean gate's planted misindented block and unused private field (issue #547) and the tables-clean gate's planted misindented statement. Both run dotnet format and the SDK analyzers over generated units. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "packet-clean-cs-negative-control",
         "tables-cs-clean-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-cards",
+      "name": "cs-cards-conformance",
       "when": "pull-request",
-      "why": "the C# card driver's controls, split from the cs group when the merged stream took that job past its 5-minute timeout: one rendered byte changed (render alone must go red), the upgrade and task-hash switches (each must turn the shared-corpus run red), and the retained-unknown-field control on the Card codec. 2 s each on the author's machine, plus the SDK build.",
+      "why": "the C# card driver's three conformance surface controls, which share one driver build (cards-cs-driver) and the harness: one rendered byte changed (render alone must go red), and the upgrade and task-hash switches (each must turn the shared-corpus run red). 2 s each on the author's machine over the built driver. Split from the old cs-cards group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
         "cards-cs-conformance-negative-control",
         "cards-cs-conformance-upgrade-negative-control",
-        "cards-cs-conformance-hash-negative-control",
+        "cards-cs-conformance-hash-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-cards-retain",
+      "when": "pull-request",
+      "why": "the retained-unknown-field control on the C# Card codec: the driver's test-only CARDS_CS_RETAIN_DROP switch hands the retaining load a store with no capacity, and the retain arm of the wire fuzzer must go red on the retention report while the plain arm stays green. It carries its own wire-fuzz run over build-conformance-cs. Split from the old cs-cards group when that four-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "cards-cs-retain-negative-control"
       ],
       "dotnet": "pin"
@@ -818,31 +866,55 @@
       "dotnet": "pin"
     },
     {
+      "name": "cs-block-padding",
+      "when": "pull-request",
+      "why": "the block padding control, whose instrument is the C# layout check; 31 s on the runner. Split from the old cs-block-pitch group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
+        "tables-block-padding-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
       "name": "cs-block-pitch",
       "when": "pull-request",
-      "why": "the block padding and pitch controls, whose instrument is the same C# layout check as the group above and which cost 31 s and 29 s on the runner.",
+      "why": "the block pitch control, whose instrument is the C# layout check; 29 s on the runner. Split from the old cs-block-pitch group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "tables-block-padding-negative-control",
         "tables-block-pitch-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-1",
+      "name": "cs-leg-keyed",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M5's None-only guard planted back (the past-Max key reaches the slot array) and M6's identity map made to forget a closed node (list_shared writes a node twice). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "why": "the C# table leg's keyed control (make/cs.mk cs_leg_sabotage): M5's None-only guard planted back (the past-Max key reaches the slot array), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "tables-cs-leg-keyed-negative-control",
+        "tables-cs-leg-keyed-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-identity",
+      "when": "pull-request",
+      "why": "the C# table leg's identity control (make/cs.mk cs_leg_sabotage): M6's identity map made to forget a closed node (list_shared writes a node twice), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-1 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "tables-cs-leg-identity-negative-control"
       ],
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-2",
+      "name": "cs-leg-allocator",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. M10's caller free dropped (the hook pair no longer balances) and M14's &node label never written (list_shared's text reads back as two nodes). Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "why": "the C# table leg's allocator control (make/cs.mk cs_leg_sabotage): M10's caller free dropped (the hook pair no longer balances), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "tables-cs-leg-allocator-negative-control",
+        "tables-cs-leg-allocator-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-label",
+      "when": "pull-request",
+      "why": "the C# table leg's label control (make/cs.mk cs_leg_sabotage): M14's &node label never written (list_shared's text reads back as two nodes), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-2 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "tables-cs-leg-label-negative-control"
       ],
       "dotnet": "pin"
@@ -858,11 +930,19 @@
       "dotnet": "pin"
     },
     {
-      "name": "cs-leg-4",
+      "name": "cs-leg-region-blob-shared",
       "when": "pull-request",
-      "why": "the C# table leg's own controls (make/cs.mk cs_leg_sabotage): each takes one rule out of the C# emitter through a go build -overlay, regenerates every unit the leg compiles into its own tree, builds test/cs-tables against it and requires the leg red on that rule's check. The native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots name. Two per job because each regenerates the 46 units and builds and runs the leg once: 43 s to 101 s each on amd-1 with four running together.",
+      "why": "the C# table leg's region-blob-shared control (make/cs.mk cs_leg_sabotage): the native region writer numbering without the shared-blob refusal (docs/SPEC-TABLES.md §2.5), so blob_shared's region writes the blob two slots late, regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "tables-cs-leg-region-blob-shared-negative-control",
+        "tables-cs-leg-region-blob-shared-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "cs-leg-cycle",
+      "when": "pull-request",
+      "why": "the C# table leg's cycle control (make/cs.mk cs_leg_sabotage2): the wire-alone walk's cycle check and the decode behind it taken out at two layers (wirecheck.go and variable.go), regenerating every unit the leg compiles into its own tree, building test/cs-tables against it and requiring the leg red on that rule's check. It pays a full leg rebuild (43-101 s on amd-1 with four running together), so it runs one per job; split from the old cs-leg-4 group when that pair ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
+      "targets": [
         "tables-cs-leg-cycle-negative-control"
       ],
       "dotnet": "pin"
