@@ -4,9 +4,9 @@ package elixirtable
 // the `VOLD_/VNEW_enum_append` pair — `Tier { Bronze, Silver, Gold }` → `+ Platinum` —
 // with `old_enum_append.bin` forged so `r0.tier` is `4`, an ordinal past the writer's
 // three variants but a name the reader has. The SAME bytes are read TWICE, once by the
-// NEW build's COMPILED plan and once by the OLD build's IDENTITY plan. The counter
-// asserted EXACTLY is `clamped == 1` on BOTH, never `>= 1`: a leg that also counts in
-// the `ordinal` op lands 2 and passes the double-count the row exists to catch.
+// NEW build's COMPILED plan and once by the OLD build's IDENTITY plan. Both refuse
+// `out_of_range` and land nothing (docs/FIXED-FORM-ALGORITHM.md §4.6): the bound is
+// the writer's variant count, and a refusal moves no counter.
 import (
 	"bytes"
 	"os"
@@ -41,17 +41,11 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 	}
 
 	body := `  data = File.read!(file())
-  {tag, values, report} = load(data)
-  check(tag == :ok, "the forged ordinal is not a refusal: #{inspect({tag, why(report)})}")
-  check(true, "a forged ordinal is not malformed: #{why(report)}")
-  check(length(values) == 1, "the forged file carries one record, not #{length(values)}")
-  v = hd(values)
-  check(v.tier == :none, "a forged ordinal lands None: #{inspect(v.tier)}")
-  check(v.tier != :platinum, "a forged ordinal never lands Platinum: #{inspect(v.tier)}")
-  check(v.seq == 9, "the scalar after the enum is untouched: #{inspect(v.seq)}")
-  check(report.unknown == 1, "the forged ordinal is counted exactly once: #{why(report)}")
-  check(report.widened == 0 and true,
-    "no other counter moved: #{why(report)}")`
+  {tag, reason, report} = load(data)
+  check(tag == :error and reason == :out_of_range,
+    "a value past the writer's set refuses the batch (§4.6): #{inspect({tag, reason})}")
+  check(report.unknown == 0 and report.widened == 0 and report.retained == 0 and report.retain_lost == 0,
+    "a refusal moved a counter: #{why(report)}")`
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_enum_append", []string{"VOLD_enum_append"}, 0, forged, body)
 	if err != nil {
