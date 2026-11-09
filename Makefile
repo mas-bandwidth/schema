@@ -6506,6 +6506,21 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+
+# THE SPLIT HALVES OF ci-full.yml's leg-tagged MATRIX. The whole moo tagged
+# leg (test-moo-tagged, make/moo-tagged.mk) is ~100 s, leaving no room for a
+# matrix row's own checkout and pin setup inside the 110 s per-commit budget.
+# These halves split it into the compiler alone and the table + conformance
+# packages together, so each row runs in parallel. They live here, not in
+# make/moo-tagged.mk, because this card's PATHS allow only Makefile and
+# ci-full.yml. Nothing moves tiers: test-moo-tagged still runs the whole leg
+# for a workstation and certify.yml, and make/negative-controls.json is
+# unchanged.
+.PHONY: test-moo-tagged-compiler test-moo-tagged-table
+test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)

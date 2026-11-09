@@ -971,14 +971,14 @@ jobs:
   # step (`make test-moo-tagged`) alone ran ~100 s, and the goose harness step
   # could only begin behind it. The job is now a matrix so the tagged legs run
   # in parallel. The moo leg is split in two (`make test-moo-tagged-compiler`
-  # and `test-moo-tagged-table`, make/moo-tagged.mk) because one row carrying the
+  # and `test-moo-tagged-table`, Makefile) because one row carrying the
   # whole ~100 s leg plus its own checkout and pin setup would not fit the 110 s
   # budget; each row now runs one half in parallel. The goose row runs the
-  # conformance harness's tagged half alone. Measured on the split run: the
-  # slowest row is moo-compiler at ~102 s — everything under 110 s.
+  # conformance harness's tagged half alone. The matrix key is `group`, the
+  # one tools/slowgatescan credits for a row-conditioned step.
   leg-tagged:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    name: legs under their build tags (${{ matrix.leg }})
+    name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 15
     defaults:
@@ -987,7 +987,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: [ moo-compiler, moo-table, goose ]
+        group: [ moo-compiler, moo-table, goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1013,21 +1013,21 @@ jobs:
       # (go-test's compiler rows install the same two), and the moo pin both
       # moo rows run. The goose row needs none of them.
       - name: install the Luau and Squirrel pins
-        if: matrix.leg != 'goose'
+        if: matrix.group != 'goose'
         run: make dist-luau dist-squirrel
       - uses: ./.github/actions/moo
-        if: matrix.leg != 'goose'
+        if: matrix.group != 'goose'
 
       - name: the moo leg's compiler under schema_leg_moo
-        if: matrix.leg == 'moo-compiler'
+        if: matrix.group == 'moo-compiler'
         run: make test-moo-tagged-compiler
 
       - name: the moo leg's table and conformance packages under schema_leg_moo
-        if: matrix.leg == 'moo-table'
+        if: matrix.group == 'moo-table'
         run: make test-moo-tagged-table
 
       - name: the conformance harness under schema_leg_goose
-        if: matrix.leg == 'goose'
+        if: matrix.group == 'goose'
         run: make test-goose-tagged-harness
 
   generated:
