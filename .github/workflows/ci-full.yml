@@ -2196,6 +2196,20 @@ jobs:
   # which the wire-fuzz-message-oracle and wire-fuzz-retain-class rows run
   # between them, so it sits in the plan's exclusion list beside the other
   # umbrellas rather than in a job that would run one of those leaves twice.
+  #
+  # THE JAVA, JAVASCRIPT AND DART ROWS WERE SPLIT AGAIN ON 2026-11-09. On runs
+  # 42556155793 and 42554833739 the rows java, java-proof, java-versioning,
+  # java-wire-fuzz, js, js-proof, dart and dart-conformance all ran 129-142 s
+  # on a loaded runner and were killed at the 120 s rule. They are now split
+  # into the java-cards/java-packet, java-proof/java-proof-2,
+  # java-wire-fuzz/java-wire-fuzz-2, js/js-tables-1/js-tables-2,
+  # js-proof/js-proof-2, dart/dart-tables-1/dart-tables-2 and
+  # dart-conformance/dart-conformance-2 groups, each a family that shares a
+  # compile and stays inside the rule on a loaded runner. The one control that
+  # could not fit at any split — java-versioning, a single control measured at
+  # 68 s quiet and 129-142 s on the loaded runner — moved to the nightly tier,
+  # where certify.yml runs it on the schedule it carries; its `why` in
+  # make/negative-controls.json says where and why.
   negative-controls-matrix:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
