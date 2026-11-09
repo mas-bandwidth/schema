@@ -216,7 +216,7 @@ func runSquirrelCardsSurface(t *testing.T, root, sq, genDir string, facade map[s
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil || stderr.Len() > 0 {
-		return outDir, rows, fmt.Errorf("sq driver (%s): err=%v\nstdout=%s\nstderr=%s", surface, err, stdout.String(), stderr.String())
+		return outDir, rows, fmt.Errorf("sq driver (%s): err=%w\nstdout=%s\nstderr=%s", surface, err, stdout.String(), stderr.String())
 	}
 	return outDir, rows, nil
 }

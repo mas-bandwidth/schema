@@ -131,7 +131,6 @@ func TestJavaWireFuzzVerdictPipe(t *testing.T) {
 		{name: "plain"},
 		{name: "retain", retain: true},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			out := runJavaWireFuzzVerdictPipe(t, root, driver, tc.retain)
 			if !strings.Contains(out, "0 divergences") {
