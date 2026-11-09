@@ -2935,6 +2935,9 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 	end
 	local want = elementShape(e)
 	local seen: { [number]: boolean } = {}
+	-- a key string named twice refuses, None and an unknown name included:
+	-- the key is a key whether or not it names a slot (tabletext readKeyed)
+	local seenKeys: { [string]: boolean } = {}
 	while true do
 		local c = peek(r)
 		if c == 125 then
@@ -2954,6 +2957,14 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 			return false
 		end
 		r.pos += 1
+		if seenKeys[name] then
+			r.bad = true
+			if r.report.reason == nil then
+				r.report.reason = "malformed: a repeated key"
+			end
+			return false
+		end
+		seenKeys[name] = true
 		local at = -1
 		if name ~= "None" then
 			for i, v in fd.keyvs do
