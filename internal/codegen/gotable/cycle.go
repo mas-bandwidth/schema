@@ -32,7 +32,7 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
  for i:=range dir {
   e:=&dir[i];if e.Offset==^uint64(0){continue}
   if e.TypeID==tableBytesTypeID||e.TypeID==tableStringTypeID {
-   if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}
+   if e.Offset&tableNodeWireNamed!=0{return TableRefuseBlobShared};if e.Offset&tableNodeBlobSeen==0{return TableRefuseWireDamaged}
    e.Offset&^=tableNodeBlobSeen
   }
  }

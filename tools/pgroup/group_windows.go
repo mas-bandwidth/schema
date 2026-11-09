@@ -14,7 +14,7 @@ import (
 // run is the Windows form: there are no process groups to kill, so the
 // command runs as a plain child and every kill the policy asks for is a kill
 // of that child.
-func run(argv []string, wall, grace time.Duration) (int, error) {
+func run(argv []string, wall, grace time.Duration, wallLabel string, ciPolicy bool) (int, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
@@ -71,6 +71,9 @@ func run(argv []string, wall, grace time.Duration) (int, error) {
 				graceC = time.After(grace)
 			case actReportWall:
 				fmt.Fprintf(os.Stderr, "pgroup: %s ran past its %s wall clock; stopping it\n", argv[0], wall)
+				if ciPolicy {
+					fmt.Fprintln(os.Stderr, ciMessage(stepName(argv), wallLabel, wall))
+				}
 			}
 		}
 	}

@@ -8797,8 +8797,10 @@
     {
       "row": "porting J6",
       "lang": "squirrel",
-      "status": "red",
-      "why": "❌ #366 (no cards driver is in the squirrel leg, so `cards-conformance-all` runs none)"
+      "status": "proven",
+      "gate": "cards-squirrel-conformance",
+      "job": "Certify / test (make test): compiler/porting_test.go holds every named gate to be run by the tree",
+      "control": "cards-squirrel-conformance-negative-control (CI full / negative controls (squirrel-cards))"
     }
   ]
 }

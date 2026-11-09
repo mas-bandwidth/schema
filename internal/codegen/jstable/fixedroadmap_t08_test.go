@@ -345,10 +345,11 @@ for (let i = 0; i < bytes.length; i++) { if (bytes[i] !== again[i]) { fail("writ
 }
 
 // js/P3 [weak] "hostile bytes, sweep + sanitizer". §5.3: the parser bounds a
-// layout by the file and refuses a malformation by name, and the decode pass
-// clamps a count or an ordinal the record carries to the reader's own bound and
-// counts one clamped — the identity path included. Each clause is a RUN of the
-// generated module against tampered bytes.
+// layout by the file and refuses a malformation by name, and the strict decode
+// refuses a count or an ordinal the record carries past the reader's own bound
+// by name — never a clamp that lands a partially-repaired value beside a
+// counter (§4.5, §4.6). Each clause is a RUN of the generated module against
+// tampered bytes.
 func t08P3(t *testing.T) {
 	t08Play(t, `package probe
 
@@ -374,22 +375,20 @@ if (TFixedLoad([new T()], 1, short, short.length, TFixedNewPlan(4096, 4096), new
   fail("a truncated file was not refused");
 }
 const rec = 20 + TFixedLayoutCopy().length;
-// a count the record carries past the reader's bound clamps AND counts.
+// a count the record carries past the reader's bound is refused count_over_bound.
 const over = good.slice();
 over[rec + 8] = 200;
 const counted = [new T()]; InitT(counted[0]);
 const rc = new TableFixedReport();
-if (TFixedLoad(counted, 1, over, over.length, TFixedNewPlan(4096, 4096), rc) !== 1) { fail("the over-count record did not load"); }
-if (counted[0].gradesCount !== 4) { fail("the count was not clamped to the declared bound: " + counted[0].gradesCount); }
-if (rc.clamped < 1) { fail("the clamp was not counted"); }
-// an ordinal past the enum's top lands the None ordinal AND counts.
+if (TFixedLoad(counted, 1, over, over.length, TFixedNewPlan(4096, 4096), rc) !== -1) { fail("the over-count record was not refused"); }
+if (rc.refused !== TableFixedRefusal.CountOverBound) { fail("the over-count record owed count_over_bound, got " + TableFixedRefusalName(rc.refused)); }
+// an ordinal past the enum's top is refused out_of_range.
 const ord = good.slice();
 ord[rec + 12] = 9;
 const sanitized = [new T()]; InitT(sanitized[0]);
 const ro = new TableFixedReport();
-if (TFixedLoad(sanitized, 1, ord, ord.length, TFixedNewPlan(4096, 4096), ro) !== 1) { fail("the bad-ordinal record did not load"); }
-if (sanitized[0].grades[0] !== 0) { fail("an ordinal past the enum's top did not land None: " + sanitized[0].grades[0]); }
-if (ro.oor < 1) { fail("the ordinal clamp was not counted"); }
+if (TFixedLoad(sanitized, 1, ord, ord.length, TFixedNewPlan(4096, 4096), ro) !== -1) { fail("the bad-ordinal record was not refused"); }
+if (ro.refused !== TableFixedRefusal.OutOfRange) { fail("the bad-ordinal record owed out_of_range, got " + TableFixedRefusalName(ro.refused)); }
 `)
 }
 

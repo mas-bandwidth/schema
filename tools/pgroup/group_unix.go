@@ -13,8 +13,11 @@ import (
 )
 
 // run starts argv as the leader of a new process group and drives step until
-// the policy reaches phaseDone.
-func run(argv []string, wall, grace time.Duration) (int, error) {
+// the policy reaches phaseDone. wallLabel is the PGROUP_WALL string the
+// budget came from ("" when the -wall flag set it) and ciPolicy reports
+// whether the budget is a CI-configured per-step wall: only then does the
+// wall message name the CI rule.
+func run(argv []string, wall, grace time.Duration, wallLabel string, ciPolicy bool) (int, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	// *os.File streams, so the child writes straight to pgroup's own
 	// descriptors and no copying goroutine waits on a pipe an orphan holds.
@@ -88,6 +91,9 @@ func run(argv []string, wall, grace time.Duration) (int, error) {
 				}
 			case actReportWall:
 				fmt.Fprintf(os.Stderr, "pgroup: %s ran past its %s wall clock; stopping its process group\n", argv[0], wall)
+				if ciPolicy {
+					fmt.Fprintln(os.Stderr, ciMessage(stepName(argv), wallLabel, wall))
+				}
 			}
 		}
 	}

@@ -272,6 +272,9 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err := framingValues(u, m.Framings, jsonDir); err != nil {
 		return err
 	}
+	if err := generateRewrites(u, m, jsonDir); err != nil {
+		return err
+	}
 
 	// THE WRITE REFUSALS (docs/SPEC-TABLES.md §16.14, W0): the oracle must
 	// refuse every one, or the row asks every leg for an answer the reference

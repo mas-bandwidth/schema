@@ -332,9 +332,17 @@ func (g *fixedGen) load(ind, lhs, at string, t ir.FieldType) {
 	}
 	name, endian := fixedGetter(t)
 	if t.Kind == ir.TBool {
-		// A BOOL LANDS AS `byte != 0` (docs/SPEC-TABLES.md §3.4): an endpoint that
-		// wrote 2 wrote true, and this reader says so rather than refusing.
-		g.call(ind, lhs+" = ", "view.getUint8", []string{at}, " != 0;")
+		// A BOOL BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged (docs/SPEC-TABLES.md
+		// §4, §6.5; docs/FIXED-FORM-ALGORITHM.md §4.5): no writer emits one, and
+		// 0x02 is neither stored verbatim nor normalized to true. The load
+		// discards the whole batch on report.refused, so nothing lands.
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final b = ", "view.getUint8", []string{at}, ";")
+		g.pf("%s  if (b > 1) {\n", ind)
+		g.pf("%s    report.refused = TableFixedRefusal.damaged;\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s = b != 0;\n", ind, lhs)
+		g.pf("%s}\n", ind)
 		return
 	}
 	if endian {
@@ -853,9 +861,11 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("/// caller handed in — filled, never returned, as the packet reader is.\n")
 	g.pf("///\n")
-	g.pf("/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps\n")
-	g.pf("/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and\n")
-	g.pf("/// an enum ordinal past the last variant land None and count. They are\n")
+	g.pf("/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past\n")
+	g.pf("/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),\n")
+	g.pf("/// a union tag past the last arm and an enum ordinal past the last variant\n")
+	g.pf("/// refuse the same way, and a bool or present byte other than 0 or 1\n")
+	g.pf("/// refuses wire_damaged. They are\n")
 	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
 	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED\n")
 	g.pf("/// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.\n")
@@ -874,7 +884,15 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind string) {
 	name := dartName(f.Name)
 	if f.Type.Optional {
-		g.call(ind, val+"."+name+"Present = ", "view.getUint8", []string{fixedOff(base, at)}, " != 0;")
+		// A PRESENT BYTE OTHER THAN 0 OR 1 REFUSES wire_damaged, on the same
+		// rule as a bool byte (docs/SPEC-TABLES.md §4, §6.5).
+		g.pf("%s{\n", ind)
+		g.call(ind+"  ", "final p = ", "view.getUint8", []string{fixedOff(base, at)}, ";")
+		g.pf("%s  if (p > 1) {\n", ind)
+		g.pf("%s    report.refused = TableFixedRefusal.damaged;\n", ind)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  %s.%sPresent = p != 0;\n", ind, val, name)
+		g.pf("%s}\n", ind)
 		at += fixedPresentBytes
 	}
 	g.emitDecodeValue(f, base, at, val+"."+name, ind)
@@ -982,35 +1000,32 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 				}
 				g.pf("%s    break;\n", ind)
 			}
-			// A TAG PAST THE LAST ARM IS None (§3.4): the arms run from 1 and
-			// tag 0 is None, so a tag beyond them names storage NO DECLARATION
-			// DESCRIBES. It lands None and counts one clamp — the same landing
-			// the compiled plan gives it through its own remap, so the identity
-			// path and a stranger's plan agree about a hostile tag.
+			// A TAG PAST THE LAST ARM REFUSES THE READ out_of_range (§3.4,
+			// docs/plans/strict-only.md): the arms run from 1 and tag 0 is
+			// None, so a tag beyond them names storage NO DECLARATION
+			// DESCRIBES. The compiled plan's None const refuses the same tag,
+			// so the identity path and a stranger's plan agree about it.
 			g.pf("%s  default:\n", ind)
 			g.pf("%s    %s.type = %s;\n", ind, expr, tagNone)
-			g.pf("%s    report.unknown++;\n", ind)
+			g.pf("%s    report.refused = TableFixedRefusal.outOfRange;\n", ind)
 			g.pf("%s    break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
 			g.need(r.Name)
 			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), r.Name)
-			// AN ORDINAL PAST THE LAST VARIANT IS None (§3.4): the ordinal is
-			// the variant's POSITION IN THE LAYOUT, from 1, and the layout
-			// lists this reader's variants and no more. Past them it lands 0
-			// and counts one clamp.
+			// AN ORDINAL PAST THE LAST VARIANT REFUSES THE READ out_of_range
+			// (§3.4, docs/plans/strict-only.md): the ordinal is the variant's
+			// POSITION IN THE LAYOUT, from 1, and the layout lists this
+			// reader's variants and no more.
 			//
 			// THIS TEST ONLY EVER SEES THE IDENTITY PLAN'S BYTES. On a
-			// compiled plan the `ordinal` op has already landed a forged value
-			// as None before this line runs, so `> n` cannot trip and the
-			// count has to be made THERE — it is (fixedruntime.go, the ordinal
-			// case). §5.4 asks for `clamped` on BOTH plans, and the two paths
-			// now each make their own; the note that used to stand here said
-			// this test covered both, which was false.
+			// compiled plan the `ordinal` op refuses a value past the WRITER's
+			// count before this line runs (fixedruntime.go, the ordinal case),
+			// so both plans refuse the same forged ordinal.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
 				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
-				g.pf("%s  report.unknown++;\n", ind)
+				g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 				g.pf("%s}\n", ind)
 			}
 			return

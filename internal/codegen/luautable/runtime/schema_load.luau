@@ -285,6 +285,7 @@ local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, repo
 		local id = ids[ref]
 		local kind = r_u8(w)
 		if id == NodeTableId then
+			if present then bad = true; break end
 			present = true
 			if kind ~= 12 then bad = true; break end
 			local n = r_leb(w)
@@ -707,6 +708,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
 	local endpos = r.at + n
 	local landed: { any } = {}
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
 		-- (internal/tablewire decode.go mapField, subTo; docs/SPEC-TABLES.md
@@ -835,6 +837,16 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	return true
 end
 
+-- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
+-- (docs/PORT-LUAU.md, THE TYPE MAPPING)
+local function put(dst: any, i: number, x: any)
+	if typeof(dst) == "buffer" then
+		buffer.writeu8(dst, i - 1, x)
+	else
+		dst[i] = x
+	end
+end
+
 -- AN ENUM-KEYED ARRAY (§2.4, §3.2): its own kind 16, each element a key
 -- reference and then its framed payload. A key this reader cannot name is
 -- skipped; an element kind the declaration does not name is one kind_mismatch.
@@ -845,6 +857,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local endpos = r.at + n
 	local dst: any = nil
 	if v ~= nil and fd.slot ~= nil then dst = v[fd.slot] end
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE KEYED BODY'S HEADER IS READ AGAINST THE PARENT, as every
 		-- array's is (internal/tablewire decode.go keyed, subTo;
@@ -900,7 +913,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 			else
 				x = scalar_at(payload, e or {}, ek, report)
 			end
-			if at > 0 and dst ~= nil and x ~= nil then dst[at] = x end
+			if at > 0 and dst ~= nil and x ~= nil then put(dst, at, x) end
 		end
 	end
 	r.at = endpos
@@ -910,7 +923,7 @@ end
 local array_body: any
 local text_elem_bytes: any
 
--- AN ARRAY BODY (§2.9, §3): a body shorter than its header is inert, a
+-- AN ARRAY BODY (§2.9, §3): a body shorter than its header is damage, a
 -- damaged count is malformed, a foreign element kind is one kind_mismatch, a
 -- bounded array's excess is clamped, and elements are bounded by the body.
 -- The second answer is the engine's `selected` (internal/tablewire decode.go,
@@ -922,6 +935,9 @@ read_array = function(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false, false end
 	local endpos = r.at + n
 	local selected = true
+	-- a body shorter than its header is damage, not an inert array
+	-- (internal/tablewire wirecheck.go, arrayHeader)
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE HEADER IS READ AGAINST THE PARENT BUFFER (docs/SPEC-TABLES.md
 		-- §2.9, the decoding cursor reads the count against the enclosing
@@ -994,6 +1010,9 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		if sub.at + have > sub.e then have = sub.e - sub.at; report.malformed = true end
 		if holder ~= nil then store_bytes(holder, slot, sub.b, sub.at, have, have) end
 		sub.at = sub.at + have
+		-- bytes left inside the array's L after its elements are damage
+		-- (internal/tablewire decode.go, arrayBody)
+		if have == keep and sub.at < sub.e then report.malformed = true end
 		return true
 	end
 	local dst: any
@@ -1027,21 +1046,17 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		end
 		got = i
 	end
+	-- bytes left inside the array's L after its elements are damage
+	-- (internal/tablewire decode.go, arrayBody): every declared element
+	-- was read, yet the body still holds bytes. A clamped or text-total
+	-- truncation leaves bytes by design and already refuses on its own
+	-- counter, so it is not counted again here.
+	if got == keep and keep == count and sub.at < sub.e then report.malformed = true end
 	if fd.array == "counted" and holder ~= nil then holder[slot .. "Count"] = got end
 	-- a list of pointers may hold null slots, which a Luau length cannot see:
 	-- its live length rides as n, the table.pack convention, and the save reads it
 	if fd.array == "list" and fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob") then dst.n = got end
 	return true
-end
-
--- an element lands at its 1-based index; a [N]uint8 is a 0-based buffer
--- (docs/PORT-LUAU.md, THE TYPE MAPPING)
-local function put(dst: any, i: number, x: any)
-	if typeof(dst) == "buffer" then
-		buffer.writeu8(dst, i - 1, x)
-	else
-		dst[i] = x
-	end
 end
 
 -- the bytes one text-list element contributes to its total
@@ -1630,6 +1645,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		if r.at >= r.e then _report.malformed = true; return false end
 		local kind = r_u8(r)
 		local id = _table[ref]
+		-- a repeated field id in one body is damage (docs/SPEC-TABLES.md
+		-- §6.5, wirecheck's R5); the value still lands last-wins on the walk
+		if seen[id] then _report.duplicate = (_report.duplicate or 0) + 1 end
+		seen[id] = true
 		if id == BuildVersionId or id == MessageVocabularyId then _report.malformed = true; return false end
 		if id == NodeTableId then
 			if nested then _report.malformed = true; return false end
@@ -2242,6 +2261,237 @@ end
 -- wire always answers one name. R.ReadStrict's fixed-form dispatch lives in
 -- schema_refusal.luau; this is the half a form-1 file reaches, including a declared
 -- fixed root handed its form-1 wire.
+-- THE WIRE-ALONE CONDITIONS THE VALUE WALK DOES NOT JUDGE (docs/SPEC-TABLES.md
+-- §6.5, internal/tablewire wirecheck.go): skipped is not unread, so an unknown
+-- field's framed bytes are walked by the same rules as a known one's, a pointer
+-- index is judged against the numbering wherever it rides, and the node
+-- table's own framing (its count, its records' type references and bodies)
+-- is checked even at a root whose descriptor is not of the variable class.
+local function wireDamage(b: buffer, top: any, ids: { integer }): boolean
+	local recordCount = 0
+	local recs: { any } = {}
+	local nodeSegs = 0
+	for _, s in top.fields do
+		if s.id == NodeTableId then
+			nodeSegs += 1
+			if nodeSegs > 1 then return true end
+			if s.kind ~= 12 then return true end
+			local n, ps = leb(b, s.ps, s.e)
+			if n == nil or ps + n > s.e then return true end
+			local c, p = leb(b, ps, ps + n)
+			if c == nil then return true end
+			while p < ps + n do
+				local tref, q = leb(b, p, ps + n)
+				if tref == nil or tref == 0 or tref > #ids then return true end
+				local tlen, r = leb(b, q, ps + n)
+				if tlen == nil or r + tlen > ps + n then return true end
+				recs[#recs + 1] = { tid = ids[tref], s = r, e = r + tlen }
+				p = r + tlen
+			end
+			if c ~= #recs then return true end
+			recordCount = #recs
+		end
+	end
+	local edges: { [number]: boolean } = {}
+	local checkFields: any
+	local scanPayload: any
+	local scanContent: any
+	local function scanArrayBody(s: number, e: number): boolean
+		if e - s < 2 then return true end
+		local ek = buffer.readu8(b, s)
+		local count, p = leb(b, s + 1, e)
+		if count == nil then return true end
+		for _ = 1, count do
+			local nxt = stepOver(b, p, e, ek)
+			if nxt == nil then return true end
+			if scanPayload(p, nxt, ek) then return true end
+			p = nxt
+		end
+		-- bytes left inside an array's or map's L after its elements are damage
+		return p ~= e
+	end
+	local function scanKeyedBody(s: number, e: number): boolean
+		if e - s < 2 then return true end
+		local ek = buffer.readu8(b, s)
+		local count, p = leb(b, s + 1, e)
+		if count == nil then return true end
+		local seenKeys: { [number]: boolean } = {}
+		for _ = 1, count do
+			local key, q = leb(b, p, e)
+			if key == nil or key == 0 or key > #ids then return true end
+			if seenKeys[key] then return true end
+			seenKeys[key] = true
+			local n, after = leb(b, q, e)
+			if n == nil or after + n > e then return true end
+			if scanContent(after, after + n, ek) then return true end
+			p = after + n
+		end
+		-- bytes left inside a keyed array's L after its slots are damage
+		return p ~= e
+	end
+	scanContent = function(s: number, e: number, kind: number): boolean
+		-- an L-framed fixed-width payload is exactly its kind's width: a
+		-- keyed slot, union arm or array-of-framed payload carrying extra
+		-- or missing bytes is damage, for wide scalars (fixed-point and
+		-- 128-bit kinds included) as for any other fixed-width kind
+		local w = width_of(kind)
+		if w > 0 then return e - s ~= w end
+		if kind == 12 then
+			return not utf8_ok(b, s, e - s)
+		elseif kind == 33 then
+			if (e - s) % 2 ~= 0 then return true end
+			return not wide_ok(b, s, e - s)
+		elseif kind == 32 then
+			return e ~= s
+		elseif kind == 31 then
+			return false
+		elseif kind == 13 then
+			local inner = walkBody(b, s, e, ids)
+			if inner == nil or inner.term + 1 ~= e then return true end
+			return checkFields(inner.fields)
+		elseif kind == 14 then
+			return scanArrayBody(s, e)
+		elseif kind == 16 then
+			return scanKeyedBody(s, e)
+		elseif kind == 17 then
+			local idx, p = leb(b, s, e)
+			if idx == nil or p ~= e or idx > recordCount + 1 then return true end
+			edges[idx] = true
+			return false
+		elseif kind == 30 then
+			local ref, p = leb(b, s, e)
+			if ref == nil or p ~= e or ref > #ids then return true end
+			return false
+		elseif kind == 15 then
+			local ref, p = leb(b, s, e)
+			if ref == nil then return true end
+			if ref == 0 then return p ~= e end
+			if ref > #ids or p >= e then return true end
+			local kb = buffer.readu8(b, p)
+			local n, after = leb(b, p + 1, e)
+			if n == nil or after + n ~= e then return true end
+			return scanContent(after, after + n, kb)
+		end
+		return true
+	end
+	scanPayload = function(at: number, e: number, kind: number): boolean
+		if kind == 17 then
+			local idx = leb(b, at, e)
+			if idx == nil or idx > recordCount + 1 then return true end
+			edges[idx] = true
+			return false
+		elseif kind == 13 or kind == 14 or kind == 16 then
+			local n, bs = leb(b, at, e)
+			if n == nil or bs + n > e then return true end
+			return scanContent(bs, bs + n, kind)
+		elseif kind == 15 then
+			local ref, p = leb(b, at, e)
+			if ref == nil then return true end
+			if ref == 0 then return false end
+			if p >= e then return true end
+			local kb = buffer.readu8(b, p)
+			local n, after = leb(b, p + 1, e)
+			if n == nil or after + n > e then return true end
+			return scanContent(after, after + n, kb)
+		end
+		return false
+	end
+	checkFields = function(fields: any): boolean
+		local seen: { [integer]: boolean } = {}
+		for _, f in fields do
+			if seen[f.id] then return true end
+			seen[f.id] = true
+			if f.id == NodeTableId then
+				continue
+			elseif scanPayload(f.ps, f.e, f.kind) then
+				return true
+			end
+		end
+		return false
+	end
+	if checkFields(top.fields) then return true end
+	for _, rec in recs do
+		if rec.tid ~= StringBlobId and rec.tid ~= BytesBlobId then
+			local inner = walkBody(b, rec.s, rec.e, ids)
+			if inner == nil or inner.term + 1 ~= rec.e then return true end
+			if checkFields(inner.fields) then return true end
+		end
+	end
+	-- a node record no pointer reaches is damage (wirecheck's graph):
+	-- record k is named by wire index k + 1, from any body, known or not
+	for i = 1, recordCount do
+		if not edges[i + 1] then return true end
+	end
+	return false
+end
+
+-- the variable-form half of the strict read, shared by ReadStrict (a
+-- non-fixed root, or a fixed root's form-3 dispatch above it) and by
+-- ReadStrictVariable (a fixed root handed form-1 bytes, for the framing
+-- surface alone: docs/LAYERS/1-framing.md, test/conformance/go/fixed.go's
+-- variableLoad). It assumes the report is reset and the buffer is non-empty.
+local function strictVariable(root: string, bytes: buffer, rep: any, d: any): any
+	local b = bytes
+	local form = buffer.readu8(b, 0)
+	if form == 2 then rep.reason = "message_form_as_file"; return nil end
+	if form ~= 1 then rep.reason = "newer_form"; return nil end
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(b)
+		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
+		b = body
+	end
+	local fr = frame(b)
+	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
+	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local opened = open(b, rep)
+	if opened == nil then
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = loadOpened(root, b, rep, opened)
+	if rep.nonFiniteFloat ~= nil then
+		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
+		rep.reason = "non_finite_float"
+		rep.field = rep.nonFiniteFloat
+		return nil
+	end
+	if _countRefused then
+		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
+		-- already named it count_over_extent_cap and set refused
+		return nil
+	end
+	-- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
+	-- walk does not judge are declared after the named refusals, so an over-cap
+	-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
+	-- (non_finite_float, §3.3) answer their own names and never fall through to
+	-- wire_damaged.
+	if top ~= nil and wireDamage(b, top, fr.ids) then
+		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	for _, k in REFUSING do
+		if moved(rep, k) then
+			if k == "missingRequired" then
+				-- Go's TableMissingRequired text (docs/SPEC-TABLES.md §2.3)
+				rep.reason = "missing_required: " .. (rep.missingName or "")
+				rep.field = rep.missingName
+			else
+				rep.reason = NAMES[k]
+				rep.field = witness(root, b, k)
+			end
+			return nil
+		end
+	end
+	if rep.unknown > 0 then rep.unknownField = witness(root, b, "unknown") end
+	if rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end
+	return v
+end
+
 function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	local rep: any = report or {}
 	reset(rep)
@@ -2277,54 +2527,23 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		end
 		return out[1]
 	end
-	local form = buffer.readu8(b, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
-	if d.integrity ~= nil and d.integrity ~= "" then
-		local body = integrityOpen(b)
-		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
-		b = body
-	end
-	local fr = frame(b)
-	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
-	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+	return strictVariable(root, b, rep, d)
+end
+
+-- THE VARIABLE FORM'S STRICT READ AT ANY ROOT (docs/LAYERS/1-framing.md):
+-- the framing surface's read of a form-1 file at a fixed root, where
+-- ReadStrict itself answers previous_form. The descriptor is never
+-- modified; the save that follows still sees the fixed root and writes
+-- form 3.
+function L.ReadStrictVariable(root: string, bytes: buffer, report: any): any
+	local rep: any = report or {}
+	reset(rep)
+	if bytes == nil or buffer.len(bytes) < 1 then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local opened = open(b, rep)
-	if opened == nil then
-		rep.reason = "wire_damaged"
-		return nil
-	end
-	local v = loadOpened(root, b, rep, opened)
-	if rep.nonFiniteFloat ~= nil then
-		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
-		rep.reason = "non_finite_float"
-		rep.field = rep.nonFiniteFloat
-		return nil
-	end
-	if _countRefused then
-		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
-		-- already named it count_over_extent_cap and set refused
-		return nil
-	end
-	for _, k in REFUSING do
-		if moved(rep, k) then
-			if k == "missingRequired" then
-				-- Go's TableMissingRequired text (docs/SPEC-TABLES.md §2.3)
-				rep.reason = "missing_required: " .. (rep.missingName or "")
-				rep.field = rep.missingName
-			else
-				rep.reason = NAMES[k]
-				rep.field = witness(root, b, k)
-			end
-			return nil
-		end
-	end
-	if rep.unknown > 0 then rep.unknownField = witness(root, b, "unknown") end
-	if rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end
-	return v
+	return strictVariable(root, bytes :: buffer, rep, S.lookup(root))
 end
 
 -- resetReport is the report at rest, shared with schema_refusal.luau's fixed path.

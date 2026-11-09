@@ -67,10 +67,10 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 	decl := fmt.Sprintf("const identity = entries === %sFixedIdentity && holeN === 0;", root)
 	door := fmt.Sprintf("if (identity) {\n"+
 		"      %sFixedDecode(values[k], srcView, at + 8, stage);\n"+
-		"      if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }\n"+
+		"      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n"+
 		"      at += recordBytes;\n"+
 		"      continue;\n"+
-		"    }", root)
+		"    }", root, root)
 	if !allowed {
 		if strings.Contains(load, "if (identity") {
 			t.Error("the load grew a second reader and docs/SPEC-TABLES.md §3.4 does not list javascript")
@@ -130,8 +130,8 @@ func TestSpecInPlaceListHasAGuard(t *testing.T) {
 // identity plan's one copy into the image, and the projection from the image.
 // Both read the same files: a clean 64-record file, and 2000 single-record files
 // each with a few (or up to 96) body bytes overwritten by a seeded generator (no clock, no
-// randomness from outside), which lands clamps, counts past their bound, bad
-// text and refusals. Every read must agree on n, on every report field, on the
+// randomness from outside), which lands counts past their bound, bad text and
+// named refusals. Every read must agree on n, on every report field, on the
 // value, and on the bytes the value saves back to.
 func TestJSFixedInPlaceEqualsSharedPath(t *testing.T) {
 	t.Parallel()
@@ -209,7 +209,7 @@ const recordBytes = A.ROOTFixedRecordBytes;
 const bodyAt = need - N * recordBytes;
 
 const planA = A.ROOTFixedNewPlan(), planB = B.ROOTFixedNewPlan();
-const outcomes = { ok: 0, refused: 0, clamped: 0 };
+const outcomes = { ok: 0, refused: 0 };
 function compare(label, bytes, n) {
   const va = fresh(AT, n), vb = fresh(BT, n);
   const ra = new AT.TableFixedReport(), rb = new BT.TableFixedReport();
@@ -222,7 +222,6 @@ function compare(label, bytes, n) {
   }
   if (na < 0) { outcomes.refused++; return; }
   outcomes.ok++;
-  if (ra.oor > 0) { outcomes.clamped++; }
   const sa = new Uint8Array(A.ROOTFixedMeasure(na)), sb = new Uint8Array(B.ROOTFixedMeasure(nb));
   if (A.ROOTFixedSave(va, na, sa) !== sa.length || B.ROOTFixedSave(vb, nb, sb) !== sb.length) { fail(label + ": a loaded value did not save"); return; }
   if (!same(sa, sb)) { fail(label + ": the two loads save back to different bytes"); }
@@ -238,7 +237,7 @@ for (let c = 0; c < 2000; c++) {
   }
   compare("case " + c, f, 1);
 }
-if (outcomes.ok < 100 || outcomes.refused < 100 || outcomes.clamped < 10) {
+if (outcomes.ok < 100 || outcomes.refused < 100) {
   fail("the damaged files did not cover both outcomes: " + JSON.stringify(outcomes));
 }
 if (failures !== 0) { process.exit(1); }

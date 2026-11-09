@@ -112,3 +112,27 @@ func TestWallStopsTheGroup(t *testing.T) {
 		t.Fatalf("the background sleep (pid %d) outlived the wall", pid)
 	}
 }
+
+// TestEnvWallStopsTheGroupAndNamesTheRule is the per-commit CI path: the
+// budget comes from PGROUP_WALL, not the -wall flag, and when it runs out
+// pgroup names the CI rule and the step so a reader knows to split, cache or
+// move it before the runner kills the job.
+func TestEnvWallStopsTheGroupAndNamesTheRule(t *testing.T) {
+	slowtest.Gate(t, "sh and sleep")
+	bin := buildPgroup(t)
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	cmd := exec.Command(bin, "--", "sh", "-c", `sleep 600 & echo $! > "$1"; wait`, "sh", pidFile)
+	cmd.Env = append(os.Environ(), "PGROUP_WALL=1s", "PGROUP_STEP_NAME=env-wall-test", "GITHUB_JOB=")
+	out, err := cmd.CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 124 {
+		t.Fatalf("pgroup exit = %v, want 124 after the env wall\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "CI rule: step 'env-wall-test' ran past 1s") {
+		t.Errorf("stderr did not name the CI rule and step:\n%s", out)
+	}
+	if pid := readPid(t, pidFile); !gone(pid) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+		t.Fatalf("the background sleep (pid %d) outlived the env wall", pid)
+	}
+}

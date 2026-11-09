@@ -48,24 +48,24 @@ defmodule Probe do
     System.halt(1)
   end
 
-  def counters(r), do: {r.unknown, r.kind_mismatch, r.widened, r.clamped, r.malformed}
+  def counters(r), do: {r.unknown, r.widened}
 end
 
 {:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_moved_width") + `))
 Probe.check(v["value"] == {"a", 7}, "the widened arm lands the writer's value: #{inspect(v)}")
-Probe.check(Probe.counters(r) == {0, 0, 1, 0, false}, "one widened, nothing else: #{inspect(r)}")
+Probe.check(Probe.counters(r) == {0, 1}, "one widened, nothing else: #{inspect(r)}")
 Probe.check(v["id"] == 11 and v["tail"] == 22, "the siblings read: #{inspect(v)}")
 
 {tag, reason, r} = Tbla2.Table.load("Root", File.read!(` + wire("a2_arm_length_off_width") + `))
 Probe.check({tag, reason} == {:error, :malformed}, "a damaged arm discards the whole load: #{inspect({tag, reason})}")
-Probe.check(r.malformed, "the arm's L off its width is malformed: #{inspect(r)}")
+Probe.check(r.reason == "wire_damaged", "the arm's L off its width is damage: #{inspect(r)}")
 
-{:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_one_width") + `))
-Probe.check(v["value"] == nil and Probe.counters(r) == {0, 1, 0, 0, false},
-  "int32 under a float32 arm stays a kind mismatch: #{inspect({v, r})}")
+{tag, reason, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_one_width") + `))
+Probe.check({tag, reason} == {:error, :malformed} and r.reason == "wire_damaged",
+  "int32 under a float32 arm refuses the whole load: #{inspect({tag, reason, r})}")
 
 {:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_body") + `))
-Probe.check(v["value"] == {"e", %{"n" => 5}} and Probe.counters(r) == {0, 0, 0, 0, false},
+Probe.check(v["value"] == {"e", %{"n" => 5}} and Probe.counters(r) == {0, 0},
   "the sane body arm still round-trips: #{inspect({v, r})}")
 IO.puts("ok")
 `
@@ -81,7 +81,7 @@ end
 
 {tag, reason, r} = Streamdemo.Table.load("Feed", File.read!(` + wire("parts_index_out_of_range") + `))
 Probe.check({tag, reason} == {:error, :malformed}, "a slot past the node table discards the whole load: #{inspect({tag, reason})}")
-Probe.check(r.malformed == true, "a slot past the node table is malformed: #{inspect(r)}")
+Probe.check(r.reason == "wire_damaged", "a slot past the node table is damage: #{inspect(r)}")
 IO.puts("ok")
 `
 
@@ -96,14 +96,14 @@ IO.puts("ok")
 	}{
 		{"widened arm", a2, armProbe, [][2]string{{
 			"retyped_arm(a, name, k, binary_part(content, 0, l), report)",
-			"{:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}",
+			"{:cont, nil, report}",
 		}}, ""},
 		{"arm length off width", a2, armProbe, [][2]string{{
 			"arm_framing_damaged?(a, inner) ->",
 			"false and arm_framing_damaged?(a, inner) ->",
 		}}, "(FunctionClauseError) no function clause matching in Tbla2.Table.float_of/3"},
 		{"slot out of range", stream, slotProbe, [][2]string{{
-			":out_of_range -> {nil, %{report | malformed: true}}",
+			":out_of_range -> {nil, throw(:wire_damaged)}",
 			":out_of_range -> {nil, report}",
 		}}, ""},
 	}
