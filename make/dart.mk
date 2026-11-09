@@ -1752,7 +1752,18 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # (wire-fuzz --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
 # file reader uses the builder oracle; region sizing remains independently
 # checked by native extent tests.
-.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
+# THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's
+# dart-fuzz row runs the enumerated pass and DART_FUZZ_SMOKE_N seeded random
+# mutants per commit (the N=100000 campaign ran 142 s in run 42556155793, over
+# the 120 s per-commit cap), while the full 100,000-mutant tables-dart-wire-fuzz
+# campaign (and tables-dart-release's 500,000-mutant passes) runs in
+# certify.yml's nightly tier.
+DART_FUZZ_SMOKE_N ?= 2000
+
+.PHONY: tables-dart-wire-fuzz tables-dart-wire-fuzz-smoke tables-dart-wire-fuzz-negative-control
+tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
+	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
+
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
 	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
