@@ -894,8 +894,8 @@
     },
     {
       "name": "cs-accessor",
-      "when": "pull-request",
-      "why": "the accessor/descriptor agreement's scalar control: one emitter line (codecs.go:826) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.2 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s.",
+      "when": "nightly",
+      "why": "the accessor/descriptor agreement's scalar control: one emitter line (codecs.go:826) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.2 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s. On this branch, run 42598278281, the one-target row was cancelled at 324 s wall with no assertion failure (job 2026-11-09T10:10:38Z-10:16:02Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-accessor-negative-control"
       ],
@@ -903,8 +903,8 @@
     },
     {
       "name": "cs-slot",
-      "when": "pull-request",
-      "why": "the accessor/descriptor agreement's pointer-slot control: one emitter line (codecs.go:814) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.6 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s.",
+      "when": "nightly",
+      "why": "the accessor/descriptor agreement's pointer-slot control: one emitter line (codecs.go:814) sabotaged through a go build -overlay, and the agreement gate must go red on its own message. Measured 3.6 s on the runner. Split from the accessor pair when that pair succeeded at 192 s wall on run 42572541131, over 110 s. On this branch, run 42598278281, the one-target row was cancelled at 327 s wall with no assertion failure (job 2026-11-09T10:10:38Z-10:16:05Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cs-slot-negative-control"
       ],
@@ -921,8 +921,8 @@
     },
     {
       "name": "cs-block-inline",
-      "when": "pull-request",
-      "why": "the C# block inline-array control (docs/SPEC-TABLES.md §2.7): a bounded array inside a nested record projected out of line, so compiling the corpus or Verify() must go red. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "when": "nightly",
+      "why": "the C# block inline-array control (docs/SPEC-TABLES.md §2.7): a bounded array inside a nested record projected out of line, so compiling the corpus or Verify() must go red. One overlay build and one dotnet build. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42598278281, the one-target row finished at 246 s wall with no assertion failure (job 2026-11-09T10:10:17Z-10:14:23Z, the make step succeeded). A success over 110 s is still over the per-commit budget, so it runs nightly.",
       "targets": [
         "tables-block-inline-array-negative-control"
       ],
@@ -948,8 +948,8 @@
     },
     {
       "name": "cs-cook-walk",
-      "when": "pull-request",
-      "why": "the C# cook-open walk control: Open made to sum every word of the region, so the open-cost gate must go red on its band. One overlay build and one timed run. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s).",
+      "when": "nightly",
+      "why": "the C# cook-open walk control: Open made to sum every word of the region, so the open-cost gate must go red on its band. One overlay build and one timed run. Split from cs-cook when that seven-control row was cancelled at the job's 5-minute timeout on run 42572541131 (wall 313 s). On this branch, run 42598278281, the one-target row was cancelled at 318 s wall with no assertion failure (job 2026-11-09T10:10:48Z-10:16:06Z, the make step canceled, not a red control). It cannot fit the per-commit budget alone, so it runs nightly.",
       "targets": [
         "tables-cook-open-cs-walk-negative-control"
       ],
