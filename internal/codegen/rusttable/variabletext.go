@@ -819,30 +819,40 @@ impl<'a> Jr<'a> {
             b'"' => {
                 let _ = self.read_string();
             }
-            b'{' => {
-                if self.depth > JSON_DEPTH_CAP {
-                    self.damaged = true;
-                    return;
-                }
-                self.p += 1;
-                self.depth += 1;
-                loop {
-                    self.space();
-                    if self.p >= self.b.len() {
-                        self.damaged = true;
-                        self.depth -= 1;
-                        return;
-                    }
-                    if self.b[self.p] == b'}' {
-                        self.p += 1;
-                        self.depth -= 1;
-                        return;
-                    }
-                    let key = self.read_string();
-                    if self.damaged {
-                        self.depth -= 1;
-                        return;
-                    }
+             b'{' => {
+                 if self.depth > JSON_DEPTH_CAP {
+                     self.damaged = true;
+                     return;
+                 }
+                 self.p += 1;
+                 self.depth += 1;
+                 let mut seen = std::collections::HashSet::new();
+                 loop {
+                     self.space();
+                     if self.p >= self.b.len() {
+                         self.damaged = true;
+                         self.depth -= 1;
+                         return;
+                     }
+                     if self.b[self.p] == b'}' {
+                         self.p += 1;
+                         self.depth -= 1;
+                         return;
+                     }
+                     let key = self.read_string();
+                     if self.damaged {
+                         self.depth -= 1;
+                         return;
+                     }
+                     // a repeated key inside a skipped object refuses the read,
+                     // exactly as it does in a placed object (§16.3)
+                     if let Some(k) = &key {
+                         if !seen.insert(k.clone()) {
+                             self.damaged = true;
+                             self.depth -= 1;
+                             return;
+                         }
+                     }
                     self.space();
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
@@ -1278,6 +1288,7 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut pending = first;\n")
 	fmt.Fprintf(b, "    let mut n = 0usize;\n")
 	fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
+	fmt.Fprintf(b, "    let mut all_keys = std::collections::HashSet::new();\n")
 	fmt.Fprintf(b, "    loop {\n")
 	fmt.Fprintf(b, "        let key = match pending.take() {\n")
 	fmt.Fprintf(b, "            Some(k) => k,\n")
@@ -1295,6 +1306,10 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "        };\n")
 	fmt.Fprintf(b, "        n += 1;\n")
+	fmt.Fprintf(b, "        if !all_keys.insert(key.clone()) {\n")
+	fmt.Fprintf(b, "            jr.damaged = true;\n")
+	fmt.Fprintf(b, "            return n;\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        match key.as_str() {\n")
 	for i, f := range st.Fields {
 		g.emitTextReadField(b, i, f, "v."+ir.RustSnake(f.Name), "            ")
