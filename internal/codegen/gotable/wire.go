@@ -29,7 +29,7 @@ const tableWireStringID uint64 = 0x%016x
 	// slot the reader cannot name still names its target, and the graph walk
 	// starts there too (docs/SPEC-TABLES.md §4, §6.5).
 	if len(variableTableNames(u)) > 0 {
-		res = tableSourceReplace(res, "  c.nodes=0 // tableWireSkipNodes", "  c.nodes=r.Nodes.Count;r.Nodes.Mark(index) // tableWireSkipNodes", 1)
+		res = tableSourceReplace(res, " c.nodes=0 // tableWireSkipNodes", " c.nodes=r.Nodes.Count;c.mark=r.Nodes.Mark // tableWireSkipNodes", 2)
 	}
 	if len(ir.WideTextFields(u)) > 0 {
 		res += tableWStringSource + tableWStringWriteSource
