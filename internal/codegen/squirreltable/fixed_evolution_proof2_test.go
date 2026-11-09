@@ -259,11 +259,11 @@ for (local i = 0; i < why.len() && i < 8; i++) print(why[i] + "\n");
 // refuses by a name the fixed reader declares or lands every live value in its
 // bound; a bad hash on the LAST record of a batch refuses no_layout with
 // nothing landed in either record (every hash is checked before any record
-// lands, §5.3); and the wrong plan goes red — B's reader refuses A's file
+// lands, §5.3, TOTAL OVER THE BATCH); and the wrong plan goes red — B's reader refuses A's file
 // layout_unknown, and A's file announced under B's hash is layout_malformed,
 // never read through B's plan. The negative controls drop the range check (the
-// sweep finds an out-of-bound value) and move the hash check back into the
-// decode loop (the first record lands before the refusal).
+// sweep finds an out-of-bound value) and decode each record straight into the
+// caller's row (the first record lands before the refusal).
 func TestSquirrelFixedEvolutionHostileInput(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
@@ -288,10 +288,9 @@ func TestSquirrelFixedEvolutionHostileInput(t *testing.T) {
 		t.Errorf("the negative control: the sweep without the range check finds nothing: %s", got)
 	}
 	gc = sqEvoGenerate(t, u, nil)
-	gc.plant(t, "  for (local k = 0; k < count; k++)\n    if (_rt_fixed.u64le(b, 20 + L + k * rb) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n", "")
-	gc.plant(t, "    local at = 20 + L + k * rb;\n", "    local at = 20 + L + k * rb;\n    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
+	gc.plant(t, "    local v = _M.Host();\n", "    local v = out[k];\n")
 	if got := gc.load(t, "Host", two); got.head == "refused no_layout w0 untouched" {
-		t.Errorf("the negative control: a hash checked inside the decode loop still leaves the first record untouched")
+		t.Errorf("the negative control: records decoded straight into the caller's rows still leave the first record untouched")
 	}
 
 	ab := fixedSynthetic(t, "package probe\nfixed table A\n{\n    lead uint32 = 0\n    x int32 = 0\n    y int32 = 0\n    trail uint32 = 0\n}\nfixed table B\n{\n    p int8 = 0\n    q int8 = 0\n}\n")

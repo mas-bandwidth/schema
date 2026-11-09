@@ -3,6 +3,13 @@
 //
 //	pgroup [-wall 15m] [-grace 10s] -- command [args...]
 //
+// The -wall budget may also come from the PGROUP_WALL environment variable
+// when the flag is unset: CI sets it per job so a per-commit run gets a 110s
+// per-step wall while a nightly or dispatch run keeps the long budget. When
+// the budget comes from the environment, pgroup names the CI rule in its
+// wall message so a reader knows the step must be split, cached or moved to
+// the nightly before the runner kills the job.
+//
 // WHY. A test that starts an interpreter (sq, lua, luau, moo, lobster,
 // elixir) and then dies — go test's -timeout panic, a t.Fatal before the
 // cleanup ran — leaves that interpreter running, reparented to init and still
@@ -52,7 +59,13 @@ func main() {
 		fs.Usage()
 		os.Exit(2)
 	}
-	code, err := run(fs.Args(), *wall, *grace)
+	wallDur, wallLabel, ciPolicy, err := wallBudget(*wall, os.Getenv("PGROUP_WALL"))
+	if err != nil {
+		// A bad CI budget must not silently become no budget: refuse to run.
+		fmt.Fprintf(os.Stderr, "pgroup: %v\n", err)
+		os.Exit(2)
+	}
+	code, err := run(fs.Args(), wallDur, *grace, wallLabel, ciPolicy)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pgroup: %v\n", err)
 	}

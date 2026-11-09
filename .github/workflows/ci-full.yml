@@ -131,6 +131,20 @@ concurrency:
 # changes. Find the newest tag with:
 #   gh release list --repo mas-bandwidth/<repo> --limit 1
 env:
+  # THE PER-STEP WALL, for per-commit runs. Every self-hosted step runs under
+  # tools/pgroup (defaults.run.shell below), and pgroup reads PGROUP_WALL:
+  # when the budget runs out it stops the step's process group, names it on
+  # stderr with the CI rule — "split it into rows, cache it, or move it to
+  # the nightly (certify.yml)" — and exits 124, so the two-minute rule is
+  # visible before the runner's own timeout kills the job. A push or
+  # pull_request (the per-commit events) gets 110s per step; a schedule
+  # (nightly) or workflow_dispatch run keeps the long budget with an empty
+  # value. The per-commit jobs whose steps are measured in minutes by
+  # design — `pins` (the re-pin rewrite), `leg-tagged` (the tagged builds)
+  # and `negative-controls` (rows cut to 120s of control time) — clear this
+  # with a job-level empty override; internal/ci's step-guard test holds
+  # that exemption list to exactly those three.
+  PGROUP_WALL: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && '110s' || '' }}
   SERIALIZE_TAG: v2.1.3
   SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
@@ -972,7 +986,11 @@ jobs:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     name: legs under their build tags
     runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # the tagged builds run in minutes by design, so this per-commit job
+    # clears the 110s per-step wall and keeps the long budget
     timeout-minutes: 30
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1105,6 +1123,10 @@ jobs:
     # on a hetzner runner sharing its host with a second job the re-pin
     # runs 12-15 minutes, so the bound is 25
     timeout-minutes: 25
+    # the re-pin rewrite runs in minutes by design, so this per-commit job
+    # clears the 110s per-step wall and keeps the long budget
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1478,16 +1500,26 @@ jobs:
           path: build/proof/proof.json
           if-no-files-found: ignore
 
-  # C# WIRE AND REGION FUZZ (issue #751).
+  # C# WIRE AND REGION FUZZ (issue #751; card green-fit-fuzz-smoke).
   #
   # The C# table wire is one of the four live table-wire languages on the roadmap
   # (#748). Issue #751 found a wire-fuzz divergence in pointer arm trailing bytes.
-  # In accordance with the owner's rule, tests that fit under 2 minutes belong on
-  # the per-PR CI gate rather than solely in nightly certification.
   #
-  # Running as its own matrix rows keeps each fuzz target well under 1 minute
-  # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
-  # leg over the 2-minute ceiling.
+  # PER-COMMIT SMOKE vs NIGHTLY CAMPAIGN (card green-fit-fuzz-smoke): on main
+  # (run 42556155793), `C# fuzz (region)` ran 135 s and `C# fuzz (wire)` was
+  # killed at the 120 s per-commit cap (with the C# build step alone at 117 s
+  # capped and 148 s nightly) because each row rebuilt the compiler, harness
+  # and C# driver from a cold Go cache and then ran `--n 100000` random mutants.
+  # Per-commit rows now restore and save the Go build cache and the built
+  # harness/driver tree on fleet runners (as in `green-fit-conformance-build`),
+  # build with `make -j"$(nproc)"` (`build-conformance-cs` with
+  # `-p:RunAnalyzers=false`, since `tables-cs-clean` already runs the analyzers),
+  # and run the seeded per-commit smoke (`SEED=24845619678`,
+  # `CS_FUZZ_SMOKE_N=2000`, catching every control's sabotage in seconds).
+  # Nothing is dropped: the full 100,000-mutant `tables-cs-wire-fuzz` and
+  # `tables-cs-region-fuzz` campaigns (plus `tables-cs-release` at 500,000) run
+  # nightly in `certify.yml` (`release-targets` / `release-gates`).
+  # (`green-fuzz-finite-owed` and `cs-wire-fuzz-repeated-id` own the fuzz reds.)
   cs-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1522,17 +1554,15 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored and saved on fleet runners as well as
+      # hosted ones (as in green-fit-conformance-build), so a cold fleet runner
+      # does not recompile bin/schema and build/conformance-harness from nothing.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1546,27 +1576,65 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
+      - id: cs-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'parser/**', 'lexer/**', 'token/**', 'ast/**', 'wire/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'examples-wide/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
+
+      - name: stand cached C# fuzz inputs newer than this checkout
+        if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-cs/.stamp
+          touch test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll
+
       - name: build the harness and the C# driver
-        run: make build/conformance-harness build-conformance-cs
+        run: make -j"$(nproc)" build/conformance-harness build-conformance-cs
 
-      - name: run C# ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }}
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire' && steps.cs-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}
 
-  # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+
+      - name: run C# ${{ matrix.name }} fuzz (per-commit smoke)
+        run: make ${{ matrix.target }}-smoke SEED=24845619678 N=2000
+
+  # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492; card
+  # green-fit-fuzz-smoke).
   #
   # The harness's differential wire fuzzer over its whole default roster
-  # through the JavaScript driver, the plain arm and the --retain arm, at the
-  # Makefile's default SEED and N (the same as cs-fuzz). The enumerated pass is
-  # most of the cost (about 154,000 mutants plain, 87,000 retain) and does not
-  # change with N. Measured on a workstation: 43 s per arm, 88 s for the two in
-  # one make call, so each arm is its own matrix row (make/js.mk's
-  # tables-js-wire-fuzz-plain and -retain, the two halves of
-  # tables-js-wire-fuzz-all) to keep a row well inside its five minutes once
-  # the setup is paid. Node comes from the same pin the js
-  # conformance row reads (test/conformance/js/ci.json), and NODE=node is that
-  # row's env, so make/js.mk's repo-local dist/ default is not used here.
+  # through the JavaScript driver, the plain arm and the --retain arm.
+  # Per-commit rows run the seeded smoke (`SEED=24845619678`,
+  # `JS_FUZZ_SMOKE_N=2000` via `tables-js-wire-fuzz-plain-smoke` and
+  # `tables-js-wire-fuzz-retain-smoke`), while the full 100,000-mutant
+  # `tables-js-wire-fuzz-plain` and `tables-js-wire-fuzz-retain` campaigns run
+  # nightly in `certify.yml` (`release-targets` / `release-gates`). Both rows
+  # restore and save the Go build cache and the built harness + generated JS
+  # units on fleet runners (as in `green-fit-conformance-build`) and build with
+  # `make -j"$(nproc)"`. Node comes from the same pin the js conformance row
+  # reads (test/conformance/js/ci.json), and NODE=node is that row's env.
   # Its negative control, tables-js-wire-fuzz-negative-control, rides in the
-  # js group of the negative-controls job.
+  # js group of the negative-controls job. (`green-fuzz-finite-owed` and
+  # `cs-wire-fuzz-repeated-id` own the fuzz reds.)
   js-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1596,17 +1664,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored and saved on fleet runners as well as
+      # hosted ones (as in green-fit-conformance-build).
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1619,19 +1684,57 @@ jobs:
         with:
           node-version: ${{ env.JS_NODE_PIN }}
 
+      - id: js-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-js
+          key: js-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'parser/**', 'lexer/**', 'token/**', 'ast/**', 'wire/**', 'test/conformance/harness/**', 'tables/**', 'test/tables/**', 'examples-wide/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/js.mk', 'Makefile', 'go.mod') }}
+
+      - name: stand cached JavaScript fuzz inputs newer than this checkout
+        if: steps.js-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-js/.stamp
+
       - name: build the harness and the generated JavaScript units
-        run: make build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
+        run: make -j"$(nproc)" build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
 
-      - name: run the JavaScript ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }} NODE=node
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire' && steps.js-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-js
+          key: ${{ steps.js-fuzz-cache.outputs.cache-primary-key }}
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+
+      - name: run the JavaScript ${{ matrix.name }} fuzz (per-commit smoke)
+        run: make ${{ matrix.target }}-smoke NODE=node SEED=24845619678 N=2000
 
 
-  # DART WIRE FUZZ (docs/PORTING.md I15). The tolerant wire's differential
-  # fuzzer, with the compiler's own engine as the oracle, over every file root
-  # the Dart wire surface carries: the plain Load/Save run and the message arm.
-  # Its own job keeps the target off the conformance (dart) leg's clock. The
-  # Dart leg clones no runtime (generated Dart is self-contained), so the job is
-  # Go and the pinned SDK only.
+  # DART WIRE FUZZ (docs/PORTING.md I15; card green-fit-fuzz-smoke).
+  #
+  # PER-COMMIT SMOKE vs NIGHTLY CAMPAIGN (card green-fit-fuzz-smoke): on main
+  # (run 42556155793), `Dart fuzz (wire)` ran 142 s and was killed at the 120 s
+  # per-commit cap because it built the harness and the AOT Dart driver from a
+  # cold Go cache and then ran `--n 100000` random mutants. Per-commit now
+  # restores and saves the Go build cache and the built harness + AOT Dart
+  # driver on fleet runners (as in `green-fit-conformance-build`), builds with
+  # `make -j"$(nproc)"`, and runs the seeded per-commit smoke
+  # (`tables-dart-wire-fuzz-smoke`, `SEED=24845619678`, `DART_FUZZ_SMOKE_N=2000`),
+  # while the full 100,000-mutant `tables-dart-wire-fuzz` campaign (and
+  # `tables-dart-release` at 500,000) runs nightly in `certify.yml`
+  # (`release-targets` / `release-gates`).
   dart-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1659,17 +1762,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache: restored and saved on fleet runners as well as
+      # hosted ones (as in green-fit-conformance-build).
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1679,11 +1779,46 @@ jobs:
         with:
           sdk: '3.13.2'
 
-      - name: build the harness and the Dart driver
-        run: make build/conformance-harness build/conformance-dart DART=dart
+      - id: dart-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: dart-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-3.13.2-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'parser/**', 'lexer/**', 'token/**', 'ast/**', 'wire/**', 'test/conformance/harness/**', 'test/conformance/dart/**', 'tables/**', 'test/tables/**', 'examples-wide/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/dart.mk', 'Makefile', 'go.mod') }}
 
-      - name: run Dart ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }} DART=dart
+      - name: stand cached Dart fuzz inputs newer than this checkout
+        if: steps.dart-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-dart/.stamp
+          touch build/conformance-dart
+
+      - name: build the harness and the Dart driver
+        run: make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.dart-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: ${{ steps.dart-fuzz-cache.outputs.cache-primary-key }}
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+
+      - name: run Dart ${{ matrix.name }} fuzz (per-commit smoke)
+        run: make ${{ matrix.target }}-smoke DART=dart SEED=24845619678 N=2000
 
 
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no
@@ -2531,6 +2666,11 @@ jobs:
     # top, so five minutes is generous and a row that reaches it is a row that
     # left the rule. A ceiling wide enough to hide that is not a timeout.
     timeout-minutes: 5
+    # rows are cut to 120s of control time, past the 110s per-step wall, so
+    # this per-commit job clears the wall and keeps the long budget: the row
+    # cut is its own enforcement of the rule
+    env:
+      PGROUP_WALL: ''
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}

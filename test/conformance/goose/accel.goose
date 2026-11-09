@@ -533,16 +533,46 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
             let f = words(other);
             if f.len < 5 || f[0] != "instance" || f[1] != c[1] { continue; }
             if f[2] != unit { break; }
-            let data = slurp(f[4]);
+            var data: u8[>..] = [];
             var vals: schema_rt::LoadVal[>..] = [];
             var nodes: schema_rt::LoadNode[>..] = [];
-            var report = schema_rt::LoadReport { .. };
-            let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-            if root < 0 || report.body_damaged || report.refused {
+            var root: i64 = 0;
+            if c.len >= 5 && c[2] != "-" && c[3] != "-" && c[4] != "-" {
+                let text = slurp(c[2]);
+                root = conformance_json_read(f[3], text, data, vals, nodes);
+                if root < 0 {
+                    write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
+                    exit(1);
+                }
+                let unit_desc = conformance_unit();
+                let fields = unit_desc.tables[vals[root].tab].fields;
+                var src_slot: i64 = -1;
+                var dst_slot: i64 = -1;
+                for fd, fi in fields {
+                    if fd.name == c[3] { src_slot = vals[root].first + fi; }
+                    if fd.name == c[4] { dst_slot = vals[root].first + fi; }
+                }
+                if src_slot < 0 || dst_slot < 0 {
+                    write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
+                    exit(1);
+                }
+                vals[dst_slot] = vals[src_slot];
+            } else {
+                data = slurp(f[4]);
+                if data.len == 0 || data[0] != 3 {
+                    var report = schema_rt::LoadReport { .. };
+                    root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+                    if root < 0 || report.body_damaged || report.refused {
+                        write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
+                        exit(1);
+                    }
+                }
+            }
+            let need = accel_cook_measure(f[3], data, vals, nodes, root);
+            if need == -3 {
                 write_stderr(str("driver: ", c[1], ": the cook input does not load\n"));
                 exit(1);
             }
-            let need = accel_cook_measure(f[3], data, vals, nodes, root);
             if need == -2 {
                 absent_answer(c[1], "no-cook-writer");
                 absent_answer(str(c[1], "-be"), "no-cook-writer");
