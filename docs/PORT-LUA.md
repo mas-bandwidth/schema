@@ -12,7 +12,7 @@ WHAT EXISTS ON MAIN (2026-10-28, through schema#2237): the target
 the type wire read and written against the C++-pinned goldens, over the
 vendored serialize.lua), and the TABLE SURFACE (`internal/codegen/luatable`
 and `runtime/*.lua`: form `1` load and save, the fixed form `3` against the
-byte oracle, the message form `2`, retain-unknown on both, the JSON and
+byte oracle, the message form `2`, retain-unknown on the variable form, the JSON and
 hand-editable text forms, base64 text, block read and build, cook open,
 check and write). Every unit of the tables conformance manifest generates
 (33 units, 0 refused) and stands alone (`TestLuaUnitStandsAlone`); the
