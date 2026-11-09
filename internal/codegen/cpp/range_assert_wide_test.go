@@ -47,6 +47,7 @@ func TestRangeAssertWideStorageComparesIn64Bits(t *testing.T) {
 }
 
 const rangeAssertWideProbe = `#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <cstdint>
 
