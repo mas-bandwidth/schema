@@ -1968,8 +1968,16 @@ function L.NewState()
     -- the wire-alone check's scratch (wire_check): the per-level sets, the
     -- pointer list, each node's range of it and the graph walk's arrays
     wc = {
-      bodies = {}, slots = {}, edges = {}, first = {}, last = {}, blob = {},
-      names = {}, mark = {}, stack = {}, cursor = {},
+      bodies = {},
+      slots = {},
+      edges = {},
+      first = {},
+      last = {},
+      blob = {},
+      names = {},
+      mark = {},
+      stack = {},
+      cursor = {},
     },
     ctx = {
       table = nil,
@@ -2291,10 +2299,18 @@ local function wc_text(b, at, lim)
       need = 1
     elseif x >= 0xe0 and x <= 0xef then
       need = 2
-      if x == 0xe0 then lo = 0xa0 elseif x == 0xed then hi = 0x9f end
+      if x == 0xe0 then
+        lo = 0xa0
+      elseif x == 0xed then
+        hi = 0x9f
+      end
     elseif x >= 0xf0 and x <= 0xf4 then
       need = 3
-      if x == 0xf0 then lo = 0x90 elseif x == 0xf4 then hi = 0x8f end
+      if x == 0xf0 then
+        lo = 0x90
+      elseif x == 0xf4 then
+        hi = 0x8f
+      end
     else
       return false
     end
@@ -2339,7 +2355,9 @@ local function wc_set(pool, depth)
     t = {}
     pool[depth] = t
   else
-    for k in pairs(t) do t[k] = nil end
+    for k in pairs(t) do
+      t[k] = nil
+    end
   end
   return t
 end
