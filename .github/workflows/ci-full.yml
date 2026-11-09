@@ -184,13 +184,13 @@ jobs:
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
-    # EIGHT ROWS, because this job was 650 s median (2026-09-11) and a matrix
+    # MANY ROWS, because this job was 650 s median (2026-09-11) and a matrix
     # row is a job: the emitter packages, the compiler package in two halves,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
-    # two halves, and the seven fixed-form
-    # versioning suites that cannot ride `go test ./...` at all. Every step
-    # below is the step it was; what is new is which row runs it, and no step
-    # runs in none of them or in two.
+    # two halves, and the fixed-form versioning suites — one row per leg — that
+    # cannot ride `go test ./...` at all. Every step below is the step it was;
+    # what is new is which row runs it, and no step runs in none of them or in
+    # two.
     #   unit-codegen    — go test ./internal/codegen/... less elixirtable
     #   unit-compiler-1 — go test ./compiler, the tests one pattern names
     #   unit-compiler-2 — go test ./compiler, every other test
@@ -202,9 +202,30 @@ jobs:
     #   slow-gate-codegen — the slowtest accounting (schema#988) over the
     #                     emitter packages
     #   slow-gate-rest  — the same accounting over every other package
-    #   versioning      — §5 on the Go, C, Rust, Java, JavaScript, Dart, C#
-    #                     and Elixir legs, with the three SDKs only that row
-    #                     needs
+    #   versioning-conformance-a / -b — the Go conformance rows, split in two:
+    #                     one row ran 116 s alone (the go-test versioning row
+    #                     was killed at 120 s, exit 137, run 42556155793), so
+    #                     it is two rows of half the suite each
+    #   versioning-go    — the Go leg's §5 versioning suite (tables-go-versioning)
+    #   versioning-c     — the C leg's §5 suite (tables-c-versioning)
+    #   versioning-rust  — the Rust leg's §5 suite, cargo on the runner
+    #   versioning-java  — the Java leg's §5 suite, JDK on the runner
+    #   versioning-js    — the JavaScript leg's §5 suite, NODE=node
+    #   versioning-dart  — the Dart leg's §5 suite, with the Dart SDK
+    #   versioning-cs    — the C# leg's §5 suite and the cs leg, with the .NET SDK
+    #   versioning-elixir — the Elixir leg's §5 suite, with the BEAM
+    #   versioning-luau  — the Luau leg's §5 suite, with the pinned Luau interpreter
+    #   versioning-goose — the Goose leg's §5 suite; the full leg (test-goose
+    #                     plus the byte oracle) ran 320 s in the nightly tier,
+    #                     so per-commit runs the §5 smoke and the schedule runs
+    #                     the full leg (like the leg-tagged job)
+    #
+    # WHY EACH VERSIONING LEG IS ITS OWN ROW. The single versioning row ran the
+    # Go conformance rows (116 s) and then every §5 suite in series — the go,
+    # c, rust, java, js, dart, cs, elixir, luau and goose legs — and was killed
+    # at the 120 s per-commit fleet rule. Each leg installs only its own
+    # toolchain now, so the rows run in parallel and the slowest leg (not the
+    # sum) sets the wall.
     #
     # WHY unit-rest WAS CUT AGAIN (2026-10-27). On run 40596125566 the one
     # unit-rest row ran 14m55s against this 15-minute cap: the complement's
@@ -223,7 +244,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen, slow-gate-rest, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -256,11 +277,11 @@ jobs:
       # same .github/dotnet-version every other C# job reads, so a runner image
       # that ships a different SDK cannot change what this gate compiles.
       - name: read the .NET SDK pin
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-cs'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-cs' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -512,9 +533,13 @@ jobs:
       # test/conformance/go/rows, which `go test ./...` never sees because they
       # live in the test/conformance/go module. The gate self-provisions its
       # build stamps and the C++ reference corpus.
-      - name: the Go conformance rows
-        if: matrix.group == 'versioning'
-        run: make conformance-go-rows
+      - name: the Go conformance rows, first half
+        if: matrix.group == 'versioning-conformance-a'
+        run: make conformance-go-rows-a
+
+      - name: the Go conformance rows, second half
+        if: matrix.group == 'versioning-conformance-b'
+        run: make conformance-go-rows-b
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
@@ -529,7 +554,7 @@ jobs:
       # minute, and the ../serialize checkout this job already makes is the
       # only thing the C++ dump needs.
       - name: the fixed form's versioning suite reads the reference's bytes
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-go'
         run: make tables-go-versioning
 
       # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
@@ -539,7 +564,7 @@ jobs:
       # here beside the Go one for the same reason: under SCHEMA_REQUIRE_CORPUS a
       # missing oracle is a failure, never a quiet skip.
       - name: the fixed form's versioning suite on the C leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-c'
         run: make tables-c-versioning
 
       # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
@@ -558,7 +583,7 @@ jobs:
       # suite fails by name on the missing sibling rather than skipping, which is
       # the behaviour this whole gate is for.
       - name: the fixed form's versioning suite on the Rust leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-rust'
         run: make tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
@@ -569,7 +594,7 @@ jobs:
       # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
       # so a corpus that failed to build cannot pass here quietly.
       - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-java'
         run: make tables-java-versioning
 
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
@@ -577,7 +602,7 @@ jobs:
       # in this job, so NODE=node uses the runner's own — and the corpus is the
       # one the step above already built.
       - name: the fixed form's versioning suite on the JavaScript leg
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-js'
         run: make tables-js-versioning NODE=node
 
       # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
@@ -587,11 +612,11 @@ jobs:
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-dart'
         run: make tables-dart-versioning DART=dart
 
       # THE SAME TWO COLUMNS ON THE C# LEG (§5, and §5.9 #11: every leg owes both
@@ -605,7 +630,7 @@ jobs:
       # Fast CI keeps Debug on its short path; this full tier retains both
       # configurations alongside the required versioning oracle.
       - name: the C# leg in Debug and Release, and its versioning suite
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-cs'
         run: make tables-cs-leg tables-cs-versioning
 
       # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
@@ -616,12 +641,12 @@ jobs:
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
+        if: matrix.group == 'versioning-elixir' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
       - name: the Elixir leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-elixir'
         run: |
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
@@ -633,21 +658,28 @@ jobs:
       # already built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus a
       # failure rather than a silent skip. A few seconds of probes.
       - name: the Luau leg reads backward over every versioning row
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning-luau'
         run: |
           make dist-luau
           make tables-luau-versioning
 
       # THE GOOSE LEG's fixed form against the same corpus (docs/PORT-GOOSE.md).
-      # `make test-goose` runs both Goose packages under the pinned compiler and
-      # sets SCHEMA_REQUIRE_CORPUS=1, so the byte-oracle suite
-      # (TestGooseFixedFormAgreesWithTheByteOracle) and its negative control fail
-      # rather than skip without the corpus the steps above built. The unit
-      # groups' `go test` runs the same packages without the corpus, where
-      # those two skip. `tables-goose-versioning` is §5.7's two columns over
-      # every versioning row (make/goose-versioning.mk).
-      - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row
-        if: matrix.group == 'versioning'
+      # The full leg — `make test-goose`, both Goose packages under the pinned
+      # compiler against the C++ reference's byte oracle, plus §5.7's versioning
+      # and message-form columns — ran 320 s in the nightly tier (run
+      # 42458071627), far over the 110 s per-commit budget. So per-commit runs a
+      # smoke of the §5 gates (tables-goose-versioning and
+      # tables-goose-message-form, each of which self-provisions the pinned goose
+      # release), and the schedule trigger runs the full leg including the
+      # byte-oracle test-goose suite — the same full-per-schedule / smoke-per-
+      # commit split the leg-tagged job uses. Nothing is dropped: the full leg
+      # still runs nightly, named by the trigger below.
+      - name: the Goose leg's §5 versioning and message-form smoke
+        if: matrix.group == 'versioning-goose' && github.event_name != 'schedule'
+        run: make tables-goose-versioning tables-goose-message-form
+
+      - name: the Goose leg reads the reference's fixed-form bytes, and reads backward over every versioning row (full, schedule)
+        if: matrix.group == 'versioning-goose' && github.event_name == 'schedule'
         run: make dist-goose test-goose tables-goose-versioning tables-goose-message-form
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
@@ -714,21 +746,50 @@ jobs:
   # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
   # ./compiler meets one more target; go-test above runs both packages
   # untagged, and certify's test-moo-tables runs only the compiler's tests
-  # named Moo, so without this job a tagged red lands unseen. Its own job,
-  # beside go-test rather than one of its rows, because tools/slowgatescan
-  # credits each go-test row with the tests it selects, and this run selects
-  # the compiler's tests a second time under another build. One `go test`
-  # over the packages (the conformance harness's tagged half too) builds and
-  # runs them in parallel. The goose tag's one tagged test file, the
-  # conformance harness's half, rides beside it.
+  # named Moo, so without this job a tagged red lands unseen. It is its own
+  # job, beside go-test rather than one of its rows, because
+  # tools/slowgatescan credits each go-test row with the tests it selects, and
+  # this run selects the compiler's tests a second time under another build.
+  #
+  # A MATRIX, ONE ROW PER TAGGED LEG (2026-11-09). As one job this leg took
+  # ~128 s wall and was killed by the fleet's 120 s per-commit rule: the moo
+  # step (`make test-moo-tagged`) alone ran ~100 s, and the goose harness step
+  # could only begin behind it. The job is now a matrix so the tagged legs run
+  # in parallel. The moo leg is split in two (`make test-moo-tagged-compiler`
+  # and `test-moo-tagged-table`, Makefile) because one row carrying the
+  # whole ~100 s leg plus its own checkout and pin setup would not fit the 110 s
+  # budget; each row now runs one half in parallel. The goose row runs the
+  # conformance harness's tagged half alone. The matrix key is `group`, the
+  # one tools/slowgatescan credits for a row-conditioned step.
+  #
+  # PER-COMMIT SMOKE, FULL LEGS ON THE SCHEDULE (2026-11-09, run 42578064640
+  # on this branch at 137604aac). Splitting the moo leg in two was not
+  # enough on a fleet runner: the moo-compiler row was cancelled at the
+  # 15-minute cap (912 s), the moo-table row ran 859 s (the mootable package
+  # alone 673 s; one test, TestMooCookWriteNegativeControls, 586 s), and
+  # only the goose row finished, at 100 s. No subdivision of rows fits a
+  # single 586 s test under the 110 s per-commit budget, so the full tagged
+  # legs now run only on this workflow's schedule trigger (the nightly
+  # tier), in this same job and matrix, through the same full targets.
+  # Every other event (push, labelled PR, workflow_dispatch) runs a fast
+  # smoke per row instead: the tagged build compiles and its
+  # registration/admission tests run (the compiler's Moo tests, the moo
+  # table descriptors load, the harness's tagged-admission test), which is
+  # the per-commit answer to "does this diff break the tagged legs".
+  # Nothing is dropped: what leaves per-commit runs on the schedule here,
+  # and `make test-moo-tagged` still runs the whole moo leg locally.
   leg-tagged:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    name: legs under their build tags
+    name: legs under their build tags (${{ matrix.group }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [ moo-compiler, moo-table, goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -750,16 +811,38 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # the pins the compiler's tests run generated code under (go-test's
-      # compiler rows install the same two), and the moo pin both packages run
+      # The full (schedule) moo rows run generated code under the Luau and
+      # Squirrel pins (go-test's compiler rows install the same two); the
+      # per-commit smokes and the goose row need neither. The moo pin itself
+      # both moo rows run under on every event.
       - name: install the Luau and Squirrel pins
+        if: github.event_name == 'schedule' && matrix.group != 'goose'
         run: make dist-luau dist-squirrel
       - uses: ./.github/actions/moo
+        if: matrix.group != 'goose'
 
-      - name: the moo leg's packages under schema_leg_moo
-        run: make test-moo-tagged
+      - name: the moo leg's compiler under schema_leg_moo (smoke)
+        if: matrix.group == 'moo-compiler' && github.event_name != 'schedule'
+        run: make test-moo-tagged-compiler-smoke
+
+      - name: the moo leg's compiler under schema_leg_moo
+        if: matrix.group == 'moo-compiler' && github.event_name == 'schedule'
+        run: make test-moo-tagged-compiler
+
+      - name: the moo leg's table and conformance packages under schema_leg_moo (smoke)
+        if: matrix.group == 'moo-table' && github.event_name != 'schedule'
+        run: make test-moo-tagged-table-smoke
+
+      - name: the moo leg's table and conformance packages under schema_leg_moo
+        if: matrix.group == 'moo-table' && github.event_name == 'schedule'
+        run: make test-moo-tagged-table
+
+      - name: the conformance harness under schema_leg_goose (smoke)
+        if: matrix.group == 'goose' && github.event_name != 'schedule'
+        run: make test-goose-tagged-harness-smoke
 
       - name: the conformance harness under schema_leg_goose
+        if: matrix.group == 'goose' && github.event_name == 'schedule'
         run: make test-goose-tagged-harness
 
   generated:
@@ -2481,7 +2564,8 @@ jobs:
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            2>&1 | tee controls.log || status=1
+            >controls.log 2>&1 || status=1
+          cat controls.log
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
             grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log

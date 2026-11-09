@@ -310,6 +310,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1178,6 +1182,10 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -2060,6 +2068,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -2928,6 +2940,10 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -3678,6 +3694,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4038,6 +4058,10 @@ func RangedWidthsLoadBodyRetain(r *TableRetainReader, value *RangedWidths) bool 
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -5056,7 +5080,7 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -5360,7 +5384,7 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -5626,7 +5650,7 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1

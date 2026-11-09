@@ -89,10 +89,13 @@ func TestRequiredConstructElixir(t *testing.T) {
    other->raise("expected missing "<>name<>": "<>inspect(other))
   end
  end
+ def damaged(result) do
+  check(elem(result,0)==:error and elem(result,2).reason != "","damage refusal "<>inspect(result))
+ end
 end
 alias Probe.Table,as: T
 store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
-zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+zero=%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 `)
 	fmt.Fprintf(&p, `wire=Base.decode16!(%q,case: :lower)
 {:ok,value,r}=T.load("All",wire)
@@ -179,10 +182,9 @@ Probe.check(rs.records==[],"refused retention cleared")
 			bad := append([]byte{}, body...)
 			bad[at+3] = 1
 			fmt.Fprintf(&p, `bad=Base.decode16!(%q,case: :lower)
-Probe.missing(T.load("All",bad),%q)
-{:error,:missing_required,rr,_}=T.load_retain("All",bad,store,zero)
-Probe.missing({:error,:missing_required,rr},%q)
-`, pack(bad), f.Name, f.Name)
+Probe.damaged(T.load("All",bad))
+Probe.damaged(T.load_retain("All",bad,store,zero))
+`, pack(bad))
 		}
 		at += n
 	}
@@ -192,8 +194,8 @@ Probe.missing({:error,:missing_required,rr},%q)
  {:ok,_,_}=T.load("Guard",w)
 end
 Probe.missing(T.from_json("Guard","{\"on\":true}"),"needed")
-{:ok,_,wrong}=T.from_json("Guard","{\"on\":true,\"needed\":\"wrong\"}")
-Probe.check(wrong.kind_mismatch==1 and Map.get(wrong,:missing_required,0)==0,"JSON key presence")
+{:error,_,wrong}=T.from_json("Guard","{\"on\":true,\"needed\":\"wrong\"}")
+Probe.check(Map.get(wrong,:missing_required,0)==0,"JSON kind refusal")
 for input<- ["{}","{\"outer\":false}","{\"outer\":true,\"inner\":false,\"no\":0}","{\"outer\":true,\"inner\":true,\"yes\":0}"] do
  {:ok,bv,_}=T.from_json("Branch",input)
  {:ok,bw}=T.save("Branch",bv)
@@ -225,8 +227,8 @@ end
 Probe.check(prefix.unknown==1 and prefix.missing_required==1,"JSON refusal prefix")
 {:ok,_,reuse,_}=T.load_retain("All",wire,store,Map.put(zero,:missing_required,3))
 Probe.check(reuse.missing_required==3,"reused clean report")
-{:error,:missing_required,reused,_}=T.load_retain("All",bad,store,zero |> Map.put(:missing_required,3) |> Map.put(:reason,"old refusal"))
-Probe.check(reused.missing_required==4 and reused.reason=="missing_required: keyed","reused failing report")
+{:error,:malformed,reused,_}=T.load_retain("All",bad,store,zero |> Map.put(:missing_required,3) |> Map.put(:reason,"old refusal"))
+Probe.check(reused.reason=="wire_damaged","reused failing report")
 IO.puts("REQUIRED_OK")
 `)
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), p.String())
@@ -256,7 +258,7 @@ func TestRequiredWidePresenceElixir(t *testing.T) {
 	}
 	probe := `alias Probe.Table,as: T
 {:error,:missing_required,r}=T.from_json("Wide","{}")
-if r.reason != "missing_required: v512" or r.missing_required != 1 or r.malformed, do: raise("wide missing report")
+if r.reason != "missing_required: v512" or r.missing_required != 1, do: raise("wide missing report")
 {:ok,v,_}=T.from_json("Wide","{\"v512\":0}")
 {:ok,w}=T.save("Wide",v)
 {:ok,_,_}=T.load("Wide",w)
@@ -323,10 +325,11 @@ func TestRequiredFloatReadClampsElixir(t *testing.T) {
 	wire = binary.LittleEndian.AppendUint64(wire, 2)
 	probe := fmt.Sprintf(`alias Probe.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
-{:ok,v,r}=T.load("R",wire)
-if v["scalar"] != 0.25 or v["values"] != [0.25] or r.clamped != 2 or r.malformed, do: raise("wire required float clamps: "<>inspect({v,r}))
-{:ok,v,r}=T.from_json("R","{\"scalar\":0,\"values\":[0]}")
-if v["scalar"] != 0.25 or v["values"] != [0.25] or r.clamped != 2, do: raise("JSON required float clamps: "<>inspect({v,r}))
+for result<-[T.load("R",wire),T.from_json("R","{\"scalar\":0,\"values\":[0]}")] do
+ if elem(result,0) != :error or (elem(result,1) != :malformed and elem(result,2).reason == ""), do: raise("required float out-of-range refusal: "<>inspect(result))
+end
+{:ok,v,r}=T.from_json("R","{\"scalar\":0.25,\"values\":[0.25]}")
+if v["scalar"] != 0.25 or v["values"] != [0.25] or r.reason != "", do: raise("lawful required float: "<>inspect({v,r}))
 IO.puts("REQUIRED_FLOAT_CLAMP_OK")
 `, hex.EncodeToString(wire))
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)
@@ -496,7 +499,7 @@ if r.missing_required != 1 or r.reason != %q,do: raise("nested guard missing: "<
 		}
 		wire = binary.LittleEndian.AppendUint64(wire, uint64(len(ids)))
 		fmt.Fprintf(&p, `{:ok,v,r}=T.from_json(%q,%q)
-if r.missing_required != 0 or r.malformed,do: raise("nested guard report")
+if r.missing_required != 0 or r.reason != "",do: raise("nested guard report")
 want=Base.decode16!(%q,case: :lower)
 {:ok,^want}=T.save(%q,v)
 {:ok,back,_}=T.load(%q,want)

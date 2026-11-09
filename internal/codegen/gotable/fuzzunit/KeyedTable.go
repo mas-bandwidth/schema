@@ -267,6 +267,10 @@ func TeamConfigLoadBody(r *TableReader, value *TeamConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -497,6 +501,10 @@ func TeamConfigLoadBodyRetain(r *TableRetainReader, value *TeamConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -690,6 +698,10 @@ func GunnerConfigLoadBody(r *TableReader, value *GunnerConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -867,6 +879,10 @@ func GunnerConfigLoadBodyRetain(r *TableRetainReader, value *GunnerConfig) bool 
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1071,6 +1087,10 @@ func TurretConfigLoadBody(r *TableReader, value *TurretConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1342,6 +1362,10 @@ func TurretConfigLoadBodyRetain(r *TableRetainReader, value *TurretConfig) bool 
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1754,6 +1778,10 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -1886,6 +1914,9 @@ func HullConfigLoadBody(r *TableReader, value *HullConfig) bool {
 					var slot Weapon
 					if !slot.TableEnumValue(key) {
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&elem, elemKind, false) {
+							return false
+						}
 						continue
 					}
 					elem.Depth += 1
@@ -2265,6 +2296,10 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -2399,6 +2434,9 @@ func HullConfigLoadBodyRetain(r *TableRetainReader, value *HullConfig) bool {
 						r.Report.Unknown++
 						if r.Retain != nil {
 							r.Report.RetainLost++
+						}
+						if !tableWireSkipFramed(&elem.tableRetainPlainReader, elemKind, false) {
+							return false
 						}
 						continue
 					}
@@ -2956,6 +2994,10 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -3048,6 +3090,9 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					var slot Team
 					if !slot.TableEnumValue(key) {
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&elem, elemKind, false) {
+							return false
+						}
 						continue
 					}
 					elem.Depth += 1
@@ -3131,6 +3176,9 @@ func KeyedConfigLoadBody(r *TableReader, value *KeyedConfig) bool {
 					var slot Hull
 					if !slot.TableEnumValue(key) {
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&elem, elemKind, false) {
+							return false
+						}
 						continue
 					}
 					elem.Depth += 1
@@ -3826,6 +3874,10 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -3921,6 +3973,9 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						if r.Retain != nil {
 							r.Report.RetainLost++
 						}
+						if !tableWireSkipFramed(&elem.tableRetainPlainReader, elemKind, false) {
+							return false
+						}
 						continue
 					}
 					elem.Path = r.Path.step(0, uint32(int(slot)-1))
@@ -4007,6 +4062,9 @@ func KeyedConfigLoadBodyRetain(r *TableRetainReader, value *KeyedConfig) bool {
 						r.Report.Unknown++
 						if r.Retain != nil {
 							r.Report.RetainLost++
+						}
+						if !tableWireSkipFramed(&elem.tableRetainPlainReader, elemKind, false) {
+							return false
 						}
 						continue
 					}
@@ -4353,6 +4411,10 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4448,6 +4510,9 @@ func ScoreBoardLoadBody(r *TableReader, value *ScoreBoardRow) bool {
 					var slot Team
 					if !slot.TableEnumValue(key) {
 						r.Report.Unknown++
+						if !tableWireSkipFramed(&elem, elemKind, false) {
+							return false
+						}
 						continue
 					}
 					if !elem.Has(tableKindBytes(elemKind)) {
@@ -4768,6 +4833,10 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 			return false
 		}
 		if ref == 0 {
+			if r.Offset != int64(len(r.Buffer)) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
 			return true
 		}
 		fieldID, ok := r.Resolve(ref)
@@ -4865,6 +4934,9 @@ func ScoreBoardLoadBodyRetain(r *TableRetainReader, value *ScoreBoardRow) bool {
 						r.Report.Unknown++
 						if r.Retain != nil {
 							r.Report.RetainLost++
+						}
+						if !tableWireSkipFramed(&elem.tableRetainPlainReader, elemKind, false) {
+							return false
 						}
 						continue
 					}
@@ -5490,7 +5562,7 @@ func TeamConfigFixedLoad(values []TeamConfig, data []byte, plan []TableFixedEntr
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -5730,7 +5802,7 @@ func GunnerConfigFixedLoad(values []GunnerConfig, data []byte, plan []TableFixed
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -5982,7 +6054,7 @@ func TurretConfigFixedLoad(values []TurretConfig, data []byte, plan []TableFixed
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -6260,7 +6332,7 @@ func HullConfigFixedLoad(values []HullConfig, data []byte, plan []TableFixedEntr
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1
@@ -6617,7 +6689,7 @@ func KeyedConfigFixedLoad(values []KeyedConfig, data []byte, plan []TableFixedEn
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
-	if recordBytes <= 8 || rest%recordBytes != 0 {
+	if recordBytes <= 8 || rest%recordBytes != 0 || (rest == 0 && len(values) == 1) {
 		report.Refuse(TableRefuseWireDamaged, "")
 		report.Reason = TableRefuseTruncated.Error()
 		return -1

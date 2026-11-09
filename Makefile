@@ -3075,7 +3075,7 @@ TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -
 # content (docs/SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
 # compiles the generated <Base>Table.cpp, and one that never does compiles
 # nothing for it. Expanded in the recipe because these are build-time output.
-TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
+TABLES_JSON_SOURCES = $$(for d in $(PINS_WIRE_TABLES_DIRS); do ls build/tables-generated/$$d/*Table.cpp; done)
 
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
@@ -3138,7 +3138,7 @@ BE_RUN ?= qemu-s390x
 # and the emulator invocation is just the binary.
 build/schema_test_tables_be: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
-	$(BE_CXX) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
 # wire goldens were written by a LITTLE-ENDIAN build, so a codec that reached
@@ -3972,7 +3972,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
 	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
-	@grep -Fq 'must refuse before entries without adding damage' build/map-builder-oracle.log
+	@grep -Fq 'must refuse count_over_extent_cap' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
 # KEY ORDER meets it: the byte compare against its pinned wire goes red while
@@ -4002,7 +4002,7 @@ tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 # tolerant-era form, no longer moves the verdict.)
 .PHONY: tables-maps-duplicate-negative-control
 tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed;; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
+	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it: the strict read refuses it as kind_mismatch, and the sabotaged
@@ -4027,7 +4027,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 		internal/codegen/cpptable/maps.go > build/map-clamp.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in maps.go exactly once"; exit 1; }
-	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range;; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
+	@sed -e 's@len, %d ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary@len, %d ); } // SABOTAGED: cut down, not refused@' \
 		internal/codegen/cpptable/codecs.go > build/map-clamp-codecs.gotext
 	@test "$$(grep -c SABOTAGED build/map-clamp-codecs.gotext)" = "1" || \
 		{ echo "NEGATIVE CONTROL FAILED: the clamp sabotage did not land in codecs.go exactly once"; exit 1; }
@@ -5484,7 +5484,7 @@ tables-ref-ordinal-negative-control:
 .PHONY: tables-ref-ordinal-shared-negative-control
 tables-ref-ordinal-shared-negative-control:
 	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
-	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[ int32_t( r ) - 1 \] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
+	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[int32_t( r ) - 1\] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[int32_t( r ) - 1] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
 		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-shared-nc/emitter.go.txt
 	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-shared-nc/emitter.go.txt && \
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
@@ -5771,12 +5771,12 @@ ENGINE_CYCLE_NC := build/engine-cycle-nc
 .PHONY: tables-engine-cycle-negative-control
 tables-engine-cycle-negative-control:
 	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
-	@sed -e 's|return true // a pointer to an OPEN node: a cycle|continue // NEGATIVE CONTROL: cycles read clean|' \
-		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_NC)/decodenodes.go.txt && \
+	@sed -e 's|return c.damage("a pointer to a node whose descent is still open: a cycle")|continue // NEGATIVE CONTROL: cycles read clean|' \
+		internal/tablewire/wirecheck.go > $(ENGINE_CYCLE_NC)/wirecheck.go.txt
+	@cmp -s internal/tablewire/wirecheck.go $(ENGINE_CYCLE_NC)/wirecheck.go.txt && \
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
-		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
+	@sed '/case markOpen:/{n;s/return false/continue/;}' test/conformance/harness/strictcheck.go > $(ENGINE_CYCLE_NC)/strictcheck.go.txt && printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(ENGINE_CYCLE_NC)/strictcheck.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
 	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
@@ -5796,11 +5796,11 @@ ENGINE_CYCLE_LINEAR_NC := build/engine-cycle-linear-nc
 .PHONY: tables-engine-cycle-linear-negative-control
 tables-engine-cycle-linear-negative-control:
 	@rm -rf $(ENGINE_CYCLE_LINEAR_NC) && mkdir -p $(ENGINE_CYCLE_LINEAR_NC)
-	@sed -e 's|continue // a pointer to a CLOSED node: a share, never re-entered|// NEGATIVE CONTROL: a share is re-entered|' \
-		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt
-	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt && \
+	@sed -e 's|case markClosed:|case 99: // NEGATIVE CONTROL: a share is re-entered|' \
+		internal/tablewire/wirecheck.go > $(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt
+	@cmp -s internal/tablewire/wirecheck.go $(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt && \
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
 	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
@@ -6279,10 +6279,11 @@ tables-wire-fuzz-message-text-leg-negative-control: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/cpptable/messageload.go":"%s/$(MESSAGE_TEXT_LEG_NC)/messageload.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(MESSAGE_TEXT_LEG_NC)/overlay.json
 	go build -overlay $(MESSAGE_TEXT_LEG_NC)/overlay.json -o $(MESSAGE_TEXT_LEG_NC)/schema ./cmd/schema
-	$(call tables_generate,./$(MESSAGE_TEXT_LEG_NC)/schema,$(MESSAGE_TEXT_LEG_NC)/generated)
-	$(CXX) $(TABLES_CXXFLAGS) -O1 $(call tables_includes,$(MESSAGE_TEXT_LEG_NC)/generated) \
-		test/tables/wire_fuzz_main.cpp \
-		$(subst build/tables-generated/,$(MESSAGE_TEXT_LEG_NC)/generated/,$(CONFORMANCE_SOURCES)) \
+	./$(MESSAGE_TEXT_LEG_NC)/schema generate --lang cpp --out $(MESSAGE_TEXT_LEG_NC)/backend tables/backend
+	awk '/^#include "/ && !/BackendTable\.h/ { next } /^    (FIXED|VARIABLE|MESSAGE|RETAIN)\(/ && !/"backenddemo"/ { next } { print }' test/tables/wire_fuzz_main.cpp > $(MESSAGE_TEXT_LEG_NC)/main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -O1 -I$(MESSAGE_TEXT_LEG_NC)/backend -Itest/tables -I$(SERIALIZE) \
+		$(MESSAGE_TEXT_LEG_NC)/main.cpp \
+		$(MESSAGE_TEXT_LEG_NC)/backend/BackendTable.cpp \
 		-o $(MESSAGE_TEXT_LEG_NC)/leg
 	@if ./build/conformance-harness wire-fuzz --driver $(MESSAGE_TEXT_LEG_NC)/leg \
 			--replay $(MESSAGE_TEXT_VECTOR) --unit backenddemo --root StorePurchase --message \
@@ -6506,6 +6507,37 @@ tables-scalars-block-asserts: build/tables-generated/.stamp
 	@echo "tables wide-scalar layout asserts: the scalars block form compiles, every sizeof, alignof and offsetof asserted"
 
 include $(wildcard make/*.mk)
+
+# THE SPLIT HALVES OF ci-full.yml's leg-tagged MATRIX. The whole moo tagged
+# leg (test-moo-tagged, make/moo-tagged.mk) is ~100 s, leaving no room for a
+# matrix row's own checkout and pin setup inside the 110 s per-commit budget.
+# These halves split it into the compiler alone and the table + conformance
+# packages together, so each row runs in parallel. They live here, not in
+# make/moo-tagged.mk, because this card's PATHS allow only Makefile and
+# ci-full.yml. Nothing moves tiers: test-moo-tagged still runs the whole leg
+# for a workstation and certify.yml, and make/negative-controls.json is
+# unchanged.
+.PHONY: test-moo-tagged-compiler test-moo-tagged-table
+test-moo-tagged-compiler: toolchain-moo build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./compiler/
+test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -timeout 60m -tags schema_leg_moo ./internal/codegen/mootable/ ./test/conformance/harness/
+# THE PER-COMMIT SMOKES OF THE SAME MATRIX (ci-full.yml's leg-tagged job,
+# non-schedule events). Measured on run 42578064640, the full halves cannot
+# fit the 110 s per-commit budget at any row count (moo-table 859 s, one
+# test alone 586 s), so per-commit rows run these instead and the full
+# halves above run on the workflow's schedule. Each smoke compiles its
+# tagged build and runs the tagged registration/admission tests: the
+# compiler's Moo tests, the moo table descriptors load under the pinned
+# interpreter, and the harness's tagged-admission test under each tag.
+.PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
+test-moo-tagged-compiler-smoke: toolchain-moo
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
+test-moo-tagged-table-smoke: toolchain-moo
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestMooTableDescriptorsLoad$$' ./internal/codegen/mootable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
+test-goose-tagged-harness-smoke:
+	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_goose -run '^TestImplementationAdmitsTaggedLanguagesByBuild$$' ./test/conformance/harness/
 # map is not a compiler backend. Include it by path so the registry wildcard
 # above stays live ports only (tables-ports-refuse-wide-scalars).
 include $(wildcard tools/agentsmap/map.mk)
@@ -7302,7 +7334,10 @@ release-refuses-on-differential:
 	@printf '{"commit":"%s","cells":1,"red":[]}\n' "$$(git rev-parse HEAD)" > $(RELEASE_GATE_TEST)/green.json
 	go build -o $(RELEASE_GATE_TEST)/schema-clean ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_GATE_TEST)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
+	@awk '/case ir\.TBool:/{f=1} f&&/b\[0\] = 1/{sub(/b\[0\] = 1/, "b[0] = 2 // SABOTAGED: true is written as 2"); f=0} {print}' internal/tablewire/fixed.go > $(RELEASE_GATE_TEST)/fixed.gotext
+	@! cmp -s internal/tablewire/fixed.go $(RELEASE_GATE_TEST)/fixed.gotext || \
+		{ echo "FAILED: the fixed-form bool sabotage no longer matches internal/tablewire/fixed.go"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_GATE_TEST)/encode.gotext","%s/internal/tablewire/fixed.go":"%s/$(RELEASE_GATE_TEST)/fixed.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(RELEASE_GATE_TEST)/table.json
 	go build -overlay $(RELEASE_GATE_TEST)/table.json -o $(RELEASE_GATE_TEST)/schema-table ./cmd/schema
 	@$(RELEASE_GATE_MAKE) RELEASE_DIFFERENTIAL_FLAGS="-prev clean -old-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -new-bin $(CURDIR)/$(RELEASE_GATE_TEST)/schema-clean -corpus . -work $(RELEASE_GATE_TEST)/guard" > $(RELEASE_GATE_TEST)/guard.out 2>&1 || \
 		{ echo "FAILED: make release with no difference did not reach its tag decision"; cat $(RELEASE_GATE_TEST)/guard.out; exit 1; }
@@ -7350,7 +7385,10 @@ release-differential-negative-control:
 	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json
 	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/packet.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-packet ./cmd/schema
 	go run ./tools/sabotage -name release-differential-table-bool -out $(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext internal/tablewire/encode.go
-	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
+	@awk '/case ir\.TBool:/{f=1} f&&/b\[0\] = 1/{sub(/b\[0\] = 1/, "b[0] = 2 // SABOTAGED: true is written as 2"); f=0} {print}' internal/tablewire/fixed.go > $(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext
+	@! cmp -s internal/tablewire/fixed.go $(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed-form bool sabotage no longer matches internal/tablewire/fixed.go"; exit 1; }
+	@printf '{"Replace":{"%s/internal/tablewire/encode.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/encode.gotext","%s/internal/tablewire/fixed.go":"%s/$(RELEASE_DIFFERENTIAL_CONTROL)/fixed.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(RELEASE_DIFFERENTIAL_CONTROL)/table.json
 	go build -overlay $(RELEASE_DIFFERENTIAL_CONTROL)/table.json -o $(RELEASE_DIFFERENTIAL_CONTROL)/schema-table ./cmd/schema
 	@for s in packet table; do \
 		test "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-clean id examples)" = "$$($(RELEASE_DIFFERENTIAL_CONTROL)/schema-$$s id examples)" || \

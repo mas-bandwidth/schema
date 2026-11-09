@@ -67,10 +67,10 @@ func jsIdentityDoor(t *testing.T, load, root string) {
 	decl := fmt.Sprintf("const identity = entries === %sFixedIdentity && holeN === 0;", root)
 	door := fmt.Sprintf("if (identity) {\n"+
 		"      %sFixedDecode(values[k], srcView, at + 8, stage);\n"+
-		"      if (stage.refused !== 0) { report.refused = stage.refused; report.damaged = stage.damaged; return -1; }\n"+
+		"      if (stage.refused !== 0) { return %sFixedRefuseBatch(values, k, stage, report); }\n"+
 		"      at += recordBytes;\n"+
 		"      continue;\n"+
-		"    }", root)
+		"    }", root, root)
 	if !allowed {
 		if strings.Contains(load, "if (identity") {
 			t.Error("the load grew a second reader and docs/SPEC-TABLES.md §3.4 does not list javascript")
