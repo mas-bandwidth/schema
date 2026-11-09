@@ -173,8 +173,11 @@ jobs:
       - uses: ./.github/actions/python
       # The BEAM toolchain, same versions as the Makefile's dist/ pins
       # (generated Elixir is self-contained — Erlang/OTP + Elixir are the
-      # only dependencies, so there is no serialize.elixir clone above).
+      # only dependencies, so there is no serialize.elixir clone above). The
+      # fleet's schema runners carry OTP and Elixir on PATH; setup-beam needs
+      # ImageOS, which only a hosted runner sets.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -406,7 +409,10 @@ jobs:
       # cached under the pins.
       - uses: ./.github/actions/python
 
+      # The fleet's schema runners carry OTP and Elixir on PATH; setup-beam
+      # needs ImageOS, which only a hosted runner sets.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -576,7 +582,10 @@ jobs:
       # two CPython interpreters and mypy), built once per runner image and
       # cached under the pins.
       - uses: ./.github/actions/python
+      # The fleet's schema runners carry OTP and Elixir on PATH; setup-beam
+      # needs ImageOS, which only a hosted runner sets.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: runner.environment == 'github-hosted'
         with:
           otp-version: '29.0.5'
           elixir-version: '1.20.4'
@@ -860,8 +869,10 @@ jobs:
       - uses: ./.github/actions/python
         if: matrix.python != ''
 
+      # The fleet's schema runners carry OTP and Elixir on PATH; setup-beam
+      # needs ImageOS, which only a hosted runner sets.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
