@@ -142,8 +142,14 @@ func init() {
 	// the native region load, and the retaining load derived from it: the
 	// measure's walk refusal (measure.go) and the region discard (region.go)
 	sabotages["table-cs-region-measure-discard"] = []edit{{
-		old: `if (whole == WireDamaged) { return -1; }`,
-		new: `if (whole == WireDamaged && bytes.Length < 0) { return -1; } // SABOTAGED: the measure's walk refusal is gone`,
+		old: `if (whole == WireDamaged) { return -1; }
+        // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+        // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+        if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }`,
+		new: `if (whole == WireDamaged && bytes.Length < 0) { return -1; } // SABOTAGED: the measure's walk refusal is gone
+        // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+        // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+        if (whole != WireWhole && whole != WireDamaged) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }`,
 	}}
 	sabotages["table-cs-region-discard"] = []edit{{
 		old: `if (report.Damaged) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
