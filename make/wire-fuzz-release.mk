@@ -100,7 +100,10 @@ tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
 endef
 $(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),$(eval $(call wfr_leg,$(l))))
 
-.PHONY: wire-fuzz-release-table wire-fuzz-release-targets
+.PHONY: wire-fuzz-release wire-fuzz-release-table wire-fuzz-release-targets
+# ALL LEGS AT ONCE: the whole release gate as one target, so a dry run
+# (`make -n wire-fuzz-release`) checks every leg's recipes without building.
+wire-fuzz-release: $(addprefix tables-wire-fuzz-release-,$(WIRE_FUZZ_RELEASE_LEGS))
 # ONE TABLE over every leg's rows from the last run of each leg's target.
 wire-fuzz-release-table:
 	@printf '| leg | arm | seed | result |\n|---|---|---|---|\n'
