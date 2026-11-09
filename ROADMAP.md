@@ -154,9 +154,9 @@ Variable tables have pointers to other tables, maps and other features that give
 | retain-unknown | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | doc comments and tags in the descriptors | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | the unit registry, UnitView | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| widening on read, and the refusal reasons | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| complete | 96% | 0% | 3% | 78% | 100% | 100% | 54% | 27% | 39% | 24% | 87% | 100% | 66% | 90% | 100% | 0% |
+| complete | 96% | 0% | 3% | 78% | 100% | 100% | 54% | 27% | 39% | 24% | 90% | 100% | 66% | 90% | 100% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
