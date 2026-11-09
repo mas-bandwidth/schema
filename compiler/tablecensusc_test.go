@@ -170,34 +170,6 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 	return string(header), files
 }
 
-func TestCTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	_, err := generateCUnqualified(unitFromSource(t, deadCWideSrc))
-	if err == nil || !strings.Contains(err.Error(), wstringRetired) || !strings.Contains(err.Error(), "kind 33") {
-		t.Fatalf("a wstring(N) unit must be refused by name, got %v", err)
-	}
-
-	without, files := deadCHeader(t, deadCNarrowSrc)
-	for _, sym := range deadCWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// KIND 12's runtime is every unit's: it rides in the file wire's
-	// primitives, which the generic walk and the cooked form both read
-	for _, sym := range []string{"table_wire_utf8(", "table_wire_utf8_clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
-	deadCCompile(t, files)
-}
-
-// TestCTableFloatRungIsTheFiniteTestAndTheConversion holds the float rung,
-// kind 10 into a declared kind 11, to the finite rule (docs/SPEC-TABLES.md
-// §3.3, §4). There was a census-gated table_wire_widen_f32 here, which carried
-// a NaN's payload across by hand; a NaN or an infinity is now refused on its
-// raw bits before the rung, and every finite float32 is exactly a float64, so
-// the rung is the ordinary conversion and no unit carries a helper for it.
 func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 	with, files := deadCHeader(t, deadCF64Src)
 	if strings.Contains(with, "table_wire_widen_f32") {

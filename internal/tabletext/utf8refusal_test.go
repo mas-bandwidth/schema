@@ -75,14 +75,4 @@ func TestEngineStringRefusesInvalidUTF8(t *testing.T) {
 		t.Fatalf("narrow: got %q", fv.Cell.Str)
 	}
 
-	// a wide field's well-formed two-byte sequence reads clean and exact
-	inst = m.New(root)
-	r = tabletext.Report{}
-	cleanWide := `{"w":"` + "\xe2\x82\xac" + `"}` // U+20AC EURO SIGN
-	if !m.Read(inst, []byte(cleanWide), &r) || r.Refused {
-		t.Fatalf("wide clean read %s: report %+v", cleanWide, r)
-	}
-	if fv, ok := inst.FieldByKey("w"); !ok || len(fv.Cell.Units) != 1 || fv.Cell.Units[0] != 0x20ac {
-		t.Fatalf("wide: got %v", fv.Cell.Units)
-	}
 }

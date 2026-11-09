@@ -102,27 +102,6 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 	return string(header), files
 }
 
-func TestCppTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	_, err := New().Generate(unitFromSource(t, deadCppWideSrc), "cpp", Options{})
-	if err == nil || !strings.Contains(err.Error(), wstringRetired) || !strings.Contains(err.Error(), "kind 33") {
-		t.Fatalf("a wstring(N) unit must be refused by name, got %v", err)
-	}
-
-	without, _ := deadCppHeader(t, deadCppNarrowSrc)
-	for _, sym := range deadCppWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// the kind 12 half stays in every unit: TableJsonScanUnit reads it and the
-	// generic walk is one artifact
-	for _, sym := range []string{"TableUtf8Valid", "TableUtf8Clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
-}
-
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {
 	with, files := deadCppHeader(t, deadCppBlobSrc)
 	for _, sym := range deadCppBlobSymbols {

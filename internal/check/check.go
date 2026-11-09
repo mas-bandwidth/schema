@@ -23,6 +23,10 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// wstringRefusalMsg is the one diagnostic every spelling of wstring takes.
+// Text in schema is string, which is UTF-8 on both wires (SPEC §4.12).
+const wstringRefusalMsg = "wstring is not a schema type: text is string, which is UTF-8 — declare %s and convert wide text to UTF-8 at the application's boundary (SPEC §4.12)"
+
 // SourceFile is one *.schema file of the unit.
 type SourceFile struct {
 	Path  string // as given
@@ -1606,6 +1610,14 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		out.Type = ir.FieldType{Kind: ir.TFixed, Signed: f.Type.Signed, Width: int(total),
 			IntBits: int(iv.Int64()), FracBits: int(fv.Int64())}
 	case ast.ScalarString, ast.ScalarWString, ast.ScalarBytes:
+		if f.Type.Kind == ast.ScalarWString {
+			fix := "string(N)"
+			if f.Type.Pointer {
+				fix = "*string"
+			}
+			c.errf(f.Type.Pos, wstringRefusalMsg, fix)
+			return nil
+		}
 		minN := int64(1)
 		what := "bytes"
 		k := ir.TBytes

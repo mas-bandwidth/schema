@@ -815,17 +815,21 @@ func (p *parser) parseScalar() ast.ScalarType {
 	case scanner.KwFloat64:
 		p.advance()
 		return ast.ScalarType{Kind: ast.ScalarFloat64, Pos: t.Pos}
-	case scanner.KwWString:
-		return p.refuseWString(t, false)
-	case scanner.KwBits, scanner.KwString, scanner.KwBytes:
+	case scanner.KwBits, scanner.KwString, scanner.KwWString, scanner.KwBytes:
 		p.advance()
-		if t.Kind == scanner.KwString && p.kind() != scanner.LParen {
+		if (t.Kind == scanner.KwString || t.Kind == scanner.KwWString) && p.kind() != scanner.LParen {
 			// `rules []string`, `map[string]V` — a bare `string` is UNBOUNDED
 			// text (docs/SPEC-TABLES.md §2.13.1). It is recorded, not refused:
 			// where it may stand (a text-list element, a map key, in a plain
 			// table) is the CHECKER's business, so every other placement gets
-			// a diagnostic naming its route rather than a parse error.
-			return ast.ScalarType{Kind: ast.ScalarString, Unbounded: true, Pos: t.Pos}
+			// a diagnostic naming its route rather than a parse error. A bare
+			// `wstring` is recorded the same way; the checker refuses it by
+			// name.
+			kind := ast.ScalarString
+			if t.Kind == scanner.KwWString {
+				kind = ast.ScalarWString
+			}
+			return ast.ScalarType{Kind: kind, Unbounded: true, Pos: t.Pos}
 		}
 		p.expect(scanner.LParen, "(")
 		arg := p.parseExpr()
@@ -834,6 +838,8 @@ func (p *parser) parseScalar() ast.ScalarType {
 		switch t.Kind {
 		case scanner.KwString:
 			kind = ast.ScalarString
+		case scanner.KwWString:
+			kind = ast.ScalarWString
 		case scanner.KwBytes:
 			kind = ast.ScalarBytes
 		}
@@ -852,10 +858,7 @@ func (p *parser) parseScalar() ast.ScalarType {
 		// body); the grammar accepts any name so the diagnostic names the real
 		// problem instead of "expected a field type".
 		p.advance()
-		if p.kind() == scanner.KwWString {
-			return p.refuseWString(t, true)
-		}
-		if k := p.kind(); k == scanner.KwBytes || k == scanner.KwString {
+		if k := p.kind(); k == scanner.KwBytes || k == scanner.KwString || k == scanner.KwWString {
 			// `data *bytes`, `caption *string` — a BYTE BUFFER at its used
 			// size (docs/SPEC-TABLES.md §2.5): a pointer to a blob node. It
 			// takes no bound, because a buffer at its used size has none to
@@ -865,6 +868,8 @@ func (p *parser) parseScalar() ast.ScalarType {
 			switch k {
 			case scanner.KwString:
 				kind = ast.ScalarString
+			case scanner.KwWString:
+				kind = ast.ScalarWString
 			}
 			if p.kind() == scanner.LParen {
 				p.errf(p.tok().Pos, "*%s takes no bound — a byte buffer is exactly the size it was given, and null when absent; write *%s, or bytes(N) for inline storage at a declared bound (docs/SPEC-TABLES.md §2.5)", word.Text, word.Text)
@@ -1091,36 +1096,4 @@ func (p *parser) parseSetLit() *ast.SetLit {
 	}
 	p.expect(scanner.RBrace, "}")
 	return lit
-}
-
-// WStringRefusal is the diagnostic every spelling of `wstring` takes. Text in
-// schema is `string`, which is UTF-8 on both wires (SPEC §4.12): wide text has
-// no portable storage across the targets, so `wstring` is a reserved word and
-// never a type. A program that holds wchar_t, UTF-16 or UTF-32 text converts it
-// to UTF-8 at its own boundary.
-const WStringRefusal = "wstring is not a schema type: text is string, which is UTF-8 — declare %s and convert wide text to UTF-8 at the application's boundary (SPEC §4.12)"
-
-// refuseWString reports `wstring(N)` or `*wstring` (star is the pointer
-// spelling, whose `*` the caller consumed) by [WStringRefusal], consumes the
-// spelling so the parse continues at the next field, and records the field as
-// the `string` the diagnostic names.
-func (p *parser) refuseWString(t scanner.Token, star bool) ast.ScalarType {
-	p.advance()
-	if star {
-		p.errf(t.Pos, WStringRefusal, "*string")
-		if p.kind() == scanner.LParen {
-			p.advance()
-			p.parseExpr()
-			p.expect(scanner.RParen, ")")
-		}
-		return ast.ScalarType{Kind: ast.ScalarString, Pointer: true, Pos: t.Pos}
-	}
-	p.errf(t.Pos, WStringRefusal, "string(N)")
-	if p.kind() != scanner.LParen {
-		return ast.ScalarType{Kind: ast.ScalarString, Unbounded: true, Pos: t.Pos}
-	}
-	p.advance()
-	arg := p.parseExpr()
-	p.expect(scanner.RParen, ")")
-	return ast.ScalarType{Kind: ast.ScalarString, Arg: arg, Pos: t.Pos}
 }

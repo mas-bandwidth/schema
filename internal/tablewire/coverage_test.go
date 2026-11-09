@@ -886,35 +886,5 @@ func TestUncoveredPaths(t *testing.T) {
 	t.Run("batch", TestMessageBatch)
 	t.Run("announcement refusals", TestAnnouncementRefusals)
 	t.Run("range clamps", TestRangeRefusesBothForms)
-	t.Run("wstring damage", TestWStringDamage)
 	t.Run("damaged wires", TestDamagedWiresDoNotPanic)
-}
-
-// A WSTRING'S ODD LENGTH and an unpaired or zero code unit are damage, and the
-// field keeps its declared default while the parent reads on (§3, §3.3).
-func TestWStringDamage(t *testing.T) {
-	t.Parallel()
-	m := covModel(t, `package coverwide
-
-table Root
-{
-    w wstring(8)
-}
-`)
-	root := m.Lookup("Root")
-	for _, c := range []struct {
-		name string
-		body []byte
-	}{
-		{"odd length", append([]byte{3}, 'a', 'b', 'c')},
-		{"zero unit", append([]byte{2}, 0, 0)},
-		{"unpaired surrogate", append([]byte{2}, 0x00, 0xD8)},
-	} {
-		value := m.New(root)
-		var report tabletext.Report
-		r := &wireReader{buf: c.body, report: &report, m: m}
-		if r.field(&value.Fields[0]) || RefusalReason(r.err()) != ReasonWireDamaged {
-			t.Fatalf("%s: field() = %v", c.name, r.err())
-		}
-	}
 }
