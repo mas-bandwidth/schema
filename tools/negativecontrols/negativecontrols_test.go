@@ -1014,3 +1014,140 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 		}
 	}
 }
+
+// TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap holds the
+// split of the five Go, Rust and shared message-form rows (message-form, rust,
+// go-containers, go-message, go-proof) that ran 130-148 s and were killed at
+// two minutes on runs 42556155793 and 42554833739 (green-fit-negctl-go-rust):
+// every one of the 63 targets from those rows stays in exactly one group,
+// no pull-request group in those families exceeds 8 targets or ~75 s of
+// measured control time. tables-rust-cook-map-negative-control (116 s warm,
+// 124 s cold on vision) stays nightly. conformance-negative-control-go-message
+// stays on the go-message pull-request row: the 117 s figure included a cold
+// generated-Go tree and driver build, and the make wall after those
+// prerequisites exist is a few seconds.
+func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
+	m, err := loadManifest(testRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantTargets := []string{
+		// message-form (3)
+		"tables-message-form-count-negative-control",
+		"tables-message-form-emitter-negative-control",
+		"tables-message-form-text-negative-control",
+		// rust (36)
+		"cards-rust-conformance-negative-control",
+		"cards-rust-conformance-upgrade-negative-control",
+		"cards-rust-conformance-hash-negative-control",
+		"conformance-negative-control-rust-walk",
+		"packet-arm-defaults-rust-negative-control",
+		"packet-defaults-rust-negative-control",
+		"packet-utf8-rust-negative-control",
+		"packet-wide-rust-negative-control",
+		"tables-rust-alloc-negative-control",
+		"tables-rust-cook-write-negative-control",
+		"tables-rust-json-differential-negative-control",
+		"tables-rust-accessor-negative-control",
+		"tables-rust-slot-negative-control",
+		"tables-rust-number-walk-negative-control",
+		"tables-rust-json-hostile-negative-control",
+		"tables-rust-names-negative-control",
+		"tables-rust-runtime-home-negative-control",
+		"tables-rust-guard-negative-control",
+		"tables-rust-retain-negative-control",
+		"tables-rust-soak-negative-control",
+		"tables-rust-wire-fuzz-negative-control",
+		"tables-rust-keyed-negative-control",
+		"tables-rust-map-sort-negative-control",
+		"tables-rust-cook-layout-negative-control",
+		"tables-rust-byte-order-negative-control",
+		"tables-rust-order-word-negative-control",
+		"tables-rust-node-label-negative-control",
+		"tables-rust-usage-negative-control",
+		"tables-rust-release-negative-control",
+		"tables-rust-clippy-negative-control",
+		"conformance-rust-absent-negative-control",
+		"conformance-negative-control-rust-framing",
+		"tables-rust-finite-float-negative-control",
+		"tables-rust-cook-map-negative-control",
+		"tables-rust-discard-negative-control",
+		"tables-rust-fixed-discard-negative-control",
+		// go-containers (14)
+		"tables-go-containers-negative-controls",
+		"tables-go-accessor-negative-control",
+		"tables-go-slot-negative-control",
+		"tables-go-runtime-home-negative-control",
+		"tables-go-block-race-negative-control",
+		"tables-go-block-fill-refuser-negative-control",
+		"tables-go-allocator-negative-controls",
+		"tables-go-allocator-runtime-negative-control",
+		"tables-go-retain-negative-controls",
+		"tables-go-builders-negative-control",
+		"tables-go-measure-negative-controls",
+		"tables-go-fixed-form-negative-control",
+		"tables-go-text-differential-negative-control",
+		"tables-go-finite-float-negative-control",
+		// go-message (2)
+		"conformance-negative-control-go-message",
+		"tables-go-message-form-negative-controls",
+		// go-proof (8)
+		"tables-go-keyed-negative-control",
+		"tables-go-layout-contract-negative-control",
+		"tables-go-graph-label-negative-control",
+		"tables-go-usage-negative-control",
+		"conformance-negative-control-go-absent",
+		"cards-conformance-go-negative-control",
+		"tables-go-clean-negative-control",
+		"tables-go-release-negative-control",
+	}
+
+	unsplitForbidden := map[string]bool{
+		"message-form":  true,
+		"rust":          true,
+		"go-containers": true,
+		"go-proof":      true,
+	}
+
+	groupOf := map[string][]string{}
+	tierOf := map[string]string{}
+	for _, g := range m.Groups {
+		if unsplitForbidden[g.Name] {
+			t.Errorf("group %q is still unsplit (%d targets); split it so each row stays under ~75 s of control time", g.Name, len(g.Targets))
+		}
+		if strings.HasPrefix(g.Name, "message-form-") ||
+			strings.HasPrefix(g.Name, "rust-") ||
+			strings.HasPrefix(g.Name, "go-containers-") ||
+			strings.HasPrefix(g.Name, "go-proof-") ||
+			g.Name == "go-message" {
+			if strings.TrimSpace(g.Why) == "" {
+				t.Errorf("group %q has no why field", g.Name)
+			}
+			if g.When == whenPullRequest && len(g.Targets) > 8 {
+				t.Errorf("pull-request group %q carries %d targets (want <= 8 so each row stays under ~75 s of control time)", g.Name, len(g.Targets))
+			}
+		}
+		for _, target := range g.Targets {
+			groupOf[target] = append(groupOf[target], g.Name)
+			tierOf[target] = g.When
+		}
+	}
+
+	for _, target := range wantTargets {
+		groups := groupOf[target]
+		if len(groups) != 1 {
+			t.Errorf("target %q appears in %d groups (%v); want exactly 1", target, len(groups), groups)
+		}
+	}
+
+	if tierOf["tables-rust-cook-map-negative-control"] != whenNightly {
+		t.Errorf("target %q is in tier %q; want %q because a single run exceeded ~75 s of control time", "tables-rust-cook-map-negative-control", tierOf["tables-rust-cook-map-negative-control"], whenNightly)
+	}
+	if tierOf["conformance-negative-control-go-message"] != whenPullRequest {
+		t.Errorf("target %q is in tier %q; want %q because its make wall after prerequisites exist is a few seconds", "conformance-negative-control-go-message", tierOf["conformance-negative-control-go-message"], whenPullRequest)
+	}
+	if got := groupOf["conformance-negative-control-go-message"]; len(got) != 1 || got[0] != "go-message" {
+		t.Errorf("target conformance-negative-control-go-message is in %v; want only go-message", got)
+	}
+}
