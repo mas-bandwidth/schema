@@ -540,7 +540,8 @@ func fixedSrcIntervals(entries []ir.TableFixedLayoutEntry) []fixedSrcInterval {
 func fixedCopySegments(e ir.TableFixedLeaf, intervals []fixedSrcInterval) ([]ir.TableFixedLeaf, []int64, bool) {
 	var out []ir.TableFixedLeaf
 	var elems []int64
-	for pos := e.Src; pos < e.Src+e.Size; {
+	limit := e.Src + e.Size
+	for pos := e.Src; pos < limit; {
 		var match *fixedSrcInterval
 		for i := range intervals {
 			iv := &intervals[i]
@@ -556,7 +557,7 @@ func fixedCopySegments(e ir.TableFixedLeaf, intervals []fixedSrcInterval) ([]ir.
 		if match == nil || match.elem <= 0 {
 			return nil, nil, false
 		}
-		end := min(match.hi, e.Src+e.Size)
+		end := min(match.hi, limit)
 		sub := e
 		sub.Src = pos
 		sub.Dst = e.Dst + (pos - e.Src)
