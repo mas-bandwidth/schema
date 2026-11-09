@@ -40,7 +40,14 @@ func TestCanonicalJSONWriterBytesAreOneAnswer(t *testing.T) {
 		if inst.NoText {
 			continue
 		}
-		inst := inst
+		if _, err := u.get(inst.Unit); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, inst := range m.Instances {
+		if inst.NoText {
+			continue
+		}
 		t.Run(inst.Name, func(t *testing.T) {
 			t.Parallel()
 			unit, err := u.get(inst.Unit)

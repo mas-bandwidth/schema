@@ -1192,6 +1192,10 @@ func intProps(f *ir.Field) string {
 // cycle, a non-finite float, a blob two slots name, a nesting past the depth
 // cap (§16.3, §16.7).
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
+	if g.noFileForm(st) {
+		g.emitNoFileFormRoot(st)
+		return
+	}
 	c := "TableVariableCodecs." + st.Name
 	g.pf("export function %sMeasure(v) {\n", st.Name)
 	g.pf("  const b = TableVariableSave(%s, v, null);\n", c)
@@ -1215,6 +1219,53 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 		g.pf("}\n\n")
 	}
 	g.emitRootLoadMeasure(st)
+}
+
+// noFileForm reports a declared fixed table whose record body is past §3.4's
+// ceiling. ir.TableFixedFormRoots does not emit a file form for it. The
+// file-facing read refuses the whole value and nothing is saved. The variable
+// walk stays in the module for a probe to put back; this surface does not call it.
+func (g *variableGen) noFileForm(st *ir.Struct) bool {
+	if g.variable[st.Name] || !st.FixedDeclared {
+		return false
+	}
+	return ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes
+}
+
+// emitNoFileFormRoot emits the file surface of a root with no file form. One
+// read is the whole value or a refusal, and this root has no value a file can
+// carry (docs/SPEC-TABLES.md §3.4, §4, §6.5). An empty file is damage. Any form
+// byte is refused by name and nothing is decoded. ToJson and FromJson stay when
+// the table carries the text form.
+func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
+	c := "TableVariableCodecs." + st.Name
+	g.pf("export function %sMeasure(v) {\n", st.Name)
+	g.pf("  return -1;\n")
+	g.pf("}\n\n")
+	g.pf("export function %sMeasureReason(v) {\n", st.Name)
+	g.pf("  return [-1, \"previous_form\"];\n")
+	g.pf("}\n\n")
+	g.pf("export function %sSave(v) {\n", st.Name)
+	g.pf("  return null;\n")
+	g.pf("}\n\n")
+	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
+	g.pf("  if (report === undefined || report === null) { report = new TableVariableReport(); }\n")
+	g.pf("  if (bytes.length < 1) { report.damaged = true; return null; }\n")
+	g.pf("  report.refused = 1;\n")
+	g.pf("  report.reason = bytes[0] === 1 ? \"previous_form\" : (bytes[0] === 2 ? \"message_form_as_file\" : (bytes[0] === 3 ? \"layout_record_too_large\" : \"newer_form\"));\n")
+	g.pf("  return null;\n")
+	g.pf("}\n\n")
+	if st.CarriesForm("json") {
+		g.pf("export function %sToJson(v) {\n", st.Name)
+		g.pf("  return TableVariableToJson(%s, v);\n", c)
+		g.pf("}\n\n")
+		g.pf("export function %sFromJson(text, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+		g.pf("}\n\n")
+	}
+	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	g.pf("  return -1;\n")
+	g.pf("}\n\n")
 }
 
 // emitRootLoadMeasure emits <T>LoadMeasure: the region size a caller owes a

@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -36,6 +37,7 @@ import (
 )
 
 type units struct {
+	mu     sync.Mutex
 	c      *compiler.Compiler
 	loaded map[string]*ir.Unit
 	m      *Manifest
@@ -46,6 +48,12 @@ func newUnits(m *Manifest) *units {
 }
 
 func (u *units) get(key string) (*ir.Unit, error) {
+	// The compiler and the cache are shared, and get is called from parallel
+	// subtests, so a load must hold the lock through Compiler.Load rather than
+	// only around the map write.
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
 	if unit, ok := u.loaded[key]; ok {
 		return unit, nil
 	}
