@@ -1255,11 +1255,11 @@ jobs:
     # 42458071627): the time was the build, not the run. `make
     # conformance-shared` builds that tree once here; the legs below
     # download it and build only their own driver, in parallel. The Go
-    # build cache is restored and saved here on fleet runners too (not
-    # only hosted), so an ephemeral fleet runner starts warm.
+    # build cache is restored here on fleet runners too (not only
+    # hosted), so an ephemeral fleet runner starts warm.
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
+    timeout-minutes: 10
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -1273,10 +1273,13 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache: restored and saved on fleet runners as well as
-      # hosted ones, so a cold fleet runner does not recompile the compiler
-      # and the harness from nothing. This job is a writer for this lane;
-      # `go-test` remains the widest writer. See the block on that job.
+      # The Go build cache: restored on fleet runners as well as hosted
+      # ones, so a cold fleet runner does not recompile the compiler and
+      # the harness from nothing. Restore only here — a save of the whole
+      # cache took longer than the build it would warm (measured on run
+      # 42569158490: the save ran past this job's then 5-minute cap and
+      # the artifact upload behind it was skipped); `go-test` remains
+      # the writer. See the block on that job.
       - name: where this runner keeps the Go build cache
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
@@ -1297,11 +1300,6 @@ jobs:
 
       - name: build the shared conformance inputs once
         run: make -j"$(nproc)" conformance-shared
-
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ${{ env.GO_BUILD_CACHE }}
-          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
 
       - name: hand the shared conformance inputs to every leg
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
