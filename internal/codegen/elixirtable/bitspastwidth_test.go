@@ -31,28 +31,33 @@ func TestElixirBitsPastWidthRefuses(t *testing.T) {
 	}
 }
 
-// TestElixirBitsPastWidthRefusesNegativeControl is the reversed witness: the
-// emitted width guard is removed, and the same probe must go red on a check.
+// TestElixirBitsPastWidthRefusesNegativeControl is the reversed witness for
+// the JSON row. The wire width guard stays, so the wire rows still refuse.
+// Removing that guard reds those rows first, and the JSON row would still
+// refuse: clamp_json_int calls clamp_between against int_domain_bounds, which
+// throws :wire_damaged. The sabotage is that JSON clamp tail. With it gone
+// the past-width JSON value is accepted, and that case is the failure on the
+// page. A missing anchor fails the test.
 func TestElixirBitsPastWidthRefusesNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 
 	files, probe := bitsPastWidthProbe(t)
-	elixirPatch(t, files, bitsClampAnchor, "    {v, report}")
+	elixirPatch(t, files, bitsJSONClampAnchor, "      {v, report}")
 	out, err := runArmProbe(t, elixirBinary(t), files, probe)
 	if err == nil {
-		t.Fatalf("NEGATIVE CONTROL FAILED: removing the bits(N) width guard left every row green\n%s", out)
+		t.Fatalf("NEGATIVE CONTROL FAILED: removing the JSON bits clamp left every row green\n%s", out)
 	}
-	if !strings.Contains(out, "FAIL: ") {
-		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not on a check: %v\n%s", err, out)
+	if !strings.Contains(out, "FAIL: ") || !strings.Contains(out, "past its width in JSON refuses: got {:ok") {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not on the JSON row accepting a past-width value: %v\n%s", err, out)
 	}
 }
 
-// bitsClampAnchor is the one width guard the variable runtime emits, at its
-// exact indentation.
-const bitsClampAnchor = "    if v > Bitwise.bsl(1, bits) - 1,\n" +
-	"      do: throw({:out_of_range, name}),\n" +
-	"      else: {v, report}"
+// bitsJSONClampAnchor is the tail of clamp_json_int for an ordinary integer:
+// the declared-range clamp, then the bits domain. The wire width guard is a
+// different function and is not this anchor.
+const bitsJSONClampAnchor = "      {v, report} = clamp_int(v, f, report)\n" +
+	"      clamp_between(v, int_domain_bounds(f), report)"
 
 const bitsPastWidthProbeSource = `
 defmodule BitsProbe do
@@ -95,8 +100,8 @@ defmodule BitsProbe do
 
   def refused_json(text, label) do
     case Bitspastwidth.Table.from_json("Root", text) do
-      {:error, :malformed, _report} ->
-        :ok
+      {:error, :out_of_range, report} ->
+        check(report.reason == "out_of_range: mask", label <> ": reason " <> inspect(report))
 
       other ->
         check(false, label <> ": got " <> inspect(other))
