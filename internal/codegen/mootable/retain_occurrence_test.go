@@ -3,6 +3,7 @@ package mootable_test
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -181,18 +182,35 @@ func (b *wb) mapOf(entries [][3]int, names []string, damage bool) {
 }
 
 // TestMooRetainOccurrencesMatchTheGoEngine is the retention differential on the
-// OCCURRENCE RULES (docs/SPEC-TABLES.md §6.6): a record belongs to the body
-// occurrence that carried it and dies with it when a later legal occurrence
-// replaces that body, moving neither counter; a body damage resets stays the
-// body it was; an excluded unknown counts one retain_lost. Each wire is read by
-// moo and by the Go reference engine at a full capacity and one byte under what
-// that used, and the counters and the saved bytes must be the same.
+// OCCURRENCE RULES (docs/SPEC-TABLES.md §6.6) under the one strict read: each
+// wire is read by moo and by the Go reference engine at a full capacity and one
+// byte under what that used, and the VERDICT must be the same (a damaged body or
+// a repeated field refuses the whole load, and a refusal defines nothing else);
+// where both answer the value, the store bytes, the evolution diagnostics and
+// the saved bytes must be the same. TestMooRetainDifferentialNegativeControl is
+// its control.
 func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
-	t.Skip("layer 4 (moo): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
-	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})
-	wires := map[string]func(b *wb){
+	retaining, refused, bad := occurrenceRetainDifferential(t, nil)
+	for _, b := range bad {
+		t.Error(b)
+	}
+	// Under the one strict read every damaged body and every repeated field
+	// refuses the whole load, so those wires are the refusal half (6 of 25
+	// retain, measured at the strict cut).
+	t.Logf("%d of %d occurrence wires retain; %d probes refuse", retaining, len(occurrenceWires()), refused)
+	if retaining < 6 {
+		t.Fatalf("only %d of %d occurrence wires retained anything", retaining, len(occurrenceWires()))
+	}
+	if refused == 0 {
+		t.Fatal("no occurrence wire is damage: the refusal half proves nothing")
+	}
+}
+
+// occurrenceWires are the occurrence rules' wires, by name.
+func occurrenceWires() map[string]func(b *wb) {
+	return map[string]func(b *wb){
 		"child once": func(b *wb) { b.child(1, 7, false); b.end() },
 		"child twice, the second known": func(b *wb) {
 			b.child(1, 7, false)
@@ -336,12 +354,23 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 			b.end()
 		},
 	}
+}
+
+// occurrenceRetainDifferential reads every occurrence wire by moo, its emitted
+// files first passed to plant (nil for none), and by the Go reference engine,
+// at a full capacity and one byte under what that used, verdict first.
+func occurrenceRetainDifferential(t *testing.T, plant func(*generatedUnit)) (retaining, refused int, bad []string) {
+	t.Helper()
+	g := generateFiles(t, map[string]string{"Occ.schema": occurrenceUnit})
+	if plant != nil {
+		plant(g)
+	}
+	wires := occurrenceWires()
 	names := make([]string, 0, len(wires))
 	for n := range wires {
 		names = append(names, n)
 	}
 	sortStrings(names)
-	retaining := 0
 	for _, name := range names {
 		b := &wb{}
 		wires[name](b)
@@ -355,23 +384,15 @@ func TestMooRetainOccurrencesMatchTheGoEngine(t *testing.T) {
 		for _, p := range probes {
 			want := goRetain(t, g.unit, "Node", wire, p[0], p[1])
 			got := mooRetain(t, g, "Node", wire, p[0], p[1])
-			if got.malformed || want.malformed {
-				if !got.malformed || !want.malformed || got.value || len(got.save) != 0 {
-					t.Errorf("%s: damage must refuse the whole retaining load: moo %+v, Go %+v", name, got, want)
-				}
-				continue // §4: counters and retained state after damage are undefined.
+			if !want.value {
+				refused++
 			}
-			if got.used != want.used || got.counters() != want.counters() || got.value != want.value ||
-				got.saveLost != want.saveLost || string(got.save) != string(want.save) || (got.saveErr == "") != (want.saveErr == "") {
-				t.Errorf("%s at capacity %d: moo and the Go engine disagree:\nmoo: used %d %s value %v lost %d %s %x\ngo:  used %d %s value %v lost %d %s %x",
-					name, p[0], got.used, got.counters(), got.value, got.saveLost, got.saveErr, got.save,
-					want.used, want.counters(), want.value, want.saveLost, want.saveErr, want.save)
+			if !sameRetain(got, want) {
+				bad = append(bad, fmt.Sprintf("%s at capacity %d: moo and the Go engine disagree (damage refuses whole):\nmoo: %v\ngo:  %v", name, p[0], got, want))
 			}
 		}
 	}
-	if retaining < 10 {
-		t.Fatalf("only %d of %d occurrence wires retained anything", retaining, len(names))
-	}
+	return retaining, refused, bad
 }
 
 func sortStrings(s []string) {
@@ -398,7 +419,7 @@ func TestMooRetainDamagedParentDiscardsTheWholeLoad(t *testing.T) {
 	}
 	got := mooRetain(t, g, "Node", wire, retainFull, -1)
 	want := goRetain(t, g.unit, "Node", wire, retainFull, -1)
-	if !got.malformed || !want.malformed || got.value || want.value || len(got.save) != 0 || len(want.save) != 0 {
+	if got.value || want.value || len(got.save) != 0 || len(want.save) != 0 {
 		t.Fatalf("damage returned a usable retaining load: moo %+v, Go %+v", got, want)
 	}
 }

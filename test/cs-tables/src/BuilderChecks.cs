@@ -122,7 +122,7 @@ static partial class Program
             Check(before.AsSpan().SequenceEqual(after),"map lock preserves canonical key order");
         }
         byte[] shortList=Fixture(new byte[] {1,14,6,4,3,42,0,0,0,0},"scores");
-        Check(L.Schema.SaveLoadMeasure(shortList,out var shortReason)==-1 && shortReason==L.TableRefuseReason.count_over_length,"region measure refuses impossible list count");
+        Check(L.Schema.SaveLoadMeasure(shortList,out var shortReason)==-1 && shortReason==L.TableRefuseReason.ok,"region measure refuses an impossible list count as damage");
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
@@ -134,13 +134,13 @@ static partial class Program
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
-            Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Refused && !report.Damaged && report.Unknown==1 && report.Widened==0,"builder count-cap refuses the load and keeps exactly the preceding report");
+            Check(!L.Schema.SaveLoadBuilder(builder,cappedList,report) && report.Refused && report.Reason=="count_over_extent_cap" && !report.Damaged && report.Unknown==0 && report.Widened==0,"builder count-cap refuses the whole load before the walk earns anything");
         }
         byte[] cappedMap=Fixture(Join(new byte[] {1,6,5,2,14,6,13},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","tiers","after");
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();
-            Check(!M.Schema.FleetLoadBuilder(builder,cappedMap,report) && report.Refused && !report.Damaged && report.Unknown==1 && report.Widened==0,"builder map count-cap refuses the load and keeps exactly the preceding report");
+            Check(!M.Schema.FleetLoadBuilder(builder,cappedMap,report) && report.Refused && report.Reason=="count_over_extent_cap" && !report.Damaged && report.Unknown==0 && report.Widened==0,"builder map count-cap refuses the whole load before the walk earns anything");
         }
         byte[] shortMap=Fixture(Join(new byte[] {1,14,6,13},Var(int.MaxValue),new byte[] {0}),"tiers");
         using(var builder=new M.FleetBuilder())
