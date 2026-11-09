@@ -5484,7 +5484,7 @@ tables-ref-ordinal-negative-control:
 .PHONY: tables-ref-ordinal-shared-negative-control
 tables-ref-ordinal-shared-negative-control:
 	@rm -rf build/ref-ordinal-shared-nc && mkdir -p build/ref-ordinal-shared-nc
-	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[ int32_t( r ) - 1 \] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
+	@sed -e 's|const uint64_t r = ref( id );|const int32_t nc_before = count; const uint64_t r = ref( id );|; s|ordinal_of\[int32_t( r ) - 1\] = ` + ordinalType + `( ordinal );|if ( count != nc_before ) { ordinal_of[int32_t( r ) - 1] = ` + ordinalType + `( ordinal ); } // NEGATIVE CONTROL: only a fresh append records its ordinal|' \
 		internal/codegen/cpptable/cpptable.go > build/ref-ordinal-shared-nc/emitter.go.txt
 	@cmp -s internal/codegen/cpptable/cpptable.go build/ref-ordinal-shared-nc/emitter.go.txt && \
 		{ echo "NEGATIVE CONTROL: the hit-path sabotage patched nothing"; exit 1; } || true
