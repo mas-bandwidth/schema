@@ -72,7 +72,7 @@ func TestFileFuzzCountCapIsFramingRefusal(t *testing.T) {
 	if answer.accepted || len(answer.encoded) != 0 {
 		t.Fatalf("count cap: %+v", answer)
 	}
-	if verdict := wireVerdict(root, legReply{measure: -1}, answer, len(wire)); verdict != "" {
+	if verdict := wireVerdict(root, legReply{measure: -1, report: Counts{Malformed: true}}, answer, len(wire)); verdict != "" {
 		t.Fatal(verdict)
 	}
 	if verdict := wireVerdict(root, legReply{loaded: true, measure: 1024}, answer, len(wire)); verdict == "" {

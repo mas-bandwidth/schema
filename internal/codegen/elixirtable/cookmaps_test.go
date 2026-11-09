@@ -167,7 +167,7 @@ func TestCookWriteMapsAndListsElixir(t *testing.T) {
 {name, table, wire, little, big} = {%q, %q, %q, %q, %q}
 
 case %s.load(table, File.read!(wire)) do
-  {:ok, value, %%{malformed: false}} ->
+  {:ok, value, _report} ->
     case %s.cook_measure_reason(table, value) do
       {size, :ok} when size > 0 ->
         short = :binary.copy(<<0xA5>>, size - 1)

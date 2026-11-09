@@ -1143,7 +1143,7 @@ tables-c-ref-ordinal-negative-control:
 .PHONY: tables-c-strict-load-negative-control
 tables-c-strict-load-negative-control:
 	@rm -rf build/c-strict-load-nc && mkdir -p build/c-strict-load-nc
-	@sed -e 's|    return reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
+	@sed -e 's|    return report->refuse_reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
 		internal/codegen/ctable/cook.go > build/c-strict-load-nc/cook.go.txt
 	@grep -q SABOTAGED build/c-strict-load-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }

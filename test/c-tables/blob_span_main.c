@@ -105,8 +105,8 @@ int main( void )
     region = need > 0 ? (uint8_t *) malloc( (size_t) need ) : NULL;
     if ( region == NULL ) { return 1; }
     memset( &report, 0, sizeof( report ) );
-    loaded = blobdemo_catalog_load_tolerant( region, need, wire, wrote, &report );
-    CHECK( loaded != NULL && !report.malformed );
+    loaded = blobdemo_catalog_load( region, need, wire, wrote, &report );
+    CHECK( loaded != NULL && !report.refused );
     CHECK( loaded != NULL && intact( blobdemo_table_bytes_at( NULL, &loaded->thumb ), big ) );
 
     free( region );

@@ -186,10 +186,13 @@ public final class Driver {
         b.append("RetainLost=").append(r.retainLost).append('\n');
         b.append("Widened=").append(r.widened).append('\n');
         b.append("Unknown=").append(r.unknown).append('\n');
-        b.append("KindMismatch=").append(r.kindMismatch).append('\n');
-        b.append("Clamped=").append(r.clamped).append('\n');
+        // strict-only (docs/plans/strict-only.md): a kind mismatch or a clamp is
+        // a refusal, never a counted repair, so a report a read hands back
+        // carries none; the lines stay for the FORMAT.md order.
+        b.append("KindMismatch=0\n");
+        b.append("Clamped=0\n");
         b.append("Duplicate=0\n");
-        b.append("Malformed=").append(r.malformed).append('\n');
+        b.append("Malformed=").append(r.damaged).append('\n');
         write(outdir, name, "report", b.toString().getBytes(StandardCharsets.UTF_8));
     }
 
