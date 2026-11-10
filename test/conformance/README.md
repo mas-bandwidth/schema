@@ -599,6 +599,25 @@ red in a CI log a person cannot re-run is still a red they can replay. A mutant
 past 4 KB prints its SHA-256 instead and the run seed carries the reproduction.
 The whole mutant is on disk at `--failed` either way.
 
+## The packet carrier
+
+Everything above carries the TABLE wire. `packet/` carries the TYPE wire
+(docs/SPEC.md §7.2, gates 4 and 5) over a seed set of schemas outside
+`examples/`. Per seed, a generator draws random instances of the root from
+the IR, as canonical JSON; every language's driver writes them and the bytes
+must agree; every reader reads every writer's bytes back to the instance; and
+every one-bit flip of the C++ packets is read by every reader, which must agree
+on the verdict and, when accepted, on the value. The drivers live under
+`packet/testdata/drivers/<lang>`, one codec per seed root, and speak the
+two-verb contract `packet/carrier.go` states. The native run is gated:
+
+```
+SCHEMA_SLOW=1 go test ./test/conformance/packet/ -run TestPacketCarrier
+```
+
+A seed is a schema directory under `packet/testdata/`, one entry in `Seeds`,
+and one codec in every driver.
+
 ## The budget
 
 `make conformance` runs under the two-minute rule (#320). Measured on arm64
