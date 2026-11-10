@@ -1281,6 +1281,7 @@ static bool framing_text_valid( const uint8_t * b, size_t len )
     return true;
 }
 
+static bool framing_body( FramingWalk * w, const uint8_t * buf, size_t len, bool root );
 static bool framing_payload( FramingWalk * w, const uint8_t * buf, size_t len, size_t off, int kind, size_t * next );
 static bool framing_content( FramingWalk * w, const uint8_t * b, size_t len, int kind );
 
