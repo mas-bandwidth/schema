@@ -271,6 +271,9 @@ func (s *scan) node(base, extent int64, typeId uint64, st *ir.Struct) error {
 		if need > extent {
 			return fmt.Errorf("the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", length, extent)
 		}
+		if typeId == ir.StringTypeId && s.buf[base+BlobHeader+length] != 0 {
+			return fmt.Errorf("the byte buffer's terminator byte at %d is 0x%02x, not 0x00: a string's bytes are NUL-terminated", base+BlobHeader+length, s.buf[base+BlobHeader+length])
+		}
 		return nil
 	}
 	s.base, s.extent, s.arrays = base, base+extent, s.arrays[:0]

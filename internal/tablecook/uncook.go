@@ -68,6 +68,9 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 		if need > extent {
 			return nil, fmt.Errorf("node %d (%s at offset %d): the byte buffer's length is %d and its node's extent is %d: the bytes leave the node", i+1, nameOf(byTypeId, e.TypeId), e.Offset, length, extent)
 		}
+		if e.TypeId == ir.StringTypeId && r.buf[e.Offset+BlobHeader+length] != 0 {
+			return nil, fmt.Errorf("node %d (%s at offset %d): the byte buffer's terminator byte at %d is 0x%02x, not 0x00: a string's bytes are NUL-terminated", i+1, nameOf(byTypeId, e.TypeId), e.Offset, e.Offset+BlobHeader+length, r.buf[e.Offset+BlobHeader+length])
+		}
 		r.blobs[i] = &tabletext.Blob{Data: append([]byte(nil), r.buf[e.Offset+BlobHeader:e.Offset+BlobHeader+length]...)}
 	}
 	for i, e := range dir {
