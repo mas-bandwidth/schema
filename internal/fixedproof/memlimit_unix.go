@@ -2,7 +2,10 @@
 
 package fixedproof
 
-import "syscall"
+import (
+	"fmt"
+	"syscall"
+)
 
 // addressSpaceLimit reads the current soft address-space limit. It reports
 // false when the platform does not expose the limit.
@@ -14,22 +17,31 @@ func addressSpaceLimit() (uint64, bool) {
 	return cur.Cur, true
 }
 
-// setAddressSpaceLimit lowers the process soft address-space limit to limit
-// bytes. The kernel enforces the limit on this process and on every child it
-// spawns, so the native C++ oracle probes inherit the same ceiling. It returns
-// a function that restores the previous soft limit, or a no-op when the
-// platform refuses the change.
-func setAddressSpaceLimit(limit uint64) (restore func()) {
-	var prev syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_AS, &prev); err != nil {
-		return func() {}
-	}
-	next := prev
-	next.Cur = min(next.Max, limit)
-	if err := syscall.Setrlimit(syscall.RLIMIT_AS, &next); err != nil {
-		return func() {}
-	}
-	return func() {
-		_ = syscall.Setrlimit(syscall.RLIMIT_AS, &prev)
-	}
+// addressSpaceCeilingInclude returns the #include lines the generated C++
+// probe children need so their main can lower their own soft address-space
+// limit. It is empty on platforms that lack a kernel address-space limit.
+func addressSpaceCeilingInclude() string {
+	return `
+#if defined(__linux__) || defined(__APPLE__)
+#include <sys/resource.h>
+#endif
+`
+}
+
+// addressSpaceCeilingApply returns C++ statements that lower the running
+// process's soft address-space limit to HardMemoryLimitBytes. The generated
+// probe children embed these statements at the top of their main, so each
+// child is bounded while the Go test process itself keeps its full address
+// space (the race detector must reserve its shadow memory at startup).
+func addressSpaceCeilingApply() string {
+	return fmt.Sprintf(`
+#if defined(__linux__) || defined(__APPLE__)
+    {
+        struct rlimit rl;
+        rl.rlim_cur = (rlim_t)(%d);
+        rl.rlim_max = (rlim_t)(%d);
+        setrlimit( RLIMIT_AS, &rl );
+    }
+#endif
+`, HardMemoryLimitBytes, HardMemoryLimitBytes)
 }
