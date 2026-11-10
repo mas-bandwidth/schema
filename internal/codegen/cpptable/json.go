@@ -839,7 +839,7 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("        // the walk names the condition it refused where it met it; what it\n")
 		g.pf("        // left unnamed is malformed text or a missing required field\n")
 		g.pf("        if ( read.refuse_reason == TableRefuseReason::ok )\n        {\n")
-        g.pf("            read.refuse_reason = read.missing_required != 0 && !read.damaged ? missing_required : TableRefuseReason::malformed;\n")
+		g.pf("            read.refuse_reason = read.missing_required != 0 && !read.damaged ? missing_required : TableRefuseReason::malformed;\n")
 		g.pf("        }\n")
 		g.pf("        %sTableType()->reset( root );\n", st.Name)
 		g.pf("        if ( report != NULL ) { *report = read; }\n")
