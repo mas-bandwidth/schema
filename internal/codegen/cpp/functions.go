@@ -437,8 +437,10 @@ func (g *gen) emitRangeAssert(cast, expr, lo, hi string, vac halves, ind string)
 
 // emitWriteRangedFold32 writes an int in [lo,hi] as offset-from-lo in a
 // generation-time bit count (the int32 family: SerializeInteger's encoding).
-func (g *gen) emitWriteRangedFold32(expr, lo, hi string, bits int64, loZero bool, vac halves, ind string) {
-	g.emitRangeAssert("int32_t", expr, lo, hi, vac, ind)
+// The assert compares in cast, which is as wide as the storage: a 64-bit
+// value narrowed to int32_t could land inside the range.
+func (g *gen) emitWriteRangedFold32(cast, expr, lo, hi string, bits int64, loZero bool, vac halves, ind string) {
+	g.emitRangeAssert(cast, expr, lo, hi, vac, ind)
 	if bits == 0 {
 		// A degenerate range costs ZERO BITS -- the value is known from the
 		// range alone. Emit the range assert and nothing else: write_bits( .., 0 )
@@ -567,7 +569,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			lo, hi := g.rangeArgs(f)
 			switch intRangePath(f.IntMin, f.IntMax) {
 			case "int32":
-				g.emitWriteRangedFold32(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, vacuousHalves(f.Type, f.IntMin, f.IntMax, 32), ind)
+				cast, castBits := "int32_t", 32
+				if f.Type.Width == 64 {
+					cast, castBits = "int64_t", 64
+				}
+				g.emitWriteRangedFold32(cast, name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, vacuousHalves(f.Type, f.IntMin, f.IntMax, castBits), ind)
 			case "int64":
 				g.emitWriteRangedFold64(name, lo, hi, bitsRequired(f.IntMin, f.IntMax), f.IntMin.Sign() == 0, vacuousHalves(f.Type, f.IntMin, f.IntMax, 64), ind)
 			default:
@@ -633,7 +639,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 			g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
 		}
-		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
+		g.emitWriteRangedFold32("int32_t", name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%swrite_bytes( stream, %s, %s_length );\n", ind, name, name)
 	case ir.TWString:
@@ -649,7 +655,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// an unpaired surrogate under §4.12's rules.
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    serialize_assert( %s[i] != 0 );\n%s}\n", ind, name, ind)
-		g.emitWriteRangedFold32(name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
+		g.emitWriteRangedFold32("int32_t", name+"_length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			bitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, halves{}, ind) // int32_t length storage
 		g.pf("%sfor ( int32_t i = 0; i < %s_length; i++ )\n%s{\n", ind, name, ind)
 		g.pf("%s    write_bits( stream, uint32_t( %s[i] ), 32 );\n%s}\n", ind, name, ind)
@@ -658,7 +664,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		case *ir.Enum:
 			// the bound is the enum's own Max, named rather than folded; the
 			// low half is vacuous over unsigned enum storage
-			g.emitWriteRangedFold32(name, "0", ref.Name+"::Max",
+			g.emitWriteRangedFold32("int32_t", name, "0", ref.Name+"::Max",
 				bitsRequired(big.NewInt(0), big.NewInt(ref.Max)), true,
 				vacuousHalves(ir.FieldType{Kind: ir.TInt, Width: ref.StorageBits}, big.NewInt(0), big.NewInt(ref.Max), 32), ind)
 		case *ir.Flags:
