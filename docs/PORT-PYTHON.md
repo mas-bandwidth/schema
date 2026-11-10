@@ -407,3 +407,58 @@ in P3. serialize.py is staged in `third_party/serialize.py/` and secured there
 by the family corpus, because its own repository does not exist yet; the
 runtime vendors it by sha256 from that directory (`SERIALIZE_PIN`), and from
 its releases once the repository exists.
+
+## THE PACKET CORE CUT
+
+The packet work is dealt in more than one card, so the first card carries the
+wire's core and refuses the rest by name. This section records where that cut
+departs from the P4 row above; the rules of this page are unchanged.
+
+- **The class surface is complete; the codec is not.** Every packet
+  declaration is emitted now: module constants, the enum and flags classes
+  with their name tables, a class per type and per union with every field
+  born at its default, `__eq__` by value (a float's bits included) and a
+  readable `__repr__`. The codec carries `bool`, `int8` to `uint64` (bare or
+  ranged), enums, flags, types by value, unions, and `if`/`else` branches. A
+  field or item of any other kind (`bits`, `fixed`, `float32`, `float64`,
+  `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
+  integer) is refused at generate time by its kind, naming P4 the packet
+  wire. The class surface knows how to birth and compare those kinds already;
+  only their wire emitters are later cards.
+- **The implicit enum zero is `None_`.** Python will not let a class body
+  assign to `None`, so the zero every leg spells `None` is spelled `None_`
+  in generated code. The name tables keep the schema spelling `"None"`, and
+  a schema variant may not be named `None_` (it would replace the member).
+  Flags keep their variant spelling; a flags set exports `Count` and a name
+  table, and a variant may not be named `Count` or `NAMES`.
+- **A union's tag attribute is `type`.** The value mapping's `type` is the
+  attribute; a union arm may not be named `type`, `read`, `write`, `load`,
+  `save` or `descriptor`, the members the generated class defines.
+- **The golden harness reads single-root pins.** A C++-pinned packet golden
+  that is one value with one root type is read and written back; the
+  multi-root concatenations (`clauses`, `joins`, `degenerate`) and the table
+  wire's pins are listed as skipped with the reason. Every packet root whose
+  kinds are all carried is read from its pin and must write back byte for
+  byte; a root blocked by an uncarried kind names that kind.
+
+## THE PACKET CORE BENCH
+
+D1 names two code shapes for the hot path: straight-line generated code with
+locals bound, and a descriptor walk. The core keeps the straight-line shape,
+because it measured faster on both sides of the wire. The instrument is the
+`BenchInts` fixture (ten ranged `int32` fields, 110 wire bits), read from
+`testdata/wire/bench_ints.bin` and written back, 200,000 iterations after a
+1,000-iteration warmup, over three sittings:
+
+| shape | read | write |
+|---|---|---|
+| straight-line generated code (kept) | 5.08–5.50 µs/op | 4.74–5.46 µs/op |
+| descriptor walk (prototype loop) | 5.41–5.64 µs/op | 5.20–5.55 µs/op |
+
+The straight-line reader is 2–8% faster and the writer 0–4% faster in every
+sitting, so the generator emits it and no descriptor walk ships. These are
+**provisional** numbers: the pinned interpreters could not be built offline in
+this environment, so the sitting used the host's CPython 3.14.4 (the floor is
+3.11). The same probe re-measured on the two pins is owed before the numbers
+are treated as the leg's bench record; the shape choice is not expected to
+move, because both sittings point the same way.

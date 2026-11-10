@@ -18,6 +18,21 @@ const HelperPrefix = "_s_"
 // like one would replace the member, so it is refused.
 var generatedMembers = wordSet(`read write load save descriptor`)
 
+// moduleNames are the names a generated module binds itself: the imports it
+// spells unqualified and the constants it writes beside the declarations. A
+// declaration with one of these names would replace the binding.
+var moduleNames = wordSet(`Final Self Ref ReadStream WriteStream InvalidValue Refused
+	float32_bits_eq float64_bits_eq validate_bool validate_int wire_input`)
+
+// enumMembers are the members every generated enum class defines beside its
+// variants, and flagsMembers the same for a flags set.
+var enumMembers = wordSet(`None_ Max NAMES`)
+var flagsMembers = wordSet(`Count NAMES`)
+
+// unionMembers are the members a generated union class defines beside its
+// arms: the tag and the two wire methods' names are the shared ones.
+var unionMembers = wordSet(`type read write load save descriptor`)
+
 // CheckNames holds every name the generated package spells to
 // docs/PORT-PYTHON.md, IDENTIFIERS, and refuses the first that breaks a rule,
 // by name. The reserved words every target refuses are the checker's
@@ -110,6 +125,9 @@ func checkDecl(file string, d ir.Decl) error {
 			if err := checkMemberName(file, d.Name, "variant", v); err != nil {
 				return err
 			}
+			if enumMembers[v] {
+				return fmt.Errorf("python: %s.schema: enum %s's variant %s is the name of a member the generated class defines; rename the variant", file, d.Name, v)
+			}
 		}
 	case *ir.Flags:
 		if err := checkDeclName(file, "flags", d.Name); err != nil {
@@ -118,6 +136,9 @@ func checkDecl(file string, d ir.Decl) error {
 		for _, v := range d.Variants {
 			if err := checkMemberName(file, d.Name, "flag", v); err != nil {
 				return err
+			}
+			if flagsMembers[v] {
+				return fmt.Errorf("python: %s.schema: flags %s's variant %s is the name of a member the generated class defines; rename the variant", file, d.Name, v)
 			}
 		}
 	case *ir.Struct:
@@ -133,8 +154,8 @@ func checkDecl(file string, d ir.Decl) error {
 			if err := checkMemberName(file, d.Name, "arm", a.Name); err != nil {
 				return err
 			}
-			if generatedMembers[a.Name] {
-				return fmt.Errorf("python: %s.schema: union %s's arm %s is the name of a member the generated class defines (%s); rename the arm", file, d.Name, a.Name, memberList())
+			if unionMembers[a.Name] {
+				return fmt.Errorf("python: %s.schema: union %s's arm %s is the name of a member the generated class defines (%s); rename the arm", file, d.Name, a.Name, unionMemberList())
 			}
 		}
 	}
@@ -155,6 +176,9 @@ func checkDeclName(file, kind, name string) error {
 	}
 	if pythonBuiltins[name] {
 		return fmt.Errorf("python: %s.schema: %s %s is a Python builtin, and the generated module names builtins unqualified; rename it", file, kind, name)
+	}
+	if moduleNames[name] {
+		return fmt.Errorf("python: %s.schema: %s %s is a name the generated module binds itself; rename it", file, kind, name)
 	}
 	return nil
 }
@@ -187,6 +211,15 @@ func checkFields(file, owner string, fields []*ir.Field) error {
 func memberList() string {
 	names := make([]string, 0, len(generatedMembers))
 	for n := range generatedMembers {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
+func unionMemberList() string {
+	names := make([]string, 0, len(unionMembers))
+	for n := range unionMembers {
 		names = append(names, n)
 	}
 	sort.Strings(names)
