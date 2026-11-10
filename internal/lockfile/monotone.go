@@ -18,6 +18,7 @@ package lockfile
 
 import (
 	"fmt"
+	"math/big"
 	"slices"
 	"strconv"
 )
@@ -260,15 +261,29 @@ func boundOutward(was, now string, low bool) bool {
 	if was == now {
 		return true
 	}
-	w, err1 := strconv.ParseFloat(was, 64)
-	n, err2 := strconv.ParseFloat(now, 64)
-	if err1 != nil || err2 != nil {
+	w, ok := exactBound(was)
+	if !ok {
 		return false
 	}
-	if low {
-		return n <= w
+	n, ok := exactBound(now)
+	if !ok {
+		return false
 	}
-	return n >= w
+	cmp := n.Cmp(w)
+	if low {
+		return cmp <= 0
+	}
+	return cmp >= 0
+}
+
+// exactBound keeps the lock's numeric grammar: ParseFloat rejects spellings
+// this comparison has never admitted, while Rat compares every admitted
+// decimal (including exponent notation) without rounding it through float64.
+func exactBound(s string) (*big.Rat, bool) {
+	if _, err := strconv.ParseFloat(s, 64); err != nil {
+		return nil, false
+	}
+	return new(big.Rat).SetString(s)
 }
 
 // sameFacts reports whether two entries agree on everything but their NAME and
