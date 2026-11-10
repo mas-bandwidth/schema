@@ -76,6 +76,7 @@ const cT08OtherHash = 0x00ff00ff00ff00ff
 // other hash) and T08_BODY(file) (record 0's body), all for table `root`.
 func cT08Probe(t *testing.T, schema, root, source string, extraCC ...string) {
 	t.Helper()
+	slowtest.Gate(t, "a C compiler (it builds and runs the generated probe)")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"

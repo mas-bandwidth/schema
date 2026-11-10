@@ -1,6 +1,9 @@
 package slowtest
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -197,6 +200,62 @@ func readUngatedBaseline(path string) (map[string]bool, error) {
 		baseline[line] = true
 	}
 	return baseline, nil
+}
+
+// TestToolchainHelpersGateBeforeTheySpawn checks the probe helpers whose
+// callers reach a foreign toolchain: each calls slowtest.Gate before its first
+// exec entry point, so the skip lands before anything is built or run.
+func TestToolchainHelpersGateBeforeTheySpawn(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	helpers := []struct {
+		file string
+		fn   string
+	}{
+		{"compiler/issue715_test.go", "TestIssue715Base64ReaderDefaults"},
+		{"internal/codegen/golang/golang_test.go", "TestEnumNameTakesTheEnumType"},
+		{"internal/codegen/ctable/fixedroadmap_t08_test.go", "cT08Probe"},
+		{"internal/codegen/cpptable/fixedroadmap_t18_test.go", "cppRunVersionProbeLock"},
+	}
+	for _, h := range helpers {
+		src, err := os.ReadFile(filepath.Join(root, h.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, h.file, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body *ast.BlockStmt
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == h.fn {
+				body = fn.Body
+				break
+			}
+		}
+		if body == nil {
+			t.Errorf("%s: %s not found", h.file, h.fn)
+			continue
+		}
+		text := string(src[fset.Position(body.Lbrace).Offset:fset.Position(body.Rbrace).Offset])
+		spawn := -1
+		for _, marker := range toolchainMarkers {
+			if i := strings.Index(text, marker); i >= 0 && (spawn < 0 || i < spawn) {
+				spawn = i
+			}
+		}
+		if spawn < 0 {
+			continue
+		}
+		gate := strings.Index(text, "slowtest.Gate(")
+		if gate < 0 || gate > spawn {
+			t.Errorf("%s: %s reaches a toolchain before calling slowtest.Gate", h.file, h.fn)
+		}
+	}
 }
 
 // TestTheGotableToolchainTestsAreGated is the card's gate: the four gotable
