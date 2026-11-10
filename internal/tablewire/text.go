@@ -13,4 +13,3 @@ import (
 func textValid(b []byte) bool {
 	return utf8.Valid(b) && bytes.IndexByte(b, 0) < 0
 }
-

@@ -263,4 +263,3 @@ func fitsBits(v *big.Int, bits int, signed bool) bool {
 	}
 	return v.Sign() >= 0 && v.BitLen() <= bits
 }
-

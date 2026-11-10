@@ -250,7 +250,7 @@ func TestCanonicalJSONWriterCodegenStrictNegativeControl(t *testing.T) {
 	rustSrc, jsSrc, elixirSrc, _, _ := generateCanonicalJSONCodegenSources(t)
 
 	if err := checkCanonicalJSONWriterCodegenStrict(
-		rustSrc + "// from_utf16_lossy",
+		rustSrc+"// from_utf16_lossy",
 		jsSrc,
 		elixirSrc,
 	); err == nil {
