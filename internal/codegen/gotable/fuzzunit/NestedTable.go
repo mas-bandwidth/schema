@@ -27,26 +27,13 @@ func ArchiveConfigMeasureBody(value *ArchiveConfig, ids *TableIds) int64 {
 	return w.Offset
 }
 
-func ArchiveConfigMeasure(value *ArchiveConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !ArchiveConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
-}
+func ArchiveConfigMeasure(value *ArchiveConfig) int64 { return ArchiveConfigFixedMeasure(1) }
 
 func ArchiveConfigMeasureReason(value *ArchiveConfig) (int64, error) {
-	size := ArchiveConfigMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
+	if !ArchiveConfigFixedCheckBody(value) {
+		return -1, TableRefuseInvalidValue
 	}
-	return size, nil
+	return ArchiveConfigMeasure(value), nil
 }
 func ArchiveConfigSaveBody(w *TableWriter, value *ArchiveConfig) bool {
 	if !ArchiveConfigSaveBodyFields(w, value) {
@@ -98,17 +85,7 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 }
 
 func ArchiveConfigSave(value *ArchiveConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !ArchiveConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ArchiveConfigFixedSave([]ArchiveConfig{*value}, buffer)
 }
 
 func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
@@ -226,9 +203,8 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 }
 
 // ArchiveConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
-// ArchiveConfigFixedLoad reads form 3.
+// so this Load reads that form through ArchiveConfigFixedLoad and refuses a form-1
+// file as previous_form, never reading a value.
 // ArchiveConfigLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -245,6 +221,15 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 		read.Refuse(TableRefusePreviousForm, "")
 		ArchiveConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		var fixed [1]ArchiveConfig
+		if ArchiveConfigFixedLoad(fixed[:], data, tableFixedReadPlanArchiveConfig, read) != 1 {
+			ArchiveConfigReset(value)
+			return false
+		}
+		*value = fixed[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -872,6 +857,8 @@ var ArchiveConfigFixedPlanMax = func() int32 {
 	}
 	return m
 }()
+
+var tableFixedReadPlanArchiveConfig = make([]TableFixedEntry, int(ArchiveConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

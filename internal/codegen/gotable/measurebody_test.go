@@ -117,6 +117,34 @@ import (
 )
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -160,13 +188,41 @@ func trailerIds(t *testing.T, wire []byte) []uint64 {
 	return ids
 }
 
+func leafForm1Measure(value *Leaf) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !LeafSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func leafForm1Save(value *Leaf, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !LeafSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func TestLeafMeasureEqualsSave(t *testing.T) {
 	var empty Leaf
-	if n := LeafMeasure(&empty); n != 10 {
+	if n := leafForm1Measure(&empty); n != 10 {
 		t.Fatalf("elided file %d", n)
 	}
 	buf := make([]byte, 10)
-	if LeafSave(&empty, buf) != 10 {
+	if leafForm1Save(&empty, buf) != 10 {
 		t.Fatal("elided save")
 	}
 	if got := trailerIds(t, buf); len(got) != 0 {
@@ -174,7 +230,7 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	}
 
 	empty.MaybePresent = true
-	if n := LeafMeasure(&empty); n <= 10 {
+	if n := leafForm1Measure(&empty); n <= 10 {
 		t.Fatalf("optional default elided: %d", n)
 	}
 
@@ -195,12 +251,12 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	if body < 0 || ids.Overflow {
 		t.Fatal("measure body")
 	}
-	size := LeafMeasure(&v)
+	size := leafForm1Measure(&v)
 	if size != 1+body+int64(ids.Count)*8+8 {
 		t.Fatalf("file size %d body %d ids %d", size, body, ids.Count)
 	}
 	wire := make([]byte, size)
-	if LeafSave(&v, wire) != size {
+	if leafForm1Save(&v, wire) != size {
 		t.Fatal("save")
 	}
 	got := trailerIds(t, wire)
@@ -212,11 +268,11 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 			t.Fatalf("first-use id %d: measure 0x%x save 0x%x", i, ids.Values[i], id)
 		}
 	}
-	if LeafSave(&v, make([]byte, size-1)) != -1 {
+	if leafForm1Save(&v, make([]byte, size-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	v.Grade = Grade(99)
-	if LeafMeasure(&v) != -1 || LeafSave(&v, make([]byte, 256)) != -1 {
+	if leafForm1Measure(&v) != -1 || leafForm1Save(&v, make([]byte, 256)) != -1 {
 		t.Fatal("invalid enum measured or saved")
 	}
 
@@ -238,15 +294,15 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	v.Child.N = 5
 	copy(v.Note[:], []byte("hi"))
 	v.NoteLength = 2
-	n := RootMeasure(&v)
+	n := rootForm1Measure(&v)
 	if n < 0 {
 		t.Fatal("measure")
 	}
 	wire := make([]byte, n)
-	if RootSave(&v, wire) != n {
+	if rootForm1Save(&v, wire) != n {
 		t.Fatal("save")
 	}
-	if RootSave(&v, make([]byte, n-1)) != -1 {
+	if rootForm1Save(&v, make([]byte, n-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	var loaded Root
@@ -256,7 +312,7 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	}
 
 	var z Root
-	if n := RootMeasure(&z); n != 10 {
+	if n := rootForm1Measure(&z); n != 10 {
 		t.Fatalf("elided root %d", n)
 	}
 }
@@ -313,6 +369,34 @@ import (
 )
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -358,15 +442,15 @@ func trailerIds(t *testing.T, wire []byte) []uint64 {
 
 func roundTrip(t *testing.T, v *Root) []byte {
 	t.Helper()
-	n := RootMeasure(v)
+	n := rootForm1Measure(v)
 	if n < 0 {
 		t.Fatal("measure")
 	}
 	wire := make([]byte, n)
-	if RootSave(v, wire) != n {
+	if rootForm1Save(v, wire) != n {
 		t.Fatal("save")
 	}
-	if RootSave(v, make([]byte, n-1)) != -1 {
+	if rootForm1Save(v, make([]byte, n-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	var loaded Root
@@ -386,7 +470,7 @@ func roundTrip(t *testing.T, v *Root) []byte {
 
 func TestUnionTableArmMeasureEqualsSave(t *testing.T) {
 	var empty Root
-	if n := RootMeasure(&empty); n != 10 {
+	if n := rootForm1Measure(&empty); n != 10 {
 		t.Fatalf("elided file %d", n)
 	}
 
@@ -437,7 +521,7 @@ func TestUnionTableArmMeasureEqualsSave(t *testing.T) {
 	if HitMeasureBody(&hit.Choice.Hit, &full) != -1 {
 		t.Fatal("HitMeasureBody on overflow")
 	}
-	if RootMeasure(&hit) < 0 {
+	if rootForm1Measure(&hit) < 0 {
 		t.Fatal("fresh RootMeasure overflowed")
 	}
 }

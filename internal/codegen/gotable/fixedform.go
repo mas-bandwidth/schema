@@ -14,19 +14,17 @@
 // RECORD and not in the header — a record is its hash and then its values.
 // This is the reference's header (cpptable) and the committed corpus's.
 //
-// TWO ENTRY POINTS, ONE FORM EACH, AND EACH REFUSES THE OTHER'S BYTE (§15):
-// <T>Load is the VARIABLE form's entry point and READS form 1; <T>FixedLoad is
-// the form-3 reader and names a form-1 file `previous_form`. The `fixed table`
-// KEYWORD ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT for what a
-// WRITER emits — a bounded body a variable table declares is the variable wire
-// and gets no form-3 surface at all, nothing is derived in either direction
-// (§2.2, [ir.TableFixedRoots]) — and it does NOT move the refusal into <T>Load.
-// The shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a
-// DECLARED fixed root and the C++ reference reads it there through <T>Load, so
-// a Go <T>Load that refused would be the one leg disagreeing with the byte
-// authority. FixedLoad answers by the form REGISTRY (§3): previous_form for 1,
-// message_form_as_file for 2, newer_form for every byte §3 has not assigned.
-// The single entry point that would answer both by DISPATCH is §15's follow-on.
+// THE PLAIN ENTRY POINTS ARE THE FIXED FORM'S (docs/SPEC-TABLES.md §3, §3.4):
+// <T>Save writes form 3, the bytes <T>FixedSave writes; <T>Measure sizes that
+// file; and <T>Load reads it through <T>FixedLoad, naming a form-1 file
+// `previous_form`. <T>FixedSave and <T>FixedLoad keep their batch shape, and
+// the form REGISTRY answers every other byte: message_form_as_file for 2 and
+// newer_form for every byte §3 has not assigned. The `fixed table` KEYWORD
+// ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT: a declared fixed
+// table whose record is within form 3's bounds takes the fixed file surface,
+// and one past a bound carries no form-3 surface and keeps the variable form's
+// entry points (nothing is derived in either direction, §2.2,
+// [ir.TableFixedRoots]).
 package gotable
 
 import (
@@ -413,6 +411,13 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
+}
+
+// fixedFileSurface is whether this table's plain Save/Measure/Load are the
+// fixed form's file entry points: a declared fixed table whose form-3 surface
+// this generate emits. A table without that surface keeps the variable form's.
+func (g *tableGen) fixedFileSurface(st *ir.Struct) bool {
+	return st.FixedDeclared && g.surfaces.Fixed && g.hasFixedForm(st)
 }
 
 // fixedArmOffGo is the destination of a union arm's member (suffix "" for the
@@ -1173,6 +1178,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t}\n")
 	g.pf("\treturn m\n")
 	g.pf("}()\n\n")
+
+	// THE PLAIN LOAD'S PLAN: it passes the capacity the fixed reader checks,
+	// and the read never writes the plan, so one package buffer serves
+	// concurrent plain reads without an allocation per call (§4.3).
+	g.pf("var tableFixedReadPlan%s = make([]TableFixedEntry, int(%sFixedPlanMax))\n\n", st.Name, st.Name)
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")

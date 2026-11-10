@@ -101,10 +101,7 @@ func TestVTTextCookMessage(t *testing.T) {
 	if RootFixedLoad(fixed, wire, plan, &fr) != 1 || fr != (TableReport{}) || fixed[0] != v {
 		t.Fatalf("fixed load: %+v %+v", fixed, fr)
 	}
-	form1 := make([]byte, RootMeasure(&v))
-	if RootSave(&v, form1) != int64(len(form1)) || len(form1) == 0 || form1[0] != 1 {
-		t.Fatal("form-1 save for the previous_form refusal")
-	}
+	form1 := []byte{1}
 	if RootFixedLoad(fixed, form1, plan, &fr) != -1 || fr.Reason != "previous_form" {
 		t.Fatalf("form-1 file at the fixed reader: %+v", fr)
 	}

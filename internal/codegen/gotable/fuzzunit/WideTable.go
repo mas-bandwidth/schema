@@ -379,8 +379,8 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 }
 
 // WideBlob is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
+// and this build emits no form-3 reader for it, so this Load refuses a form-1
+// file as previous_form and reads no value.
 // WideBlobLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open

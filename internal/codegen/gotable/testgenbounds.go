@@ -715,7 +715,8 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable, fixedForm b
 		fmt.Fprintf(b, "\t\t\tvar cb %sBuilder\n\t\t\tif !cb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer cb.Shutdown()\n\t\t\tif !%sLoadBuilder(&cb, wantWire, &cr) || !cb.Lock() {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound refused: %%v\", p.name, cr.Err())\n\t\t\t}\n\t\t\tback := cb.AsConst()\n", n, n)
 		b.WriteString("\t\t\tif gotWire, _ := save(\"read back\", back); !bytes.Equal(gotWire, wantWire) {\n\t\t\t\tt.Fatalf(\"%s: the value at the bound did not write back its own bytes\", p.name)\n\t\t\t}\n")
 	} else if fixedForm {
-		b.WriteString("\t\t\tform1, _ := save(\"at the bound\", v)\n\t\t\tif len(form1) == 0 || form1[0] != 1 {\n\t\t\t\tt.Fatalf(\"%s: form-1 save of the value at the bound\", p.name)\n\t\t\t}\n")
+		b.WriteString("\t\t\tsaved, _ := save(\"at the bound\", v)\n\t\t\tif len(saved) == 0 || saved[0] != TableFixedForm {\n\t\t\t\tt.Fatalf(\"%s: plain save of the value at the bound is not form 3\", p.name)\n\t\t\t}\n")
+		fmt.Fprintf(b, "\t\t\tvar loadedBound %s\n\t\t\tvar lr TableReport\n\t\t\tif !%sLoad(&loadedBound, saved, &lr) || lr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"%%s: Load of the value at the bound refused: %%+v\", p.name, lr)\n\t\t\t}\n", n, n)
 		fmt.Fprintf(b, "\t\t\tneed := %sFixedMeasure(1)\n\t\t\tif need < 1 {\n\t\t\t\tt.Fatalf(\"%%s: FixedMeasure of the value at the bound\", p.name)\n\t\t\t}\n", n)
 		fmt.Fprintf(b, "\t\t\tfixedWire := make([]byte, need)\n\t\t\tif %sFixedSave([]%s{*v}, fixedWire) != need {\n\t\t\t\tt.Fatalf(\"%%s: FixedSave of the value at the bound refused\", p.name)\n\t\t\t}\n", n, n)
 		fmt.Fprintf(b, "\t\t\tback := make([]%s, 1)\n\t\t\tplan := make([]TableFixedEntry, int(%sFixedPlanMax))\n\t\t\tvar cr TableReport\n", n, n)

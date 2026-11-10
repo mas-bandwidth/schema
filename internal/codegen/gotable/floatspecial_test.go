@@ -90,6 +90,46 @@ type fsBits struct {
 }
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1SaveText(value *Root) (string, error) {
+	n := rootForm1Measure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	b := make([]byte, n)
+	if rootForm1Save(value, b) != n {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -317,7 +357,7 @@ func TestRoot(t *testing.T) {
 		values := []*Root{&v}
 		if !c.finite {
 			sink := make([]byte, 4096)
-			if RootMeasure(&v) != -1 || RootSave(&v, sink) != -1 {
+			if rootForm1Measure(&v) != -1 || rootForm1Save(&v, sink) != -1 {
 				t.Errorf("root %s: the variable writer did not refuse", c.name)
 			}
 			if RootMeasureMessages(values, nil) != -1 || RootSaveMessages(values, sink, nil) != -1 {
@@ -326,17 +366,17 @@ func TestRoot(t *testing.T) {
 			if RootToJSONMeasure(&v) != -1 || RootToJSON(&v, sink) != -1 {
 				t.Errorf("root %s: the text writer did not refuse", c.name)
 			}
-			if _, err := RootSaveText(&v); err == nil {
+			if _, err := rootForm1SaveText(&v); err == nil {
 				t.Errorf("root %s: SaveText wrote it; its carrier is the binary wire", c.name)
 			}
 			continue
 		}
-		n := RootMeasure(&v)
+		n := rootForm1Measure(&v)
 		if n <= 0 {
 			t.Fatalf("root %s: measure %d", c.name, n)
 		}
 		wire := make([]byte, n)
-		if RootSave(&v, wire) != n {
+		if rootForm1Save(&v, wire) != n {
 			t.Fatalf("root %s: save", c.name)
 		}
 		var got Root
@@ -351,7 +391,7 @@ func TestRoot(t *testing.T) {
 			t.Fatalf("root %s: strict read %v", c.name, err)
 		}
 		landed(t, "root strict", c, rootBits(strict), want)
-		text, err := RootSaveText(&v)
+		text, err := rootForm1SaveText(&v)
 		if err != nil {
 			t.Fatalf("root %s: SaveText %v", c.name, err)
 		}
@@ -481,8 +521,8 @@ func TestFlippedPayload(t *testing.T) {
 			if !s.wide {
 				from, to = half32, le32(c.b32)
 			}
-			wire := make([]byte, RootMeasure(&r))
-			RootSave(&r, wire)
+			wire := make([]byte, rootForm1Measure(&r))
+			rootForm1Save(&r, wire)
 			wire = flipped(t, wire, from, to)
 			vwire := make([]byte, VarMeasure(&v))
 			VarSave(&v, vwire)
@@ -524,8 +564,8 @@ func TestFlippedPayload(t *testing.T) {
 	RootReset(&r)
 	r.U.Type = ShapeTypeR
 	r.U.R().Value = 0.5
-	wire := make([]byte, RootMeasure(&r))
-	RootSave(&r, wire)
+	wire := make([]byte, rootForm1Measure(&r))
+	rootForm1Save(&r, wire)
 	var got Root
 	var rep TableReport
 	ok := rootForm1(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
@@ -571,8 +611,8 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	w.r = 0xDEAD
 	landed(t, "text by hand", fsCases[1], rootBits(&got), w)
 	clean(t, "text by hand", fsCases[1], &rep)
-	wire := make([]byte, RootMeasure(&got))
-	RootSave(&got, wire)
+	wire := make([]byte, rootForm1Measure(&got))
+	rootForm1Save(&got, wire)
 	s, err := rootForm1Strict(wire)
 	if err != nil {
 		t.Fatal(err)
@@ -654,8 +694,8 @@ func TestFixed(t *testing.T) {
 			if _, err := FlatFixedSaveReason([]Flat{v}, buf); !errors.Is(err, TableRefuseInvalidValue) {
 				t.Errorf("fixed %s: the writer's reason %v, want invalid_value", c.name, err)
 			}
-			if FlatMeasure(&v) != -1 {
-				t.Errorf("fixed %s: the variable writer did not refuse", c.name)
+			if n, err := FlatMeasureReason(&v); n != -1 || err != TableRefuseInvalidValue {
+				t.Errorf("fixed %s: the writer's measure reason = (%d, %v), want invalid_value", c.name, n, err)
 			}
 			continue
 		}
@@ -752,6 +792,34 @@ import (
 )
 
 
+func form1MeasureKeyed(value *Keyed) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !KeyedSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func form1SaveKeyed(value *Keyed, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !KeyedSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func keyedForm1(value *Keyed, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -790,7 +858,7 @@ func keyedForm1Strict(wire []byte) (*Keyed, error) {
 func TestKeyed(t *testing.T) {
 	var empty Keyed
 	KeyedReset(&empty)
-	base := KeyedMeasure(&empty)
+	base := form1MeasureKeyed(&empty)
 	for _, c := range []struct {
 		name   string
 		b64    uint64
@@ -805,13 +873,13 @@ func TestKeyed(t *testing.T) {
 		KeyedReset(&v)
 		v.Ks[1] = math.Float64frombits(c.b64)
 		if !c.finite {
-			if KeyedMeasure(&v) != -1 {
+			if form1MeasureKeyed(&v) != -1 {
 				t.Errorf("keyed %s: the writer did not refuse", c.name)
 			}
 			// the read, over a wire whose slot was flipped after the write
 			v.Ks[1] = 0.5
-			wire := make([]byte, KeyedMeasure(&v))
-			KeyedSave(&v, wire)
+			wire := make([]byte, form1MeasureKeyed(&v))
+			form1SaveKeyed(&v, wire)
 			half := []byte{0, 0, 0, 0, 0, 0, 0xE0, 0x3F}
 			i := bytes.Index(wire, half)
 			if i < 0 {
@@ -830,8 +898,8 @@ func TestKeyed(t *testing.T) {
 			}
 			continue
 		}
-		wire := make([]byte, KeyedMeasure(&v))
-		KeyedSave(&v, wire)
+		wire := make([]byte, form1MeasureKeyed(&v))
+		form1SaveKeyed(&v, wire)
 		if rides := int64(len(wire)) > base; rides != (c.b64 != 0) {
 			t.Errorf("keyed %s: %d bytes against the empty %d, want the slot to ride exactly when its bits are not +0", c.name, len(wire), base)
 		}
@@ -878,6 +946,34 @@ import (
 	"testing"
 )
 
+
+func form1MeasureNeg(value *Neg) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !NegSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func form1SaveNeg(value *Neg, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !NegSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
 
 func negForm1(value *Neg, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
@@ -928,7 +1024,7 @@ func TestNegativeZeroDefault(t *testing.T) {
 	if gotC, err := NegCReadStrict(czWire); err != nil || math.Float32bits(gotC.C) != 0 {
 		t.Errorf("compressed default: strict read %v", err)
 	}
-	empty := int64(NegMeasure(&r))
+	empty := int64(form1MeasureNeg(&r))
 	emptyV := int64(NegVMeasure(&w))
 	for _, c := range []struct {
 		name string
@@ -942,8 +1038,8 @@ func TestNegativeZeroDefault(t *testing.T) {
 		var v Neg
 		NegReset(&v)
 		v.A, v.B = math.Float32frombits(c.b32), math.Float64frombits(c.b64)
-		wire := make([]byte, NegMeasure(&v))
-		NegSave(&v, wire)
+		wire := make([]byte, form1MeasureNeg(&v))
+		form1SaveNeg(&v, wire)
 		if got := int64(len(wire)) > empty; got != rides {
 			t.Errorf("fixed %s: %d bytes against the default's %d, want it to ride exactly when its bits differ from -0", c.name, len(wire), empty)
 		}

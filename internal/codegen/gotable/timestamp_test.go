@@ -119,6 +119,34 @@ var tsCases = []struct{ name string; n int64 }{
 
 // the variable wire (form 1) of a fixed table: kind 36, eight bytes, UTC on read
 
+func sessionForm1Measure(value *Session) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !SessionSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func sessionForm1Save(value *Session, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !SessionSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func sessionForm1(value *Session, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -148,8 +176,8 @@ func sessionForm1(value *Session, data []byte, report *TableReport) bool {
 func TestVariableWire(t *testing.T) {
  for _, c := range tsCases {
   v := Session{N: 7, Started: c.n, Ended: -c.n / 2}
-  b := make([]byte, SessionMeasure(&v))
-  if SessionSave(&v, b) != int64(len(b)) { t.Fatalf("%s: save", c.name) }
+  b := make([]byte, sessionForm1Measure(&v))
+  if sessionForm1Save(&v, b) != int64(len(b)) { t.Fatalf("%s: save", c.name) }
   var got Session
   var r TableReport
   if !sessionForm1(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
@@ -167,9 +195,9 @@ func TestZeroTimeIsAbsent(t *testing.T) {
  gozero := Session{Started: 99, Ended: 99}
  if err := gozero.SetStartedTime(time.Time{}); err != nil { t.Fatal(err) }
  if err := gozero.SetEndedTime(time.Time{}); err != nil { t.Fatal(err) }
- a := make([]byte, SessionMeasure(&fresh))
- b := make([]byte, SessionMeasure(&gozero))
- SessionSave(&fresh, a); SessionSave(&gozero, b)
+ a := make([]byte, sessionForm1Measure(&fresh))
+ b := make([]byte, sessionForm1Measure(&gozero))
+ sessionForm1Save(&fresh, a); sessionForm1Save(&gozero, b)
  if !bytes.Equal(a, b) { t.Fatalf("zero time rides: %x vs %x", a, b) }
  if len(a) >= 16 { t.Fatalf("two zero timestamps cost %d bytes", len(a)) }
  var v Session
@@ -264,8 +292,8 @@ func TestJsonRefusesByName(t *testing.T) {
 // through tableKindBytes(36) == 8 (docs/SPEC-TABLES.md §2.11, §3).
 func TestKindIsItsOwn(t *testing.T) {
  v := Session{Started: 1760531645123456789}
- b := make([]byte, SessionMeasure(&v))
- SessionSave(&v, b)
+ b := make([]byte, sessionForm1Measure(&v))
+ sessionForm1Save(&v, b)
  // the field is [reference 1][kind 36][eight bytes], a fixed-width kind carrying
  // no length: respell the kind as i64
  i := bytes.Index(b, []byte{1, 36})
@@ -277,8 +305,8 @@ func TestKindIsItsOwn(t *testing.T) {
  if !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || got.Started != 0 { t.Fatalf("int64 under a timestamp field: %+v %d", r, got.Started) }
  // and the reverse: a kind-36 payload under an int32 field (n) and anended field skips cleanly
  v2 := Session{Started: 1760531645123456789, Ended: 42}
- b2 := make([]byte, SessionMeasure(&v2))
- SessionSave(&v2, b2)
+ b2 := make([]byte, sessionForm1Measure(&v2))
+ sessionForm1Save(&v2, b2)
  // swap the first id in the trailer to n's id so reference 1 (kind 36) targets n (int32)
  nId := SessionTableFields[0].ID
  sId := SessionTableFields[1].ID
