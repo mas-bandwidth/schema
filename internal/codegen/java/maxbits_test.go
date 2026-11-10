@@ -23,10 +23,25 @@ type Giant
 }
 `
 
+// The same packet with the array at a statically byte-aligned position: the
+// fused bulk copy emits the byte count and the position advance as literals,
+// which must also be valid Java past Integer.MAX_VALUE.
+const giantAlignedMaxBitsSchema = `package giant
+
+type Giant
+{
+    align
+    raw [300000000]uint8
+}
+`
+
 func TestJavaGiantMaxBitsLiteralCompiles(t *testing.T) {
 	t.Parallel()
+	compileGiant(t, giantMaxBitsSchema)
+}
 
-	src := giantMaxBitsSchema
+func compileGiant(t *testing.T, src string) {
+	t.Helper()
 	f, errs := parser.Parse("Big.schema", []byte(src))
 	if len(errs) != 0 {
 		t.Fatal(errs)
@@ -65,4 +80,9 @@ func TestJavaGiantMaxBitsLiteralCompiles(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("javac: %v\n%s", err, out)
 	}
+}
+
+func TestJavaGiantAlignedMaxBitsLiteralCompiles(t *testing.T) {
+	t.Parallel()
+	compileGiant(t, giantAlignedMaxBitsSchema)
 }

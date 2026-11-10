@@ -836,7 +836,7 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			// statically byte-aligned [N]uint8 (ir.AlignedFixedByteArrays)
 			wasStored := g.stored
 			g.pf("%sif ((pos & 7) == 0) {\n", ind)
-			g.emitWriteBulk(name, fmt.Sprintf("%d", f.ArrayBound), fmt.Sprintf("%d", f.ArrayBound*8), ind+"    ")
+			g.emitWriteBulk(name, fmt.Sprintf("%d", f.ArrayBound), javaIntLit(big.NewInt(f.ArrayBound*8)), ind+"    ")
 			g.pf("%s} else {\n", ind)
 			g.stored = wasStored
 			g.emitWriteLoop(f, name, fmt.Sprintf("%d", f.ArrayBound), ind+"    ")
@@ -1268,7 +1268,7 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 			g.usesRead = true
 			g.pf("%sif ((bitsRead & 7) == 0) {\n", ind)
 			g.pf("%s    System.arraycopy(data, bitsRead >>> 3, %s, 0, %d);\n", ind, name, f.ArrayBound)
-			g.pf("%s    bitsRead += %d;\n", ind, f.ArrayBound*8)
+			g.pf("%s    bitsRead += %s;\n", ind, javaIntLit(big.NewInt(f.ArrayBound*8)))
 			g.pf("%s} else {\n", ind)
 			g.emitReadLoop(f, name, fmt.Sprint(f.ArrayBound), ind+"    ", true)
 			g.pf("%s}\n", ind)
