@@ -491,3 +491,64 @@ end
 	}
 	luaurun.Analyze(t, dir, analyzable(files, "main.luau")...)
 }
+
+// A [4]uint8 after a union at None rides as four 8-bit groups, never as
+// serializeBytes: the union's wire width depends on the arm, so the array
+// is not known to start on a byte boundary. With u at None the wire is the
+// 1-bit tag (0) then 1, 2, 3, 4 from bit 1: 1<<1 | 2<<9 | 3<<17 | 4<<25
+// = 0x08060402, 33 bits, 5 bytes. It reads back.
+func TestLuauUnionBeforeByteArrayUsesPerByteWire(t *testing.T) {
+	t.Parallel()
+	u := unitFromSchemas(t, map[string]string{"UnionBytes.schema": `package unionbytes
+
+type Small
+{
+    v uint8 | min = 0, max = 127
+}
+
+union U
+{
+    a Small
+}
+
+type T
+{
+    align
+    u    U
+    data [4]uint8
+}
+`})
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(files["UnionBytes.luau"]), "stream:serializeBytes("); n != 0 {
+		t.Fatalf("serializeBytes appears %d times, want 0: the byte array after a union must ride per byte", n)
+	}
+	dir := t.TempDir()
+	writeAll(t, dir, files)
+	writeFile(t, dir, "main.luau", luaurun.HexProbe+`
+local serialize = require("./serialize")
+local B = require("./UnionBytes")
+local v = B.NewT()
+v.U.Type = B.UType.None
+buffer.writeu8(v.Data, 0, 1); buffer.writeu8(v.Data, 1, 2); buffer.writeu8(v.Data, 2, 3); buffer.writeu8(v.Data, 3, 4)
+local w = serialize.WriteStream.new(buffer.create(64))
+assert(B.WriteT(w, v))
+w:flush()
+local data = w:data()
+hex(data)
+local back = B.NewT()
+assert(B.ReadT(serialize.ReadStream.new(data), back))
+assert(back.U.Type == B.UType.None, "u reads back at None")
+assert(buffer.tostring(back.Data) == "\1\2\3\4", "data reads back")
+`)
+	lines := luaurun.HexLines(t, luaurun.Run(t, dir, "main.luau", nil))
+	if len(lines) != 1 {
+		t.Fatalf("got %d lines, want 1", len(lines))
+	}
+	if got, want := fmt.Sprintf("%x", lines[0]), "0204060800"; got != want {
+		t.Errorf("T with u at None wrote %s, want %s (33-bit per-byte wire)", got, want)
+	}
+	luaurun.Analyze(t, dir, analyzable(files, "main.luau")...)
+}
