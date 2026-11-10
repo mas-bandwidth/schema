@@ -186,7 +186,7 @@ CI benchmark. `go run ./bench/tools ledger --check` walks every CSV under
   best (lowest ns/msg) of the previous three points** on that axis by more
   than the noise gate: `max(2 × the two sittings' summed spread, 5%)`. Beyond
   it, `LEDGER RED` and exit 1. **The machine leads the key because absolute
-  rates do not compare across machines (§2)** — a Studio point is never gated
+  rates do not compare across machines (§2)** — a bench-11 point is never gated
   against a laptop point, so the pass that renews the lock has to run on the
   same box as the point before it.
 - **The pair axis.** On each `(machine, corpus_id)` axis, **the newest
@@ -212,10 +212,10 @@ Older passes on the axis print as history — one line each, `pair history:
 claim about where the pair stands *now* (the owner's word was "land parity
 between C and C++ and then lock"), and the record is a record: it keeps the
 passes that FOUND things, not only the clean ones.
-`bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv` is exactly
+`bench/results/2026-09-07-arm64-bench-11-serialize-c-1-10-0-pass.csv` is exactly
 that — a `window: OK` pass measuring C at 107.4% of C++ against a 5.8-point
 band, and that measurement *is* the finding, a 7% read-path gap, which the
-next pass, `2026-09-07-arm64-studio-c-read-guard-pass.csv`, closed at 98.2%
+next pass, `2026-09-07-arm64-bench-11-c-read-guard-pass.csv`, closed at 98.2%
 inside 6.5. Holding every historical pass forever would leave CI red on a
 finding that is already fixed, and **a gate that reds on something already
 fixed teaches people to ignore the gate**. Holding the newest certified pass
@@ -240,16 +240,16 @@ is to read it, and plain `ledger` (no `--check`) prints the whole series.
 leg's series only from a CSV that carries *both* legs' `bench_mixed` `gen`
 `round_trip` rows. The lock is a claim about the pair, so a single-leg
 experiment file is by construction not a like measurement of it — and the
-record already showed what that costs: the Studio `c` axis was interleaved
-with four single-leg C experiments (`packet-void-c-studio`,
-`c-defaults-c-studio`, `c-utf8-c-studio`, `c-wide-c-studio`, 228–242 ns/msg)
+record already showed what that costs: the bench-11 `c` axis was interleaved
+with four single-leg C experiments (`packet-void-c-bench-11`,
+`c-defaults-c-bench-11`, `c-utf8-c-bench-11`, `c-wide-c-bench-11`, 228–242 ns/msg)
 among passes at 224–233, and the `c-defaults` → `c-utf8` step alone is +5.35%
 against a 5.00% gate, so the next single-leg C experiment committed last would
 have red CI for something that is not a regression of the locked pair at all.
 This **also narrows the pre-existing `cpp` gate** to both-leg files: one rule,
-both legs, no special case. After the narrowing, each Studio axis gates eleven
+both legs, no special case. After the narrowing, each bench-11 axis gates eleven
 points (the eight twins/pair passes and the three nine-language sittings) and
-each macbook axis twelve; the `x86_64 spacegame` axes are down to one point
+each macbook axis twelve; the `x86_64 bench-12` axes are down to one point
 each and gate nothing, and the laptop axis disappears entirely — both its
 files carried one leg.
 
@@ -257,7 +257,7 @@ files carried one leg.
 `round_trip`, best rate. That is the headline statistic §2.8 rules on, and it
 is the whole of the lock. **The `bitpacker` rows and the `write` path are
 outside it**, and knowing that matters: in
-`bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv` — a
+`bench/results/2026-09-07-arm64-bench-11-bitpacker-checked-read-pass.csv` — a
 `window: OK` pass this lock calls green at 106.1% — `bitpacker`/`read` has C
 at 161.4% of C++. Locking that row would be a ruling about a different
 statistic against a different band, and it is **not** invented here; it would
@@ -271,8 +271,8 @@ legs and no window verdict; it cannot tell a separation from a drifting box,
 so it prints `LEDGER WARN` and exits 0 — every sitting, not just the newest
 one, since they are informational and there is nothing to single out. That is
 not leniency, it is what the record already says: measured on the tree of
-2026-09-07, five committed sittings sit outside the band (three Studio
-nine-language sittings at 106.6–109.2%, the x86_64 spacegame sitting at
+2026-09-07, five committed sittings sit outside the band (three bench-11
+nine-language sittings at 106.6–109.2%, the x86_64 bench-12 sitting at
 111.3%, one macbook quick sitting at 112.6%) while every
 twins pass of the same era holds inside it — 99.1–106.7% against bands of
 4.0–27.2 points, the C-asserts twins pass landing at 105.2% inside 8.6. A pass
@@ -284,7 +284,7 @@ exit clause: **a separation beyond the combined spread is a finding to
 investigate, not a number to publish.** The response to a red is to find out
 what moved, not to widen the band.
 
-**Renewing the lock — `make bench-lock`.** On the Studio:
+**Renewing the lock — `make bench-lock`.** On the bench-11:
 
     make bench-lock
 
@@ -293,8 +293,8 @@ which is a `cpp,c` A/A twins pass, seven rounds, into
 `ledger --check`. `--twins` is not optional: the lock is a claim about two
 binaries measured in one window, and §2.6.1's A/A legs are what rules out
 state-selective interference dressing up as a separation. Run it on the same
-machine as the previous point — the Studio — commit the CSV, and CI's ledger
-step reads it from then on. The intent is a scheduled pass on the Studio,
+machine as the previous point — the bench-11 — commit the CSV, and CI's ledger
+step reads it from then on. The intent is a scheduled pass on the bench-11,
 committed by whoever runs it.
 
 There is deliberately **no GitHub-hosted-runner benchmark**: a shared hosted
@@ -393,7 +393,7 @@ breaks the sticky-failure contract, so it is a diagnosis and not a fix. serializ
 the fix: the failed-read latch moved into the cursor and the past-end test now reads `num_bits`,
 exactly the shape the probe predicted, and the C leg's bitpacker/read went from **61.9% to 99.2%
 of C++ best** — 76,492 to 122,221 messages a second — on the pass that moved this repo's pin
-(`bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv`).
+(`bench/results/2026-09-07-arm64-bench-11-serialize-c-1-10-0-pass.csv`).
 
 So the read row now reports how well each runtime's CHECKED read optimizes,
 which is a real difference between the runtimes — not a difference in what the
@@ -411,7 +411,7 @@ per-field tests fold into it (the entity read loop goes 157 to 111 instructions 
 ; spill reloads per message 307 to 120), and the round trip went
 from 93.1% to 101.9% of C++ best — 4,226,614 to 4,669,166 messages a second,
 inside the §2.8 tie band and so reported as a tie
-(`bench/results/2026-09-07-arm64-studio-c-read-guard-pass.csv`, seven
+(`bench/results/2026-09-07-arm64-bench-11-c-read-guard-pass.csv`, seven
 interleaved rounds, window OK, control delta 0.5%, twin gate OK).
 
 A further row — `bench_string` — is DEFINED in BENCH-STANDARD §1.8
@@ -613,15 +613,15 @@ One table, one command, per host. Per language: the fixed form's **save** and
 **round trip** in nanoseconds per record and its **bytes** per record, against
 that language's OWN packet wire and against C++'s fixed form.
 
-    bench/paired/nine.sh                    # the Studio (macOS, unpinned by construction)
-    bench/paired/nine.sh --lane 7           # Space, on that line's own isolated core
+    bench/paired/nine.sh                    # the bench-11 (macOS, unpinned by construction)
+    bench/paired/nine.sh --lane 7           # bench-12, on that line's own isolated core
 
 Both lines run `bench/paired -mode fast -fast-rounds 3` and render
 `NINE.md` (and `nine.json`) into the output directory, and print the table.
-`--lane N` is the Space form: it builds through `~/bin/pin-spread` so the
+`--lane N` is the bench-12 form: it builds through `~/bin/pin-spread` so the
 compilers spread over the isolated cores, then runs the WHOLE sitting through
 `~/bin/bench-lane N`, which holds that core's lock once and `taskset`s every
-runner the driver forks onto it. Space's lanes are 1..15 and each line owns
+runner the driver forks onto it. bench-12's lanes are 1..15 and each line owns
 one; there is no coordinator in the loop.
 
 **The tree decides the rows, not the script.** `-mode table` asks the
@@ -645,12 +645,12 @@ or iteration count per wire.
 
 ### The reading rule
 
-- **Never mix hosts or modes in one row, or in one table.** A Studio number
+- **Never mix hosts or modes in one row, or in one table.** A bench-11 number
   and a Space number are two sittings and two tables. So are `-mode fast` and
   `-mode run`. The header names the host, the CPU, the revision, the lane, the
   round and pass counts, the corpus ids and the iteration counts precisely so
   that a pasted table cannot lose which sitting it came from.
-- **A loaded Studio row says so.** The table's header carries the observed
+- **A loaded bench-11 row says so.** The table's header carries the observed
   load1 range, and a sitting with any process-monitor warning carries a bold
   line saying the host was not quiet. Read those rows accordingly — do not
   quietly drop the warning when pasting.
@@ -667,7 +667,7 @@ or iteration count per wire.
   some other language to the reference.
 - **Nothing here is certified.** `-mode fast` has reduced iteration counts, no
   bracketing drift controls and no quiet-window seal. **The certified sitting
-  is `-mode run` on Space inside the quiet window**, seven rounds, with the
+  is `-mode run` on bench-12 inside the quiet window**, seven rounds, with the
   operator's READY/START receipt — `bench/paired/README.md`. A fast table is
   for iteration and for a PR's "after" record; it is not a performance claim.
 

@@ -1,6 +1,6 @@
 # schema bench results
 # date: 2026-08-07T15:55:37Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -9,7 +9,7 @@
 # rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
 # dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
 # pinning: taskset -c 0
-# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (the owner, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
 # schema commit: unknown
 # serialize commit: unknown
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct
@@ -39,7 +39,7 @@ cpp,message_batch,write,3276800,25,7,61411825,50965962,61759040,1464.17,17.57
 cpp,message_batch,read,3276800,25,7,41964087,41609933,43579300,1000.50,4.69
 # schema bench results
 # date: 2026-08-07T15:56:02Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -48,7 +48,7 @@ cpp,message_batch,read,3276800,25,7,41964087,41609933,43579300,1000.50,4.69
 # rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
 # dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
 # pinning: taskset -c 0
-# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (the owner, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
 # schema commit: unknown
 # serialize commit: unknown
 go,rigidbody_moving,write,2000000,105,7,13855801,13110462,14145536,1387.46,7.47
@@ -77,7 +77,7 @@ go,message_batch,write,3276800,25,7,31311868,28375684,31385736,746.53,9.61
 go,message_batch,read,3276800,25,7,38681331,37385615,38854915,922.23,3.80
 # schema bench results
 # date: 2026-08-07T15:56:45Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -86,7 +86,7 @@ go,message_batch,read,3276800,25,7,38681331,37385615,38854915,922.23,3.80
 # rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
 # dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
 # pinning: taskset -c 0
-# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (the owner, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
 # schema commit: unknown
 # serialize commit: unknown
 rust,rigidbody_moving,write,2000000,105,7,19988626,19850664,20160096,2001.58,1.55
@@ -115,7 +115,7 @@ rust,message_batch,write,3276800,25,7,59361391,52871056,59698554,1415.29,11.50
 rust,message_batch,read,3276800,25,7,33594158,33327223,34499987,800.95,3.49
 # schema bench results
 # date: 2026-08-07T15:57:17Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -124,7 +124,7 @@ rust,message_batch,read,3276800,25,7,33594158,33327223,34499987,800.95,3.49
 # rust: cargo 1.97.1 (c980f4866 2026-06-30); rustc 1.97.1 (8bab26f4f 2026-07-14) (cargo run --release: opt-level 3, no LTO)
 # dotnet: 10.0.302 (dotnet run -c Release, workstation GC)
 # pinning: taskset -c 0
-# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (Glenn, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
+# noise: RESERVED core 0: game server owns isolated cores 1-15 (one pinned thread each); core 0 does no game work - reserved for bench (the owner, 2026-08-07) - but remains the sole general-purpose core (irqs, ssh, systemd)
 # schema commit: unknown
 # serialize commit: unknown
 cs,rigidbody_moving,write,2000000,105,7,11834383,2406220,11985191,1185.05,80.94

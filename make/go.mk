@@ -1230,7 +1230,7 @@ tables-go-text-differential-negative-control:
 	SCHEMA_SLOW=1 go test ./internal/codegen/gotable -run '^TestTextDifferentialNegativeControl$$' -count=1
 test-go: tables-go-text-differential tables-go-text-differential-negative-control
 
-# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27: "Tables go
 # finite-only too, same rule as packets"): every read refuses a NaN or an
 # infinity on its raw bits as non_finite_float and every writer refuses one.
 # The gate is TestGoPlainFloatSpecialValuesAgreeAcrossForms; its reversed

@@ -240,7 +240,7 @@ file, and no read report can see it, which makes it the second member of the
 silent class (SPEC-TABLES.md §4.1). **Stated as the narrowing it is: this one
 line narrows the reachability rule, because `flags` is the only vocabulary a
 table cannot report a move in, the committed baseline is only a COMPILE-TIME
-guard and a studio may not have one, and the protocol id is the only RUNTIME
+guard and a bench-11 may not have one, and the protocol id is the only RUNTIME
 frame that refuses two peers holding different bit assignments before they
 exchange table data over one connection.** Content never rides in a flags
 declaration, because sixty-four bits is the ceiling and the law is append at

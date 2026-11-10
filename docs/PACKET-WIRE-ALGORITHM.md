@@ -8,7 +8,7 @@ inherited them as law. Implement from this page, prove against the oracle (§6),
 for a byte question.
 
 This is the packet twin of the fixed-form algorithm page (`docs/FIXED-FORM-ALGORITHM.md` on #843).
-Glenn: the pseudocode can be written for both. A packet carries **no form byte, no layout, no hash,
+The owner: the pseudocode can be written for both. A packet carries **no form byte, no layout, no hash,
 no kind byte, no self-describing framing, no terminator, no trailer**. Knowledge is in the generated
 code on both ends. The bytes are the classic serialize twins named in SPEC §4.3, bit for bit.
 

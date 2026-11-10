@@ -9,7 +9,7 @@ proves in full.*
   the source of truth for the table wire.** Both are written as clean references, and the
   two wires share one language, one unit and one compiler (SPEC.md §1 non-goals). Each states the
   most recent specification only — present tense, reference register, no history, no
-  decision narration (Glenn's directive, 2026-08-18: SPEC must read for a human
+  decision narration (the owner's directive, 2026-08-18: SPEC must read for a human
   implementer, not like a page of maintainer notes). Decision provenance — who ruled what, when, in
   which words — lives in git history and `notes/road-to-v1.md`; maintainer context
   lives here. Open questions still get a numbered row in SPEC §9, never an inline
@@ -17,7 +17,7 @@ proves in full.*
 - **This repo describes our own work.** External collaborators, their people, and their
   codebases are not named in the tree; external feedback is folded in as learnings
   (`notes/external-feedback-learnings.md`) and as evidence attached to spec sections and
-  §9 rows. The full exchange records live in Rowan's own repo (private).
+  §9 rows. The full exchange records live in a maintainer's own repo (private).
 - **Implementation started 2026-08-05** (SPEC §7.3 step 3; the Go compiler lives in
   `cmd/` + `internal/`, per SPEC §8). Nothing in `notes/` is normative — the spec is.
   The corpus in `examples/` must always compile under the spec as written; that invariant
@@ -62,7 +62,7 @@ proves in full.*
   Go/C#/JS tag beside pre-allocated arms; Rust enum); zero initialization with
   specified defaults; `schemafmt` canonicalizing a tree when `schema fmt` is run
   over it, which is the only command that writes a schema file (#473).
-- **Tags are made by tooling, never by hand** (Glenn, 2026-10-15). Every promotion to
+- **Tags are made by tooling, never by hand** (the owner, 2026-10-15). Every promotion to
   `main` is tagged `main-<shorthash>` (the merge commit's own hash, 12 hex) by
   `.github/workflows/promotion-tag.yml` on push to `main`, which runs `make promotion-tag PUSH=1`; a commit already carrying a `main-` tag is skipped, not retagged. It is a
   seconds-long job with no build and no test, so it does not break the NO PUSH TRIGGER rule
@@ -74,14 +74,14 @@ proves in full.*
   (`make release-differential`), and it tags that commit and nothing else. Without `PUSH=1` both targets only print the
   decision. The tag-name and refusal logic is `tools/releasetag`, unit-tested with no git;
   the policy is docs/VERSIONING.md ("The compiler's own version").
-- **Trajectory** (Glenn, 2026-08-05): once design settles and implementation starts, this
+- **Trajectory** (the owner, 2026-08-05): once design settles and implementation starts, this
   repo represents the most recent state only, not the total history of everything —
   prune toward that; git history is the archive.
 
 ## The horizon — campaign context (relocated from SPEC §1, 2026-08-18)
 
-The long arc (Glenn, 2026-08-04): schema as the single data-definition language, with
-the opinionated layers built on top of it living elsewhere. The boundary, in Glenn's
+The long arc (the owner, 2026-08-04): schema as the single data-definition language, with
+the opinionated layers built on top of it living elsewhere. The boundary, in the owner's
 words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 
 - **The table layer is part of the language.** `table` declares a data type on
@@ -119,13 +119,13 @@ words (2026-08-25): *"schema is types and bitpacking and enums and constants."*
 - **Reserved surface for these passes:** `packet`, `delta`, `baseline`, `index`
   (SPEC §1); `lerp`/`slerp`/`snap`/`angle`/`smooth` informally reserved as attribute
   values for a claiming pass; SPEC §9 q11 banks the cut `enum_index` design.
-- **The current scope sentence (Glenn, 2026-08-25, verbatim):** *"schema is types
+- **The current scope sentence (the owner, 2026-08-25, verbatim):** *"schema is types
   and bitpacking and enums and constants."* The opinionated protocol layers live
   above the language, built from its primitives.
 
 ## SPEC maintenance ledger (from the 2026-08-18 human-readability rewrite)
 
-docs/SPEC.md was rewritten 2026-08-18 into plain reference register on Glenn's directive —
+docs/SPEC.md was rewritten 2026-08-18 into plain reference register on the owner's directive —
 most recent state only, no history, no decision narration. Nothing normative changed.
 The material that left the spec lives in three places: **git** (the last pre-rewrite
 revision carries every DECIDED date, verbatim ruling and repair note inline),
@@ -141,11 +141,11 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   fuzzers); gate 5 and gate 4's full random matrix are the remaining conformance
   work. A fmt-drift gate asserts the corpus stays formatter-canonical.
 - **Held-loosely tells** (the spec states these as law; the confidence metadata lives
-  here): the bracket attribute syntax carries Glenn's hedge ("just a personal
+  here): the bracket attribute syntax carries the owner's hedge ("just a personal
   preference, could be wrong but let's see in time");
   the §5 reused-output tail rule is priced-later (tail-clearing on read would be a
   generated-code change); whether untaken branches should restore specified defaults
-  instead of zeros is Glenn's call if a real case ever wants it; an exact-length
+  instead of zeros is the owner's call if a real case ever wants it; an exact-length
   `bytes` form and a validated-UTF-8 read mode can return if a need appears.
 - **Open follow-ups carried out of the spec text:** the C# `Debug.Assert` half of the
   §4.7 UTF-8 writer contract is a recorded follow-up (C#, like Go, asserts nothing
@@ -159,7 +159,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   string/bytes died in the §4.7 unification. The EBNF gained the `ufixed(I, F)`
   production and string-valued attributes (`cpp_include`) — both were already live
   language, stale in the grammar block only.
-- **Deployment doctrine** (Glenn, 2026-08-15): *"I will always deploy client and
+- **Deployment doctrine** (the owner, 2026-08-15): *"I will always deploy client and
   server together on any breakage. so this is no concern."* The 2b rounding
   unification (half away from zero, superseding the pure-shift form) moved shipped
   narrowing bytes only on exact negative ties; the version note lives in
@@ -168,7 +168,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
 - **Union vs variant, the measured basis for the §4.8 C-flavored-default principle:**
   isolating pure header cost (one representation-agnostic TU, arm64 clang), union
   0.09 s vs variant 0.13 s — the variant surface alone costs +44% header compile
-  time; Glenn's ruling on the earlier, cruder number stands as the principle ("0.17
+  time; the owner's ruling on the earlier, cruder number stands as the principle ("0.17
   -> 0.27 is not trivial for me... you almost always pay through the nose for it at
   compile time"). The earlier zeroing rule established only the selected arm;
   whole-union memset at construction measured 60.6% of batch-read self-cycles.
@@ -195,7 +195,7 @@ numbers §1–§9 and the §9 q-rows are frozen — code, corpus and docs cite t
   which is what §13.5's "+11% to +15%" records as the cost that motivated the
   ruling. The AFTER half lives here because a number is a ledger entry, not a
   spec sentence.
-- **Build system**: plain Makefile for now, graduating to CMake as needed (Glenn,
+- **Build system**: plain Makefile for now, graduating to CMake as needed (the owner,
   2026-08-05).
 
 ## The performance program — learnings that bind future optimization work here

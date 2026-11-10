@@ -41,7 +41,7 @@ require("./BenchTableTable")
 
 -- the C++ reference's base count for this row is 400,000
 -- (bench/tables/cpp/table_main.cpp); the interpreter loads and saves one record
--- in ~0.6 ms and ~0.4 ms (hulk, 2026-10-29), so the count is 6,400 (100
+-- in ~0.6 ms and ~0.4 ms (bench-6, 2026-10-29), so the count is 6,400 (100
 -- rotations of the 64 records: a measured run of ~4 s write, ~7 s round trip,
 -- far over §2.1's 200 ms floor), recorded in the iters column as the Elixir
 -- leg's reduced count is.

@@ -155,7 +155,7 @@ public final class Cards {
         Pattern.compile("\"(?:tier|priority|column)\"\\s*:\\s*\"None\"\\s*,?");
 
     // strandedKeys is the exact case-sensitive set refused once prose has begun
-    // (parse.go, nova-sprint cardHeaderKeys).
+    // (parse.go, the sprint tool cardHeaderKeys).
     private static final Set<String> STRANDED = new HashSet<>(Arrays.asList(
         "KIND", "PATHS", "TEST", "LEGS", "SOURCE", "START", "STOP", "DEPENDS-ON",
         "PRIORITY", "NEW", "SHARED", "REPO", "BASE", "tier", "RESULT"));

@@ -1016,7 +1016,7 @@ jobs:
     # never reaches our runners.
     #
     # THE BYTE-IDENTITY HALF IS A ROW PER LANGUAGE. Run 42556155793 (runner
-    # vision-6) killed this job at 121s, exit 137, "per-commit jobs finish in
+    # bench-7-6) killed this job at 121s, exit 137, "per-commit jobs finish in
     # 2m". The tree half was 5s (generated-tree-negative-controls) plus 18s
     # (test/generated-tree/verify). `make tables-block-zero-cost` then spent
     # 13s generating C++, 8s generating C# and 42s generating C into the
@@ -1508,7 +1508,7 @@ jobs:
           if-no-files-found: ignore
 
   # THE PROOF TABLE, the 3.0.0 gate (tools/matrix proof; snapshot at
-  # test/proof/proof.json, an internal check with no published page). Glenn, 2026-10-31: "We need to prove this before
+  # test/proof/proof.json, an internal check with no published page). The owner, 2026-10-31: "We need to prove this before
   # v3.0.0 not just hope that it's correct and complete." It reads every
   # conformance leg's per-case results and computes the feature x language
   # table; it prints the red list and goes RED while any cell is red or
@@ -1906,7 +1906,7 @@ jobs:
       # battery and its host-order control stay nightly as
       # tables-big-endian-tables-full and tables-big-endian-control-full. After
       # that split the slowest row left here is c-control at 103 s, under the
-      # 110 s budget; the smoke target itself measured 8.7 s on amd-2 with
+      # 110 s budget; the smoke target itself measured 8.7 s on bench-4 with
       # bin/schema warm (2026-11-09), and the row's floor is checkout, the Go
       # toolchain and the cache restore. Big-endian reds stay with
       # green-be-message-form, green-be-control and green-conf-go-big-endian.

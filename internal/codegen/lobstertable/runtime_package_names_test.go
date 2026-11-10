@@ -46,7 +46,7 @@ func TestLobsterRuntimePackageBindingRefusal(t *testing.T) {
 			t.Errorf("runtime package %s accepted", name)
 		}
 	}
-	if err := checkRuntimePackageName(&ir.Unit{Package: "stella_registry_probe"}); err != nil {
+	if err := checkRuntimePackageName(&ir.Unit{Package: "other_registry_probe"}); err != nil {
 		t.Fatal(err)
 	}
 }

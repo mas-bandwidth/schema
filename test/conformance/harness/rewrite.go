@@ -1,6 +1,6 @@
 // THE REWRITE SURFACE (docs/SPEC-TABLES.md §22, "THE GATE"): every corpus
 // input that READS is read by every leg and written back, and the bytes must be
-// the canonical bytes, which the oracle writes. Glenn, 2026-11-03: "can we read
+// the canonical bytes, which the oracle writes. The owner, 2026-11-03: "can we read
 // in the data in each language, and get the valid values in" / "and we test
 // this by checking that it can write out that data the same way".
 //

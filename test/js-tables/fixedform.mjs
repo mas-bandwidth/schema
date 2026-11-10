@@ -2098,7 +2098,7 @@ function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
 }
 
 // BYTES(N) IS AN ARRAY ROW AND NOT A TEXT ROW (docs/SPEC-TABLES.md §3, §3.4;
-// Johnny's fix on the Elixir leg, schema#835). On a TEXT row `dst` is the used
+// A reviewer's fix on the Elixir leg, schema#835). On a TEXT row `dst` is the used
 // LENGTH and `aux` is the buffer; on an ARRAY row it is the other way round —
 // `dst` is the element base and `aux` is where the count lands — and the plan
 // compiler's array case (`case 14`) reads the ARRAY pair. `bytes(N)` rides as

@@ -578,7 +578,7 @@ type jsManifestKV struct{ key, value string }
 // jsManifestRow is the one line for one corpus file: its record count and its
 // values, IN THE ORDER THE MANIFEST WROTE THEM.
 // jsManifestFloatBits is the BIT half of the manifest's float spelling
-// (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure that a new
+// (schema#1164, the owner 2026-09-19: "do whatever is needed to make sure that a new
 // reader can read an old writer"). The manifest writes a float as
 // `<decimal>|0x<bits>`, and `jsManifestCompare` below reads only the DECIMAL —
 // `Number(path) !== dec && Math.fround(dec) !== Math.fround(Number(path))` —

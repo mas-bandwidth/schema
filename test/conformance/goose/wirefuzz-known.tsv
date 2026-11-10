@@ -10,6 +10,6 @@
 # None is held today: the three value-only arms held here on 2026-10-28
 # (scalars, tblm1, widedemo) went green on the table wire's union framing
 # before reset and its zero-extended widening of an unsigned kind into a
-# 128-bit field (rowan/port-goose-tablewire).
+# 128-bit field (port-goose-tablewire).
 #
 # unit	arm	first divergence	owed by

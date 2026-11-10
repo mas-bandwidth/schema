@@ -1,7 +1,7 @@
 // THE CLOSURE ROWS of docs/FIXED-FORM-VERSIONING-TESTS.md — `closure_plain_table`,
 // `closure_variable_kind` and `closure_self` — at the level they live:
 // COMPILE REFUSALS, not lock refusals. A fixed table's closure is a TREE of
-// fixed things (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2a, Glenn: "fixed
+// fixed things (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2a, the owner: "fixed
 // tables must only allow other fixed tables to be included in them, and not
 // recursively include themselves"), so every break is refused at the
 // declaration and never reaches the lock.

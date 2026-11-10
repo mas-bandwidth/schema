@@ -1,7 +1,7 @@
 {
   "language": "c",
   "tested_revision": "243d391180030ee2a75fc490e33f33301cd95cf6",
-  "host": "studio",
+  "host": "bench-11",
   "command": "python3 test/conformance/nightly-readiness c",
   "finished_utc": "2026-11-03T01:05:07Z",
   "result": "NIGHTLY_READINESS_PASS language=c phases=25",

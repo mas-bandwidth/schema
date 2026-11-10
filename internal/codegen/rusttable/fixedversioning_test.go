@@ -949,7 +949,7 @@ func versionBrackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32,
 // `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
 // CONSTRUCTION — and every leg's compressed-float row asserted a HARDCODED
 // literal instead of the reference's answer (schema#1164, measured 2026-09-19
-// across all nine legs; Glenn: "do whatever is needed to make sure that a new
+// across all nine legs; the owner: "do whatever is needed to make sure that a new
 // reader can read an old writer").
 //
 // THIS LEG ALREADY COMPARED BITS, which is the right comparison and is why it

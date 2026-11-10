@@ -8,7 +8,7 @@
 # census correction below is documented in docs/PORTING.md J4.
 #
 # Three kinds sit on the PACKET emitter's files (<Name>.h, <Name>Wire.h) and
-# are not the emitter's to clear without altering the packet wire, which Glenn's
+# are not the emitter's to clear without altering the packet wire, which the owner's
 # rule forbids for style:
 #   padded                   a struct's padding is its layout; removing it moves
 #                            fields, which is the wire code's cost.

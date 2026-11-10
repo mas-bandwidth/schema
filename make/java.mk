@@ -356,7 +356,7 @@ tables-java-runtime-home-negative-control: bin/schema tables-java-runtime-home
 #   google-java-format 1.37.0 (google/google-java-format, the all-deps jar)
 #   url:    https://github.com/google/google-java-format/releases/download/v1.37.0/google-java-format-1.37.0-all-deps.jar
 #   sha256: 834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a
-#           (the jar the fleet toolchains role installed on hetzner1 and hetzner2,
+#           (the jar the fleet toolchains role installed on bench-1 and bench-2,
 #           ~/sdk/google-java-format-1.37.0/, measured with sha256sum 2026-10-15)
 #   Put the jar at dist/google-java-format-1.37.0-all-deps.jar (gitignored) and
 #   it runs on the pinned JDK above, with the six --add-exports its README names
@@ -1052,7 +1052,7 @@ tables-java-keyed-negative-control:
 		echo "negative control: dropping the $$end bound reds the keyed accessor on that end only"; \
 	done
 
-# FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
+# FINITE TABLE FLOATS, Java side (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27:
 # "Tables go finite-only too, same rule as packets"): every read refuses a NaN
 # or an infinity on its raw bits as non_finite_float, the tolerant one too,
 # naming the field (variable, retaining, message batch, fixed form before its
@@ -1415,7 +1415,7 @@ tables-java-allocator-runtime-negative-control: build/java-tables/.stamp
 # committed wires the tables-java-variable-class target round-trips (the blob,
 # list and pointer units on this classpath) for TABLES_JAVA_SOAK_ITERATIONS
 # passes (a count, not a clock: the default is the release act, about an hour
-# on the studio; `make test` runs the short form), and
+# on the bench-11; `make test` runs the short form), and
 # gates on the per-iteration ALLOCATION COUNT being flat after warmup — a Java
 # load builds a Value tree, so the floor is not zero and the gate is on
 # STABILITY, not on zero — with resident-heap drift reported beside it as the
@@ -1470,7 +1470,7 @@ tables-java-alloc-negative-control: build/java-tables/.stamp
 
 test-java: tables-java-allocator tables-java-allocator-runtime-negative-control tables-java-alloc-negative-control tables-java-soak-short tables-java-soak-negative-control
 
-# the short form `make test` reaches (524288 passes, ~13 s on the studio); the
+# the short form `make test` reaches (524288 passes, ~13 s on the bench-11); the
 # hour is `make tables-java-soak`
 # The stamp is the parent's prerequisite, so under -j the sub-make finds it
 # built and never races a sibling recipe that is writing build/java-tables.

@@ -84,8 +84,8 @@ PATHS-PROPOSED (`sca-dart-4`, shared compiler ownership):
 
 ## Gate verification
 
-Executed on `studio.local` (darwin/arm64, `go1.26.10`, Dart SDK `3.13.2` via
-`DART=/Users/glenn/rowan-working/sdk/bin/dart`) with `GOCACHE` in the workdir,
+Executed on `bench-11` (darwin/arm64, `go1.26.10`, Dart SDK `3.13.2` via
+`DART=<work>/sdk/bin/dart`) with `GOCACHE` in the workdir,
 `GOFLAGS=-mod=readonly`, `NOVA_TEST_NO_HOST=1`, and `-p 4 -count=1 -timeout 600s`.
 Zero warnings in every run below.
 

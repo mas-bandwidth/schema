@@ -589,14 +589,14 @@ static class Program
         s6.Opt[0].Value = 70; s6.Opt[1].Value = 80;
         AssertEqual("opt uncounted present", s6);
 
-        // 7. Optional counted array: opt_counted_present = false, opt_counted_count = 2 (Rowan case c1)
+        // 7. Optional counted array: opt_counted_present = false, opt_counted_count = 2 (a maintainer case c1)
         Subject s7 = new Subject();
         s7.OptCountedPresent = false;
         s7.OptCountedCount = 2;
         s7.OptCounted[0].Value = 90; s7.OptCounted[1].Value = 100;
         AssertEqual("opt counted absent with count=2", s7);
 
-        // 8. Optional counted array: opt_counted_present = true, opt_counted_count = 0 (Rowan case c2)
+        // 8. Optional counted array: opt_counted_present = true, opt_counted_count = 0 (a maintainer case c2)
         Subject s8 = new Subject();
         s8.OptCountedPresent = true;
         s8.OptCountedCount = 0;

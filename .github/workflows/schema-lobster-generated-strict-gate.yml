@@ -8,7 +8,7 @@ name: schema Lobster generated strict gate
 # and no error. The planted-warning control proves the gate reads the output
 # rather than the exit status, which stays 0 over a warning.
 #
-# Both parts are fast (about four seconds of compiling on the studio, plus the
+# Both parts are fast (about four seconds of compiling on the bench-11, plus the
 # generation), so push and pull request run them when a path the generated
 # Lobster depends on moves, and the nightly repeats them over whatever moved
 # without touching those paths. ci-fast.yml's leg gate runs the same target on

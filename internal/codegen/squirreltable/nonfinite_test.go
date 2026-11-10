@@ -1,6 +1,6 @@
 package squirreltable_test
 
-// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets"). On the variable form:
 //
 //   - -0, the subnormals and the largest finite value ride as their bits: the

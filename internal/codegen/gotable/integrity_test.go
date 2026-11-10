@@ -31,7 +31,7 @@ table Big | integrity = "crc32c"
 `
 
 // integrityPlainGolden is PlainSave of {n 1000, label "ok", count 7} at the
-// base this card started from (sprint/schema-go @ caea41783528, hetzner2):
+// base this card started from (sprint/schema-go @ caea41783528, bench-2):
 // the keyless table's file does not move.
 const integrityPlainGolden = "010105e803000000000000020c026f6b030707000071f801864ce363af3d62cb8fecfcf73974a279448ee2e5b10300000000000000"
 

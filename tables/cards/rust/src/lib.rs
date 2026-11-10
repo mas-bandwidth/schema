@@ -182,7 +182,7 @@ fn check_extras(list: &[KeyValue]) -> Result<(), String> {
 // bytes verbatim.
 
 // The stranded header keys refused once prose has begun (parse.go
-// strandedKeys, nova-sprint pkg/swarm/lintheader.go cardHeaderKeys).
+// strandedKeys, the sprint tool's pkg/swarm/lintheader.go cardHeaderKeys).
 const STRANDED_KEYS: &[&str] = &[
     "KIND", "PATHS", "TEST", "LEGS", "SOURCE", "START", "STOP", "DEPENDS-ON",
     "PRIORITY", "NEW", "SHARED", "REPO", "BASE", "tier", "RESULT",

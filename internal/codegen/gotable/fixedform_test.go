@@ -1254,7 +1254,7 @@ func TestHostileByteSweep(t *testing.T) {
 `)
 }
 
-// TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (Rowan,
+// TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (a maintainer,
 // Java #833 read): a string(8) under a union's SECOND arm. Write on the
 // identity path, read with a compiled plan from a different layout. If Arg
 // is both the guard's arm ordinal and the text flavour, the compiled read
@@ -2830,7 +2830,7 @@ func TestReadSlackUnspecified(t *testing.T) {
 // out-of-contract count and length and asserts the Go WRITE side refuses them
 // BY NAME and stores nothing. docs/FIXED-FORM-ALGORITHM.md §3.1 reads: "Write-side
 // bound checks are DEBUG ONLY, by rule ... Go has no debug-only idiom, so the
-// Go fixed writer REFUSES in every build" (Glenn, 2026-10-15). It was this
+// Go fixed writer REFUSES in every build" (the owner, 2026-10-15). It was this
 // test's predecessor, TestFixedFormWriteSideBoundsAreDebugOnly, that pinned the
 // opposite: a Go save that checked nothing and put the caller's bug on the
 // wire. The rule moved, so the test moved with it and was renamed because the

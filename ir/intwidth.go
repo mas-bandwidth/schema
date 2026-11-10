@@ -2,7 +2,7 @@ package ir
 
 import "fmt"
 
-// NO ZERO-WIDTH INTEGER IS EVER VALID (owner decision, Glenn, 2026-10-16). An
+// NO ZERO-WIDTH INTEGER IS EVER VALID (owner decision, the owner, 2026-10-16). An
 // integer a backend PRINTS — a `uint%d_t` cast or storage, a `put%d` / `get%d`
 // store or load — is 1, 2, 4 or 8 bytes, and nothing else. A width of 0 is not
 // a small integer: it is a field kind the emitter mistook for a scalar (a text,

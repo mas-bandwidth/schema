@@ -1,6 +1,6 @@
 # schema bench results
 # date: 2026-08-11T08:01:33Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: c++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

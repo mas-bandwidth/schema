@@ -46,7 +46,7 @@ type expectedClass struct {
 	match func(u *genUnit, line string) bool
 }
 
-// The ids below are looked up with `nova-sprint card <id>`
+// The ids below are looked up with `sprint card <id>`
 // (verifiedClassCards in tablediff_classes_test.go pins that list): a class
 // whose owner cannot be found is not owed, it is a finding.
 var expectedClasses = []expectedClass{}

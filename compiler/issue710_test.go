@@ -99,7 +99,7 @@ func TestIssue710UnpackPaths(t *testing.T) {
 
 // Small, explicit file-form fixtures, each with damage inside one field and a
 // sibling after it. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4;
-// Glenn: "if it fails to read, it's broken and everything in it today is
+// The owner: "if it fails to read, it's broken and everything in it today is
 // suspect. discard."): the read refuses the load and reports the
 // damage, and no value it decoded is held to anything.
 func issue710Wire(body []byte, ids ...uint64) []byte {

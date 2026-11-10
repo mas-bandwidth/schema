@@ -1,7 +1,7 @@
 # Go generated-size survey
 
 Measured at `sprint/schema-go` @ `19b8330208c2639d5b2d4653218b09c3aafd8724`
-(hulk, 2026-10-18). This page measures which code the Go emitter
+(bench-6, 2026-10-18). This page measures which code the Go emitter
 (`internal/codegen/gotable`) writes the same way in every table, or in every
 unit, and so could live once in `tables/goruntime` instead of in each
 generated unit. It changes no code. Each row is a proposed cut, and each cut

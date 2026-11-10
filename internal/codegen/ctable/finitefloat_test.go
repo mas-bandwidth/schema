@@ -14,7 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE C LEG'S FINITE RULE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// THE C LEG'S FINITE RULE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets"): every read refuses a NaN
 // or an infinity on its raw bits as non_finite_float, the tolerant read too,
 // and lands nothing; every writer refuses one; -0 and the subnormals ride

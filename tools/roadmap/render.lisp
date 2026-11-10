@@ -6,7 +6,7 @@
 ;;;; docs/roadmap.sexp (one restricted S-expression plist) and the evidence
 ;;;; overlay in docs/roadmap-evidence/*.sexp (one form per task, written by
 ;;;; the cards that proved the task). Everything else on the page (the title,
-;;;; the headings and every paragraph) is Glenn's, written by hand, and this
+;;;; the headings and every paragraph) is the owner's, written by hand, and this
 ;;;; renderer never writes it: each table sits between
 ;;;; <!-- nova-work:<roadmap-id>:start --> and <!-- nova-work:<roadmap-id>:end -->,
 ;;;; and only the bytes between those markers are rewritten.
@@ -541,7 +541,7 @@ name; nil when DIR does not exist."
 ;;;
 ;;; The root form carries
 ;;;   :page (:roadmaps ("packet-wire" "fixed-tables" "variable-tables"))
-;;; and nothing else: the page's headings and prose are Glenn's, written by hand
+;;; and nothing else: the page's headings and prose are the owner's, written by hand
 ;;; in ROADMAP.md, and the data holds cell data and evidence only. A :page key
 ;;; other than :roadmaps, or a :text on a roadmap node, is prose in the data and
 ;;; is refused.
@@ -1361,9 +1361,9 @@ order, and refuses a result whose hand-written part differs from EXISTING's."
                           (:id "goal" :type :work-set :children ("alpha" "beta")))))
                  (nodes (validate-root sexp))
                  (table (build-and-validate-node-table nodes "goal"))
-                 (hand (format nil "# Glenn's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%stale~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%<!-- nova-work:beta:end -->~%Tail without a newline"))
+                 (hand (format nil "# the owner's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%stale~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%<!-- nova-work:beta:end -->~%Tail without a newline"))
                  (page (splice-page-string hand sexp table "docs/roadmap.sexp"))
-                 (expected (format nil "# Glenn's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%~%| feature | c1 | c2 |~%|---|:---:|:---:|~%| Row 1 | ✅ | ❌ |~%| complete | 100% | 0% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%~%| feature | c1 |~%|---|:---:|~%| Row 1 | ✅ |~%| complete | 100% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:beta:end -->~%Tail without a newline")))
+                 (expected (format nil "# the owner's  title~%~%Some   prose, kept  as written.~%~%<!-- nova-work:alpha:start -->~%~%| feature | c1 | c2 |~%|---|:---:|:---:|~%| Row 1 | ✅ | ❌ |~%| complete | 100% | 0% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:alpha:end -->~%~%## Beta~%<!-- nova-work:beta:start -->~%~%| feature | c1 |~%|---|:---:|~%| Row 1 | ✅ |~%| complete | 100% |~%~%[Source data](docs/roadmap.sexp)~%~%<!-- nova-work:beta:end -->~%Tail without a newline")))
             (unless (string= page expected)
               (error "Page differs from the expected splice:~%~a~%--- expected ---~%~a" page expected))
             (unless (string= page (splice-page-string page sexp table "docs/roadmap.sexp"))

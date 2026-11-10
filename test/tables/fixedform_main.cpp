@@ -54,21 +54,21 @@
 #include "VOLD_float_widenTable.h"
 #include "VNEW_float_widenTable.h"
 
-// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// ---- cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
 // docs/FIXED-FORM-VERSIONING-TESTS.md). One registration call, below in main,
 // and it answers with its own failure count: its RED cases are printed by name
 // and counted there, and do not fail this target.
 int versioning_numbers_cases();
-// ---- rowan/cpp-versioning-numbers: END ------------------------------------
+// ---- cpp-versioning-numbers: END ------------------------------------
 
 static int failures = 0;
 
-// ==== BEGIN rowan/cpp-versioning-lists ====
+// ==== BEGIN cpp-versioning-lists ====
 // the LIST rows' read columns, in their own translation unit; it returns its
 // own failure count and prints its own known-red report
 int versioning_lists_cases();
-// ==== END rowan/cpp-versioning-lists ====
+// ==== END cpp-versioning-lists ====
 
 static void check( bool ok, const char * what )
 {
@@ -2278,7 +2278,7 @@ static void nested_union_case()
 }
 
 
-// ---- rowan/corpus-manifest: BEGIN -----------------------------------------
+// ---- corpus-manifest: BEGIN -----------------------------------------
 // THE MANIFEST'S OWN CHECK (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1, ruling
 // #32). A port asserts the corpus's values from `manifest.txt` and never from
 // test/tables/fixedform_dump.cpp, so the manifest has to be COMPLETE and its
@@ -2528,7 +2528,7 @@ static void manifest_case( const char * corpus_dir )
 #else
 static void manifest_case( const char * ) {}
 #endif
-// ---- rowan/corpus-manifest: END -------------------------------------------
+// ---- corpus-manifest: END -------------------------------------------
 
 // ---------------------------------------------------------------------------
 
@@ -2797,18 +2797,18 @@ int main( int argc, char ** argv )
     plan_partition_case();
     nested_union_case();
     fuzz_case();
-    // ---- rowan/corpus-manifest ----
+    // ---- corpus-manifest ----
     manifest_case( corpus );
-    // ---- rowan/cpp-versioning-numbers: BEGIN ----
+    // ---- cpp-versioning-numbers: BEGIN ----
     failures += versioning_numbers_cases();
-    // ---- rowan/cpp-versioning-numbers: END ----
-    // ==== BEGIN rowan/cpp-versioning-lists ====
+    // ---- cpp-versioning-numbers: END ----
+    // ==== BEGIN cpp-versioning-lists ====
     // THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW, in their own
     // translation unit (test/tables/versioning_lists.cpp) with their own
     // known-red list: NEW-READS-OLD and OLD-REFUSES-NEW, one lineage pair per
     // row (docs/FIXED-FORM-VERSIONING-TESTS.md).
     failures += versioning_lists_cases();
-    // ==== END rowan/cpp-versioning-lists ====
+    // ==== END cpp-versioning-lists ====
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;

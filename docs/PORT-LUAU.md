@@ -2,8 +2,8 @@
 
 Luau is Roblox's dialect of Lua: gradually typed, a `buffer` type for bytes,
 and — on the pinned release — a native 64-bit `integer`. It is the scripting
-language of Virtual Go, the space game and lego (Glenn Fiedler, 2026-10-17:
-"We will use luau as scripting in virtualgo, space game and lego"), so the
+language of the owner's game projects (the owner, 2026-10-17:
+"We will use luau as scripting in the owner's game projects"), so the
 schema port is held to every surface the other legs carry. Vanilla Lua and
 Squirrel follow it, and copy this page's shape.
 
@@ -177,7 +177,7 @@ source module.
 ## 64-BIT AND 128-BIT INTEGERS
 
 Luau numbers are doubles, so a 64-bit value past 2^53 needs a representation.
-Measured on the pin (hulk, 2026-10-17): Luau 0.741 has the `integer` type
+Measured on the pin (bench-6, 2026-10-17): Luau 0.741 has the `integer` type
 (`typeof(integer.create(1))` is `integer`; RFC luau-lang/rfcs
 `type-long-integer.md`), integer literals with an `i` suffix (`5i`;
 `0xffffffffffffffffi` is the bit pattern of −1), the `integer` library (`add sub mul div udiv rem urem band bor bxor bnot lshift rshift arshift lt le ult ule gt ge ugt uge tonumber fromstring create …` — arithmetic operators do NOT
@@ -188,7 +188,7 @@ so generated code never spells an unsigned value in decimal: it uses the hex
 bit pattern (`luau.IntegerLit`).
 
 **The choice: the native `integer`.** It is a value, not an object, it holds
-every 64-bit pattern, it is what the space game's and Virtual Go's own scripts
+every 64-bit pattern, it is what the game projects' own scripts
 will use for 64-bit ids, and it reads and writes the wire's little-endian 8
 bytes in one call. The portable alternatives were weighed and refused: a
 two-halves pair allocates a table per value and makes every comparison a
@@ -200,7 +200,7 @@ is the open question: the type is a 2026 addition to luau-lang, and whether
 Roblox's shipped Luau has enabled it is NOT measured here (no Roblox runtime
 is reachable from the bench). If it has not, the port refuses on Roblox by
 that message until it does; a two-halves fallback is a design option this
-page records and does not build. The space game, Virtual Go and lego embed
+page records and does not build. The owner's game projects embed
 the pinned luau-lang release, so they have it.
 
 ## BYTE BUFFERS
@@ -284,7 +284,7 @@ walks out of the directory. Nothing outside the unit directory and its
 runtime can resolve, whatever the working directory or the files around it.
 No native modules load: the pinned interpreter has no `package`, `dofile`,
 `loadfile` or `io` (measured: all `nil`) and no C module loader, and an
-embedding host (Virtual Go, the space game, lego) is told the same: its
+embedding host (the owner's game projects) is told the same: its
 require resolver for a schema unit resolves `./` against the unit directory
 alone and refuses everything else. `TestLuauRequiresResolveInsideTheUnitOnly`
 holds it: every require in the generated unit is `./` to a module the unit
@@ -336,7 +336,7 @@ hex lines.**
   the mutant into `inputs.luau` and runs the pinned interpreter on
   `wirefuzz.luau`, which prints the reply's fields as one hex line the shim
   frames and flushes. Measured: the interpreter starts in about 4 ms (100
-  runs of a one-line script in 0.43 s on hulk), so a 10,000-mutant run costs
+  runs of a one-line script in 0.43 s on bench-6), so a 10,000-mutant run costs
   about a minute of process starts. If that is too slow, the measured upgrade
   is ONE long-lived `luau` REPL process fed one `M("\x..")` line per mutant
   on its stdin (the REPL reads stdin; a script cannot), decided by that card
@@ -375,7 +375,7 @@ committed-tree check holds them to the compiler.
   interpreter writes one message in about 0.27 ms and round-trips it in about
   0.82 ms. The elixir leg set the precedent (BENCH-STANDARD.md, §2.8).
 - **Where the time goes, from one sampled run of the same runner** (`luau
-  --profile`, hulk, 2026-10-29; a diagnostic, not a row): on the packet wire the
+  --profile`, bench-6, 2026-10-29; a diagnostic, not a row): on the packet wire the
   read side is two thirds `serialize_bitpacker.luau`'s `BitReader.readBits`
   alone, a loop of one `buffer.readu8`, a `math.floor`, a `2 ^ n` and a modulo
   per BIT; the write side is spread over `writerPack` (about 17%),

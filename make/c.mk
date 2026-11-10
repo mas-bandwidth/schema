@@ -1169,7 +1169,7 @@ tables-c-strict-load-negative-control:
 	@grep -m1 "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log
 	@echo "negative control: a plain read that does not refuse is the tolerant read under the plain name"
 
-# THE FINITE RULE, C LEG (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+# THE FINITE RULE, C LEG (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 # "tables go finite-only too, same rule as packets"): every read refuses a NaN
 # or an infinity on its raw bits as non_finite_float and lands nothing, every
 # writer refuses one, and -0 rides by its bits. TestCFiniteFloats is the pin,
@@ -1502,7 +1502,7 @@ GOLDENS_LEGS      += update-goldens-c
 # THE GENERATED C IS FORMAT-CANONICAL (issue #424). `clang-format` is the
 # language's formatting authority, and the style is the repo's .clang-format,
 # written from what the emitters write and from the serialize runtime beside
-# them (Glenn's style: four spaces, Allman braces, `( x )` inside parentheses,
+# them (the owner's style: four spaces, Allman braces, `( x )` inside parentheses,
 # `type * name`, no reflow). The gate holds every generated C file of the table
 # corpus and of the committed generated/ C trees to what the formatter writes.
 #
@@ -2034,7 +2034,7 @@ tables-c-discard-negative-control:
 	@echo 'negative control: each C read with its discard removed hands back a value, on exactly its own rows'
 test-c: tables-c-discard
 
-# A CYCLIC WIRE IS DAMAGE, C LEG (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# A CYCLIC WIRE IS DAMAGE, C LEG (docs/SPEC-TABLES.md §3.1, §4; the owner's ruling,
 # 2026-10-31). The C check is Kahn's algorithm over the load's directory
 # (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
 # 1-based directory indices during construction and resolving offsets once

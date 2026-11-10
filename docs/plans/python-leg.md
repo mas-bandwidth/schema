@@ -1,11 +1,11 @@
 # A Python leg: the layers, bottom up
 
-Glenn, 2026-11-03: *"I would also like to extend to support python too."*
+The owner, 2026-11-03: *"I would also like to extend to support python too."*
 
 This page sets out the layers of a new Python target, from the bottom up. Each
 layer has what it guarantees, how that is checked, and what it depends on. It
-also lists the decisions that need Glenn before anything is built. The house
-rule is that the layers of a new system are settled with Glenn before building,
+also lists the decisions that need the owner before anything is built. The house
+rule is that the layers of a new system are settled with the owner before building,
 and each one is secured before anything above it starts. So this page is for
 correcting first, and building second. The roadmap work-set is `port/python`
 in `docs/roadmap.sexp`, one task per layer.
@@ -21,7 +21,7 @@ It joins the registries the way docs/CONTRIBUTING.md "Adding a language"
 describes: one file or one directory per language, discovered rather than
 listed, and only the three tolerated shared edits.
 
-It is built to the contract on `rowan/strict-only-spec` (spec PR #2790) from
+It is built to the contract on `strict-only-spec` (spec PR #2790) from
 the first line:
 
 - **One read.** Every read returns the whole value or refuses with no partial
@@ -30,7 +30,7 @@ the first line:
   writing it back byte-identical; reasons, counters and sizes are Python's own
   diagnostics.
 - **Writes are deterministic.** The binary and JSON writers follow
-  `rowan/deterministic-write` and `rowan/deterministic-json`.
+  `deterministic-write` and `deterministic-json`.
 
 Python never has a tolerant read, so it has nothing to cut later.
 
@@ -53,15 +53,15 @@ them from layer 1 up. F11's rule returns in layer 5 as part of the fixed form.
 
 | layer | what | guarantees | checked by | depends on | size |
 |---|---|---|---|---|---|
-| P0 | **The design page and the decisions.** `docs/PORT-PYTHON.md`, in the shape of PORT-GOOSE: the type mapping, number model, byte buffers, float32, runtime layout, harness, register and card map. The decisions below, answered. The F11 seed removed | The design is fixed before any code, and nothing in the tree contradicts it | A cold read with no memory of the drafting, its findings applied; Glenn's answers; `make test` green without the seed | Glenn's answers | S |
+| P0 | **The design page and the decisions.** `docs/PORT-PYTHON.md`, in the shape of PORT-GOOSE: the type mapping, number model, byte buffers, float32, runtime layout, harness, register and card map. The decisions below, answered. The F11 seed removed | The design is fixed before any code, and nothing in the tree contradicts it | A cold read with no memory of the drafting, its findings applied; the owner's answers; `make test` green without the seed | the owner's answers | S |
 | P1 | **The toolchain pin.** `make/python.mk`: `dist-python` builds the pinned interpreter into `dist/python-<ver>/` and refuses any other sha256 by name. `toolchain-python` probes each pin; `TOOLCHAIN_LEGS += python`; `TOOLCHAIN_PINS_python` lists the floor and current interpreters and the analyzer. A `.github/actions/python` step caches the build keyed by the pin, as the moo action does | Every Python process the build starts is the pinned interpreter, and a missing pin refuses by name; no PATH lookup | `make toolchain-python`; the toolchain negative control (each pin pointed at a missing path in turn must refuse naming that pin); a grep gate showing no bare `python3` in `make/python*.mk` or the leg's tests | P0 | M |
 | P2 | **serialize.py, the bit layer.** A sibling repository that ports `serialize.h` to format 2.0 (STANDARD.md), vendors the standard and the corpus at COMPATIBILITY.md's commit, releases through the release tooling, and joins the COMPATIBILITY table. It is vendored into `internal/codegen/python/runtime/` by sha256 with `SERIALIZE_PIN` and `make/python-serialize.mk` | The bits are right before schema stands on them: every family vector writes its bytes and every refuse vector refuses, including finite-only floats and canonical encodings | The family corpus in serialize.py's own CI; in schema, `TestVendoredPythonSerializeIsThePin` (the files and sums match the pin, and one int and one float round-trip against the vendored corpus), as `TestVendoredLuaSerializeIsThePin` does | P1; decision D4 | M |
 | P3 | **The skeleton.** `schema new-leg python`: `compiler/target_python.go` behind `schema_leg_python`, `internal/codegen/python` (the type surface: values, constructors, descriptors, no codec), `internal/codegen/pythontable` (the table surface, no codec), the `pyrun` test helper, `internal/tablenames/python.go`, `compiler/tablespython_test.go`, `make/python.mk` `test-python`, `test/conformance/python/{driver,ci.json,main.py}` answering every surface absent, the PORTING.md column (every technique ✅, — with the platform's reason, or ❌ citing its roadmap entry), and the `python` column on all three roadmap tables with `port/python/*` cells, all `:todo` | The leg is discovered by every registry with no shared file edited, and every construct the target does not carry is refused by name at compile time | The registry gate (`test/conformance/harness/registry_test.go`); `make test-python`; identifier tests: Python keywords and soft keywords, builtins, dunder names, stdlib module shadowing (a schema file named `json` or `types`) and case-folding module collisions each refused or mangled by rule; the PORTING column gate | P1 (P2 for the vendored runtime directory) | M |
 | P4 | **The packet wire.** `python/read.go` and `write.go` over the vendored serialize.py; the generated tree under `generated/python`; the python legs of `test/packet-text`, `packet-wide`, `packet-defaults` and `packet-finite`; the ludicrous goldens; the analyzer gate over generated code; the packet bench leg. The build tag is dropped and the target joins the builtins | Every packet type reads and writes the 14 C++-pinned goldens byte for byte, truncation and hostile values refuse, and writes refuse out-of-contract values (out-of-range ints, non-finite floats, a float32 that overflows, a lone surrogate in text) | `TestPythonTypeWireReadsTheGoldens` and `...WritesTheGoldens`, each with a negative control; each packet gate with its control; the analyzer gate with its control; the packet-wire column at 100% | P2, P3 | L |
-| P5 | **Fixed tables, form 3.** The fixed plan, lineage and plan selection by hash, the bounds pass, file save and load, measurement. Built to FIXED-FORM-ALGORITHM as `rowan/strict-only-spec` states it: the bounds pass and forged ordinals refuse `out_of_range`, a bool byte past 1 is `wire_damaged`, and there is no `malformed` flag | Python's fixed bytes equal C++'s for every row, and each side loads and re-saves the other's bytes byte-equal; every refusal the algorithm names refuses | The per-row fixed proof suite against a live C++ reference (moo's pattern, PR #2738, or the shared suite of remaining-legs-100.md X1), file and writer negative controls per row, `fixedversioning_python_test.go`; the fixed-tables column | P4; the cut's spec layer ruled | L |
+| P5 | **Fixed tables, form 3.** The fixed plan, lineage and plan selection by hash, the bounds pass, file save and load, measurement. Built to FIXED-FORM-ALGORITHM as `strict-only-spec` states it: the bounds pass and forged ordinals refuse `out_of_range`, a bool byte past 1 is `wire_damaged`, and there is no `malformed` flag | Python's fixed bytes equal C++'s for every row, and each side loads and re-saves the other's bytes byte-equal; every refusal the algorithm names refuses | The per-row fixed proof suite against a live C++ reference (moo's pattern, PR #2738, or the shared suite of remaining-legs-100.md X1), file and writer negative controls per row, `fixedversioning_python_test.go`; the fixed-tables column | P4; the cut's spec layer ruled | L |
 | P6 | **Variable tables: the one read.** Form 1 load and save, a port of `internal/tablewire`: the variable class and node table, optionals, keyed arrays, maps, blobs, unions and any-type arms, wide and 128-bit kinds, the id-table wire, unbounded arrays, wstring, defaults and renames, widening, and the report (`unknown`, `widened`, `retained`, `retain_lost`) on success only | Every manifest input is either read, with its value written back byte-identical to the canonical wire, or refused; a refusal leaves no partial value and does not touch the caller's objects | The read-then-write harness against the Go engine on the tables manifest; per-construct tests with negative controls; the `carries` tests (`target_python_carries_*_test.go`) | P5; **`strict-only/engine` and `strict-only/harness`** | L |
 | P7 | **The message form and retain-unknown.** Form 2: the announcement, `load_messages`, `measure_messages` and `save_messages` (fixed tables only). Retention on load and save | The batch reads in phase order or refuses whole; retained unknowns are saved back byte-exact | The message and retain-save surfaces; the retain negative control | P6 | M |
-| P8 | **The text forms.** JSON both ways, the hand-editable text and base64 text. The reader is a port of the engine's (`internal/tabletext`), not the stdlib `json` module (D7). The writer follows `rowan/deterministic-json` | Every readable JSON input is written back to the canonical text byte-identical, and every input the dialect refuses is refused (duplicate keys, lone surrogates, non-finite numbers) | The json-read, json-write and json-hostile surfaces on read-then-write; the JSONTestSuite policy rows; a negative control on the field-key match | P6; the deterministic-JSON spec landed | L |
+| P8 | **The text forms.** JSON both ways, the hand-editable text and base64 text. The reader is a port of the engine's (`internal/tabletext`), not the stdlib `json` module (D7). The writer follows `deterministic-json` | Every readable JSON input is written back to the canonical text byte-identical, and every input the dialect refuses is refused (duplicate keys, lone surrogates, non-finite numbers) | The json-read, json-write and json-hostile surfaces on read-then-write; the JSONTestSuite policy rows; a negative control on the field-key match | P6; the deterministic-JSON spec landed | L |
 | P9 | **Accelerators and reflection.** Block read and build, cook open, check and write (a Python `bytes` has no address, so `base_offset` is an argument, as in Lua), UnitView, descriptors, doc comments and tags | The open/refuse verdicts and the canonical dumps match the corpus, and cook bytes in both byte orders match `schema cook` | The block, block-foreign, block-dump, forgery, cook, cook-write, cook-foreign and cook-forgery surfaces; descriptor tests with controls | P6 (descriptors after P3) | M |
 | P10 | **The conformance driver.** `test/conformance/python/main.py` answering every surface the read-then-write harness asks, and `ci.json` with the `python` field | Python answers the full manifest with no absent case except where a named platform reason stands | The harness; `conformance-negative-control-python` registered in `make/negative-controls.json` | P6 to P9; `strict-only/harness` | M |
 | P11 | **The wire-fuzz differential.** `test/conformance/python/wirefuzz.py`, one process over little-endian frames on `sys.stdin.buffer`, plain and builder arms, against the Go engine on the verdict pipe | Zero divergences over the full roster: the same verdict, and on accept the same written-back bytes | `make tables-python-wire-fuzz`; a planted divergence that goes red | P10 | M |
@@ -89,7 +89,7 @@ everything above it wait for `strict-only/engine` and `strict-only/harness`.
 Python then joins the cut's leg order as the sixteenth leg, with nothing to
 delete.
 
-## Decisions for Glenn
+## Decisions for the owner
 
 **D1. Pure Python, or a compiled accelerator.** The house rule is the fastest
 correct implementation in each language.

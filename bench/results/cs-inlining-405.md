@@ -2,7 +2,7 @@
 
 **Verdict: reverted.** The attribute on the Fixed-class bodies slows C# form-1 save on the tables board by 8.3% and 11.3% (both outside the 2.7–5.6% spread) and gains nothing outside spread on the fixed-form paired leg, so it is dropped and `MethodImplOptions.AggressiveInlining` stays on the 18 primitive helpers only.
 
-Two independent hosts, each with an interleaved A, B, A, B sitting, give the same answer: hulk (§1, the primary board, attempt w2) and b1 (§3, attempt w1).
+Two independent hosts, each with an interleaved A, B, A, B sitting, give the same answer: bench-6 (§1, the primary board, attempt w2) and b1 (§3, attempt w1).
 
 ## Revisions
 
@@ -11,9 +11,9 @@ Two independent hosts, each with an interleaved A, B, A, B sitting, give the sam
 - **Arm B (candidate):** A plus `[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]` on `<T>CollectTyped`, `<T>BodySizeTyped`, `<T>WriteBodyTyped` (wire.go), `<T>FixedWriteBody` (fixedform.go) and `<T>FixedClampBody` (fixedbounds.go), only where `!ir.VariableTables(unit)[T]`. That is 30 sites in each of `generated/bench/tables/cs/BenchTableTable.cs` and `generated/bench/paired/cs/BenchTable.cs`, against 18 at A (`d3e64550ff72`, local only). The `global::` spelling is needed because the generated unit does not import `System.Runtime.CompilerServices` at the outer scope: the short spelling fails with CS0246/CS0103.
 - **Runtimes:** `serialize` `6c692bff`, `serialize.c` `ae609eba`, `serialize.go` `a1f6ab77`, `serialize.cs` `bbf55d40`. serialize.cs has a 5-line local, uncommitted workaround: `Int128Value` `<`/`>` overloads taking `System.Int128`, for C# 14 **CS9342** at `generated/bench/paired/cs/BenchTable.cs:8095-8096`. Without it the paired C# leg does not build at BASE. This is a base red outside this card, and attempt w1 hit and worked around it the same way.
 
-## 1. hulk: the primary board (attempt w2)
+## 1. bench-6: the primary board (attempt w2)
 
-- **Host:** `hulk`, AMD Ryzen Threadripper 2990WX (32C/64T, 4 NUMA nodes), Linux 6.8.0-142-generic, governor `schedutil`. Toolchain: .NET SDK 10.0.401 / runtime 10.0.12, go1.26.6, gcc system default.
+- **Host:** `bench-6`, AMD Ryzen Threadripper 2990WX (32C/64T, 4 NUMA nodes), Linux 6.8.0-142-generic, governor `schedutil`. Toolchain: .NET SDK 10.0.401 / runtime 10.0.12, go1.26.6, gcc system default.
 - **Pinning:** every timed process is under `taskset -c 4` (NUMA node 0). Its SMT sibling, cpu 36, was left idle.
 - **Window:** 2026-10-16T03:10:24Z to 03:34:11Z: A1 03:10, B1 03:16, A2 03:22, B2 03:28. Each sitting runs the paired fast diagnostic, then the tables board.
 - **Load declared:** the 1-minute loadavg was between 1.14 and 2.90 across the whole window, on 64 hardware threads. That load is the sitting itself plus node exporters. A trace every 30 s showed no other process above about 10% CPU. The fast driver's process sampler flagged one idle `cc` (0.0% CPU) in A1 (24 notes) and A2 (15 notes), and nothing in B1 or B2.
@@ -52,18 +52,18 @@ Corpora `066b2822b3e5d487` (table) and `fd0748942dc6ae09` (packet). There were 2
 
 ## 2. What the JIT did instead
 
-This comes from `DOTNET_JitDisasmSummary=1` on the C# tables leg, pinned on hulk, with both arms run to completion.
+This comes from `DOTNET_JitDisasmSummary=1` on the C# tables leg, pinned on bench-6, with both arms run to completion.
 
 - **Arm A:** `TableStatCollectTyped`, `TableStatBodySizeTyped` and `TableStatWriteBodyTyped` are each JIT-compiled on their own and reach **Tier1 with Dynamic/Synthesized PGO**. `TableMixed*Typed` goes through instrumented Tier0 in the same way.
 - **Arm B:** none of the `*CollectTyped`, `*BodySizeTyped` or `*WriteBodyTyped` bodies appears as a compiled method at all. They are inlined whole into `TableMixedSaveTyped`, and that method is compiled once as **"Tier-0 switched to FullOpts"**: it has loops and `stackalloc`, so it never tiers and gets no PGO.
 
 So the attribute does not keep the cursor in registers across a body. It moves the hot code out of methods that the tiered JIT would have profiled and specialised, and into one large FullOpts method with no profile data. That fits a save regression larger than the round-trip one. The fixed-form legs were not disassembled.
 
-## 3. b1: the corroborating board (attempt w1, Emma Antigravity)
+## 3. b1: the corroborating board (attempt w1, a coordinator)
 
 - **Host:** `b1`, AMD Ryzen 7 255, Linux 7.0.0-38-generic, .NET 10.0.12.
 - **Window:** 2026-10-16T02:06:26Z to 02:18:10Z, interleaved A1, B1, A2, B2, with the same CS9342 workaround. Load was 0.34/2.75/4.98 before the sitting and 1.08/1.37/2.57 after, with 0 noise warnings in B1, A2 and B2.
-- **Candidate:** the same set as on hulk, without `FixedClampBody`.
+- **Candidate:** the same set as on bench-6, without `FixedClampBody`.
 - **Tables board (`make bench-table`, corpus `b51387f36d9b59c4`, 7 runs per row):**
   - C# write: 219,905 → 191,662 (−12.8%), and 226,417 → 202,579 (−10.5%).
   - C# round trip: 101,827 → 96,022 (−5.7%), and 102,230 → 96,266 (−5.8%).
@@ -73,7 +73,7 @@ The record is 2147 B/record `TableMixed`, holding `TableStat` records (bench/cor
 
 ## 4. Not valid, and not used
 
-A first w2 sitting on `b2` (amd-2) is discarded. The tables step failed on a full `/tmp` tmpfs quota, and another job's single-threaded table bench (`rust-tables-read-w3e21`) started on that machine during the window. No b2 number appears above.
+A first w2 sitting on `b2` (bench-4) is discarded. The tables step failed on a full `/tmp` tmpfs quota, and another job's single-threaded table bench (`rust-tables-read-w3e21`) started on that machine during the window. No b2 number appears above.
 
 ## Status
 

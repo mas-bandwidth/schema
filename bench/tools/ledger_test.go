@@ -46,7 +46,7 @@ func rt(lang string, maxRate int, spread string) string {
 // c at 102.3% of cpp, inside the 3.0-point floor.
 func TestPairLockPassInsideTheBandIsGreen(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "in-band-pass.csv", "2026-09-07T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "in-band-pass.csv", "2026-09-07T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -66,13 +66,13 @@ func TestPairLockPassInsideTheBandIsGreen(t *testing.T) {
 // 4,200,000 vs 4,500,000 is c at 107.1% of cpp against a 3.0-point band.
 func TestPairLockPassOutsideTheBandIsRed(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "out-of-band-pass.csv", "2026-09-07T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "out-of-band-pass.csv", "2026-09-07T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4200000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
 		t.Fatalf("a pass outside the band did not red (exit %d)\n--- stdout ---\n%s--- stderr ---\n%s", code, out, errOut)
 	}
-	want := "LEDGER RED: c measured 107.1% of cpp in out-of-band-pass.csv, outside the §2.8 tie band of 3.0 points (spread c 1.00 + spread cpp 1.00, floor 3.0) — the pass certifies its window (§2.6) and is the newest certified pass that publishes a figure on [arm64 studio 6b213fbfa1a03a99], so this is where the pair stands now: a separation beyond the combined spread is a finding to investigate, not a number to publish"
+	want := "LEDGER RED: c measured 107.1% of cpp in out-of-band-pass.csv, outside the §2.8 tie band of 3.0 points (spread c 1.00 + spread cpp 1.00, floor 3.0) — the pass certifies its window (§2.6) and is the newest certified pass that publishes a figure on [arm64 bench-11 6b213fbfa1a03a99], so this is where the pair stands now: a separation beyond the combined spread is a finding to investigate, not a number to publish"
 	if !strings.Contains(errOut, want) {
 		t.Errorf("the pair lock's message is not the one the record promises\nwant: %s\ngot:  %s", want, errOut)
 	}
@@ -83,7 +83,7 @@ func TestPairLockPassOutsideTheBandIsRed(t *testing.T) {
 // spreads, so a noisy pass does not red on noise.
 func TestPairLockBandWidensWithTheSpreads(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "noisy-pass.csv", "2026-09-07T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "noisy-pass.csv", "2026-09-07T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "4.00"), rt("c", 4200000, "4.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -94,7 +94,7 @@ func TestPairLockBandWidensWithTheSpreads(t *testing.T) {
 // THE LOCK IS ABOUT THE PAIR'S CURRENT STATE. An older certified pass on the
 // axis is outside the band, the newest is inside: GREEN, because the older
 // pass is the record of a finding that the newer one closed — which is exactly
-// what happened on the Studio between the serialize-c-1.10.0 pin pass (c at
+// what happened on the bench-11 between the serialize-c-1.10.0 pin pass (c at
 // 107.4% of cpp, the 7% read-path gap) and the c-read-guard pass that closed
 // it at 98.2%. The older pass still PRINTS, as history, so the closed finding
 // stays readable in the same output that shows the pass which closed it. The
@@ -102,9 +102,9 @@ func TestPairLockBandWidensWithTheSpreads(t *testing.T) {
 // ns/msg) and cpp does not move.
 func TestPairLockGatesOnlyTheNewestCertifiedPassOnTheAxis(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-finding-pass.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-finding-pass.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4200000, "1.00"))
-	writeResults(t, dir, "b-fix-pass.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "b-fix-pass.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -119,7 +119,7 @@ func TestPairLockGatesOnlyTheNewestCertifiedPassOnTheAxis(t *testing.T) {
 	}
 	// And the output names the pass the lock DOES hold, green though it is:
 	// history lines are only readable next to the pass under the gate.
-	held := "pair lock: b-fix-pass.csv 102.3% against 3.0 points: inside — the newest certified pass that publishes a figure on [arm64 studio 6b213fbfa1a03a99], and the one the lock holds"
+	held := "pair lock: b-fix-pass.csv 102.3% against 3.0 points: inside — the newest certified pass that publishes a figure on [arm64 bench-11 6b213fbfa1a03a99], and the one the lock holds"
 	if !strings.Contains(errOut, held) {
 		t.Errorf("the output does not name the pass the lock holds\nwant: %s\ngot:  %s", held, errOut)
 	}
@@ -133,9 +133,9 @@ func TestPairLockGatesOnlyTheNewestCertifiedPassOnTheAxis(t *testing.T) {
 // here is the time axis's doing: this is the pair separating.
 func TestPairLockRedsWhenTheNewestCertifiedPassLeavesTheBand(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-parity-pass.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-parity-pass.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
-	writeResults(t, dir, "b-regressed-pass.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "b-regressed-pass.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 5000000, "1.00"), rt("c", 4600000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
@@ -144,7 +144,7 @@ func TestPairLockRedsWhenTheNewestCertifiedPassLeavesTheBand(t *testing.T) {
 	for _, want := range []string{
 		"LEDGER RED: c measured 108.7% of cpp in b-regressed-pass.csv",
 		"outside the §2.8 tie band of 3.0 points",
-		"is the newest certified pass that publishes a figure on [arm64 studio 6b213fbfa1a03a99]",
+		"is the newest certified pass that publishes a figure on [arm64 bench-11 6b213fbfa1a03a99]",
 		"pair history: a-parity-pass.csv 102.3% against 3.0 points: inside",
 	} {
 		if !strings.Contains(errOut, want) {
@@ -162,9 +162,9 @@ func TestPairLockRedsWhenTheNewestCertifiedPassLeavesTheBand(t *testing.T) {
 // says nothing here: this is the pair lock alone.
 func TestANewerPassRefusedByRuleTwoThreeDoesNotDisarmTheAxis(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-separated-pass.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-separated-pass.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4200000, "1.00"))
-	writeResults(t, dir, "b-noisy-pass.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "b-noisy-pass.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "41.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
@@ -173,7 +173,7 @@ func TestANewerPassRefusedByRuleTwoThreeDoesNotDisarmTheAxis(t *testing.T) {
 	for _, want := range []string{
 		"LEDGER RED: c measured 107.1% of cpp in a-separated-pass.csv",
 		"outside the §2.8 tie band of 3.0 points",
-		"is the newest certified pass that publishes a figure on [arm64 studio 6b213fbfa1a03a99]",
+		"is the newest certified pass that publishes a figure on [arm64 bench-11 6b213fbfa1a03a99]",
 		"ledger: pair-lock skipped — b-noisy-pass.csv",
 		"a leg's spread is over §2.3's 40% INVALID line (spread c 41.00, spread cpp 1.00)",
 	} {
@@ -192,7 +192,7 @@ func TestANewerPassRefusedByRuleTwoThreeDoesNotDisarmTheAxis(t *testing.T) {
 // separation is printed as the finding it is, not enforced as a verdict.
 func TestPairLockSittingOutsideTheBandWarnsAndExitsZero(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "out-of-band-sitting.csv", "2026-09-07T10:00:00Z", "studio", "arm64", "",
+	writeResults(t, dir, "out-of-band-sitting.csv", "2026-09-07T10:00:00Z", "bench-11", "arm64", "",
 		rt("cpp", 4500000, "1.00"), rt("c", 4200000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -215,7 +215,7 @@ func TestPairLockSittingOutsideTheBandWarnsAndExitsZero(t *testing.T) {
 // standard threw away.
 func TestPairLockDoesNotLockAnInvalidWindow(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "invalid-window-pass.csv", "2026-09-07T10:00:00Z", "studio", "arm64", "INVALID",
+	writeResults(t, dir, "invalid-window-pass.csv", "2026-09-07T10:00:00Z", "bench-11", "arm64", "INVALID",
 		rt("cpp", 4500000, "1.00"), rt("c", 4200000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -232,16 +232,16 @@ func TestPairLockDoesNotLockAnInvalidWindow(t *testing.T) {
 // only; cpp holds its rate, so only the c curve moves.
 func TestCLegRegressionOnTheSameMachineIsRed(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-before.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-before.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
-	writeResults(t, dir, "b-after.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "",
+	writeResults(t, dir, "b-after.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "",
 		rt("cpp", 4500000, "1.00"), rt("c", 3000000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
 		t.Fatalf("a C regression did not red (exit %d)\n--- stdout ---\n%s--- stderr ---\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"LEDGER RED: c round_trip regressed 46.7% on [arm64 studio 6b213fbfa1a03a99]",
+		"LEDGER RED: c round_trip regressed 46.7% on [arm64 bench-11 6b213fbfa1a03a99]",
 		"against the axis's recent best",
 		"(227.3 -> 333.3 ns/msg, a-before.csv -> b-after.csv), gate 5.0%",
 		"a perf regression goes red, it does not drift",
@@ -256,15 +256,15 @@ func TestCLegRegressionOnTheSameMachineIsRed(t *testing.T) {
 // being generalized over the locked-leg list and over the both-leg filter.
 func TestCppLegRegressionIsStillRed(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-before.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-before.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
-	writeResults(t, dir, "b-after.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "",
+	writeResults(t, dir, "b-after.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "",
 		rt("cpp", 3000000, "1.00"), rt("c", 4400000, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
 		t.Fatalf("a cpp regression did not red (exit %d)\n--- stdout ---\n%s--- stderr ---\n%s", code, out, errOut)
 	}
-	if !strings.Contains(errOut, "LEDGER RED: cpp round_trip regressed 50.0% on [arm64 studio 6b213fbfa1a03a99]") {
+	if !strings.Contains(errOut, "LEDGER RED: cpp round_trip regressed 50.0% on [arm64 bench-11 6b213fbfa1a03a99]") {
 		t.Errorf("the cpp regression message changed shape:\n%s", errOut)
 	}
 }
@@ -279,20 +279,20 @@ func TestCppLegRegressionIsStillRed(t *testing.T) {
 // nothing here is the pair lock's doing — this is the time axis alone.
 func TestTwoRegressedFilesInOneCommitCannotResetTheAxis(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-baseline.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-baseline.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
-	writeResults(t, dir, "b-regressed.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "b-regressed.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 3000000, "1.00"), rt("c", 2933333, "1.00"))
-	writeResults(t, dir, "c-regressed.csv", "2026-09-02T11:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "c-regressed.csv", "2026-09-02T11:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 3000000, "1.00"), rt("c", 2933333, "1.00"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 1 {
 		t.Fatalf("two files landing together laundered a 50%% regression (exit %d)\n--- stdout ---\n%s--- stderr ---\n%s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"LEDGER RED: c round_trip regressed 50.0% on [arm64 studio 6b213fbfa1a03a99] against the axis's recent best",
+		"LEDGER RED: c round_trip regressed 50.0% on [arm64 bench-11 6b213fbfa1a03a99] against the axis's recent best",
 		"a-baseline.csv -> c-regressed.csv",
-		"LEDGER RED: cpp round_trip regressed 50.0% on [arm64 studio 6b213fbfa1a03a99] against the axis's recent best",
+		"LEDGER RED: cpp round_trip regressed 50.0% on [arm64 bench-11 6b213fbfa1a03a99] against the axis's recent best",
 	} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("the best-of-window gate did not name what it compared: want %q\n%s", want, errOut)
@@ -301,7 +301,7 @@ func TestTwoRegressedFilesInOneCommitCannotResetTheAxis(t *testing.T) {
 }
 
 // The time axis is built from BOTH-LEG files only, and this is why: on the
-// Studio the c axis was interleaved with single-leg C experiment CSVs
+// bench-11 the c axis was interleaved with single-leg C experiment CSVs
 // (packet-void-c, c-defaults-c, c-utf8-c, c-wide-c) whose 228 -> 240 ns/msg
 // step is +5.35% against a 5.00% floor gate — so the next single-leg C
 // experiment committed last would have red CI for a difference that is not a
@@ -309,13 +309,13 @@ func TestTwoRegressedFilesInOneCommitCannotResetTheAxis(t *testing.T) {
 // a file with one leg in it is by construction not a like measurement of it.
 func TestASingleLegExperimentFileIsNotAPointOnTheAxis(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-pass.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-pass.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
-	// The committed Studio pair: 228.17 -> 240.38 ns/msg, +5.35% on a 5.0%
+	// The committed bench-11 pair: 228.17 -> 240.38 ns/msg, +5.35% on a 5.0%
 	// gate, and the second file carries the c leg alone.
-	writeResults(t, dir, "b-c-defaults-c.csv", "2026-09-02T10:00:00Z", "studio", "arm64", "",
+	writeResults(t, dir, "b-c-defaults-c.csv", "2026-09-02T10:00:00Z", "bench-11", "arm64", "",
 		rt("c", 4382609, "1.08"))
-	writeResults(t, dir, "c-c-utf8-c.csv", "2026-09-02T11:00:00Z", "studio", "arm64", "",
+	writeResults(t, dir, "c-c-utf8-c.csv", "2026-09-02T11:00:00Z", "bench-11", "arm64", "",
 		rt("c", 4160000, "0.88"))
 	out, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)
 	if code != 0 {
@@ -336,7 +336,7 @@ func TestASingleLegExperimentFileIsNotAPointOnTheAxis(t *testing.T) {
 // machine and each host has one point.
 func TestARegressionAcrossMachinesIsNotAnAxis(t *testing.T) {
 	dir := t.TempDir()
-	writeResults(t, dir, "a-studio.csv", "2026-09-01T10:00:00Z", "studio", "arm64", "OK",
+	writeResults(t, dir, "a-bench-11.csv", "2026-09-01T10:00:00Z", "bench-11", "arm64", "OK",
 		rt("cpp", 4500000, "1.00"), rt("c", 4400000, "1.00"))
 	writeResults(t, dir, "b-laptop.csv", "2026-09-02T10:00:00Z", "laptop", "arm64", "OK",
 		rt("cpp", 3000000, "1.00"), rt("c", 2950000, "1.00"))
@@ -444,7 +444,7 @@ func TestRenderAwkAndThePairLockAgreeOnTheSameSitting(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			writeResults(t, dir, tc.file, "2026-09-07T10:00:00Z", "studio", "arm64", "OK",
+			writeResults(t, dir, tc.file, "2026-09-07T10:00:00Z", "bench-11", "arm64", "OK",
 				rt("cpp", tc.cpp, tc.cppSp), rt("c", tc.c, tc.cSp))
 			aKind, aPct := awkVerdict(t, renderAwk(t, filepath.Join(dir, tc.file)))
 			_, errOut, code := runTool(t, "ledger", "--check", "--dir", dir)

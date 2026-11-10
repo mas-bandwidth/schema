@@ -32,7 +32,7 @@ runs:
     # the Actions cache is: the workspace path is the runner's own and does
     # not change, so the tree copied back is at the path it was built for.
     # The Actions cache cost a fleet job minutes (python-toolchain control
-    # rows 230-326 s on vision against 29-75 s warm, 2026-11-08) and the
+    # rows 230-326 s on bench-7 against 29-75 s warm, 2026-11-08) and the
     # fleet caps a per-commit job at two minutes; the store is local disk.
     # The tree is still checked against the pins below before it is used.
     - name: the runner's stored pins (fleet)

@@ -24,7 +24,7 @@ window inline); serialize.rs #18/#19/#20 (fixed-point port, trait-default
 `#[inline]`, `WriteStream::write_bytes`); serialize.cs #1/#2/#3
 (fixed-point port, AggressiveInlining, WriteBatch/ReadBatch runtime).
 
-**Host coverage: M2 only. EPYC deferred on Glenn's word** ("stick with m2
+**Host coverage: M2 only. EPYC deferred on the owner's word** ("stick with m2
 for now") — no quiet-gate check, no remote run this pass; the EPYC leg
 rejoins a later pass.
 

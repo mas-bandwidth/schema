@@ -1,7 +1,7 @@
 {
   "language": "rust",
   "tested_revision": "8bb3969aa3d3ac6044253c347525216be19606c9",
-  "host": "hulk",
+  "host": "bench-6",
   "command": "CARGO_BUILD_JOBS=2 PYTHONUNBUFFERED=1 test/conformance/nightly-readiness rust",
   "finished_utc": "2026-11-02T23:58:09Z",
   "result": "NIGHTLY_READINESS_PASS language=rust phases=24",

@@ -334,7 +334,7 @@ const headerKeyRE = /^[A-Za-z][A-Za-z0-9-]*$/;
 const deadlineRE = /^finish within ([0-9]+) minutes\.$/;
 
 // strandedKeys is the customer's exact case-sensitive set refused once prose
-// has begun (nova-sprint pkg/swarm/lintheader.go cardHeaderKeys).
+// has begun (the sprint tool's pkg/swarm/lintheader.go cardHeaderKeys).
 const strandedKeys = new Set([
   "KIND", "PATHS", "TEST", "LEGS", "SOURCE", "START", "STOP", "DEPENDS-ON",
   "PRIORITY", "NEW", "SHARED", "REPO", "BASE", "tier", "RESULT",

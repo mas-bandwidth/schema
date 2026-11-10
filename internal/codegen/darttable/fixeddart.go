@@ -3,7 +3,7 @@
 // the straight-line projection between the canonical body image and the
 // language's own objects.
 //
-// THE SHAPE IS THE PACKET CODEC'S. Glenn's rule for every leg of this form is
+// THE SHAPE IS THE PACKET CODEC'S. The owner's rule for every leg of this form is
 // that the port looks at the equivalent PACKET codec and takes its shape,
 // because the fixed form is far closer to that than to the id-table wire — and
 // in Dart that is internal/codegen/dart: `final class` storage with every
@@ -1012,7 +1012,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 }
 
 // emitDecodeFloat lands one float cell. A NaN OR AN INFINITY IS REFUSED ON ITS
-// RAW BITS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// RAW BITS (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 // finite-only too, same rule as packets"): the test runs before the bits
 // become a double, before the field is written and before a compressed
 // float's bounds, and the load refuses the whole batch as non_finite_float,
@@ -1296,7 +1296,7 @@ func lowerFirst(s string) string {
 // THE SAVE'S FINITE PASS (docs/SPEC-TABLES.md §3.3)
 // ---------------------------------------------------------------------------
 //
-// A FLOAT IS FINITE (Glenn, 2026-10-27, "tables go finite-only too, same rule
+// A FLOAT IS FINITE (the owner, 2026-10-27, "tables go finite-only too, same rule
 // as packets"): every writer refuses a NaN or an infinity, so the save asks
 // each record this pass BEFORE the first byte is written and answers -1 on
 // the first refusal, leaving the caller's bytes as they were. It walks only

@@ -698,7 +698,7 @@ func brackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32
 // `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
 // CONSTRUCTION — and this leg's compressed-float rows asserted a HARDCODED
 // decimal instead of the reference's answer (schema#1164, measured 2026-09-19
-// on all nine legs; Glenn: "do whatever is needed to make sure that a new
+// on all nine legs; the owner: "do whatever is needed to make sure that a new
 // reader can read an old writer").
 //
 // THE BEAM HAS ONE FLOAT TYPE AND IT IS A DOUBLE, so `v.aim == 0.30000001192092896`

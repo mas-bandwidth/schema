@@ -1,7 +1,7 @@
 {
   "language": "goose",
   "tested_revision": "c95359ca2a74b5d6cdd8d9900150236ad427d1a5",
-  "host": "vision",
+  "host": "bench-7",
   "platform": "Linux x86-64",
   "goose_runtime": "dede1ff88606",
   "c_compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",

@@ -32,7 +32,7 @@ stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_
 # flipped bit in a three-node ListNode chain turns the middle node's `next`
 # index from 3 into 2, which is that node's own index.
 #
-# A CYCLIC WIRE IS DAMAGE (Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS
+# A CYCLIC WIRE IS DAMAGE (the owner, 2026-10-31: "It's perhaps the MOST OBVIOUS
 # attack somebody would do on this protocol!"), so the whole load is refused as
 # `malformed`. The vector's job here is the REFERENCE AND THE ORACLE AGREEING
 # on that refusal. internal/tablewire's TestForgedPointerCycleIsDamage holds the
@@ -145,7 +145,7 @@ region_map_skip_past_value mapdemo Fleet testdata/wire/tables/fuzz-vectors/regio
 # read. The Rust gathering scan refused the whole file on the unskippable
 # field, so the load returned no root after LoadMeasure sized its region.
 # Found by the random pass of the retention arm at mutant 720704 of seed
-# 68719476731 (corpus seed list_mixed), on tables-rust-release run on vision;
+# 68719476731 (corpus seed list_mixed), on tables-rust-release run on bench-7;
 # the plain arm refuses it the same way.
 root_scan_passes_damage_to_body listdemo Mixed testdata/wire/tables/fuzz-vectors/root_scan_passes_damage_to_body.bin
 
@@ -165,7 +165,7 @@ list_float_minus_zero_default listdemo Save testdata/wire/tables/fuzz-vectors/li
 # reader refilled the slot and kept the first occurrence's record, so it saved
 # 194 bytes where the oracle saved 174. Found by the random pass of the
 # retention arm at mutant 745809 of seed 68719476731 (corpus seed map_depth),
-# on tables-rust-release run on vision.
+# on tables-rust-release run on bench-7.
 keyed_slot_rewrite_discards_retained mapdemo Depth testdata/wire/tables/fuzz-vectors/keyed_slot_rewrite_discards_retained.bin
 
 # A BOOL PAYLOAD BYTE THAT IS NEITHER 0 NOR 1 (§3, §6.5): the value reads true
@@ -216,7 +216,7 @@ arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuz
 # refuses that graph as blob_shared, and the oracle refuses to encode it. The C#
 # retaining save numbered the region without the refusal and wrote 186 bytes.
 # Found by the index pass (#33, corpus seed blob_small) of the retention arm at
-# seed 24845619678, on tables-cs-release on hetzner1.
+# seed 24845619678, on tables-cs-release on bench-1.
 retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
 
 # Retained unknown unions carry an explicit arm frame, even for fixed scalars.

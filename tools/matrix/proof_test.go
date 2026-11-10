@@ -252,7 +252,7 @@ func TestReleaseRefusesUnlessTheProofIsGreenAtThatCommit(t *testing.T) {
 }
 
 // TestTheTreeInputsLoad holds the inputs a proof reads from the tree to
-// parse: every 3.0.0 register row has a cell table, every ruling quotes Glenn
+// parse: every 3.0.0 register row has a cell table, every ruling quotes the owner
 // with a date, and the conformance manifest maps cases to units.
 func TestTheTreeInputsLoad(t *testing.T) {
 	root := testRoot(t)

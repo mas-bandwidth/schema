@@ -20,7 +20,7 @@ package rusttable
 //     versioning rules no manifest row reaches.
 //
 // THE USE CASE IS A CARD WRITTEN IN ONE LANGUAGE AND READ AND UPGRADED IN
-// ANOTHER (Glenn, 2026-10-12), so the versioning clause is the one that
+// ANOTHER (the owner, 2026-10-12), so the versioning clause is the one that
 // matters most: an older writer's batch read under its own announcement by a
 // newer reader, every field kept, the counters §4 names moving exactly as the
 // oracle's, and the upgraded value written back byte for byte as the oracle

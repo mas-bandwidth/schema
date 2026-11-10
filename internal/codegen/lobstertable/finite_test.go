@@ -17,7 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 )
 
-// TABLES ARE FINITE ONLY (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// TABLES ARE FINITE ONLY (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "Tables go finite-only too, same rule as packets"; the shape of
 // finite-tables #2226): every read, the tolerant one too, refuses a float
 // whose raw bits are a NaN or an infinity as non_finite_float, naming

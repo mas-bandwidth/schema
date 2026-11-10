@@ -56,7 +56,7 @@ type contentAllow struct {
 // A Replace inside a rep closure named by an allow-listed probe is that same
 // seam, not a second one, so only the probe line is listed.
 // The only non-seam probes are the emitted-text checks that decide imports, and
-// gotable.go's import-path sort (Rowan ruling 2026-10-18), which classifies
+// gotable.go's import-path sort (a maintainer ruling 2026-10-18), which classifies
 // import path strings for ordering and never patches emitted source.
 var replaceAllow = map[string][]contentAllow{
 	"source.go": {
@@ -80,7 +80,7 @@ var probeAllow = map[string][]contentAllow{
 	},
 	"gotable.go": {
 		{"usesSerialize := strings.Contains(g.types.String()+g.body.String(), \"serialize.\")", 1, "asks whether the emitted unit uses serialize., to pick imports"},
-		{"si, sj := !strings.Contains(paths[i], \".\"), !strings.Contains(paths[j], \".\")", 1, "classifies emitted import path strings for ordering, never patches emitted source (Rowan ruling)"},
+		{"si, sj := !strings.Contains(paths[i], \".\"), !strings.Contains(paths[j], \".\")", 1, "classifies emitted import path strings for ordering, never patches emitted source (a maintainer ruling)"},
 	},
 	"testgen.go": {
 		{"if strings.Contains(body.String(), \"strings.\") {", 1, "asks whether the emitted test file uses strings., to pick imports"},

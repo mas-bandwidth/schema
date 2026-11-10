@@ -2,7 +2,7 @@
 // fixed read refuses one on its bits as non_finite_float (docs/SPEC-TABLES.md
 // §3.3; docs/FIXED-FORM-ALGORITHM.md, the widenf row).
 //
-// Law (Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"):
+// Law (the owner, 2026-10-27, "tables go finite-only too, same rule as packets"):
 //
 //   A NaN (any sign, any payload, quiet or signalling) and both infinities are
 //   not values of the type: every writer refuses one, and every read refuses

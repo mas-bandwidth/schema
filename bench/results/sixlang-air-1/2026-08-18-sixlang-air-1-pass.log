@@ -38,7 +38,7 @@ bench_mixed        read      183.63 M msg/s     3677.6 MB/s   (min 174.13, max 1
 bitpacker          write       0.06 M msg/s     3884.7 MB/s   (min 0.06, max 0.06, spread 1.1%)
 bitpacker          read        0.10 M msg/s     6000.0 MB/s   (min 0.10, max 0.10, spread 0.3%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/control-start.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/control-start.csv
 == cpp: reusing build/bench/schema_bench_cpp ==
 == cpp: run (Release) ==
 schema bench (cpp, Release)
@@ -79,7 +79,7 @@ bench_mixed        read      180.46 M msg/s     3614.1 MB/s   (min 180.46, max 1
 bitpacker          write       0.06 M msg/s     3883.9 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.10 M msg/s     5992.7 MB/s   (min 0.10, max 0.10, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-cpp.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-cpp.csv
 == c: build (Release) ==
 == c: run (Release) ==
 schema bench (c, Release)
@@ -120,7 +120,7 @@ bench_mixed        read      174.06 M msg/s     3485.8 MB/s   (min 174.06, max 1
 bitpacker          write       0.06 M msg/s     3892.1 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.06 M msg/s     3689.8 MB/s   (min 0.06, max 0.06, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-c.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-c.csv
 == go: run ==
 schema bench (go)
 rigidbody_moving   write      18.40 M msg/s     1842.0 MB/s   (min 18.40, max 18.40, spread 0.0%)
@@ -170,7 +170,7 @@ bench_mixed        read       38.35 M msg/s      768.1 MB/s   (min 38.35, max 38
 bitpacker          write       0.01 M msg/s      605.5 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.01 M msg/s      720.9 MB/s   (min 0.01, max 0.01, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-go.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-go.csv
 == rust: run ==
 schema bench (rust)
 rigidbody_moving   write      42.50 M msg/s     4256.1 MB/s   (min 42.50, max 42.50, spread 0.0%)
@@ -208,7 +208,7 @@ bench_mixed        read       92.57 M msg/s     1853.9 MB/s   (min 92.57, max 92
 bitpacker          write       0.03 M msg/s     2111.5 MB/s   (min 0.03, max 0.03, spread 0.0%)
 bitpacker          read        0.03 M msg/s     2037.3 MB/s   (min 0.03, max 0.03, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-rust.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-rust.csv
 == cs: run ==
 schema bench (cs, workstation GC)
 rigidbody_moving   write      36.90 M msg/s     3695.3 MB/s   (min 36.90, max 36.90, spread 0.0%)
@@ -258,7 +258,7 @@ bench_mixed        read       42.49 M msg/s      851.0 MB/s   (min 42.49, max 42
 bitpacker          write       0.02 M msg/s      977.1 MB/s   (min 0.02, max 0.02, spread 0.0%)
 bitpacker          read        0.02 M msg/s      990.0 MB/s   (min 0.02, max 0.02, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-cs.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-cs.csv
 Shutting down MSBuild server...
 Shutting down VB/C# compiler server...
 VB/C# compiler server shut down successfully.
@@ -324,7 +324,7 @@ bench_mixed        read        5.56 M msg/s      111.4 MB/s   (min 5.56, max 5.5
 bitpacker          write       0.01 M msg/s      385.8 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.00 M msg/s      299.7 MB/s   (min 0.00, max 0.00, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-js.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-0-js.csv
 == cpp: reusing build/bench/schema_bench_cpp ==
 == cpp: run (Release) ==
 schema bench (cpp, Release)
@@ -365,7 +365,7 @@ bench_mixed        read      170.36 M msg/s     3411.8 MB/s   (min 170.36, max 1
 bitpacker          write       0.06 M msg/s     3865.0 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.09 M msg/s     5828.9 MB/s   (min 0.09, max 0.09, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-cpp.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-cpp.csv
 == c: reusing build/bench/schema_bench_c ==
 == c: run (Release) ==
 schema bench (c, Release)
@@ -406,7 +406,7 @@ bench_mixed        read      174.15 M msg/s     3487.7 MB/s   (min 174.15, max 1
 bitpacker          write       0.06 M msg/s     3867.8 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.06 M msg/s     3589.5 MB/s   (min 0.06, max 0.06, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-c.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-c.csv
 == go: run ==
 schema bench (go)
 rigidbody_moving   write      18.22 M msg/s     1824.4 MB/s   (min 18.22, max 18.22, spread 0.0%)
@@ -456,7 +456,7 @@ bench_mixed        read       38.38 M msg/s      768.7 MB/s   (min 38.38, max 38
 bitpacker          write       0.01 M msg/s      606.2 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.01 M msg/s      720.4 MB/s   (min 0.01, max 0.01, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-go.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-go.csv
 == rust: run ==
 schema bench (rust)
 rigidbody_moving   write      42.74 M msg/s     4280.1 MB/s   (min 42.74, max 42.74, spread 0.0%)
@@ -494,7 +494,7 @@ bench_mixed        read       86.38 M msg/s     1730.0 MB/s   (min 86.38, max 86
 bitpacker          write       0.03 M msg/s     2096.2 MB/s   (min 0.03, max 0.03, spread 0.0%)
 bitpacker          read        0.03 M msg/s     2041.1 MB/s   (min 0.03, max 0.03, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-rust.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-rust.csv
 == cs: run ==
 schema bench (cs, workstation GC)
 rigidbody_moving   write      36.64 M msg/s     3669.3 MB/s   (min 36.64, max 36.64, spread 0.0%)
@@ -544,7 +544,7 @@ bench_mixed        read       41.24 M msg/s      825.9 MB/s   (min 41.24, max 41
 bitpacker          write       0.02 M msg/s      976.9 MB/s   (min 0.02, max 0.02, spread 0.0%)
 bitpacker          read        0.02 M msg/s      989.1 MB/s   (min 0.02, max 0.02, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-cs.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-cs.csv
 Shutting down MSBuild server...
 Shutting down VB/C# compiler server...
 VB/C# compiler server shut down successfully.
@@ -588,7 +588,7 @@ bench_mixed        read        5.42 M msg/s      108.6 MB/s   (min 5.42, max 5.4
 bitpacker          write       0.01 M msg/s      388.3 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.00 M msg/s      301.9 MB/s   (min 0.00, max 0.00, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-js.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-1-js.csv
 == cpp: reusing build/bench/schema_bench_cpp ==
 == cpp: run (Release) ==
 schema bench (cpp, Release)
@@ -629,7 +629,7 @@ bench_mixed        read      181.83 M msg/s     3641.5 MB/s   (min 181.83, max 1
 bitpacker          write       0.06 M msg/s     3889.3 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.10 M msg/s     5956.0 MB/s   (min 0.10, max 0.10, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-cpp.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-cpp.csv
 == c: reusing build/bench/schema_bench_c ==
 == c: run (Release) ==
 schema bench (c, Release)
@@ -670,7 +670,7 @@ bench_mixed        read      174.30 M msg/s     3490.7 MB/s   (min 174.30, max 1
 bitpacker          write       0.06 M msg/s     3888.8 MB/s   (min 0.06, max 0.06, spread 0.0%)
 bitpacker          read        0.06 M msg/s     3683.7 MB/s   (min 0.06, max 0.06, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-c.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-c.csv
 == go: run ==
 schema bench (go)
 rigidbody_moving   write      18.65 M msg/s     1867.6 MB/s   (min 18.65, max 18.65, spread 0.0%)
@@ -720,7 +720,7 @@ bench_mixed        read       38.36 M msg/s      768.3 MB/s   (min 38.36, max 38
 bitpacker          write       0.01 M msg/s      605.8 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.01 M msg/s      720.9 MB/s   (min 0.01, max 0.01, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-go.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-go.csv
 == rust: run ==
 schema bench (rust)
 rigidbody_moving   write      42.65 M msg/s     4270.4 MB/s   (min 42.65, max 42.65, spread 0.0%)
@@ -758,7 +758,7 @@ bench_mixed        read       87.58 M msg/s     1754.0 MB/s   (min 87.58, max 87
 bitpacker          write       0.03 M msg/s     2088.1 MB/s   (min 0.03, max 0.03, spread 0.0%)
 bitpacker          read        0.03 M msg/s     2036.0 MB/s   (min 0.03, max 0.03, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-rust.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-rust.csv
 == cs: run ==
 schema bench (cs, workstation GC)
 rigidbody_moving   write      36.90 M msg/s     3695.4 MB/s   (min 36.90, max 36.90, spread 0.0%)
@@ -808,7 +808,7 @@ bench_mixed        read       42.55 M msg/s      852.1 MB/s   (min 42.55, max 42
 bitpacker          write       0.02 M msg/s      977.1 MB/s   (min 0.02, max 0.02, spread 0.0%)
 bitpacker          read        0.02 M msg/s      989.8 MB/s   (min 0.02, max 0.02, spread 0.0%)
 OK (corpus_id 6b118770d85af4f6)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-cs.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-cs.csv
 Shutting down MSBuild server...
 Shutting down VB/C# compiler server...
 VB/C# compiler server shut down successfully.
@@ -852,7 +852,7 @@ bench_mixed        read        5.49 M msg/s      109.9 MB/s   (min 5.49, max 5.4
 bitpacker          write       0.01 M msg/s      385.9 MB/s   (min 0.01, max 0.01, spread 0.0%)
 bitpacker          read        0.00 M msg/s      302.3 MB/s   (min 0.00, max 0.00, spread 0.0%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-js.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/round-2-js.csv
 == cpp: reusing build/bench/schema_bench_cpp ==
 == cpp: run (Release) ==
 schema bench (cpp, Release)
@@ -893,4 +893,4 @@ bench_mixed        read      184.30 M msg/s     3691.0 MB/s   (min 175.58, max 1
 bitpacker          write       0.06 M msg/s     3795.1 MB/s   (min 0.06, max 0.06, spread 2.4%)
 bitpacker          read        0.09 M msg/s     5837.4 MB/s   (min 0.09, max 0.09, spread 0.7%)
 OK (corpus_id 7a7c343f1a446f4c)
-results: /Users/glenn/rowan-working/scratch-schema-js/build/bench/pass-sixlang-air-1/control-end.csv
+results: <work>/scratch-schema-js/build/bench/pass-sixlang-air-1/control-end.csv

@@ -22,7 +22,7 @@
   "window": "OK",
   "control_delta_pct": 0.8287455787274745,
   "load1_range": "0.73–1.08",
-  "receipt": "ps -A: quiet window on amd-1 (b1); pinned to CPU 5; Dart read-arm certified sitting 2 of 2 at 86bcee711 (pushed)",
+  "receipt": "ps -A: quiet window on bench-3 (b1); pinned to CPU 5; Dart read-arm certified sitting 2 of 2 at 86bcee711 (pushed)",
   "fixed_bytes_per_record": 1264.296875,
   "packet_bytes_per_record": 438,
   "identity_read": {

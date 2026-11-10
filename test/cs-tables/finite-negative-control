@@ -1,5 +1,5 @@
 #!/bin/sh
-# THE C# FINITE RULE'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.3; Glenn,
+# THE C# FINITE RULE'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.3; the owner,
 # 2026-10-27, "tables go finite-only too, same rule as packets").
 #
 # One probe holds three vectors and one finite control: the form-1 read must

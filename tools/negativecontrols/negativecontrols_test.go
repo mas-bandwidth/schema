@@ -1012,7 +1012,7 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 // every one of the 63 targets from those rows stays in exactly one group,
 // no pull-request group in those families exceeds 8 targets or ~75 s of
 // measured control time. tables-rust-cook-map-negative-control (116 s warm,
-// 124 s cold on vision) stays nightly. conformance-negative-control-go-message
+// 124 s cold on bench-7) stays nightly. conformance-negative-control-go-message
 // stays on the go-message pull-request row: the 117 s figure included a cold
 // generated-Go tree and driver build, and the make wall after those
 // prerequisites exist is a few seconds.

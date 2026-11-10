@@ -46,12 +46,12 @@
 # pinning: none
 # noise: cs-only before/after pair for PR #208; quiet window, load ~1.5 at start
 # schema commit: d398ec4
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ae730d5 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ae730d5 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 cs,bench_mixed,write,4000000,438,7,2103454,2082706,2104563,878.63,1.04,6b213fbfa1a03a99,gen,asm,always,default,unknown
 cs,bench_mixed,round_trip,4000000,438,7,990865,958833,992155,413.89,3.36,6b213fbfa1a03a99,gen,asm,always,default,unknown
 cs,bitpacker,write,24576,65518,7,19566,19077,19835,1222.55,3.87,6b213fbfa1a03a99,bits,asm,always,default,unknown
@@ -76,12 +76,12 @@ cs,bitpacker,read,24576,65518,7,17780,16342,18179,1110.96,10.33,6b213fbfa1a03a99
 # pinning: none
 # noise: cs-only before/after pair, sitting 2, for PR #208; box shared with another worker's timed runs — see the pair's own note
 # schema commit: d398ec4
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ae730d5 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ae730d5 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 cs,bench_mixed,write,4000000,438,7,2068027,2014340,2072323,863.83,2.80,6b213fbfa1a03a99,gen,asm,always,default,unknown
 cs,bench_mixed,round_trip,4000000,438,7,967119,890536,979294,403.97,9.18,6b213fbfa1a03a99,gen,asm,always,default,unknown
 cs,bitpacker,write,24576,65518,7,19561,19156,19768,1222.24,3.13,6b213fbfa1a03a99,bits,asm,always,default,unknown

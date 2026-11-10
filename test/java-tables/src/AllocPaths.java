@@ -446,7 +446,7 @@ final class AllocPaths {
     //                table it resolves through and its Strings. Zero needs the
     //                caller-owned-storage form (docs/PORTING.md M1), which this
     //                port does not emit. Its ceilings are its measured floors
-    //                on the pinned JDK (Temurin 21.0.12.1+1, hetzner2,
+    //                on the pinned JDK (Temurin 21.0.12.1+1, bench-2,
     //                2026-10-16), the highest floor seen plus one byte,
     //                rounded up to 64: C2's escape analysis moves a floor
     //                between launches by a Reader (32 to 64 bytes) on some rows.
@@ -454,7 +454,7 @@ final class AllocPaths {
     //                load runs the oracle walk first (loadMeasure(data), one
     //                Measure, its Report and its Reader per call, 0 per node),
     //                so every load floor rose by that handle: re-measured on
-    //                the pin (Temurin 21.0.12.1+1, amd-2, 2026-10-21).
+    //                the pin (Temurin 21.0.12.1+1, bench-4, 2026-10-21).
     //   save         the answer alone through a kept Saver: one byte[] of the
     //                wire's size, 0 per node beyond it. Every body is written
     //                in place into the Saver's one buffer and framed after it

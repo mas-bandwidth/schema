@@ -2,7 +2,7 @@
   "language": "dart",
   "tested_revision": "b469caa0f1ed10f5c11c799064d2efca4bcad666",
   "tested_tree": "ae746c506b2b081511621f48b725d9111114a26d",
-  "host": "hulk",
+  "host": "bench-6",
   "command": "python3 test/conformance/nightly-readiness dart",
   "finished_utc": "2026-11-03T01:55:35.205666+00:00",
   "finished_time_source": "results.json filesystem modification time",
@@ -274,14 +274,14 @@
   },
   "archives": {
     "full_nightly": {
-      "name": "stella-dart-full-nightly-b469-20261103.tar.gz",
+      "name": "dart-full-nightly-b469-20261103.tar.gz",
       "sha256": "05fdc9d2d5d6012bbac260057b485bb39e9cbcc0b16f3b51050a0c32e1826a15"
     },
     "bounded_repairs": {
-      "name": "stella-dart-qualified-retain-evidence-20261103.tar.gz",
+      "name": "dart-qualified-retain-evidence-20261103.tar.gz",
       "sha256": "d094df33753aeb492ae1bd5f861c3f2c01886591e4d93c18099bf05b8d38fbf3"
     },
-    "studio_directory": "/Volumes/nova/ai/stella/working/schema-audit-evidence-20261102/dart-retain-final-20261103"
+    "studio_directory": "<work>"
   },
   "subsequent_bounded_delta": {
     "revision": "75d605f4be110a749681c7264dde80269821f73e",

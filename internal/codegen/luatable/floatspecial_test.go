@@ -1,6 +1,6 @@
 package luatable
 
-// LUA TABLES ARE FINITE ONLY, IN EVERY FORM (docs/SPEC-TABLES.md §3.3; Glenn,
+// LUA TABLES ARE FINITE ONLY, IN EVERY FORM (docs/SPEC-TABLES.md §3.3; the owner,
 // 2026-10-27: "Tables go finite-only too, same rule as packets"). A float32
 // or float64 rides every form as the bit pattern of a FINITE value:
 //

@@ -1,9 +1,9 @@
 # Bill: the fixed form reads backward, never forward
 
-Purpose, in Glenn's words: "this is not perfect and does not do everything, but it does work, and extends
+Purpose, in the owner's words: "this is not perfect and does not do everything, but it does work, and extends
 from a pattern coded by one person that is a footgun, to something that could work on a larger team."
 
-Glenn, 2026-09-10, in Rowan's window, after walking three cases (an old reader sent a new enum variant, an
+The owner, 2026-09-10, in a maintainer's window, after walking three cases (an old reader sent a new enum variant, an
 old reader sent a longer array, an old reader sent a layout whose definitions moved): "The only correct is
 reject." "Newer versions of the fixed table should be able to read OLD versions." "But old versions CANNOT
 read new versions, and complain loudly and refuse. Nothing else makes sense." "You can take an enum and widen
@@ -34,14 +34,14 @@ The table's own law, additions and deprecation only, extends to every definition
 | a ranged scalar's bounds | inside the reader's | wider on either end |
 | an integer or float width | at most the reader's, same signedness ladder | wider, or a different kind |
 | a field's kind | the same | different |
-| field order | a prefix of the reader's: fields are ADDED AT THE END, deprecated in place, never modified or removed (Glenn) | a field out of order, changed, or missing where the reader has one |
+| field order | a prefix of the reader's: fields are ADDED AT THE END, deprecated in place, never modified or removed (the owner) | a field out of order, changed, or missing where the reader has one |
 | a fixed-size array `[N]` | N at most the reader's (the reader defaults the rest) | larger |
 | an enum-keyed array `[Enum]T` | its enum a prefix of the reader's | the enum has a name the reader lacks |
 | `bits(N)` | N at most the reader's | larger |
 | `fixed(I,F)` / `ufixed(I,F)` | I at most the reader's, F equal | I larger, or F different (the scale moves, incompatible) |
 | an optional | `T` where the reader has `?T` (landed present) | `?T` where the reader has `T` |
-| a nested table or type by value | the table's own law, recursively: fields added at the end, deprecated in place (Glenn) | a field modified, removed, or inserted elsewhere |
-| `flags` | bits a prefix of the reader's: new flags added, old flags never removed (Glenn) | a moved or missing bit |
+| a nested table or type by value | the table's own law, recursively: fields added at the end, deprecated in place (the owner) | a field modified, removed, or inserted elsewhere |
+| `flags` | bits a prefix of the reader's: new flags added, old flags never removed (the owner) | a moved or missing bit |
 | a compressed float | it rides as the float, so its min/max/resolution are DEFINITIONS: a range moved OUTWARD, and a resolution moved FINER (an old writer quantized to the coarser step, and a finer reader lands those values exactly) | a range moved inward, and a resolution COARSENED — the old file's values sit on a grid this reader cannot hold |
 | the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
 
@@ -52,23 +52,23 @@ The table's own law, additions and deprecation only, extends to every definition
 | a deprecated field | still written, still in its place, read on every plan | leaving the layout (that is a removal); undeprecating (one way, §12.3) |
 | a rename | through `was` | without it (the baseline's identity is by name, the fixed wire's by position) |
 
-**The invariant that makes widening safe** (Glenn: "widening with default values is what saves us here"):
+**The invariant that makes widening safe** (the owner: "widening with default values is what saves us here"):
 every widening is defined by the default it fills. A new field takes its default; a grown array's new slots
 take the element default; `T` to `?T` lands every old value present; a widened range, width or list changes
 nothing an old value held. A change with no default to fill is not a widening, and that is the test for any
 case not in this table.
 
-Glenn: "wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read
+The owner: "wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read
 the old." The principle behind every row: a newer reader must be able to hold every value an older writer
 could produce, exactly. Where widening keeps that true it is allowed; where it cannot, the change is
 incompatible and the baseline (§6) refuses it at commit.
 
 Widening an int or a float, or an enum's ordinal width, is a read: the reader lands it exactly. That is the
-one asymmetry the bill keeps, and it is Glenn's: "you can take an enum and widen it, but you cannot narrow."
+one asymmetry the bill keeps, and it is the owner's: "you can take an enum and widen it, but you cannot narrow."
 
 ## 2a. The closure rule
 
-Glenn: "fixed tables must only allow other fixed tables to be included in them, and not recursively include
+The owner: "fixed tables must only allow other fixed tables to be included in them, and not recursively include
 themselves." A fixed table's closure is a TREE of fixed things: every table or type it reaches by value is
 itself declared `fixed` and carries its own locked layout under §6; a pointer, a map, or an unbounded array
 makes a table variable and is refused in a fixed closure, so a fixed table cannot reach itself by any path.
@@ -113,12 +113,12 @@ remain the reader's straight-line validation on every build, and they still land
 
 ## 6. The monotone law, guaranteed by the lock
 
-**Ruling, Glenn 2026-09-11 02:12Z: "lock."** `schema.lock` is the law's home: it holds the monotone law
+**Ruling, the owner 2026-09-11 02:12Z: "lock."** `schema.lock` is the law's home: it holds the monotone law
 (SPEC §2.10 already holds the list rows for fixed tables, with tests in `internal/lockfile`), the lineage
 and the floor (§6a, §6b). `tables.baseline` stays the save-game projection of §18 and gains nothing from
 this bill. The compiler refuses to generate against a lock the schema contradicts; CI runs the same check.
 
-Glenn: "how do we guarantee ONLY widening is allowed (enums can have entries added at end, no shuffling of
+The owner: "how do we guarantee ONLY widening is allowed (enums can have entries added at end, no shuffling of
 entries for meaning, new entries at end...)". The lock records the last shape and the baseline refuses any
 commit that is not a widening of it. Per definition:
 
@@ -154,12 +154,12 @@ structurally at plan time (§2), never by comparing numbers. What `schema.lock` 
 per fixed table carrying its layout hash and the layout itself, so that `tables.baseline` can hold §6's
 monotone law against the last locked layout at commit time. The hash says which version a file is; the lock
 says the versions only ever grew. A human-readable number beside it for release notes is allowed and nothing
-on the wire reads it. (Glenn: "So you DEPLOY the backend with the new schema, and it reads old and new. But
+on the wire reads it. (the owner: "So you DEPLOY the backend with the new schema, and it reads old and new. But
 nobody guarantees old ever reads new.")
 
 ## 6b. The floor, and what it buys: no plan compiler at run time
 
-Glenn: "i would consider, only versions in the past to x would be supported, where current version might be
+The owner: "i would consider, only versions in the past to x would be supported, where current version might be
 y." The lock keeps the LINEAGE per fixed table: every layout the table has had, in order, each with its
 hash and its layout bytes. A floor is one number per table: the reader accepts lineage entries from x to y
 (its own) and refuses older ones by name, `layout_unsupported`.
@@ -179,7 +179,7 @@ What that buys: the set of layouts a reader accepts is FINITE AND KNOWN AT BUILD
 - the branch case (§8a.1) is settled by the lineage: a merge appends both sides' layouts, and both are
   supported.
 
-The floor's syntax is Glenn's to name (§9). Without a floor, x is the table's first layout.
+The floor's syntax is the owner's to name (§9). Without a floor, x is the table's first layout.
 
 ## 7. The deployment rule
 
@@ -189,7 +189,7 @@ file, not a truncated array in production.
 
 ## 7a. What the versioning does, and what a person still does
 
-Glenn: "in practice this is the delta between the live clients and the backend"; "We did stuff like, if
+The owner: "in practice this is the delta between the live clients and the backend"; "We did stuff like, if
 version is > x, read these vars, otherwise set to default, which i think is what you are doing here, so it
 SHOULD work"; "it's not 100% 'i don't have to think at all the versioning does this for me'."
 
@@ -214,7 +214,7 @@ table when the old one has grown past sense, and retire it when nothing live spe
 
 ## 8a. What breaks it, and what the bill does about each
 
-Glenn: "Is there any case you can find that breaks this approach? The widening approach to versioning?
+The owner: "Is there any case you can find that breaks this approach? The widening approach to versioning?
 Adding but never removing?" Three.
 
 1. **Two branches both append.** A hotfix appends field A while main appends field B; each commit passes
@@ -231,12 +231,12 @@ Adding but never removing?" Three.
    first. Stated in §7.
 3. **Growth has no reset.** Deprecated fields ride forever, every record carries them, the record-size and
    leaf caps eventually bind, and a default, once chosen, can never change (it defines what every old file
-   means). None of it breaks a read; it is the price. The escape, in Glenn's order: "You would just create a
+   means). None of it breaks a read; it is the price. The escape, in the owner's order: "You would just create a
    new table if it got too large. Then deprecate the old, clean out the cruft, and upgrade the backend first
    to read the new table and the old. Deploy it, then deploy the client." A new table is a fresh lineage
    with its own lock entry; the old one stays readable for as long as its files exist, "and once no clients
    are live talking the old table, remove the old table that is deprecated." The layout hash is the
-   per-table version; the new table is the explicit bump (Glenn: "you can see in network next how I would
+   per-table version; the new table is the explicit bump (the owner: "you can see in network next how I would
    do this with per-table versions").
 
 ## 9. Open, for the cold read
@@ -253,9 +253,9 @@ it is READ on every plan (§12.3). Whether `layout_newer` carries the offending 
 neither — it carries the hash and nothing else, because the walk that could have named an entry is gone
 (§12.4).
 
-## 10. The variable table: HELD, for a separate decision (Glenn: "I don't know yet. Hold this for later.")
+## 10. The variable table: HELD, for a separate decision (the owner: "I don't know yet. Hold this for later.")
 
-Glenn: "I think the reads backwards rule is going to be required for the variable table too." The same law
+The owner: "I think the reads backwards rule is going to be required for the variable table too." The same law
 holds; the difference is where "newer" is detected. Form 1 has no layout, so today it finds out PER RECORD
 (an unknown field id, an unknown variant, a count past the bound), each tolerated and counted (SPEC §4). To
 refuse forward as form 3 does, form 1's header carries the writer's closure hash, and the decision is one
@@ -266,7 +266,7 @@ wire header, and the packet form's model, and must not ride in on the fixed tabl
 ## 11. The operator's cold read, and the rulings it forced (2026-09-11 02:35Z)
 
 A cold reader on Fable read the three documents as the person who deploys this over two years. Nine
-findings changed contract sentences. Glenn was asleep; under his "run this to completion without me" each
+findings changed contract sentences. The owner was asleep; under his "run this to completion without me" each
 ruling below is a default, recorded on #898, and his to reverse.
 
 1. **A fixed table flows in one direction.** Writers ship after readers, and a reader never rolls back past
@@ -322,7 +322,7 @@ needs it. Bounded by §11.6 and the floor.
 ## 12. The implementer's cold read and the lock survey: the rulings (2026-09-11 02:45Z)
 
 A second Fable reader read as the implementer who is blamed for a wrong read; a third child surveyed
-`internal/lockfile` row by row. Defaults, recorded on #898, Glenn's to reverse.
+`internal/lockfile` row by row. Defaults, recorded on #898, the owner's to reverse.
 
 1. **The lock's rule becomes MONOTONE, not equal.** Today the lock refuses every narrowing AND every
    widening with one sentence ("keeps its width"), `schema lock` refuses the relock, and `bits(N)` is
@@ -367,7 +367,7 @@ A second Fable reader read as the implementer who is blamed for a wrong read; a 
     hostile list is corrected). `unknown` counts for a deprecated writer field that the reader lacks
     entirely: none, by ruling 3, so the counter is removed from PLAN. `bits(N)` refuses with text. The
     headroom sentence at ALG §1.1 (`>= key.children`) goes with C11. `ufixed` is in the spec's table. A
-    compressed float's quantization refuses IN ONE DIRECTION (2026-09-11, Glenn asked whether a compressed
+    compressed float's quantization refuses IN ONE DIRECTION (2026-09-11, the owner asked whether a compressed
     float can be consistent in a fixed table): it rides as the float32 itself (SPEC §3.4), so its min, max
     and resolution are DEFINITIONS in the digest and never wire — the RANGE may only WIDEN like any ranged
     scalar's, the RESOLUTION may only get FINER, and anything else refuses. A writer quantizes to its own

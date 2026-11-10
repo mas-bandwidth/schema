@@ -16,7 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE FINITE RULE ON THE DART LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+// THE FINITE RULE ON THE DART LEG (docs/SPEC-TABLES.md §3.3; the owner,
 // 2026-10-27: "Tables go finite-only too, same rule as packets. NaN/inf
 // refused on write and read, -0 and subnormals kept"). One probe holds every
 // form this leg emits to it, one named vector a line:

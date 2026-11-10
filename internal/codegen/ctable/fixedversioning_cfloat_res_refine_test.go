@@ -14,7 +14,7 @@ import (
 // multiple of 0.01 so nothing requantizes, and a leg that re-quantized anyway
 // would move `clamped` to 1 — a looser read would pass that re-quantize-and-count bug.
 //
-// `aim` IS COMPARED BY BITS, AGAINST THE CORPUS MANIFEST (schema#1164, Glenn
+// `aim` IS COMPARED BY BITS, AGAINST THE CORPUS MANIFEST (schema#1164, the owner
 // 2026-09-19: "do whatever is needed to make sure that a new reader can read an
 // old writer"). It was `back[0].aim != 0.3f` — a float comparison against a
 // HARDCODED literal, an oracle written by the same hand as the code under test,

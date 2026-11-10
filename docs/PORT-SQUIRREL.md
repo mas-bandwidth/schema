@@ -390,7 +390,7 @@ for exactly what it carries; what no component carries stays refused by name
   is the oracle; the C++ goldens and the conformance manifest are the corpus;
   jstable's variable runtime is the nearest worked example of a descriptor
   walk; an unmerged foundation from an earlier attempt,
-  `rowan/port-squirrel-foundation`
+  `port-squirrel-foundation`
   (`test/conformance/squirrel/lib/wire.nut`, the §3 primitives with a red-first
   test), is prior art for the load and save cards to read, not to merge.
 - **Methods and tools.** The pinned `sq64` + `SQUSEDOUBLE` interpreter;

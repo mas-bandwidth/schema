@@ -231,7 +231,7 @@ func manifestLookup(rows map[string]manifestRow, file, section, path string) (st
 }
 
 // manifestFloatBits is the FLOAT half of the corpus oracle (schema#1164,
-// Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
+// The owner 2026-09-19: "do whatever is needed to make sure that a new reader can
 // read an old writer"). Every compressed-float row on every leg asserted a
 // HARDCODED literal until now — an oracle written by the same hand as the code
 // under test — while the manifest carried the reference's own answer with its

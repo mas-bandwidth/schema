@@ -11,7 +11,7 @@
 #
 # THE BUDGET IS A CASE COUNT, NEVER A CLOCK. 100 rounds of 2000 instances a
 # unit is 1.6 million instances and about 6.3 million reads, under three minutes
-# on the studio; every case is a pure function of its seed, so a red night
+# on the bench-11; every case is a pure function of its seed, so a red night
 # replays with SCHEMA_MOO_FUZZ_SEED=<the round's seed> SCHEMA_MOO_FUZZ_ROUNDS=1.
 # The workflow passes the run id as the seed, so each night draws new cases
 # and logs the seed it drew them from.

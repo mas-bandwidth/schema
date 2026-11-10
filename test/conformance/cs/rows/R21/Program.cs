@@ -9,7 +9,7 @@ using NewEntry = Vnew_float_widen.TableFixedEntry;
 // cell-cs-r21: widenf is the ordinary conversion under the finite rule - every
 // finite f32 widens exactly, and a NaN or an infinity is refused
 //
-// The law (docs/SPEC-TABLES.md section 3.3, Glenn 2026-10-27, "tables go
+// The law (docs/SPEC-TABLES.md section 3.3, the owner 2026-10-27, "tables go
 // finite-only too, same rule as packets"; docs/FIXED-FORM-ALGORITHM.md section
 // 4.5, the scatter table's widen/widenf row): widenf is the f32 at src as an
 // f64 at dst by the ordinary conversion, exact for every finite f32, -0 and the

@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using Demo = Tabledemo;
 using L = Listdemo;
 
-// TABLES ARE FINITE ONLY (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// TABLES ARE FINITE ONLY (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets"): every read refuses a NaN
 // or an infinity on its raw bits as non_finite_float, the tolerant read
 // included, and lands nothing; every writer refuses one before its first

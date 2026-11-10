@@ -2,7 +2,7 @@
 // (docs/FIXED-FORM-VERSIONING-TESTS.md, docs/FIXED-FORM-BILL-READS-BACKWARD.md,
 // docs/FIXED-FORM-ALGORITHM.md §5).
 //
-// Glenn: "Let the tests guide us in C++ to the correct implementation." So the
+// The owner: "Let the tests guide us in C++ to the correct implementation." So the
 // tests are here BEFORE the implementation, and most of them are RED on purpose.
 //
 // The rows this file carries are the NUMBERS — every definition whose widening
@@ -578,7 +578,7 @@ void uint_widen_case()
 // ---------------------------------------------------------------------------
 // 10. float_widen — float32 -> float64, EXACTLY, and a NaN never rides.
 //
-// THE FINITE RULE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// THE FINITE RULE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 // finite-only too, same rule as packets"): every finite float32 widens to
 // float64 exactly, so the rung is the ordinary conversion and nothing about a
 // NaN's quiet bit is left to rule on (#876). A NEGATIVE SUBNORMAL with a rich

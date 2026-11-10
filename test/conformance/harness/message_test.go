@@ -1033,7 +1033,7 @@ func TestPerDirectionIndependence(t *testing.T) {
 }
 
 // TestAMessageRowOverAVariableTableIsARefusal: the message form is fixed
-// tables only (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-31: "only fixed tables
+// tables only (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-31: "only fixed tables
 // support message form (bitpacked)"). A message row is a NAMED REFUSAL row
 // (its message-form wire is `-`) exactly when its root is a variable table,
 // and the engine every leg is fuzzed against refuses that root on both halves.

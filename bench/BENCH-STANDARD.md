@@ -203,7 +203,7 @@ type BenchBits {
 
 ### §1.3a BenchMixed — THE one benchmark (issue #184)
 
-**DECIDED (Glenn, 2026-08-31, verbatim):** *"Let's extend it to support all
+**DECIDED (the owner, 2026-08-31, verbatim):** *"Let's extend it to support all
 serialization_* methods"* / *"in such a way that most of the bytes serialized
 are integers, and while we can have strings and wstrings and byte arrays, they
 should be relatively short and should not dominate. If strings and arrays
@@ -376,7 +376,7 @@ tool error rather than a published ratio.
 
 ### §1.7 Corpus composition — the real use case, by bits sent
 
-**DECIDED (Glenn, 2026-08-16, Auckland, verbatim):** *"we are profiling the REAL use
+**DECIDED (the owner, 2026-08-16, Auckland, verbatim):** *"we are profiling the REAL use
 case, which is, lots and lots of individual serialize statements"* / *"maybe a real
 packet is like 1000-2000 individually serialized bits"* / *"and very rarely is it
 wstring, string or byte array"* / *"I want to make sure that our profiling is not
@@ -421,11 +421,11 @@ law carries the before/after.
    Bulk-heavy rows stay — memcpy throughput is worth tracking — but a table that
    leads with a bulk-dominated row must caption the bulk share, the same way §3's
    captions disclose checks and linkage asymmetries.
-3. **Additive only — with Glenn's own latitude for bulk-dominated rows.**
+3. **Additive only — with the owner's own latitude for bulk-dominated rows.**
    Existing rows and mixes are never rebalanced in place — that would silently
    re-price every cross-era comparison. New realistic rows join under new
    names with a new `corpus_id`, era-marked like any corpus change.
-   **Amended 2026-08-23 (issue #64), quoting the latitude Glenn granted in
+   **Amended 2026-08-23 (issue #64), quoting the latitude the owner granted in
    the same 2026-08-16 ruling, verbatim:** *"of course, if any of the current
    test cases are being dominated too much by IO for the string, wstring or
    bytes types, feel free to update them if you want too."* A row or mix this
@@ -444,7 +444,7 @@ law carries the before/after.
 **Where rule 1 is discharged today: `BenchMixed` (§1.3a).** It is the corpus's
 realistic snapshot — 3504 wire bits, dominated by individually serialized
 fields, with strings, wstrings and byte arrays deliberately short and
-non-dominant on Glenn's own instruction. The row that used to discharge it,
+non-dominant on the owner's own instruction. The row that used to discharge it,
 `real_packet` over `bench/corpus/RealWorld.schema`, retired with the rest of
 §1.2's rows; its schema, its generated code and `testdata/wire/real_packet.bin`
 stay as conformance fixtures, pinned by `test/bench/main.cpp` and the java /
@@ -484,7 +484,7 @@ correction §1.4 records for the bitpacker's inherited 4096.
 
 ### §1.8 The string row — defined measure-first (added 2026-08-23, issue #64)
 
-**DECIDED (Glenn, 2026-08-17, verbatim): "You can't improve what you don't
+**DECIDED (the owner, 2026-08-17, verbatim): "You can't improve what you don't
 measure."** Said the morning the estate's first string-body fix (serialize.c
 #26) landed and there was no string row anywhere in the family's benches to
 see it move. Enacted as an ORDERING rule, not a sentiment: a measurement row
@@ -663,7 +663,7 @@ cook's open-cost gate (§7.5). No per-language block or cook bench is owed.
 
 ### §1.10 The lineage corpus and the PLAN-READ arm
 
-**The belief this arm exists to measure.** Glenn's gate on the bitpacked message
+**The belief this arm exists to measure.** The owner's gate on the bitpacked message
 form is that the fixed table be 100% and PERFORMANT across nine languages first,
 and the performance half of that gate rests on two claims nobody has measured:
 
@@ -836,7 +836,7 @@ are a separate question and are not being answered here.
 
 #### The gate is the packet wire, not a ratio
 
-**GLENN'S RULING, 2026-09-11, verbatim:** "We can find the bound only after we
+**THE OWNER'S RULING, 2026-09-11, verbatim:** "We can find the bound only after we
 know how it should perform. I think if we find that we are slower than the
 equivalent packet wire (we should be faster) for the same lang, then we know we
 are a fail. The rest is by hand."
@@ -893,7 +893,7 @@ one sitting and invents no new corpus:
   board too: packet C/C++/C# is `checks=removed`, packet Go is `checks=always`,
   table is `checks=contract`. The label is printed; the verdict is still
   faster-or-FAIL.
-- **Per leg, never an average.** Glenn's gate is nine languages performant, and
+- **Per leg, never an average.** The owner's gate is nine languages performant, and
   an average hides the one that is not.
 
 **The 1.5x identity / hand-written bound is UNTOUCHED, and the two coexist.**
@@ -901,7 +901,7 @@ one sitting and invents no new corpus:
 arm B, one constant-offset load per leaf, hand-written so the emitter does not
 grade its own homework) is RATIFIED in docs/SPEC-TABLES.md §3.4 — the
 reference's own, older rule, the price the one-reader-path ruling was bought
-with, and C++'s alone. Glenn's ruling neither relaxes nor restates it: a leg can
+with, and C++'s alone. The owner's ruling neither relaxes nor restates it: a leg can
 pass the packet-wire gate and C++ can still owe §3.4 its ratio, and the two are
 read side by side on the board below. Nothing multiplies them together any more;
 the `1.5 x 2.0 = 3.0x` product this section used to state is withdrawn with the
@@ -971,8 +971,8 @@ names:
 
 #### The work list — one file, one line, one child each
 
-**State, 2026-10-16** (`bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/`,
-`bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check/`): items 18, 19 and 21 have
+**State, 2026-10-16** (`bench/results/2026-10-16-x86_64-bench-1-cpp-read-arm/`,
+`bench/results/2026-10-16-x86_64-bench-1-cpp-clamp-check/`): items 18, 19 and 21 have
 landed for C++ alone — `-mode plan-read -langs cpp`, `nine.sh --read-arm`, and the C++
 runner's `--read-arm` timing `bench_fixed_read` and `bench_mixed_read` in one invocation —
 with the anchor line built from `test/bench/fixedform_measure.cpp` by the driver. Item 8
@@ -999,7 +999,7 @@ files. Every other leg's line is a named refusal until its item lands.
 17. `bench/tools/ledger.go` — admit `(table, bench_fixed_read|bench_plan_read, read)` as rows of their own; `lockedLegs` untouched.
 18. `bench/paired/main.go` — `-mode plan-read`: one invocation, the three measured rows, the distinct `corpus_id`, the `bytes_per_op` caption §5.3 rule 2 requires.
 19. `bench/paired/nine.sh` — the board above, three measured rows and four numbers per leg, the C++ anchor line, named refusals for absent legs.
-20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (Glenn, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
+20. `docs/SPEC-TABLES.md` §3.4 — **nothing to record**: the plan/identity bound is WITHDRAWN as a gate (the owner, 2026-09-11) and lives here as a reported number only. §3.4's own `identity / hand-written straight-line ≤ 1.5x` stays exactly as written — the reference's older rule, C++'s alone — and the two coexist.
 21. `bench/tables/<lang>/` + `bench/paired/main.go` — the PACKET leg's `bench_mixed_read`: the packet wire's read timed ALONE in the plan-read invocation, measured, the gate's comparand, never folded into the published `gen` / `bench_mixed` series.
 
 **Landed so far (2026-10-16):** the Rust leg end to end — items 11, 18, 19
@@ -1034,15 +1034,15 @@ the homes named above:
 Still owed: the move of the pair to `bench/corpus/` + `bench/paired/corpus/`
 with the C++ dump as producer (items 1-6 as written), the reference's case
 (item 7), and every other leg's plan path (items 8-10, 12-16). Sittings:
-`bench/results/2026-10-16-hetzner2-plan-read-rust.md` (identity lane only) and
-`bench/results/2026-10-16-hetzner2-plan-read-rust-plan.md` (all three lanes).
+`bench/results/2026-10-16-bench-2-plan-read-rust.md` (identity lane only) and
+`bench/results/2026-10-16-bench-2-plan-read-rust-plan.md` (all three lanes).
 
 ---
 
 ## §2 Methodology
 
 The only quiet machine in the estate is a production game server whose cores 1–15 are
-isolated for the game and whose quiet window is Glenn's call per run and explicitly
+isolated for the game and whose quiet window is the owner's call per run and explicitly
 not to become a habit. Everything below assumes the M2 laptop with agents running.
 
 ### §2.1 Warmup and runs
@@ -1302,7 +1302,7 @@ holds them together, so from this date `go run ./bench/tools ledger --check`
 `gen`, path `round_trip`, best rate: the headline statistic this section rules
 on. The `bitpacker` rows and the `write` path are OUTSIDE the lock. On the
 committed record of 2026-09-07,
-`bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv` is a
+`bench/results/2026-09-07-arm64-bench-11-bitpacker-checked-read-pass.csv` is a
 `window: OK` pass the pair lock calls green at 106.1% while its
 `bitpacker`/`read` rows have c at 161.4% of cpp — so the scope is a real
 boundary, not a formality. A band over the bitpacker rows would be a ruling
@@ -1927,7 +1927,7 @@ record that the improvement happened.
 ## §5 Reporting format
 
 **The reference language is C. C is the 100%; every other language, C++
-included, is measured against C.** (Glenn, 2026-08-17, verbatim: *"make C the
+included, is measured against C.** (the owner, 2026-08-17, verbatim: *"make C the
 reference. It is the 100%. C++ is measured against C."* — flipped from C++,
 which had been the table baseline since the table existed.) A relative table
 presents each language's **time** as a percentage of C's, computed on the §2.2

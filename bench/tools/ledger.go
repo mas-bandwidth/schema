@@ -44,7 +44,7 @@
 // WHAT THE LOCK COVERS, EXACTLY: bench_mixed, family gen, path round_trip,
 // best rate. That is the headline statistic §2.8 rules on, and it is the whole
 // of the lock. The bitpacker rows and the write path are OUTSIDE it, and not
-// by oversight: in 2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv —
+// by oversight: in 2026-09-07-arm64-bench-11-bitpacker-checked-read-pass.csv —
 // a `window: OK` pass this pair lock calls green at 106.1% — bitpacker/read
 // has c at 161.4% of cpp. A band over that row would be a new ruling about a
 // different statistic, and it is NOT invented here; it would need its own
@@ -264,9 +264,9 @@ func noiseGate(prevSpread, lastSpread float64) float64 {
 // THE AXIS IS BUILT FROM BOTH-LEG FILES ONLY. A point enters a locked leg's
 // series only from a CSV that carries EVERY locked leg's bench_mixed gen
 // round_trip row. The lock is a claim about the pair, so a single-leg
-// experiment file is by construction not a like measurement of it: the Studio
+// experiment file is by construction not a like measurement of it: the bench-11
 // c axis was interleaved with four single-leg C experiments
-// (packet-void-c-studio, c-defaults-c-studio, c-utf8-c-studio, c-wide-c-studio,
+// (packet-void-c-bench-11, c-defaults-c-bench-11, c-utf8-c-bench-11, c-wide-c-bench-11,
 // 228-242 ns/msg) among passes at 224-233, and the c-defaults -> c-utf8 step
 // alone is +5.35% against a 5.00% gate — so the next single-leg C experiment
 // committed last would have red CI for something that is not a regression of
@@ -356,10 +356,10 @@ func checkLockedLegs(pts []point) int {
 // The lock is a claim about the pair's CURRENT state — the maintainer's intent
 // was "land parity between C and C++ and then lock" — and the record is a
 // record: it keeps the passes that FOUND things, not only the ones that were
-// clean. 2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv is exactly that,
+// clean. 2026-09-07-arm64-bench-11-serialize-c-1-10-0-pass.csv is exactly that,
 // a `window: OK` pass measuring c at 107.4% of cpp against a 5.8-point band,
 // and that measurement is the finding — a 7% read-path gap — which the next
-// pass, 2026-09-07-arm64-studio-c-read-guard-pass.csv, closed at 98.2% inside
+// pass, 2026-09-07-arm64-bench-11-c-read-guard-pass.csv, closed at 98.2% inside
 // 6.5. Holding every historical pass forever would leave CI red on a fixed
 // finding, and a gate that reds on something already fixed teaches people to
 // ignore the gate. Holding the newest certified pass keeps both teeth: the
@@ -375,8 +375,8 @@ func checkLockedLegs(pts []point) int {
 // it would be gating on evidence the standard itself refuses to publish
 // ratios from. Sittings therefore print and exit 0, every one of them: they
 // are informational, so there is no "newest sitting" to single out. This is
-// not leniency: measured 2026-09-07, FIVE committed sittings (three Studio
-// ninelang at 106.6-109.2%, the x86_64 spacegame at 111.3%, and one macbook
+// not leniency: measured 2026-09-07, FIVE committed sittings (three bench-11
+// ninelang at 106.6-109.2%, the x86_64 bench-12 at 111.3%, and one macbook
 // quick sitting just past a 12.3-point band) sit outside their bands, which is
 // exactly the difference a window verdict is there to record. A window stamped
 // INVALID does not lock either — §2.6 already refuses to publish ratios from

@@ -19,7 +19,7 @@ import (
 
 // TestCyclicWireIsDamageDart holds docs/SPEC-TABLES.md §3.1's ruling on the
 // Dart leg: a cyclic wire is damage, and every read refuses the whole load
-// (Glenn, 2026-10-31). The framing vectors node_cycle_self, node_cycle_to_root
+// (The owner, 2026-10-31). The framing vectors node_cycle_self, node_cycle_to_root
 // and node_cycle_mid are each read through graphdemo's ListNode WireLoad and
 // WireLoadRetain, and each must report malformed and hand back the type's
 // defaults; node_chain_two (a plain chain) and node_diamond_chain (Scene, 82

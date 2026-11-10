@@ -301,7 +301,7 @@ for (const row of %s) {
 }
 
 // TestCyclicWireIsDamageJavaScript is the JavaScript leg's gate for A CYCLIC
-// WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31): the
+// WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; the owner, 2026-10-31): the
 // manifest's cycle rows (a node naming itself, a node naming the root, a cycle
 // in the middle of a chain) load as nothing through Load and LoadRetain with
 // the report refusing the read, and the two acyclic rows beside them load: a

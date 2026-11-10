@@ -61,7 +61,7 @@ named in its section below.
    carries none of it (#523). The first byte is the form version, so a reader
    that meets a later form
    refuses by name rather than reading it as damage (#435). A 2.x table file
-   is not a 3.0.0 table file: a studio already shipping on 2.x keeps its 2.x
+   is not a 3.0.0 table file: a bench-11 already shipping on 2.x keeps its 2.x
    binary, renders each file to text with it, and packs the text with 3.0.0.
    The text form is keyed by names and carries no version, which is what makes
    it the bridge.
@@ -217,7 +217,7 @@ one unit. The price of every id move that remains is a coordinated redeploy of
 both ends. This project's own games redeploy both sides of every connection
 together, always. Cross-platform studios with certification lag ship both
 store builds dark behind a gate and flip the server when both have cleared. A
-studio that cannot force-update its clients is outside this model, and should
+bench-11 that cannot force-update its clients is outside this model, and should
 know it before choosing the packet wire for anything long-lived.
 
 **`flags` is held in the projection deliberately, and it is the exception to
@@ -289,7 +289,7 @@ a changed default changes what every stored file *means* without touching a
 byte, and `was` does not cover it: `was` preserves an identity, not a value.
 Change a default the way you would change data, by rewriting the files you
 hold, or add a new field and leave the old one alone. Tuning values that move
-weekly belong in configuration the studio holds, where rewriting is a
+weekly belong in configuration the bench-11 holds, where rewriting is a
 pipeline step; player saves hold state, which has no weekly default.
 
 ## The three frames
@@ -417,7 +417,7 @@ no existing caller sees a number move.
 **The never-clobber rule, and the opt-in that lifts it.** Unknown fields are
 dropped on rewrite BY DEFAULT: everything in schema has a schema, and a tool
 built from an older schema that rewrites a newer file drops what it does not
-know and counts it. That default has one consequence every studio with a mixed
+know and counts it. That default has one consequence every bench-11 with a mixed
 fleet must write into its own code before the first staged rollout: **a save
 cycle or a rewriting tool never overwrites a newer program's file without
 retention.** Write beside the file, retain, or refuse the rewrite. The read
@@ -529,7 +529,7 @@ existence and the layout is keyed by wire id to make that true; a guard; a
 line that is `little` for every target, so one id serves every target of a
 game; #432 makes the cache key say so.
 
-**Its two jobs.** It *addresses* a cooked artifact, the studio's cook cache
+**Its two jobs.** It *addresses* a cooked artifact, the bench-11's cook cache
 is indexed by it, and it *refuses* one: `Open` checks it out of the header.
 There is no second version id anywhere in the cooked or blocked forms; a
 form's identity is its magic.
@@ -576,7 +576,7 @@ only witness.
 than the unit is keyed, because a finer key buys a smaller re-cook and pays
 for it with a second id. A weekly-tuned live game shipping full cooks to
 players pays real bandwidth for that; the answers are binary diffing at the
-patcher, which is its layer, and tunables in studio-held configuration rather
+patcher, which is its layer, and tunables in bench-11-held configuration rather
 than in cooked assets.
 
 **The dev loop runs on the wire.** Cook and block are ship-load accelerators;

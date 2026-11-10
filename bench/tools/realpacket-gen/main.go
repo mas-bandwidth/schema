@@ -8,7 +8,7 @@
 // estate's own Knuth MMIX LCG, not a standard-library source whose sequence
 // could move under a toolchain bump.
 //
-// The emitted shape (decided with Glenn, 2026-08-16):
+// The emitted shape (decided with the owner, 2026-08-16):
 //   - one flat type (package realworld, type RealPacket) of individually
 //     serialized small scalar fields: ranged ints (2-21 bit widths, mixed
 //     signed/unsigned), bits(N) with N in 1..32 plus one 48 and one 64, bool,

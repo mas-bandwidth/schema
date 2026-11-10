@@ -3414,14 +3414,14 @@ in the bytes that could have said so.
 So a fixed table gets a discipline instead of a wire, and the owner ruled it:
 
 > "append only, and deprecation possibly. might keep it light weight?"
-> — Glenn Fiedler, project owner
+> — the owner, project owner
 
 **Network Next ran this rule by hand for years** — a `uint8` version at the
 front of the struct, bumped on every change, new fields appended at the bottom,
 and hand-written upgrade paths kept alive for a limited time:
 
 > "manual stuff, and it is a footgun, but it worked."
-> — Glenn Fiedler, project owner
+> — the owner, project owner
 
 It worked because the discipline is right. It was a footgun because nothing
 enforced it. **The rule below is that discipline with the footgun taken away:
@@ -3504,7 +3504,7 @@ where the rest of it came from:
 
 > "Is there anything schema check cannot catch in a fixed table? Can we fix
 > that so it does?"
-> — Glenn Fiedler, project owner
+> — the owner, project owner
 
 For every fixed table it records the field sequence IN DECLARED ORDER, one
 entry per field carrying
@@ -4804,7 +4804,7 @@ one document rather than two.
   refuses the same byte by the same name (§3.4).
 
   **A FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN** (SPEC.md
-  §4.3; Glenn, 2026-10-27: "tables go finite-only too, same rule as
+  §4.3; the owner, 2026-10-27: "tables go finite-only too, same rule as
   packets"). Kind `10` is the four bytes the field holds and kind `11` the
   eight, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED,
   and no writer normalizes one. A NaN (any sign, any payload, quiet or
@@ -6653,7 +6653,7 @@ compressed float is defined for the FINITE values in `[min, max]`.
 A NaN and the infinities are stated here because every comparison against a
 NaN is false, so a bounds test of `< min` and `> max` alone would hand one
 through whole. The rule follows the plain float's and the packet wire's
-(Glenn, 2026-10-27, "same rule as packets"; SPEC.md §4.3), the same in the
+(The owner, 2026-10-27, "same rule as packets"; SPEC.md §4.3), the same in the
 message, fixed, variable and text forms:
 
 - **A NaN OR AN INFINITY IS REFUSED ON WRITE AND ON READ.** Every
@@ -6731,7 +6731,7 @@ one any writer refuses.**
   no range for `-0` to be inside. `-0` in, `-0` out, in every form, and
   nothing counts it.
 - **A NaN, `+Inf` AND `-Inf` ARE REFUSED ON WRITE AND ON READ, IN EVERY
-  FORM** (Glenn, 2026-10-27, overturning the 2026-10-18/19 rule under which
+  FORM** (the owner, 2026-10-27, overturning the 2026-10-18/19 rule under which
   they rode the binary forms and only the strict read refused them). The
   rule is serialize format 2.0's, the packet wire's (SPEC.md §4.3): a quiet
   NaN, a signalling NaN, a NaN with any payload, either sign and either
@@ -7756,7 +7756,7 @@ moving a field between the two spellings is an edit a reader must be able to
 SEE, and the kind is what lets it: the edit reads as `kind_mismatch` and the
 field takes its declared default, rather than every byte after it sliding by
 one. That is a departure from §2.3, it is stated here rather than left to be
-discovered, and it is the price of a present flag Glenn asked for by name.
+discovered, and it is the price of a present flag the owner asked for by name.
 
 **ENTRY `0` CARRIES THE ROOT TYPE'S NAME ID, AND EVERY OTHER ENTRY CARRIES THE
 NAME ID OF THE FIELD, VARIANT OR ARM IT DESCRIBES.** A nested type is named by
@@ -8253,12 +8253,12 @@ same leg's packet read `bench_mixed_read`:
 
   | host | codec before the change | shared path, same codec | in-place identity | packet read |
   |---|---|---|---|---|
-  | hetzner2 (Ryzen 9 7950X3D), 2026-10-16 | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
-  | hulk (Threadripper 2990WX), 2026-10-16 | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
+  | bench-2 (Ryzen 9 7950X3D), 2026-10-16 | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
+  | bench-6 (Threadripper 2990WX), 2026-10-16 | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
 
 The in-place read is about half of the shared path on both hosts (the copy is
-the other half); against the packet read it is 1% to 2% faster on hetzner2 and
-level on hulk (one sitting slower, one faster). On the shared path the fixed
+the other half); against the packet read it is 1% to 2% faster on bench-2 and
+level on bench-6 (one sitting slower, one faster). On the shared path the fixed
 read is about twice its own packet read on both. The JavaScript door is `if (identity)` in
 `<T>FixedLoad`, chosen by `entries === <T>FixedIdentity && holeN === 0`, and it
 projects with `<T>FixedDecode(values[k], srcView, at + 8, stage)`; the guards
@@ -10085,7 +10085,7 @@ nowhere either.
 ### 6.6 Retain-unknown: an opt-in that keeps what this build cannot name
 
 **By default a rewrite drops what the reader could not name**, and the
-never-clobber rule (VERSIONING.md) is the consequence a studio writes into its
+never-clobber rule (VERSIONING.md) is the consequence a bench-11 writes into its
 own code. This subsection is the opt-in that answers the case the rule exists
 for: a player on a newer build rolls back, through a beta opt-out, a
 certification lag or a store rollout paused, saves, and every field the newer
@@ -14379,7 +14379,7 @@ are these rulings, in the owner's words:
 - **When it does not run at all**: "or, the game, if cooking is not
   required for speed, would just use the generic table."
 - **The cook is ON the ladder, and the dogfood not using it is not a verdict
-  on it**, 2026-09-02: "We do cook. We just aren't using it in space game
+  on it**, 2026-09-02: "We do cook. We just aren't using it in a game project
   right now." The two files the dogfood carries are small enough to stay on
   the generic wire (below); the cook is built for the catalog-scale files
   beside them (§7).
@@ -14820,7 +14820,7 @@ possible, and minimize copying (§6.2):
 
 4. **A visited-index guard on load — SUPERSEDED ((the maintainer, 2026-10-31)).** It
    was rejected as state proportional to the graph on the reading path. That
-   reasoning was never Glenn's (it came from #264 and #336), and his ruling
+   reasoning was never the owner's (it came from #264 and #336), and his ruling
    reverses it: "Why the fuck would I want to read a cycle" — "It's perhaps
    the MOST OBVIOUS attack somebody would do on this protocol!" A cyclic wire
    is damage (§3.1). The type id still removes the walk that TYPES the nodes;
@@ -14854,7 +14854,7 @@ possible, and minimize copying (§6.2):
 9. **A reader-side acyclicity check — TAKEN ((the maintainer, 2026-10-31)).** It was
    priced and not taken (#264, #336) on the ground that the writer already
    guarantees the property. A reader cannot rely on what a forger's writer
-   guarantees, and Glenn ruled: "It's perhaps the MOST OBVIOUS attack
+   guarantees, and the owner ruled: "It's perhaps the MOST OBVIOUS attack
    somebody would do on this protocol!" The shape taken is not the interval
    scheme weighed here (bytes a node plus a nesting proof) but the
    three-mark walk of §3.1, which costs no wire bytes.
@@ -19820,7 +19820,7 @@ a second digest.
 **A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
 A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
 record, and reads nothing. There is no partial read of a fixed table: no clamp across versions, no value
-landed as `None` for want of a name, no field dropped because the reader lacked it. (Glenn, 2026-09-10:
+landed as `None` for want of a name, no field dropped because the reader lacked it. (the owner, 2026-09-10:
 "Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new
 versions, and complain loudly and refuse. Nothing else makes sense." The bill is
 `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)

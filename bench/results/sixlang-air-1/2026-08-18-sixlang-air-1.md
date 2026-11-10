@@ -56,7 +56,7 @@ excluded because they are hand-written runtime benches, not generated code
 | **Go** | **916.2** | 24 | probe_header/read (20.4%) |
 | **JavaScript** | **6867.8** | 24 | — |
 
-C and C++ are at parity on generated code — the cairn-12 result reproduced on
+C and C++ are at parity on generated code — the session-12 result reproduced on
 the sixth-language pass. Rust is ~4× the C++ time, C# ~5.6×, Go ~9.2×, and
 the brand-new js backend lands at ~69× — a JIT dynamic-typed runtime playing
 the same fixed-iteration game as AOT natives, measured honestly under the

@@ -1,7 +1,7 @@
 // THE FIXED FORM's Elixir surface (docs/SPEC-TABLES.md §3.4), form byte 3: the
 // write, the read, and the value the two carry.
 //
-// THE MODEL IS THE PACKET CODEC's, NOT FORM 1's — Glenn's rule for this class,
+// THE MODEL IS THE PACKET CODEC's, NOT FORM 1's — the owner's rule for this class,
 // and it is what every shape below is. The Elixir type wire (internal/codegen/
 // elixir) writes a record by destructuring the value once and constructing ONE
 // binary out of literal-width segments, and reads it by matching that binary
@@ -687,7 +687,7 @@ func (g *fixedGen) emitLines(lines []string) {
 // THERE IS ONE CLAUSE AND THE CLAMP IS IN IT. A record read through the
 // identity plan and a record read through a compiled one reach the SAME head,
 // so the bound every value is held to is written once and exercised by every
-// read (Glenn, 2026-09-10: "one codepath always, whether version matches or
+// read (the owner, 2026-09-10: "one codepath always, whether version matches or
 // not... fewer cases to test"). An in-range clause that skipped the clamp
 // would be a second projection to test and a second place for a bound to go
 // stale, and this form has neither.
@@ -1789,7 +1789,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 // emitLoad prints the root's reader: the form byte, the layout, the plan the
 // layout's hash selects, and THE ONE LOOP that runs it. There is no second
 // path for a record this build wrote — the identity plan is data, and the same
-// `R.run` walks it (Glenn, 2026-09-10: "one codepath always, whether version
+// `R.run` walks it (the owner, 2026-09-10: "one codepath always, whether version
 // matches or not"). The verdict is a tagged tuple and never an exception.
 func (g *fixedGen) emitLoad(st *ir.Struct, snake string, writerBounds bool) {
 	g.pf("  @doc \"\"\"\n")

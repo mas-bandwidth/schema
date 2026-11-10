@@ -60,7 +60,7 @@ func zeroWidthUnit(t *testing.T, rel string) *ir.Unit {
 	return u
 }
 
-// TestCTableNeverEmitsZeroWidthInteger pins the owner decision (Glenn,
+// TestCTableNeverEmitsZeroWidthInteger pins the owner decision (the owner,
 // 2026-10-16): no zero-width integer is ever valid. The C leg of R2.schema and
 // of every conformance schema generates — no panic, no refusal — and not one
 // line of it spells `uint0_t`, `int0_t`, `table_fixed_put0`,

@@ -393,7 +393,7 @@ func fixedFieldNeedsValueCheck(f *ir.Field) bool {
 }
 
 // emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
-// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
+// (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go finite-only too,
 // same rule as packets"): false when any float the record would carry is a
 // NaN or an infinity, or a required scalar is outside its declared range, so the
 // save refuses (-1) before it writes a byte. Only a type that holds a float

@@ -1,12 +1,12 @@
 # Road to 1.0 — the decisions, as they landed
 
 *2026-08-05. The audit ran in the afternoon (three audits, eight dossiers, adversarial
-verification — see docs/SPEC.md draft-5 changelog); Glenn answered the same evening, item by
+verification — see docs/SPEC.md draft-5 changelog); the owner answered the same evening, item by
 item, in the main channel. This file is now the record of those answers; the spec carries
 each one at its section with his words. The original decision-list form of this file is in
 git.*
 
-## Decided by Glenn, 2026-08-05 (his words at each spec site)
+## Decided by the owner, 2026-08-05 (his words at each spec site)
 
 - **Strings are byte strings** — §4.7. *"fine"*
 - **Wide strings + int_relative deferred to the delta pass** — §4.10. *"OK"* / *"yes,
@@ -49,7 +49,7 @@ git.*
 ## Landed outside the spec the same day
 
 - serialize.cs: **AGPL-3.0** (`baa2f9b`), **PUBLIC**, CI workflows landing.
-- Space game: the interpolation dot-product bug, the two wrong-enum asserts, the
+- a game project: the interpolation dot-product bug, the two wrong-enum asserts, the
   duplicate `#define`, and the turret_index width divergence — **all fixed and pushed**
   (`05f134c2`, `114ea1bc`); turret wire change free because turret is unused (*"turret is
   currently unused... fix now."*).
@@ -68,7 +68,7 @@ word once the read completes.**
 The last design question opened and closed the same hour: does the language pre-define
 composite types? **No — DECIDED.** Three candidate designs died on the way (a built-in
 `quat` keyword; a `type Quat [rotation]` behavior attribute; a compiler-known class
-vocabulary), each on Glenn's direction that the language stay general and pre-define no
+vocabulary), each on the owner's direction that the language stay general and pre-define no
 types. What landed (SPEC §4.2, Type tags, his words throughout): **types are entirely
 user-defined and user-tagged (`type Vec3 [vec3]`); tags are inert in v1; the delta pass
 CLAIMS tags and assigns meaning and actions** — "tag -> specifying behavior." His

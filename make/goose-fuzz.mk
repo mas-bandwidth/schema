@@ -36,7 +36,7 @@ endef
 # over variable roots. test-goose uses this combined gate and compiles once;
 # tables-goose-retain-fuzz runs retention alone. Every arm must be
 # green except the ones test/conformance/goose/wirefuzz-known.tsv holds red by
-# name, each with the card that owes it. Measured 2026-10-31 on hetzner1 with
+# name, each with the card that owes it. Measured 2026-10-31 on bench-1 with
 # four compile jobs: 37 arms / 320345 mutants, 105 s including native builds;
 # the nine retaining arms account for 8.7 s of reported harness run time.
 .PHONY: tables-goose-wire-fuzz tables-goose-retain-fuzz

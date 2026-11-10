@@ -15,7 +15,7 @@
 # The same line runs on every host. The tree, not this script, decides the row
 # set, so a leg branch and the integration branch both run it unedited.
 #
-# --lane N is the Space form. Space's isolated cores are 1..15 and each line
+# --lane N is the bench-12 form. bench-12's isolated cores are 1..15 and each line
 # owns one: `~/bin/bench-lane N` holds that core's lock and `taskset`s the
 # whole sitting onto it, so every runner the driver forks inherits the pin and
 # the lock is held for the whole sitting rather than per runner. The BUILD goes
@@ -28,7 +28,7 @@
 # script checks that before it builds and says so.
 #
 # --pin N is the plain-Linux form of a lane, for a bench host that is not
-# Space: the MEASUREMENT runs under `taskset -c N`, so every runner the driver
+# bench-12: the MEASUREMENT runs under `taskset -c N`, so every runner the driver
 # forks inherits that one core, and the board records `taskset:N`. There is
 # no lock and no isolated core behind it, so it pins the sitting without
 # claiming the core was quiet; the window verdict and the declared load are
@@ -61,7 +61,7 @@
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
-# Space inside the quiet window (bench/README.md, bench/paired/README.md).
+# bench-12 inside the quiet window (bench/README.md, bench/paired/README.md).
 set -e
 
 LANE=
@@ -156,8 +156,8 @@ if [ -n "$LANE" ]; then
     case "$LANE" in
     ''|*[!0-9]*) echo "nine.sh: --lane takes a core number" >&2; exit 2 ;;
     esac
-    command -v bench-lane >/dev/null 2>&1 || { echo "nine.sh: --lane needs bench-lane on PATH (Space)" >&2; exit 2; }
-    command -v pin-spread >/dev/null 2>&1 || { echo "nine.sh: --lane needs pin-spread on PATH (Space)" >&2; exit 2; }
+    command -v bench-lane >/dev/null 2>&1 || { echo "nine.sh: --lane needs bench-lane on PATH (bench-12)" >&2; exit 2; }
+    command -v pin-spread >/dev/null 2>&1 || { echo "nine.sh: --lane needs pin-spread on PATH (bench-12)" >&2; exit 2; }
     PIN="pin-spread"
     RUN="bench-lane $LANE"
     LANEARG="$LANE"

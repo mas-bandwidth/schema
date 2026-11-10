@@ -5,10 +5,10 @@ package gotable
 // loop, the layout reader and the plan compiler. Emitted into the unit's home
 // Table.go, once.
 //
-// THE WORD IS LAYOUT, not block (Glenn 2026-09-09 20:17Z). The form byte
+// THE WORD IS LAYOUT, not block (the owner 2026-09-09 20:17Z). The form byte
 // versions the file; there is no version byte inside the layout. A layout
 // whose bytes are not a layout is layout_malformed. An unknown kind is refused
-// (Glenn, same sitting).
+// (The owner, same sitting).
 //
 // FILE HEADER pinned to the C++ reference (docs/SPEC-TABLES.md §3 THE FIRST BYTE):
 // form byte 3 at 0, seven reserved zeros, layout hash at 8, body at 16, then

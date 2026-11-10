@@ -55,7 +55,7 @@ them and only the file you are reading was added.
 
 ## How these numbers were made
 
-Inside `nova-sandbox run --name c9703 --size 10g --timeout 30m --read <jobs>
+Inside `sandbox run --name c9703 --size 10g --timeout 30m --read <jobs>
 --read /opt/homebrew/Cellar/go/1.27.1` (backend `sandbox-exec`, one disposable APFS
 volume per card), after cloning the repository into the volume and checking out
 `origin/main`:

@@ -98,4 +98,4 @@ Unbounded arrays, maps, pointers and used-size pointer blobs are variable-table 
 
 Fixed-form string, bytes and flags defaults do not take the form-1 default refusal. `TestFixedTableValueDefaultsEveryLeg` and `TestFX1GeneratesOnEveryLeg` passed locally at this snapshot. Runtime evidence is recorded separately.
 
-Future taxonomy and indexed repo/category queries are designed in [nova-tools #177](https://github.com/mas-bandwidth/nova-tools/issues/177), not implemented by this bounded renderer.
+Future taxonomy and indexed repo/category queries are designed in [the fleet tools #177](https://github.com/the tools repository/issues/177), not implemented by this bounded renderer.

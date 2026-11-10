@@ -17,7 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4; Glenn, 2026-10-31:
+// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4; the owner, 2026-10-31:
 // "if it fails to read, it's broken and everything in it today is suspect.
 // discard."), on every C read.
 //
@@ -604,7 +604,7 @@ func cycleProbe(wire []byte, load bool, onFail string) string {
 `, cBytes(wire), want, onFail, onFail, onFail, onFail)
 }
 
-// TestCyclicWireIsRefusedC is the C leg's gate for Glenn's ruling
+// TestCyclicWireIsRefusedC is the C leg's gate for the owner's ruling
 // (2026-10-31, docs/SPEC-TABLES.md §3.1, §4): a cyclic wire is damage, on the
 // region load, the retaining load and the builder load. A back edge to a mid
 // ancestor, a cycle the root never reaches, a cycle through a slot the

@@ -1,4 +1,4 @@
-// THE MONOTONE LAW (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and §6, Glenn's
+// THE MONOTONE LAW (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and §6, the owner's
 // ruling 2026-09-11 02:12Z: "lock."): a definition a fixed table stands on
 // WIDENS or it stays, and every narrowing is refused here, by name, with the
 // table, the definition, the rule and BOTH VALUES in the sentence.
@@ -314,7 +314,7 @@ func (v *ValueList) hasValue(s string) bool {
 
 // moveWord is the word a reorder takes per declaration: a flags mask's bits
 // MOVE (a bit position), an enum's variants and a union's arms are REORDERED (a
-// dense ordinal). Glenn's rows name them that way and so does the refusal.
+// dense ordinal). The owner's rows name them that way and so does the refusal.
 func (v *ValueList) moveWord() string {
 	if v.Decl == DeclFlags {
 		return "moved"
@@ -428,7 +428,7 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	}
 	if want.Cap != got.Cap {
 		if got.Cap < want.Cap {
-			return false, "", fmt.Errorf("%s, holds %d in the lock and %d in the declaration: capacity narrowed (%d -> %d) — Glenn: \"wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read the old\" (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, holds %d in the lock and %d in the declaration: capacity narrowed (%d -> %d) — the owner: \"wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read the old\" (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.Cap, got.Cap, want.Cap, got.Cap)
 		}
 		widened = true

@@ -333,7 +333,7 @@ whose LEB128 is not canonical ... damage, `wire_damaged`" (§3.1, §4). "a point
 stored, and the decode never follows it."
 
 **T8. A cyclic wire is damage (D1); a second pointer to a CLOSED node is a
-share and legal.** Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS attack
+share and legal.** The owner, 2026-10-31: "It's perhaps the MOST OBVIOUS attack
 somebody would do on this protocol!" §3.1: "A cycle anywhere is `wire_damaged`
 (§4) on every read", over every pointer slot the load stored, false guards
 included, and "THE CHECK IS LINEAR": each node is entered once. Held by
@@ -375,7 +375,7 @@ other is a bug in prose), and the settled answer is written into SPEC-TABLES
 in present tense and pinned as a `framing` row. A row over damaged bytes owes
 the refusal alone (D1).
 
-- **N1. What a damaged nested body reads as. RULED (Glenn, 2026-10-31):**
+- **N1. What a damaged nested body reads as. RULED (the owner, 2026-10-31):**
   "failing to read something means the whole read is undefined, in my book."
   and "there's no point hand wringing trying to make partial reads well
   defined. if it fails to read, it's broken and everything in it today is

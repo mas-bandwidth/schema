@@ -5787,7 +5787,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		fmt.Fprintf(b, "                if (kind == 1) { if (r.has(1)) { int bv = r.get8(); if (bv > 1) { report.damaged = true; } v.%s = bv != 0; } else { report.damaged = true; r.fail = true; } }\n", m)
 		fmt.Fprintf(b, "                else { r.skip(kind); report.refuse(\"kind_mismatch\"); }\n")
 	// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits become
-	// a value and before the field is written (docs/SPEC-TABLES.md §3.3; Glenn,
+	// a value and before the field is written (docs/SPEC-TABLES.md §3.3; the owner,
 	// 2026-10-27, "same rule as packets"): the read names the field and the
 	// load, tolerant included, refuses as non_finite_float. The float rung
 	// (kind 10 into a float64) is the ordinary conversion, exact for every

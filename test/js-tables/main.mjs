@@ -1015,7 +1015,7 @@ function checkSoak(passes) {
 
 // ---- float32 values against the oracle's bit patterns ----
 //
-// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets"). The oracle writes a
 // finite float32 as its IEEE-754 bit pattern, -0 and the subnormals included,
 // so the pattern IS the value the bytes carry: every generated float32

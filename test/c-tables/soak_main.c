@@ -1,4 +1,4 @@
-/* THE C TABLES SOAK (docs/SPEC-TABLES.md; Glenn's unit test -> soak -> profile
+/* THE C TABLES SOAK (docs/SPEC-TABLES.md; the owner's unit test -> soak -> profile
  * law).
  *
  * Read and write the whole wire corpus in a loop for as many passes as the

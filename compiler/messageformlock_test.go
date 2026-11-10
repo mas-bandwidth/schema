@@ -12,7 +12,7 @@ import (
 )
 
 // THE MESSAGE FORM IS FIXED TABLES ONLY, IN EVERY BACKEND (docs/SPEC-TABLES.md
-// §3.3). Glenn, 2026-09-09: "and enforce only fixed tables can use message
+// §3.3). The owner, 2026-09-09: "and enforce only fixed tables can use message
 // form. this saves more work." and 2026-10-31: "only fixed tables support
 // message form (bitpacked)". This is the lock: every registered target
 // generates one unit that holds a fixed table beside three variable tables

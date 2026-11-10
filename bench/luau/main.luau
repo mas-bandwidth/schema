@@ -41,7 +41,7 @@ local Generated = require("./Bench") :: any
 
 -- §1.2/§2.1: the fixed iteration count. The other legs' is 4,000,000; this
 -- interpreter writes a message in ~280 us and round-trips one in ~900 us on the
--- fleet (hulk, 2026-10-29), so 4,000,000 is hours a run. The count is 12,800 (200
+-- fleet (bench-6, 2026-10-29), so 4,000,000 is hours a run. The count is 12,800 (200
 -- rotations of the 64 records: a measured run of ~3.6 s write, ~12 s round
 -- trip, far over §2.1's 200 ms floor), the way elixir's 400,000 stands for the
 -- BEAM (BENCH-STANDARD.md, §2.8 quick-mode paragraph), recorded in the iters

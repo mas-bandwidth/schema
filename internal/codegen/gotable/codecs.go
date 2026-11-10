@@ -1047,7 +1047,7 @@ func writeBoundViolation(f *ir.Field, expr string) string {
 }
 
 // plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
-// range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
+// range (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "same rule as packets"):
 // the condition that is true for a NaN or an infinity, which no form carries.
 // x-x is NaN for both and zero for every finite x, so one subtraction and one
 // compare answer it. A compressed float needs no clause of its own: its range

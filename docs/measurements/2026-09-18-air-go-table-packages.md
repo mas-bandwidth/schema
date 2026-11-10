@@ -11,7 +11,7 @@ What it does **not** claim. This is not a parity, gap or performance investigati
 makes no timing claim about the wire, the fixed form or any leg. The wall seconds below
 are the seconds a test binary took on a fanless laptop under a sandbox wall, nothing
 else, and they must not be cited as bench evidence. The round-1 companion of this row
-ran on hulk (linux/x64); the two are comparable only as "did the packages run here at
+ran on bench-6 (linux/x64); the two are comparable only as "did the packages run here at
 all", never as a speed comparison.
 
 Toolchain used: `go version go1.27.1 darwin/arm64`, GOROOT
@@ -45,7 +45,7 @@ Head measured: `ed0c7917` (`origin/main`).
 
 ## How these numbers were made
 
-Inside `nova-sandbox run --name c9701 --size 8g --timeout 25m --read <jobs>
+Inside `sandbox run --name c9701 --size 8g --timeout 25m --read <jobs>
 --read /opt/homebrew/Cellar/go/1.27.1` (backend `sandbox-exec`, one disposable APFS
 volume per card), after cloning the repository into the volume and checking out
 `origin/main`:

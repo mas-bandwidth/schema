@@ -22,7 +22,7 @@ record per operation, including for the round trip. It does not count that
 record twice. The headline is the best rate over seven samples; medians remain
 beside it. The results page uses one blended percentage per language, normalized to the fastest measured implementation. It does not compare machines or corpora.
 
-[Original CSV](../2026-09-08-fixed-initial-arm64-studio.csv), individual
+[Original CSV](../2026-09-08-fixed-initial-arm64-bench-11.csv), individual
 `round-0.csv` through `round-6.csv`, and [load snapshots](load.json) preserve the
 measurement and its variation. Reaggregating the round files reproduces the
 original eight rows exactly.

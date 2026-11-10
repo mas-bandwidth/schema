@@ -719,7 +719,7 @@ type Root {
 
 // The other direction of the same rule, and the churn the scoping exists to
 // end: a declaration ONLY a table body reaches is out of the projection, so
-// the content enum a studio grows weekly buys no coordinated redeploy
+// the content enum a bench-11 grows weekly buys no coordinated redeploy
 // (SPEC §3.2). `flags` is the ONE exception and is held here beside it.
 func TestUnreachedDeclarationsAreOutOfTheProjection(t *testing.T) {
 	const source = `package probe

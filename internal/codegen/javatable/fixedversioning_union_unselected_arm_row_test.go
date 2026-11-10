@@ -2,7 +2,7 @@ package javatable
 
 // The union_unselected_arm row (docs/FIXED-FORM-VERSIONING-TESTS.md, schema#1157,
 // 2026-09-19, LAWFUL AS IS): after a read that RETURNS, an arm the landed tag did
-// not select is UNDEFINED — one word, for every target (Glenn, 2026-09-19: "as
+// not select is UNDEFINED — one word, for every target (the owner, 2026-09-19: "as
 // designed it is 'undefined'"). A union read DEFINES the tag and the SELECTED arm
 // and nothing else. THE ROW'S CONTENT IS THE ASSERTION IT REFUSES TO MAKE: this
 // test asserts the tag, the SELECTED arm and seq, and does NOT compare pick.beta

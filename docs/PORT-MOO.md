@@ -1,6 +1,6 @@
 # The moo port: the design
 
-moo is the deterministic fork of Luau that Glenn's games script in: Virtual Go's
+moo is the deterministic fork of Luau that the owner's games script in: a game project's
 game state is moo, and the point of the language is that every machine computes
 the same bits. Its one number is **Q48.16 fixed point** (a raw int64 underneath,
 exact for every integer below 2^47); it has no float, no double and no 64-bit

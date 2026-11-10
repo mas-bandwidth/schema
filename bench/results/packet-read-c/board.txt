@@ -1,5 +1,5 @@
 # bench/results/packet-read-c/board.txt — the C line of the read-arm board, two sittings
-# printed by bench/paired (-mode plan-read -langs c -lane 5) at b339d654571dd5cf92ad13479a7252da8ae134bf on amd-3 (hostname b3)
+# printed by bench/paired (-mode plan-read -langs c -lane 5) at b339d654571dd5cf92ad13479a7252da8ae134bf on bench-5 (hostname b3)
 # raw rounds (ns/record, round 0..6):
 #   sitting-1 identity_read 252.9 250.4 253.0 265.7 250.2 251.0 255.5
 #   sitting-1 plan_read     730.3 705.9 712.4 713.8 710.4 707.5 724.0
@@ -44,7 +44,7 @@ Lower is better. The ns columns are each row's BEST round (§2.2); the GATE comp
 
 Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
 
-Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:40:49Z b3 load1 7.55, no competing build or bench process by name (attempt 4), worker rowan c-fixed-read w3 unattended, no human operator; START sitting-1 taskset -c 5, governor powersave
+Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:40:49Z b3 load1 7.55, no competing build or bench process by name (attempt 4), worker c-fixed-read w3 unattended, no human operator; START sitting-1 taskset -c 5, governor powersave
 
 ======================================================================== sitting-2
 # The read arm: C
@@ -82,4 +82,4 @@ Lower is better. The ns columns are each row's BEST round (§2.2); the GATE comp
 
 Every row comes out of ONE `--read-arm` invocation per round, the wires rotating which runs first; none is derived from a round trip (§2.9). The identity lane's op is one record of the shipped `LOAD` of the whole 64-record file (hash check and plan run inside the clock); the packet read's op is one read stream plus the generated read of one 438-byte record. The plan lane's op is one record of the same `LOAD` over the lineage file (64 records one generation back, read through the static plan the lock's lineage entry compiled into the unit generated beside it; its gate before the clock requires 64 records read with no counter raised but widened, a poisoned destination reading to the same answer, and an answer that is not the identity corpus's).
 
-Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:42:03Z b3 load1 2.95, no competing build or bench process by name (attempt 5), worker rowan c-fixed-read w3 unattended, no human operator; START sitting-2 taskset -c 5, governor powersave
+Compiler: cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0. Flags: `-std=c99 -Wall -Wextra -Werror -O3 -DNDEBUG -DBENCH_OPT="O3" -ffp-contract=off -DBENCH_MATCHED -DBENCH_PLAN`. Window receipt: READY 2026-10-16T03:42:03Z b3 load1 2.95, no competing build or bench process by name (attempt 5), worker c-fixed-read w3 unattended, no human operator; START sitting-2 taskset -c 5, governor powersave

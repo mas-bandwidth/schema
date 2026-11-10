@@ -14,7 +14,7 @@ import (
 )
 
 // verifiedClassCards is every card id an expected class may name, each looked
-// up with `nova-sprint card <id>`. A class naming anything else is owed by
+// up with `sprint card <id>`. A class naming anything else is owed by
 // nobody.
 var verifiedClassCards = map[string]string{}
 
@@ -43,7 +43,7 @@ func TestExpectedClassesNameRealCards(t *testing.T) {
 	t.Parallel()
 	for _, c := range expectedClasses {
 		if _, ok := verifiedClassCards[c.id]; !ok {
-			t.Errorf("expected class %q names no card found by nova-sprint card", c.id)
+			t.Errorf("expected class %q names no card found by the sprint tool card", c.id)
 		}
 	}
 	// A class may match only a line kind the probe records: the probe never

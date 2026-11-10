@@ -1,8 +1,8 @@
 # JavaScript: the fixed read against its own packet read (identity lane)
 
-## Attempt w3 (2026-10-16, hulk): the in-place identity read is landed; on hulk it is level with the packet read, so identity is NOT flipped
+## Attempt w3 (2026-10-16, bench-6): the in-place identity read is landed; on bench-6 it is level with the packet read, so identity is NOT flipped
 
-**Verdict: FAIL** for the gate on hulk: FIXED-FASTER in sitting 2 only. The
+**Verdict: FAIL** for the gate on bench-6: FIXED-FASTER in sitting 2 only. The
 committed codec's in-place read is 708.9 / 672.0 ns/record (best, sitting 1 /
 sitting 2), and the same leg's packet read is 677.6 / 677.3. Sitting 1 is 4.6%
 slower and sitting 2 is 0.8% faster. The brief flips identity only on two
@@ -33,16 +33,16 @@ on the packet leg.
 after the two sittings, in the order in, packet, in, packet. The in-place read
 was 711.2 then 678.8, and the packet read was 677.4 then 678.1. The in-place
 read is bimodal on this host, at about 672 to 679 or about 709 to 711 per
-process, while the packet read holds at 677 to 678. So on hulk the two reads
+process, while the packet read holds at 677 to 678. So on bench-6 the two reads
 are level, and the order of the sitting does not decide which side wins.
 
 ### The w3 sitting
 
-- **Host:** hulk, x86_64, AMD Ryzen Threadripper 2990WX 32-Core (Zen+, SMT,
+- **Host:** bench-6, x86_64, AMD Ryzen Threadripper 2990WX 32-Core (Zen+, SMT,
   4 NUMA nodes), kernel 6.8.0-142-generic. It was chosen as the quietest of
-  amd-2, amd-3 and hulk at 02:52Z. amd-2 had two 100% jobs and a 1-min load
-  of 2.24. amd-3 was compiling, with a 5-min load of 3.45. hulk's 1-min load
-  was 0.68. The bench was never the studio Mac.
+  bench-4, bench-5 and bench-6 at 02:52Z. bench-4 had two 100% jobs and a 1-min load
+  of 2.24. bench-5 was compiling, with a 5-min load of 3.45. bench-6's 1-min load
+  was 0.68. The bench was never the bench-11 Mac.
 - **Node** v26.7.0. **serialize.js** v1.4.2 (de0591c9e6fddbbc5d4512b4558f091ffa2158ad),
   sibling checkout at `SERIALIZE_JS=../serialize.js`. The packet runner ran
   in `NODE_ENV=production`.
@@ -73,30 +73,30 @@ are level, and the order of the sitting does not decide which side wins.
   leg. Iterations are 400000 records for the table legs and 4000000 for the
   packet leg, with 1 discarded warmup plus 7 runs. Every process passed its
   golden gates before the clock (`rc=0` on every leg), and `--gate --plan-read`
-  passes on both runners on hulk.
+  passes on both runners on bench-6.
 
 ### What the two hosts say together
 
 | host | before | shared path | in-place | packet |
 |---|---|---|---|---|
-| hetzner2 (w2, Ryzen 9 7950X3D) | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
-| hulk (w3, Threadripper 2990WX) | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
+| bench-2 (w2, Ryzen 9 7950X3D) | 833.2 / 844.4 | 736.7 / 751.7 | 338.4 / 348.9 | 346.7 / 353.4 |
+| bench-6 (w3, Threadripper 2990WX) | 1468.8 / 1475.3 | 1306.1 / 1306.5 | 708.9 / 672.0 | 677.6 / 677.3 |
 
-The change halves the fixed read on both hosts. On hetzner2 the w2 numbers
+The change halves the fixed read on both hosts. On bench-2 the w2 numbers
 were taken with this same diff as scratch, and the in-place read is
-FIXED-FASTER by 1.3% to 2.4%. On hulk the in-place read is level with the
+FIXED-FASTER by 1.3% to 2.4%. On bench-6 the in-place read is level with the
 packet read. The gate needs a margin that holds on any quiet host, and this
 change does not give one. The next causes are the ones w2 named: BigInt
-allocation and its write barrier (~95 ns on hetzner2), and the 80-stat loop
+allocation and its write barrier (~95 ns on bench-2), and the 80-stat loop
 (~145 ns). w2's hand-tuned `p6-mz` scratch codec (local clamps, byte arrays in
 32-bit lanes, small-u64 `BigInt(Number)`) was 4% faster than the emitted diff
-on hetzner2. Profile it with `node --cpu-prof` on the `in` leg, pinned on hulk,
+on bench-2. Profile it with `node --cpu-prof` on the `in` leg, pinned on bench-6,
 and compare the `--trace-deopt` output of a 709 ns process with that of a
 672 ns one.
 
 ### Tests
 
-These ran on hulk with go1.26.6 and node v26.7.0:
+These ran on bench-6 with go1.26.6 and node v26.7.0:
 
 - `go test -count=1 -timeout 600s ./internal/codegen/jstable/` with
   `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1`, after `make tables-fixedform-corpus`
@@ -140,11 +140,11 @@ spread, so it is reported as a pass of a scratch codec and nothing more.
 
 ### The w2 sitting
 
-- **Host:** hetzner2, x86_64, AMD Ryzen 9 7950X3D, kernel 6.8.0-139-generic, no
-  SMT. hetzner1 (w1's host) was not usable for a clean window: its pinned
+- **Host:** bench-2, x86_64, AMD Ryzen 9 7950X3D, kernel 6.8.0-139-generic, no
+  SMT. bench-1 (w1's host) was not usable for a clean window: its pinned
   core's SMT sibling was carrying another job, which doubled every number
   intermittently (w2 saw 1428 ns for the shipped read on cpu11 while cpu3 ran a
-  dotnet job at 100%). Never the studio Mac.
+  dotnet job at 100%). Never the bench-11 Mac.
 - **Node** v26.7.0, **serialize.js** v1.4.2 (de0591c9e6fddbbc5d4512b4558f091ffa2158ad).
 - **Pin** `taskset -c 12`; core 12's busy-jiffy delta equals its total delta in
   both sittings, so the core was ours for the window.
@@ -209,14 +209,14 @@ diff, honestly, by name:
 
 `go test -count=1 -timeout 600s ./internal/codegen/jstable/` with
 `SCHEMA_SLOW=1` and the C++ byte oracle built (`make tables-fixedform-corpus`,
-serialize v1.17.0-2-g6c692bf sibling) on hetzner2: **base 64 pass / 0 fail /
+serialize v1.17.0-2-g6c692bf sibling) on bench-2: **base 64 pass / 0 fail /
 0 skip; proposed 61 pass / 3 fail / 0 skip**, the three above and nothing else
 (the fixed-versioning, refuse-is-total, float32 NaN and node conformance tests
 all pass on the proposed emission). A float32 change (read non-NaN values with
 `getFloat32`) was tried and withdrawn because `float32_nan_bits_test.go`
 forbids that call textually.
 
-The two ways forward, for Glenn:
+The two ways forward, for the owner:
 
 - **Rule that identity may project in place** (the cliff is bounded: the
   compiled path is unchanged, ~10% faster than today from items 2 to 4), then
@@ -234,11 +234,11 @@ the 80-stat loop (~145 ns), which the bitpacked packet read also pays.
 
 ---
 
-## Attempt w1 (2026-10-16, hetzner1)
+## Attempt w1 (2026-10-16, bench-1)
 
 **Verdict: FAIL**, in both sittings. The fixed form's identity read is slower
 than the same leg's packet read of the same 64 logical records, each side
-measured alone (BENCH-STANDARD §1.10, Glenn's ruling of 2026-09-11: slower is a
+measured alone (BENCH-STANDARD §1.10, the owner's ruling of 2026-09-11: slower is a
 FAIL for that leg).
 
 | sitting | order | `bench_fixed_read` ns/record (best / median) | `bench_mixed_read` ns/record (best / median) | spread fixed / packet | gate |
@@ -252,8 +252,8 @@ so both rows publish and the verdict stands.
 
 ### The sitting
 
-- **Host:** hetzner1, x86_64, AMD Ryzen 7 PRO 8700GE, kernel 6.8.0-139-generic.
-  Never the studio Mac.
+- **Host:** bench-1, x86_64, AMD Ryzen 7 PRO 8700GE, kernel 6.8.0-139-generic.
+  Never the bench-11 Mac.
 - **Node:** v26.7.0. **serialize.js:** v1.4.2
   (de0591c9e6fddbbc5d4512b4558f091ffa2158ad), the sibling checkout at
   `SERIALIZE_JS=../serialize.js`. Packet runner in `NODE_ENV=production`
@@ -290,13 +290,13 @@ so both rows publish and the verdict stands.
   runtime tier field for field, and re-encode byte for byte). Both runners
   also prove after the clock, untimed, that the timed destination still writes
   back to what was read. `--gate --plan-read` passes on both runners on
-  hetzner1.
+  bench-1.
 
 ### The cause, from a timing split
 
 A scratch split (not committed: it re-imports the generated modules and times
 the pieces of `FixedTableFixedLoad` separately, pinned to the same core, two
-runs) on hetzner1, 2026-10-16T01:57Z:
+runs) on bench-1, 2026-10-16T01:57Z:
 
 | arm | run 1 best / median | run 2 best / median |
 |---|---|---|
@@ -639,7 +639,7 @@ index f0905fffe..add792de4 100644
 +	// PROPOSED (js-fixed-read-beats-its-packet-read w2): THE IDENTITY PLAN IS
 +	// ONE COPY OF THE WHOLE BODY, SO ITS IMAGE IS THE FILE ITSELF. Projecting
 +	// straight from the file's view skips the copy (~415 ns of a ~860 ns read
-+	// on hetzner1). THIS IS A SECOND PATH and it reopens the owner's ruling
++	// on bench-1). THIS IS A SECOND PATH and it reopens the owner's ruling
 +	// that §3.4 quotes — no fast path, a form's cost must not move when a peer
 +	// ships — because a compiled plan still pays the copy. It needs that
 +	// ruling changed before it lands; fixedform_test.go's identity-door guard

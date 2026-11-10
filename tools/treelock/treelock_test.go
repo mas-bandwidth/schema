@@ -61,7 +61,7 @@ func buildTreelock(t *testing.T) string {
 		if out, err := warm.CombinedOutput(); err != nil {
 			// A warmup that fails is a treelock that cannot run its simplest
 			// path, and that fails the suite by name rather than being swallowed
-			// (Johnny Grok's read, 2026-09-13).
+			// (A reviewer's read, 2026-09-13).
 			builtBinErr = fmt.Errorf("warm treelock: %w\n%s", err, out)
 			return
 		}

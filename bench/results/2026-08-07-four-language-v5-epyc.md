@@ -10,9 +10,9 @@ and the results sat on the box until this harvest (2026-08-11). Verified at harv
 
 ## What this pass is
 
-The x86 composition leg, authorized by Glenn verbatim: *"You can do the 'ssh space' pass
+The x86 composition leg, authorized by the owner verbatim: *"You can do the 'ssh space' pass
 now, as long as you gate one profile at a time it should work OK on the one available
-core. That core does no work for the space game, it is reserved (core 0)."* Core 0 is
+core. That core does no work for the other tenant, it is reserved (core 0)."* Core 0 is
 RESERVED for bench (his word); the game server owns isolated cores 1–15. Eight legs ran
 STRICTLY SERIALLY (`bench/tools/epyc-pass-driver.sh`, each leg its own
 `bench/run.sh --only LANG` invocation), with a ps quiet-window gate + core-0 snapshot

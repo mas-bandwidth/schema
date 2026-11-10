@@ -59,7 +59,7 @@ func TestPassShapeIsPairedThenEachTableOnlyLanguageAlone(t *testing.T) {
 
 func TestPassesMayNotMixCountsCorporaOrBuilds(t *testing.T) {
 	base := fastEvidence{
-		Build:       buildInfo{Revision: "abc", Host: "studio", Arch: "arm64", CorpusIDs: map[string]string{"packet": "p", "table": "t"}},
+		Build:       buildInfo{Revision: "abc", Host: "bench-11", Arch: "arm64", CorpusIDs: map[string]string{"packet": "p", "table": "t"}},
 		Config:      fastConfig{Rounds: 3},
 		FinalCounts: map[string]int64{"packet": 2000000, "table": 200000},
 	}
@@ -71,7 +71,7 @@ func TestPassesMayNotMixCountsCorporaOrBuilds(t *testing.T) {
 	}
 	for name, spoil := range map[string]func(*fastEvidence){
 		"revision":     func(e *fastEvidence) { e.Build.Revision = "def" },
-		"host":         func(e *fastEvidence) { e.Build.Host = "space" },
+		"host":         func(e *fastEvidence) { e.Build.Host = "bench-12" },
 		"corpus":       func(e *fastEvidence) { e.Build.CorpusIDs = map[string]string{"packet": "p", "table": "other"} },
 		"table count":  func(e *fastEvidence) { e.FinalCounts = map[string]int64{"packet": 2000000, "table": 400000} },
 		"round count":  func(e *fastEvidence) { e.Config.Rounds = 1 },
@@ -105,7 +105,7 @@ func TestLoadOneReadsBothPlatformSpellings(t *testing.T) {
 
 func sampleTable() nineTable {
 	return nineTable{
-		Host: "studio", OS: "darwin", Arch: "arm64", CPU: "Apple M2 Ultra",
+		Host: "bench-11", OS: "darwin", Arch: "arm64", CPU: "Apple M2 Ultra",
 		Revision: "abc123", Rounds: 3, Passes: 2,
 		Counts:    map[string]int64{"packet": 2000000, "table": 200000},
 		CorpusIDs: map[string]string{"packet": "p0", "table": "t0"},
@@ -133,7 +133,7 @@ func TestTableRendersBothRatiosAndRefusesToInventTheMissingOne(t *testing.T) {
 		"Not measured on this tree, and not estimated:",
 		"- **C#** — runner present, but its rows do not belong to this sitting:",
 		"- **Java** — no runner on this tree (bench/tables/java)",
-		"`studio` (darwin/arm64, Apple M2 Ultra) · `abc123` · 3 rounds × 2 pass(es) · load1 1.00–2.00",
+		"`bench-11` (darwin/arm64, Apple M2 Ultra) · `abc123` · 3 rounds × 2 pass(es) · load1 1.00–2.00",
 		"packet `p0`, table `t0`",
 		"2,000,000 packet, 200,000 table",
 		"Not certified",

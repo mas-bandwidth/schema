@@ -1,7 +1,7 @@
 {
   "language": "js",
   "tested_revision": "846afa7881311fcc8fe32eeda4e354e1527cc572",
-  "host": "studio",
+  "host": "bench-11",
   "command": "NODE=node python3 test/conformance/nightly-readiness js",
   "finished_utc": "2026-11-03T02:46:15Z",
   "result": "NIGHTLY_READINESS_PASS language=js phases=23",

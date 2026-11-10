@@ -21,7 +21,7 @@ records, framed by ids, kinds and lengths.
 ## Scope and performance standard
 
 The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**, **Dart** (`bench/tables/dart/leg`) and Elixir (`bench/tables/elixir/leg`).
-Glenn's September 8 direction is the **fastest correct implementation for each
+The owner's September 8 direction is the **fastest correct implementation for each
 language**. The shared workload fixes the work being measured; each language may
 use its best correct representation, compiler and runtime techniques. Optimize
 from profiles and confirm gains with paired measurements and correctness checks.
@@ -169,7 +169,7 @@ pass: stdout and the result file are published only after every round succeeds.
 
 Record the machine, toolchains, optimization settings, revision, corpus and
 noise for every pass. Run one benchmark at a time and coordinate a quiet window
-on a shared machine. A Studio result is a local measurement; it is not a
+on a shared machine. A bench-11 result is a local measurement; it is not a
 production-server certification. A server deployment or server benchmark keeps
 its own access and operational approval requirements.
 

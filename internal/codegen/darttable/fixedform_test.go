@@ -360,7 +360,7 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 	}
 }
 
-// TestFixedIdentityCoverIsThePlanAndHolesAreEmpty holds Glenn's ruling: the
+// TestFixedIdentityCoverIsThePlanAndHolesAreEmpty holds the owner's ruling: the
 // cover IS the identity plan's destinations, so subtracting what that plan
 // lands leaves nothing. Empty fill is the skip — identity prefills nothing.
 func TestFixedIdentityCoverIsThePlanAndHolesAreEmpty(t *testing.T) {
@@ -399,7 +399,7 @@ func TestFixedIdentityCoverIsThePlanAndHolesAreEmpty(t *testing.T) {
 	}
 }
 
-// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: the plan
+// TestFixedFormLoadPrefillsThePlanHoles holds the owner's ruling: the plan
 // compiler prefills exactly the ranges the plan does not land; identity
 // prefills nothing. Hash chooses the plan and nothing else. There is no
 // identity flag in the record loop — an empty list is what skips the work.

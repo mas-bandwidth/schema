@@ -1,5 +1,5 @@
 # make/schema-lua-version-differential.mk — THE LUA VERSION DIFFERENTIAL
-# (Glenn, 2026-10-18; ideas roadmap group schema-per-language-lenses).
+# (The owner, 2026-10-18; ideas roadmap group schema-per-language-lenses).
 #
 # The Lua port emits ONE algorithm for four interpreters, and integer and
 # float semantics differ between them. This gate runs the shared tables
@@ -22,7 +22,7 @@
 # dd3b24369ddfaa83c78cd6fdd91d157c8968ec8d (the LuaJIT official GitHub
 # repository, which publishes no release tarballs). `make dist-lua-differential`
 # fetches and builds them into the gitignored dist/. The fleet install play
-# (rowan-tools/fleet) is not reachable from the wall, so, as the card allows,
+# (the fleet tooling) is not reachable from the wall, so, as the card allows,
 # the target PROBES for each interpreter: an archive that cannot be fetched or
 # a binary that will not build prints `tool missing: <name>` and exits non-zero;
 # it never fakes a pass. The sha256 pin is checked before anything is unpacked.

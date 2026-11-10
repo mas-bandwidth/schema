@@ -1260,7 +1260,7 @@ where the allocation is your own choice:
 
 ```js
 const name = new TextDecoder().decode(loaded.name.subarray(0, loaded.nameLength));
-loaded.nameLength = new TextEncoder().encodeInto("Rowan", loaded.name).written;
+loaded.nameLength = new TextEncoder().encodeInto("A maintainer", loaded.name).written;
 ```
 
 The bytes are the same bytes: a shared golden corpus pins C++'s encoding of a

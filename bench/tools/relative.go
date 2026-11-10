@@ -1,6 +1,6 @@
 // Command relative turns benchmark CSVs into the tables docs/PERFORMANCE.md carries:
 // absolute per-language rates, THE RELATIVE TABLE (everything as a percentage
-// of C — the reference, ruled by Glenn 2026-08-17: "make C the reference. It
+// of C — the reference, ruled by the owner 2026-08-17: "make C the reference. It
 // is the 100%. C++ is measured against C."), and A/B deltas between two runs.
 //
 //	go run ./bench/tools rel      results.csv [more.csv...]
@@ -66,7 +66,7 @@ var paths = []string{"write", "read", "round_trip"}
 var order = append(append([]string{}, benchCorpus...), bitpacker)
 
 // langs is the presentation order. c is the reference the relative table is
-// expressed against (Glenn, 2026-08-17: "make C the reference. It is the
+// expressed against (the owner, 2026-08-17: "make C the reference. It is the
 // 100%. C++ is measured against C." — flipped from cpp, which had been the
 // baseline since the table existed).
 // js and the codegen-only legs (java, dart, elixir) ride in this list so
@@ -574,7 +574,7 @@ func median(xs []float64) float64 {
 
 // rel is the median across the family-gen corpus of c_rate/lang_rate as a
 // percentage, computed on the §2.2 headline (max_msgs_per_sec). C is the
-// reference (Glenn, 2026-08-17). The corpus is ONE shape since #199, so the
+// reference (the owner, 2026-08-17). The corpus is ONE shape since #199, so the
 // median is that shape's ratio; the loop stays a median because the shape
 // count is a corpus fact, not a table fact.
 //
@@ -629,7 +629,7 @@ func relativeTable(ds *dataset) string {
 	out := []string{
 		"<!-- HIGHER IS SLOWER: each cell is C's best rate divided by this",
 		"     language's best rate, so 200% means it takes twice as long.",
-		"     C is the reference (Glenn, 2026-08-17). -->",
+		"     C is the reference (the owner, 2026-08-17). -->",
 		"| backend | write | round_trip |",
 		"|---|---:|---:|",
 		"| C | 100% | 100% |",

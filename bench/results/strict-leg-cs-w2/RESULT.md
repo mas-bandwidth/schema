@@ -24,8 +24,8 @@ pinned `taskset -c 7`).
 
 ## Conditions
 
-- Host: `b2` (fleet member amd-2), linux/amd64, AMD Ryzen 7 255 w/ Radeon
-  780M Graphics, pinned to core 7. Not the studio.
+- Host: `b2` (fleet member bench-4), linux/amd64, AMD Ryzen 7 255 w/ Radeon
+  780M Graphics, pinned to core 7. Not the bench-11.
 - Harness: the repo's C# tables bench, `bench/tables/cs/leg build` then
   `leg run --gate` then `leg run --csv` (bench/tables/README.md protocol:
   golden gate before the clock, 1 warmup + 7 measured runs).

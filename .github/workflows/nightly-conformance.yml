@@ -4,7 +4,7 @@ name: Nightly conformance
 # Validate one canonical corpus with C++, then have every registered language
 # read that corpus and require each writer's output to be byte-identical.
 # Equality is transitive: rereading identical output once per writer adds no
-# evidence. Work is O(n) in languages, never an all-pairs matrix (Glenn,
+# evidence. Work is O(n) in languages, never an all-pairs matrix (the owner,
 # 2026-11-01).
 #
 # `registry` discovers ports from test/conformance/<lang>/ci.json. `cpp-writes`

@@ -5,7 +5,7 @@
 §2.6 control legs, §2.6.1 A/A twin gates + per-row historical bands, §2.4
 interleaving, §2.2 best+median, golden gate every leg-round)
 
-**Host:** `spacegame` — AMD EPYC 9124 16-core Zen 4, Ubuntu 24.04, kernel
+**Host:** `bench-12` — AMD EPYC 9124 16-core Zen 4, Ubuntu 24.04, kernel
 6.8.0-90. Cores 1–15 isolated (`isolcpus=1-15 nohz_full=1-15 irqaffinity=0
 nosmt`); every timed run `taskset -c 15` on the tickless isolated core; builds
 and driver on housekeeping core 0. Game server **stopped** for each window
@@ -203,7 +203,7 @@ evidence above) `foreign_procs 1`.
 3. **Quick-era CSVs need read-time conversion to band at all:** their
    annotated `# build:` lines are silently dropped by the loader (every row —
    no error), and their 18th `roundN` column is refused. Derived band-input
-   copies live on the bench (`~/rowan-bench-quick/results/bands-prior/`);
+   copies live on the bench (`~/the bench directory/results/bands-prior/`);
    originals untouched. The silent half of that deserves a loader fixture.
 4. **The round-5 collapse is measured, not attributed.** Named for the next
    session: same binary, same inode, one round, 8 rows, 1.4–4.3x — the
@@ -247,6 +247,6 @@ evidence above) `foreign_procs 1`.
 - `-window{1,2}-pass.log` — driver logs: pscheck quiet-window checks, leg
   timings, load boundaries
 
-*Measured and written by Rowan (worker session 7974800c), night of
+*Measured and written by a maintainer (worker session 7974800c), night of
 2026-08-17→18 NZ. This table is the family's gcc/x86-64 reference until the
 next certified era.*

@@ -543,7 +543,7 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		}
 	}
 	homes := []string{
-		"/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home",
+		os.ExpandEnv("$HOME/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"),
 	}
 	if wd, err := os.Getwd(); err == nil {
 		homes = append(homes, filepath.Join(wd, "..", "..", "..", "dist", "jdk-21.0.12.1", "Contents", "Home"))

@@ -17,7 +17,7 @@
 # (strict), and fromJson text parse.
 #
 # THE BUDGET IS A CASE COUNT, NEVER A CLOCK. DART_NIGHTLY_FUZZ_CASES defaults to
-# 24 million cases, about five minutes on the studio (~80k cases a second) and
+# 24 million cases, about five minutes on the bench-11 (~80k cases a second) and
 # inside the card's 10-minute budget per port on a CI runner; since every
 # case is a pure function of the seed a count makes the whole run replayable;
 # `make shape-gate` refuses a timing primitive outside the sanctioned bench. The

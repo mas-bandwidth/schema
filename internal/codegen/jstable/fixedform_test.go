@@ -257,7 +257,7 @@ func TestFixedBytesRowIsTheCountedArrayRow(t *testing.T) {
 	}
 }
 
-// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: prefill the bytes
+// TestFixedFormLoadPrefillsThePlanHoles holds the owner's ruling: prefill the bytes
 // the plan does not write. The compiler computes the unwritten ranges; the
 // load copies defaults into exactly those; identity's list is empty because
 // its plan is one Copy of the whole body. There is no identity flag in the

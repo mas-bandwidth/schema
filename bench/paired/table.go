@@ -599,7 +599,7 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 // THE READ ARM: `-mode plan-read` (BENCH-STANDARD.md §1.10)
 // ---------------------------------------------------------------------------
 //
-// The gate is the packet wire, not a ratio (Glenn, 2026-09-11): for EACH lane,
+// The gate is the packet wire, not a ratio (the owner, 2026-09-11): for EACH lane,
 // identity and plan, judged separately, the fixed table's read of a record must
 // be FASTER than the SAME leg's packet-wire read of the SAME logical record.
 // Both sides are MEASURED reads out of ONE invocation (`--read-arm`), never a

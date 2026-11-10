@@ -1,10 +1,10 @@
-# moo fixed form — hot-path before/after (fleet, hetzner2)
+# moo fixed form — hot-path before/after (fleet, bench-2)
 
 Date: 2026-11-09 (UTC). Measured sitting 02:58:22–02:58:43Z. Repeat
 02:59:35–02:59:55Z. Code under measure is b79de070 (this commit adds only
 this receipt).
 
-Host: hetzner2, x86_64, AMD Ryzen 9 7950X3D, 16 cores, 32 logical CPUs
+Host: bench-2, x86_64, AMD Ryzen 9 7950X3D, 16 cores, 32 logical CPUs
 (nproc 32), 124 GiB RAM, Ubuntu 26.04.1 LTS, kernel 7.0.0-43-generic.
 Toolchain: go1.26.10 linux/amd64 (`/home/nova/sdk/go1.26.10/bin/go`),
 `GOFLAGS=-mod=readonly`. Interpreter: moo 1.3.0 (Luau 0.741), the pinned
@@ -80,16 +80,16 @@ Ratio after/before: load 5397/5407 = 0.998, save 3531/3540 = 0.997.
 Same direction as the measured sitting: after is marginally faster, not
 slower. No measured regression on either sitting.
 
-## Earlier sitting already on this branch (vision, not this measurement)
+## Earlier sitting already on this branch (bench-7, not this measurement)
 
-b79de070 recorded a vision sitting (64 logical CPUs, 1-minute load 11.60 at
+b79de070 recorded a bench-7 sitting (64 logical CPUs, 1-minute load 11.60 at
 start) of load 12,305 -> 12,251 ns/record (-0.44%, ratio 0.996) and save
 8,299 -> 8,153 (-1.76%, ratio 0.982), plus a repeat at load 11.66 and a
 contended first pass at a finish load of 25.65 that printed load +5.06%.
 Those numbers stay the record of that busier host. They agree in direction
-with the quiet hetzner2 sittings above. Absolute ns/record is lower here
+with the quiet bench-2 sittings above. Absolute ns/record is lower here
 because this CPU is faster; the ratio is the comparison. This receipt does
-not re-run vision.
+not re-run bench-7.
 
 ## DONE-WHEN
 
@@ -97,5 +97,5 @@ not re-run vision.
       -tags schema_leg_moo ./bench/tables/moo/ \
       -run '^TestMooFixedHotPathBench$'
 
-PASS, exit 0, on hetzner2, on the code this receipt measures (20.253s and
+PASS, exit 0, on bench-2, on the code this receipt measures (20.253s and
 19.830s). This commit changes only this file.
