@@ -1804,3 +1804,56 @@ write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEAS
 		  cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log
 	@echo "negative control: removing the Rust storage guard turns the release gate RED"
+
+# THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROLS (docs/SPEC.md §5.1): one
+# check is removed from a copy of the generated crates, the conformance driver
+# is rebuilt against the copy in the dev profile (its own target directory, so
+# the normal driver is not touched), and the writer's own surface must go red
+# while the surface beside it stays green. No tracked file is written to.
+#
+# rust_wref_control: $(1) the control's directory, $(2) the generated file
+# under the copy, $(3) the text removed, $(4) the text left in its place, $(5)
+# the surface that must go red and $(6) the surface that must stay green.
+define rust_wref_control
+	@rm -rf $(1) && mkdir -p $(1)/driver
+	@cp -R build/tables-generated-rust $(1)/generated
+	@for toml in $(1)/generated/*/Cargo.toml; do \
+		sed -i.orig 's|path = "\.\./\.\./\.\./|path = "../../../../|' $$toml && rm -f $$toml.orig || exit 1; \
+	done
+	@file=$(1)/generated/$(2); \
+	n=$$(grep -cF '$(3)' $$file); \
+	[ "$$n" -gt 0 ] || { echo "NEGATIVE CONTROL: the $(5) check matches no generated line in $$file"; exit 1; }; \
+	sed -i 's@$(3)@$(4)@g' $$file; \
+	grep -qF '$(4)' $$file || { echo "NEGATIVE CONTROL: the $(5) check did not change"; exit 1; }
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(1)/driver/driver && chmod +x $(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(1)/drivers.txt \
+			--work $(1)/work > $(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the Rust $(5) writer without its check left the matrix green"; \
+		cat $(1)/log; exit 1; \
+	fi
+	@grep -Eq '^ *$(5) +FAIL' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(5) is not marked FAIL"; cat $(1)/log; exit 1; }
+	@grep -Eq '^ *$(6) +pass' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(6) did not stay green"; cat $(1)/log; exit 1; }
+	@grep -m1 'rust / $(5)' $(1)/log
+	@echo "Rust $(5) negative control: the writer without its check is detected by rust / $(5), and $(6) stays green"
+endef
+
+.PHONY: conformance-negative-control-rust-write-refusal
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_control,build/rust-conformance-wref-control,tabledemo/src/tables_table.rs,if !v.damage.is_finite() { table_float_refuse(ids, "WeaponConfig.damage"); },/* SABOTAGED: a non-finite float writes */,write-refusal,wire)
+
+.PHONY: conformance-negative-control-rust-write-refusal-fixed
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,value.version_note_length >= 0 && value.version_note_length <= 16,true,write-refusal-fixed,wire)
+
+.PHONY: conformance-negative-control-rust-write-refusal-message
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
