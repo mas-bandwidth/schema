@@ -1675,6 +1675,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 			return
 		}
 		g.readR(32, ind)
+		g.readRefuse("(v & 0x7f800000) === 0x7f800000", " // a bare float must be finite", ind)
 		g.pf("%sif ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {\n", ind)
 		g.pf("%s  SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);\n", ind)
 		g.pf("%s  %s = SC.getFloat64(0, true);\n", ind, name)
@@ -1687,6 +1688,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		if g.rKnown && g.rBr&7 == 0 {
 			// byte-aligned at a static offset: one little-endian 8-byte load
 			g.rawf("%s%s = view.getFloat64(%d, true);\n", ind, name, g.rBr>>3)
+			g.readRefuse(fmt.Sprintf("(view.getUint32(%d, true) & 0x7ff00000) === 0x7ff00000", (g.rBr>>3)+4), " // a bare float must be finite", ind)
 			g.rBr += 64
 			return
 		}
@@ -1694,6 +1696,7 @@ func (g *fgen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		g.pf("%sSC.setUint32(0, v, true);\n", ind)
 		g.readR(32, ind)
 		g.pf("%sSC.setUint32(4, v, true);\n", ind)
+		g.readRefuse("(v & 0x7ff00000) === 0x7ff00000", " // a bare float must be finite", ind)
 		g.pf("%s%s = SC.getFloat64(0, true);\n", ind, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
