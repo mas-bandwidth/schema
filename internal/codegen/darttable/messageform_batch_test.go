@@ -663,7 +663,8 @@ fixed table Other {
 }
 
 const dartSkipDepthBody = `
-  // Slot 8 is Other's last field, not a field of this root (a, b, c are 1..3).
+  // Slot 8 is the probe vocabulary's unknown entry, not a field of this root
+  // (a, b, c are 1..3).
   // A reference width below 4 cannot spell it.
   check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
   final width = h.tableMessageRefBits;
