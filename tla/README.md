@@ -641,3 +641,74 @@ Repeat for each of the three cfgs. The runs are recorded in `tla/RUNS.tsv`.
 A member that leaves the group on purpose (setsid, Setpgid), and the window in
 which a reaped leader's pid could be reused as a new group's id before the
 group kill lands.
+
+# tla/WireAlign
+
+A LAYOUT model of the packet wire's static byte-alignment analysis
+(`ir/wire.go`: `wirePos`, `AlignedFixedByteArrays`, `walkAligned`,
+`afterField`; docs/SPEC.md §4.3, §4.4, §4.7, §4.8, §4.12).
+The analysis walks a struct's items carrying the bit position modulo 8, or
+unknown, and marks a fixed `[N]uint8` field whose first element provably
+begins on a byte boundary; a backend bulk-copies a marked field (align, then
+memcpy), which is the same wire only when that align adds no bits. The model
+carries the analysis's own arithmetic, `(pos + bits) % 8` with unknown
+absorbing, beside a writer that walks the same items at an ABSOLUTE bit offset
+entered anywhere in `0..7` and takes every legal width. A union field gives
+the position up: its wire is the tag then the selected arm, so the analysis
+keeps no known exit across it.
+
+## The finite instance
+
+Up to `MaxLen = 2` items, then a closing `[1]uint8` field. An item is a
+fixed-width field of `Widths = {1, 7, 8}` bits; `align`; a `string(1)` (a
+one-bit length prefix, the align, zero or one byte); a `wstring(1)` (a one-bit
+prefix, zero or one 32-bit group); a counted array `[..3]T` of `Elems = {7, 8}`
+bit elements (a two-bit count, zero to three elements); a `[1]uint8` field the
+analysis may mark; an `if` whose sides are each empty or one of a fixed field,
+`align` or a `[1]uint8` field; or a union field of one or two arms, each
+payload-free, one fixed field or one `string(1)`, whose tag is
+`BitsRequired(0, arms)` bits. The writer chooses every length, count, branch
+side and arm, None included.
+
+## Actions
+
+| action | the rule |
+|---|---|
+| `Write` | the head item advances the absolute offset by the bits the writer puts on the wire: a branch pushes the side taken, a union adds its tag and pushes the arm selected, or nothing for None |
+| `Finished` | stutter once every item is written |
+
+`Init` runs the analysis once over the program from an unknown entry, as
+`AlignedFixedByteArrays` does, and stamps each `[1]uint8` field with its mark.
+
+## Properties
+
+- **TypeOK** — every variable in its domain.
+- **AlignedWhereMarked** — every field the analysis marks begins on a byte
+  boundary on every wire.
+- **ExitSound** — a known exit is the position every wire leaves the struct
+  at, which is what a nested struct's walk relies on.
+
+## Reversed witness
+
+| cfg | switch | invariant violated | counterexample |
+|---|---|---|---|
+| `MCWireAlignVariableAsFixed.cfg` | `VariableAsFixed` | `AlignedWhereMarked` | `align`, a union with one 7-bit arm, then `[1]uint8`, entered at 0: the union advanced as its widest arm (tag 1 + 7 = 8 bits) leaves the position at 0 and marks the array; the writer selects None, writes the tag alone, and the array begins at bit 1 |
+
+## Running
+
+```
+nice -n 19 timeout 600s java -Xmx4g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCWireAlign.cfg -metadir "$JOB/tlc-MCWireAlign" WireAlign
+```
+
+Repeat for both cfgs. The positive cfg must exit 0 with exhaustive completion;
+the reversed cfg must report `AlignedWhereMarked` violated. The runs are
+recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+Nesting deeper than one level inside a branch side or a union arm, fixed
+arrays of structs and of unions (the code gives both up from an unknown entry),
+pointers (a fixed reference width) and the memo of nested exits. The code is
+not trace-bound to the model. A model checked here does not prove the
+analysis; the concrete proof is `ir/align_test.go`.

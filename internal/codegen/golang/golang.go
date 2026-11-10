@@ -66,7 +66,7 @@ type gen struct {
 	needsMath      bool // the file emits math.Floor -> import math
 	needsErrors    bool // the file declares ErrValidation -> import errors
 	needsStrconv   bool // the file emits FlagNames* -> import strconv
-	needsUTF8      bool // the file validates string bytes on read
+	needsUTF8      bool // the file validates string bytes
 
 	// bulkBytes marks the current struct's statically byte-aligned [N]uint8
 	// arrays (ir.AlignedFixedByteArrays): these serialize through the

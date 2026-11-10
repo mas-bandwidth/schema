@@ -1,0 +1,72 @@
+name: TLA nightly
+
+# Run TLC over every config under tla/, after checking that each recorded run
+# still hashes the model and config it measured. The hash check is
+# internal/ci/strictonly_tla_test.go; tla/run-tlc.sh executes the same cases.
+#
+# THE SLOT, 04:53 UTC: after the 03:00-04:17 per-language cluster and clear of
+# nightly-conformance.yml (05:41), ci-full.yml (07:10) and certify.yml (09:17).
+# A schedule fires from the default branch (main) only. A pull request that
+# changes this file, tla/ or the hash test runs it too, so the first landing is
+# proved like every later one.
+
+on:
+  schedule:
+    - cron: '53 4 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/tla-nightly.yml
+      - tla/**
+      - internal/ci/strictonly_tla_test.go
+
+concurrency:
+  group: tla-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tlc:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    # measured per case by tla/README.md: 120-300s for the largest, with the
+    # whole file comfortably inside a bench hour
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    steps:
+      - name: never the host named space
+        # before the checkout, so tools/pgroup is not there yet
+        shell: bash
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: runner.environment == 'github-hosted'
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: the recorded model hashes are current
+        run: go test ./internal/ci/... -count=1 -run TLA
+
+      - name: locate the TLC jar
+        run: |
+          set -euo pipefail
+          if [ -f /opt/tla/tla2tools.jar ]; then
+            echo "TLC_JAR=/opt/tla/tla2tools.jar" >> "$GITHUB_ENV"
+          else
+            jar="$RUNNER_TEMP/tla2tools.jar"
+            curl -fsSL -o "$jar" https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar
+            echo "TLC_JAR=$jar" >> "$GITHUB_ENV"
+          fi
+
+      - name: run TLC over tla/
+        run: bash tla/run-tlc.sh

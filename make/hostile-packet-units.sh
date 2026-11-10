@@ -22,6 +22,11 @@ key() {
 	printf '%s' "$1" | tr '/.' '__'
 }
 
+n=$(awk -F'\t' '!/^#/ && $2 == "packet" { print $3 }' "$manifest" | sort -u | wc -l)
+if [ "$n" -eq 0 ]; then
+	echo "hostile-packet-units: no packet rows in $manifest" >&2
+	exit 1
+fi
 awk -F'\t' '!/^#/ && $2 == "packet" { print $3 }' "$manifest" | sort -u | while read -r schema; do
 	unit=$(key "$schema")
 	if ./bin/schema generate --lang "$lang" --out "$out/$unit" "$schema" > /dev/null 2> "$out/$unit.err"; then
