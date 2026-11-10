@@ -119,7 +119,11 @@ func (r *regionReader) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	}
 	value := pieces[0]
 	if f.Type.Optional {
-		fv.Present = r.buf[pieces[len(pieces)-1].Offset] != 0
+		p := r.buf[pieces[len(pieces)-1].Offset]
+		if p > 1 {
+			return fmt.Errorf("field %s: the optional's present byte is %d, not 0 or 1", f.Name, p)
+		}
+		fv.Present = p != 0
 	}
 	switch {
 	case f.IsMap():
@@ -319,7 +323,11 @@ func (r *regionReader) element(at int64, f *ir.Field, cell *tabletext.Cell) erro
 	}
 	switch t.Kind {
 	case ir.TBool:
-		cell.B = r.buf[at] != 0
+		b := r.buf[at]
+		if b > 1 {
+			return fmt.Errorf("field %s: the bool byte is %d, not 0 or 1", f.Name, b)
+		}
+		cell.B = b != 0
 		return nil
 	case ir.TFloat32:
 		// every read refuses a NaN or an infinity on its raw bits
