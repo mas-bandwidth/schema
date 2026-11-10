@@ -236,6 +236,7 @@ func TestUnknownRootIsRefused(t *testing.T) {
 // the corpus asserts the standard's verdict here, and the harness gives the
 // uncarried verdict to the ports that have not taken it.
 func TestHostileValueCorpus(t *testing.T) {
+	t.Parallel()
 	const manifestPath = "../../testdata/conformance/tables/MANIFEST.txt"
 	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -286,12 +287,14 @@ func TestHostileValueCorpus(t *testing.T) {
 			// out of range and a repeated key each refuse the whole pack, and
 			// only unknown and widened ride beside an accepted value
 			var unknown, mismatch, widened, clamped, duplicate int
-			if verdict != "refused" {
+			refused := verdict == "refused"
+			hasReport := verdict != "refused" && verdict != "read"
+			if hasReport {
 				if _, err := fmt.Sscanf(verdict, "%d,%d,%d,%d,%d,false,read", &unknown, &mismatch, &widened, &clamped, &duplicate); err != nil {
 					t.Fatalf("verdict %q: %v", verdict, err)
 				}
 			}
-			if verdict == "refused" || mismatch+clamped+duplicate > 0 {
+			if refused || mismatch+clamped+duplicate > 0 {
 				if err == nil {
 					t.Fatalf("the tree packed (%+v); the row's conditions refuse it (%s)", report, verdict)
 				}
@@ -303,7 +306,7 @@ func TestHostileValueCorpus(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the tree was refused; the manifest says it packs: %v", err)
 			}
-			if report.Unknown != unknown || report.Widened != widened || report.Refused {
+			if report.Refused || hasReport && (report.Unknown != unknown || report.Widened != widened) {
 				t.Fatalf("report %+v, the manifest says %s", report, verdict)
 			}
 		})
