@@ -2101,9 +2101,9 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				}
 			}
 		} else {
-			for _, un := range unions {
-				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
-			}
+			// no table struct precedes these unions, but one union's arm may
+			// still hold another of them by value
+			g.emitTableShapes(nil, unions)
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}
