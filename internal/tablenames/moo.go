@@ -58,7 +58,7 @@ var mooModuleKeys = map[string][]string{
 	"table_values.moo": {"BuildVersionId", "BytesBlobId", "HUGE", "Int128", "Int64", "MapKeyId",
 		"MessageVocabularyId", "NodeTableId", "StringBlobId", "TWO32", "Uint128", "Uint64", "bitsCap", "cmp64", "crc32c", "f32to64", "finite32", "finite64", "idHex", "kindClass", "leb", "lebLen",
 		"lebString", "rawCmp", "readRaw", "sameStorage", "signedKind", "toRaw", "toStorage", "utf8", "utf8String",
-		"wide", "widen", "widens", "width", "writeRaw"},
+		"widen", "widens", "width", "writeRaw"},
 	"textcarrier.moo": {"decode", "encode", "loadText", "saveText"},
 }
 
