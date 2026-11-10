@@ -1812,7 +1812,7 @@ write-refusal-storage-release-rust: bin/schema $(STORAGE_RELEASE_SCHEMA) test/co
 	@rm -rf $(STORAGE_RELEASE_RUST) && mkdir -p $(STORAGE_RELEASE_RUST)/src
 	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)/src $(STORAGE_RELEASE_SCHEMA)
 	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)/src/main.rs
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > $(STORAGE_RELEASE_RUST)/Cargo.toml
+	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)/Cargo.toml
 
 write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
@@ -1823,7 +1823,7 @@ write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEAS
 		$(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs
 	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs || \
 		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../$(SERIALIZE_RS)" }\n' > $(STORAGE_RELEASE_RUST)-negative/Cargo.toml
+	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)-negative/Cargo.toml
 	@if PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)-negative/Cargo.toml > $(STORAGE_RELEASE_RUST)-negative/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
 		cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; \
