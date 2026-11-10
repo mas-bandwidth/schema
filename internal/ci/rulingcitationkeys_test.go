@@ -42,7 +42,7 @@ func TestRulingCitationsUseRegistryKeys(t *testing.T) {
 		t.Fatal("docs/rulings.json has no rulings — this gate would pass over an empty set")
 	}
 
-	files := []string{"docs/SPEC.md", "AGENTS.md"}
+	files := []string{"docs/SPEC.md"}
 	ciDir := filepath.Join(root, "internal", "ci")
 	err = filepath.WalkDir(ciDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

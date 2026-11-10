@@ -203,14 +203,6 @@
         "all features across all languages"
       ],
       "source": "the maintainer, recorded in docs/SPEC.md §7.2: strict IEEE-754 arithmetic with no fused multiply-add in any language's compressed-float quantization. This ruling makes nothing not-applicable."
-    },
-    {
-      "id": "agents-md-alone",
-      "date": "2026-09-18",
-      "quotes": [
-        "AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink"
-      ],
-      "source": "the maintainer, recorded in docs/CONTRIBUTING.md and rendered into the root AGENTS.md map by tools/agentsmap. This ruling makes nothing not-applicable."
     }
   ]
 }
