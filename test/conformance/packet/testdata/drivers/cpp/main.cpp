@@ -36,7 +36,7 @@ static bool WriteSeedT( const Fields & f, Packet & packet )
     }
     if ( at != f.size() )
         return false;
-    alignas( 8 ) uint8_t buffer[seed::T_MAX_BYTES + 8] = {};
+    alignas( 8 ) uint8_t buffer[seed::TMaxBytes + 8] = {};
     serialize::WriteStream stream( buffer, sizeof( buffer ) );
     if ( !seed::WriteT( stream, v ) )
         return false;
