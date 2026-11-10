@@ -18,6 +18,7 @@ func TestCompositionCyclePosition(t *testing.T) {
 			"second.schema": "package t\ntype B { a A }\n",
 		}, "first.schema:3:3: type composition cycle: A -> B -> A"},
 		{"table", map[string]string{"table.schema": "package t\n\n  table A { again A }\n"}, "table.schema:3:3: type composition cycle: A -> A"},
+		{"prefixed", map[string]string{"cyc.schema": "package t\n\n  type A { next B }\n  type B { next C }\n  type C { back B }\n"}, "cyc.schema:4:3: type composition cycle: A -> B -> C -> B"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := runUnit(t, tc.sources)
