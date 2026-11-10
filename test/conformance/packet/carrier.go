@@ -167,13 +167,13 @@ func structShape(s *ir.Struct, open map[string]bool) (*Shape, error) {
 
 func fieldShape(owner *ir.Struct, f *ir.Field, open map[string]bool) (*Shape, error) {
 	where := owner.Name + "." + f.Name
-	if f.Optional || f.Pointer {
+	if f.Type.Optional || f.Type.Pointer {
 		return nil, fmt.Errorf("packet carrier: %s is optional or a pointer, which the carrier does not generate yet", where)
 	}
 	var elem *Shape
 	switch f.Type.Kind {
 	case ir.TInt:
-		if f.Type.Width > 64 || f.HasFloatRange || f.Timestamp {
+		if f.Type.Width > 64 || f.HasFloatRange || f.Type.Timestamp {
 			return nil, fmt.Errorf("packet carrier: %s is a %d-bit or special integer, which the carrier does not generate yet", where, f.Type.Width)
 		}
 		lo, hi := intBounds(f.Type.Signed, f.Type.Width)
