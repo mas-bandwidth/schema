@@ -2040,8 +2040,11 @@ test-c: tables-c-discard
 # 1-based directory indices during construction and resolving offsets once
 # acyclicity holds. The first control drops the cycle verdict in a copy of
 # graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
-# must go red on it. The linear control stacks a node at every slot naming it
-# rather than the last, and TestDiamondChainLoadsLinearC must go red on it.
+# must go red on it: the region and builder reads refuse the probe's wire by
+# the reachability rule too, so the control's red line is the retaining read,
+# the one leg the cycle verdict alone gates. The linear control stacks a node
+# at every slot naming it rather than the last, and
+# TestDiamondChainLoadsLinearC must go red on it.
 C_CYCLE_NC := build/c-cycle-nc
 C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
 .PHONY: tables-c-cycle tables-c-cycle-negative-control tables-c-cycle-linear-negative-control
@@ -2065,7 +2068,7 @@ tables-c-cycle-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -q "cycle: the retaining load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
 	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
