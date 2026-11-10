@@ -1,0 +1,16 @@
+// The unit the release storage gates generate: a counted array and a bounded
+// wstring, the two companions whose length can index past the storage they
+// describe (docs/SPEC.md §5.1).
+package storagerelease
+
+type Item
+{
+    value int32 = 0
+}
+
+fixed table Root
+{
+    items [..8]Item
+    name  string(16)
+    wide  wstring(8)
+}

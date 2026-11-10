@@ -415,3 +415,38 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 	@grep -q 'clang-format drift in .*/format/sabotaged/Types\.h' $(CPP_CLEAN_CONTROL)/format/red.out || \
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
+# storage it indexes is refused in EVERY build, so this gate compiles the
+# generated writer -DNDEBUG and requires the message writer to refuse before
+# the first byte. The control strips the generated guard and requires the same
+# release gate to go red.
+STORAGE_RELEASE_CPP := build/storage-release-cpp
+.PHONY: write-refusal-storage-release-cpp write-refusal-storage-release-cpp-negative-control
+write-refusal-storage-release-cpp: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_release.cpp
+	@rm -rf $(STORAGE_RELEASE_CPP) && mkdir -p $(STORAGE_RELEASE_CPP)/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_RELEASE_CPP)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) -I$(STORAGE_RELEASE_CPP)/generated \
+		test/conformance/cpp/storage_release.cpp $(STORAGE_RELEASE_CPP)/generated/StorageTable.cpp \
+		-o $(STORAGE_RELEASE_CPP)/gate
+	./$(STORAGE_RELEASE_CPP)/gate
+
+write-refusal-storage-release-cpp-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_release.cpp
+	@rm -rf $(STORAGE_RELEASE_CPP)-negative && mkdir -p $(STORAGE_RELEASE_CPP)-negative/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_RELEASE_CPP)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak 's/if ( value.wide_length < 0 || value.wide_length > 8 ) { return false; } \/\/ storage invariant/if ( false ) { return false; } \/\/ SABOTAGED/g' \
+		$(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.h
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS_RELEASE) -I$(STORAGE_RELEASE_CPP)-negative/generated \
+		test/conformance/cpp/storage_release.cpp $(STORAGE_RELEASE_CPP)-negative/generated/StorageTable.cpp \
+		-o $(STORAGE_RELEASE_CPP)-negative/gate
+	@if ./$(STORAGE_RELEASE_CPP)-negative/gate > $(STORAGE_RELEASE_CPP)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
+		cat $(STORAGE_RELEASE_CPP)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_CPP)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
+		  cat $(STORAGE_RELEASE_CPP)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CPP)-negative/log
+	@echo "negative control: removing the C++ storage guard turns the release gate RED"
