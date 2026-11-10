@@ -329,7 +329,7 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			return false
 		}
 		if value.DisplayNameLength > 0 {
-			w.Put(95, TableMessageRefBitsHere)
+			w.Put(89, TableMessageRefBitsHere)
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
 				return false
 			}
@@ -399,7 +399,7 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			return false
 		}
 		if value.HardpointsCount > 0 {
-			w.Put(96, TableMessageRefBitsHere)
+			w.Put(90, TableMessageRefBitsHere)
 			if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
 				return false
 			}
@@ -415,7 +415,7 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 	{
 		if value.GunnerPresent {
 			if true {
-				w.Put(97, TableMessageRefBitsHere)
+				w.Put(91, TableMessageRefBitsHere)
 				if !GunnerSettingsSaveMessageBody(w, &value.Gunner) {
 					return false
 				}

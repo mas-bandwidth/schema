@@ -632,12 +632,12 @@ const nestedDefaultElidesBody = `
 // TestMessageFormSkipDepthDart is the message_skip_depth boundary on the
 // generated Dart reader (docs/SPEC-TABLES.md, limit value 128). The typed body
 // reads references at tableMessageRefBits, and skip reads vocabulary.refBits,
-// so the probe sets those equal. Slots 1..3 are Root's fields and Other's
-// five fill the unit's vocabulary to eight entries, so its reference width is
-// four bits (docs/SPEC-TABLES.md §3.3: the announcement is the message
-// closure); the unknown entry rides at slot 8. Verdicts are the spec's. The
-// above-limit rows are complete zero-padded batches whose only fault is depth
-// past 128.
+// so the probe sets those equal. Zed's five fields fill the unit's vocabulary
+// to eight entries, so its reference width is four bits (docs/SPEC-TABLES.md
+// §3.3: the announcement is the message closure); the vocabulary orders by
+// table name, so Root's fields are slots 1..3 and Zed's are 4..8, and the
+// unknown entry rides at slot 8. Verdicts are the spec's. The above-limit rows
+// are complete zero-padded batches whose only fault is depth past 128.
 func TestMessageFormSkipDepthDart(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
@@ -648,7 +648,7 @@ fixed table Root {
     c uint8
 }
 
-fixed table Other {
+fixed table Zed {
     d bool
     e bool
     f bool
