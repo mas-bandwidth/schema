@@ -273,6 +273,7 @@ static SCHEMA_UNUSED void wide_table_non_finite_float( wide_table_report_t * rep
 {
     report->refused = 1;
     report->reason = SCHEMA_WIDE_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_WIDE_TABLE_REFUSE_NON_FINITE_FLOAT;
     report->non_finite_floats++;
 }
 /* table_non_finite_refused is that load's end: 1 when the walk met a
@@ -283,6 +284,7 @@ static SCHEMA_UNUSED int wide_table_non_finite_refused( wide_table_report_t * re
     if ( report->non_finite_floats == before ) { return 0; }
     report->refused = 1;
     report->reason = SCHEMA_WIDE_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_WIDE_TABLE_REFUSE_NON_FINITE_FLOAT;
     return 1;
 }
 static SCHEMA_UNUSED uint32_t schema_wide_table_crc32c_( const uint8_t * data, int64_t bytes )

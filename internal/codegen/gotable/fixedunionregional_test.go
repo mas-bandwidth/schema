@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -201,6 +202,7 @@ func fixedUnionProbeFor(t *testing.T, arms string) string {
 // writer refuses an out-of-range value, a text length, a count and a tag in
 // every build, with -1 and invalid_value.
 func TestGoRegionalUnitUnionCarriesFixedForm(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit under ps sampling)")
 	t.Parallel()
 	memceiling.Guard(t, memceiling.Default)
 	plain, mixed := fixedUnionTables, fixedUnionTables+mixedFixedVariable
@@ -224,6 +226,7 @@ func TestGoRegionalUnitUnionCarriesFixedForm(t *testing.T) {
 // contract from the regional unit's HolderFixedSave and requires the refusal
 // probe to go red on its own words: the refusals come from that check.
 func TestGoRegionalUnionWriteRefusalNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit under ps sampling)")
 	t.Parallel()
 	memceiling.Guard(t, memceiling.Default)
 	const check = "if !HolderFixedCheckBody(&values[k]) {"

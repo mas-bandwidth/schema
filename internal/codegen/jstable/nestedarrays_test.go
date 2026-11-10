@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -37,6 +38,8 @@ import (
 // must be clean), measured, written as text (the oracle's text), and read back
 // from the text and saved (the wire again).
 func TestNestedTypesAndFixedArraysOnTheTableWireJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")

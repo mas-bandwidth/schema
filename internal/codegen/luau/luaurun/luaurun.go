@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Version is the pinned Luau release (make/luau.mk).
@@ -110,6 +112,7 @@ func InputsModule(inputs map[string][]byte) []byte {
 // exits nonzero.
 func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 	t.Helper()
+	slowtest.Gate(t, "the pinned Luau interpreter")
 	luau, why := Interpreter()
 	if luau == "" {
 		t.Fatalf("luaurun: the Luau interpreter does not resolve: %s", why)
@@ -131,6 +134,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 // the test on any error it reports; lint warnings are returned, not failed.
 func Analyze(t testing.TB, dir string, files ...string) string {
 	t.Helper()
+	slowtest.Gate(t, "luau-analyze")
 	analyze, why := Analyzer()
 	if analyze == "" {
 		t.Fatalf("luaurun: luau-analyze does not resolve: %s", why)

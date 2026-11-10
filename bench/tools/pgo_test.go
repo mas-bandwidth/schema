@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,8 @@ exit 0
 }
 
 func pgoRun(t *testing.T, root string, env []string, args ...string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cmd := exec.Command("bash", append([]string{"bench/run.sh", "--compiler", filepath.Join(root, "bin", "fakecc")}, args...)...)
 	cmd.Dir, cmd.Env = root, env

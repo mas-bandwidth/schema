@@ -12,6 +12,7 @@ package rusttable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -503,6 +504,8 @@ fn main() {
 }
 
 func t18RunProbe(t *testing.T, schema, mainSrc, binName string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		t.Fatalf("rustc is not on PATH: %v", err)

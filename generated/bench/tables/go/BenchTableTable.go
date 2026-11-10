@@ -4853,9 +4853,10 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 	}
 }
 
-// TableEntity also carries the FIXED form (form 3): TableEntityFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableEntity is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableEntityFixedLoad reads form 3.
 // TableEntityLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -4868,8 +4869,16 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableEntityReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableEntityReset(value)
 		return false
@@ -5088,9 +5097,10 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 	}
 }
 
-// TableStat also carries the FIXED form (form 3): TableStatFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableStat is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableStatFixedLoad reads form 3.
 // TableStatLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -5103,8 +5113,16 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableStatReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableStatReset(value)
 		return false
@@ -6793,9 +6811,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 	}
 }
 
-// TableMixed also carries the FIXED form (form 3): TableMixedFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableMixed is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableMixedFixedLoad reads form 3.
 // TableMixedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -6808,8 +6827,16 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableMixedReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableMixedReset(value)
 		return false
@@ -7145,6 +7172,9 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableHitEventReset(value)
 		return false
@@ -7387,6 +7417,9 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableChatEventReset(value)
 		return false
@@ -7629,6 +7662,9 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TablePickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TablePickupEventReset(value)
 		return false

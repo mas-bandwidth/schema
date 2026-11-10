@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -256,7 +257,7 @@ func TestLuaAnnouncementReadsTheEngineBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	announce := readFile(t, filepath.Join(repo, "internal", "ci", "hostilecorpus", "corpus", "inputs", "announcement.bin"))
-	vocab := ir.TableVocabulary(unit)
+	vocab := tablewire.MessageVocabulary(unit)
 	vocabBytes := len(ir.TableVocabularyBytes(vocab))
 	entries := len(vocab)
 	if vocabBytes == 0 || entries == 0 {

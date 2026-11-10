@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,8 @@ import (
 // it byte for byte. This is the "carrying unbounded arrays" construct of the
 // variable class beyond the card constructs.
 func TestUnboundedArraysRoundTripJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	src := `package probe

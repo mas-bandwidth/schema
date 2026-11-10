@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -45,6 +46,8 @@ import (
 // wire again). Every `report` row over the three pairs prints the six counters
 // and the verdict the Go oracle's decode gives (MANIFEST.txt's report rows).
 func TestFixedClassOnTableWireRust(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	if _, err := exec.LookPath("rustc"); err != nil {

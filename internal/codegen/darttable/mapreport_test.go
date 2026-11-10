@@ -20,6 +20,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -146,6 +147,8 @@ type mapAnswer struct {
 // mapProbe runs the generated MapdemoWire load and save of one root over one
 // mutant, one answer a line.
 func mapProbe(t *testing.T, wire []byte, root, mutantHex string) mapAnswer {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "MapdemoWire.dart"), wire, 0o600); err != nil {

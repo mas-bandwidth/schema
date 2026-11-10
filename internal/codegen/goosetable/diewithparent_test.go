@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const (
@@ -30,6 +31,7 @@ const (
 )
 
 func TestGooseDieWithParent(t *testing.T) {
+	slowtest.Gate(t, "the test binary re-executed as a subprocess")
 	if runtime.GOOS != "linux" {
 		t.Skip("gooserun.Command sets a parent-death signal on Linux only")
 	}

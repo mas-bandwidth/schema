@@ -1,0 +1,69 @@
+// Hostile packet fixtures. Each type is one read a packet reader must refuse.
+package hostilepacket
+
+enum Team { Red, Blue }
+
+type Ring
+{
+    radius uint8
+}
+
+type Slab
+{
+    width uint8
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+// uint8 [0, 10] is 4 bits; an offset above 10 does not fit the span.
+type ScalarRange
+{
+    n uint8 | min = 0, max = 10
+}
+
+// Team's wire range is [0, 2]; 2 bits can carry a value above that.
+type BadEnum
+{
+    team Team
+}
+
+// Shape's tag range is [0, 2]; 2 bits can carry a tag above the variant count.
+type BadUnion
+{
+    shape Shape
+}
+
+// [..2] counts [0, 2]; 2 bits can carry a count above that bound.
+type BadCount
+{
+    items [..2]uint8
+}
+
+// const(0xAB, 8) rejects any other byte.
+type BadConst
+{
+    const(0xAB, 8)
+}
+
+// reserved(8) rejects any nonzero pattern.
+type BadReserved
+{
+    reserved(8)
+}
+
+// one data bit, then align: the padding bits must be zero.
+type BadAlign
+{
+    flag bool
+    align
+}
+
+// a bare uint16 is 16 bits; a shorter buffer is truncated.
+type Truncated
+{
+    n uint16
+}

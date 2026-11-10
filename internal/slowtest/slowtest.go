@@ -64,8 +64,9 @@ func Enabled() bool {
 
 // Gate skips the calling test unless the slow half is enabled. `what` names the
 // cost in the skip line — the toolchain or the corpus — so the reader of a
-// default run can see exactly what did not run and why.
-func Gate(t *testing.T, what string) {
+// default run can see exactly what did not run and why. It takes testing.TB
+// so the shared runner helpers (gooserun, luarun, ...) gate before they spawn.
+func Gate(t testing.TB, what string) {
 	t.Helper()
 	if Enabled() {
 		return

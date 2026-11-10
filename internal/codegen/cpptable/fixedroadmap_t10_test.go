@@ -46,6 +46,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cppRunCapability generates the leg's fixed-form headers for `schema`, writes
@@ -63,6 +64,8 @@ func cppRunCapability(t *testing.T, schema, pkg, body string) ([]byte, error) {
 // unitHas128) takes the sibling serialize checkout's include path, the same
 // directory cppRunVersionProbe passes. Every other step is identical.
 func cppRunUnit(t *testing.T, schema, pkg, body string, includes []string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	base := filepath.Base(schema)

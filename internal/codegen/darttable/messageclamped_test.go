@@ -7,6 +7,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestMessageClampedCountDart pins that the Dart message report counts a
@@ -48,22 +49,65 @@ func TestMessageClampedCountDart(t *testing.T) {
 	// STRICT VERDICT (docs/plans/strict-only.md decision 2): a fixed-string
 	// payload past its bound refuses the whole batch read; the Go oracle
 	// refuses the same bytes.
+	loginMutant := loginOverBoundMutant(t, m.Unit)
 	value := m.New(m.Lookup(row.root))
 	_, _, err := tablewire.DecodeMessages(m, []*tabletext.Instance{value}, loginMutant, vocabulary, &oracle)
 	if err == nil && !oracle.Refused {
 		t.Fatalf("the Go oracle must refuse the mutant: report %+v", oracle)
 	}
-	out, err := runBatchProbe(t, u, row.root, messageClampedBody(announce))
+	out, err := runBatchProbe(t, u, row.root, messageClampedBody(announce, loginMutant))
 	if err != nil {
 		t.Fatalf("the clamped message count did not run green: %v\n%s", err, out)
 	}
 }
 
-// loginMutant is the D11 vector: a form-2 batch carrying one LoginRequest body
-// whose session_token length overruns the declared bytes(32) bound.
-const loginMutantHex = "02004200000000000008c01002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403101"
-
-var loginMutant = mustHex(loginMutantHex)
+// loginOverBoundMutant is the D11 vector: a form-2 batch carrying one
+// LoginRequest body whose session_token length overruns the declared
+// bytes(32) bound by one, spelled against the unit's own announcement (its
+// slot and its reference width), then the payload that length names, the
+// body's terminator and the pad.
+func loginOverBoundMutant(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	vocabulary := tablewire.MessageVocabulary(u)
+	refBits := ir.TableMessageRefBits(len(vocabulary))
+	slot, token := 0, ir.TableVocabularyEntry{}
+	for i, e := range vocabulary {
+		if e.Id == ir.TableWireId("session_token") {
+			slot, token = i+1, e
+		}
+	}
+	if slot == 0 {
+		t.Fatal("the announcement carries no session_token")
+	}
+	over := uint64(token.Shape.Max) + 1
+	countBits := ir.TableMessageCountBits(token.Shape)
+	if over >= 1<<uint(countBits) {
+		t.Fatalf("a %d-bit count cannot spell %d", countBits, over)
+	}
+	out := []byte{ir.TableWireMessageForm, 0}
+	at := 16
+	put := func(value uint64, width int) {
+		for i := range width {
+			if at/8 == len(out) {
+				out = append(out, 0)
+			}
+			if value>>uint(i)&1 == 1 {
+				out[at/8] |= 1 << uint(at%8)
+			}
+			at++
+		}
+	}
+	put(uint64(slot), refBits)
+	put(over, countBits)
+	for at%8 != 0 {
+		put(0, 1)
+	}
+	for range over {
+		put(0x41, 8)
+	}
+	put(0, refBits)
+	return out
+}
 
 func mustHex(s string) []byte {
 	b, err := hex.DecodeString(s)
@@ -76,7 +120,7 @@ func mustHex(s string) []byte {
 // messageClampedBody loads the mutant with the generated Dart batch message
 // load and asserts the strict refusal: no message lands and the report
 // refuses length_over_bound (docs/plans/strict-only.md decision 2).
-func messageClampedBody(announce []byte) string {
+func messageClampedBody(announce, loginMutant []byte) string {
 	return fmt.Sprintf(`
   final ann = Uint8List.fromList(%s);
   final msg = Uint8List.fromList(%s);

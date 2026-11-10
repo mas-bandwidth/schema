@@ -18,6 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -144,6 +145,8 @@ func TestRenderArgOverflowGate(t *testing.T) {
 // union is re-exported via `pub use <mod>::*;` rather than marked as documentation-only,
 // and that its generated code imports the Stream trait so wire methods compile.
 func TestAssembleLibExportsUnionModule(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	const srcHome = `package unionexport
 type Marker {
     x int32

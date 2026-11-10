@@ -71,8 +71,8 @@ func EncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, er
 		if e.missing != "" {
 			// an entry the walk reached that the unit's own vocabulary does
 			// not spell is a compiler defect, never a wire one: the vocabulary
-			// is the closure's whole entry set by construction (§3.3)
-			return nil, fmt.Errorf("the unit's vocabulary names no slot for %s, and the message form's vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", e.missing)
+			// is the message closure's whole entry set by construction (§3.3)
+			return nil, fmt.Errorf("the unit's vocabulary names no slot for %s, and the message form's vocabulary is the message closure's whole entry set (docs/SPEC-TABLES.md §3.3)", e.missing)
 		}
 	}
 	if w.over {

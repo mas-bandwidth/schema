@@ -19,8 +19,8 @@ import (
 // an offset above max - min decodes to a value above max; the generated Dart
 // payload the base and stored with no range check and no count, so Dart landed
 // 11..16 where Go lands 10 and counted 0 where Go counts 1. The vector is the
-// coordinator's wire-fuzz mutant over backenddemo.MatchResult (bit 402 flipped),
-// the same bytes the finder traced: loaded through the generated Dart batch
+// coordinator's wire-fuzz mutant over backenddemo.MatchResult (a placement
+// offset above max - min), rebuilt from the Go encoder: loaded through the generated Dart batch
 // message load and through tablewire.DecodeMessages, the six counters and body
 // one's saved bytes must agree.
 //
@@ -43,7 +43,7 @@ func TestMessageReadClampsDeclaredRangeDart(t *testing.T) {
 		if !st.IsTable || !st.FixedDeclared {
 			t.Skipf("§3.3 is a fixed table's; %s is a variable table", row.root)
 		}
-		checkMessageReadClamp(t, row.root, u, matchReadClampMutant, "out_of_range")
+		checkMessageReadClamp(t, row.root, u, matchReadClampMutant(t, tabletext.NewModel(u)), "out_of_range")
 	})
 
 	// The constructed second vector: a store block whose quantity field's offset
@@ -233,14 +233,55 @@ func checkMessageReadClamp(t *testing.T, root string, u *ir.Unit, mutant []byte,
 	}
 }
 
-// matchReadClampMutant is the coordinator's vector: the backenddemo match_full
-// message with bit 402 flipped, a mutant of 148 bytes whose placement field
-// decodes above its declared max (sha256 748a550a763569cd93d52bf1715fca0dcd3
-// 106b212a2bab4d584a57cd51d4218). The Go oracle counts one `clamped`; Dart
-// before this fix landed the out-of-range value uncounted.
-const matchReadClampMutantHex = "02004640404040404040c021a00f00000000000020d20400217d00000000000000f928900420a80f000000000000206c05120584f50100000000000024b7403280c03e000000000000801818480810da07000000000000902903490182fb00000000000000026a203140781f00000000000040da0d240708f00300000000000088ce810401217e00000000000000393c90240000"
-
-var matchReadClampMutant = mustHex(matchReadClampMutantHex)
+// matchReadClampMutant is the coordinator's vector, rebuilt under the message
+// closure's vocabulary (docs/SPEC-TABLES.md §3.3): a MatchResult whose first
+// player's placement decodes to 13, above its declared max (10) in the same
+// 4-bit span. The strict writer refuses such a value, so the mutant is a
+// placement of 10 encoded clean whose offset bits are then set to 12, at the
+// spot the vocabulary's own slot for placement names.
+func matchReadClampMutant(t *testing.T, m *tabletext.Model) []byte {
+	t.Helper()
+	root := m.Lookup("MatchResult")
+	inst := m.New(root)
+	var r tabletext.Report
+	if !m.Read(inst, []byte(`{"match_id":7,"players":[{"player_id":3,"score":40,"placement":10}]}`), &r) {
+		t.Fatalf("the MatchResult mutant's text was refused: %s", r.Reason)
+	}
+	out, err := tablewire.EncodeMessage(m, inst)
+	if err != nil {
+		t.Fatalf("the Go encoder refused the MatchResult body: %v", err)
+	}
+	var placement *ir.Field
+	for _, f := range m.Unit.Tables["PlayerRow"].Fields {
+		if f.Name == "placement" {
+			placement = f
+		}
+	}
+	slot := tablewire.MessageVocabularySlots(m.Unit)[ir.TableFieldEntry(placement).Key()]
+	vocabulary := &tablewire.Vocabulary{}
+	if err := vocabulary.AnnounceRead(tablewire.Announce(m.Unit), &tabletext.Report{}); err != nil {
+		t.Fatal(err)
+	}
+	bit := func(i int) uint64 { return uint64(out[1+i/8]>>(i%8)) & 1 }
+	for _, s := range tablewire.MessageSpots(m, root, out, vocabulary) {
+		var ref uint64
+		for b := 0; b < s.Width; b++ {
+			ref |= bit(s.Off+b) << b
+		}
+		if ref != slot {
+			continue
+		}
+		// placement's offset (value - min, 4 bits) follows its reference
+		for b := 0; b < 4; b++ {
+			at := s.Off + s.Width + b
+			out[1+at/8] &^= 1 << (at % 8)
+			out[1+at/8] |= byte((12>>b)&1) << (at % 8)
+		}
+		return out
+	}
+	t.Fatal("the MatchResult body carries no placement reference")
+	return nil
+}
 
 // messageReadClampBody loads the mutant with the generated Dart batch message
 // load and asserts the report's six counters and body one's saved bytes match

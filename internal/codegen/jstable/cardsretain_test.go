@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -57,6 +58,8 @@ func retainGoUnit(t *testing.T, path, pkg string) *ir.Unit {
 // It compiles the newer and older declarations as two packages in one module
 // and runs their LoadRetain + SaveRetain, returning the retained bytes.
 func goRetainedSave(t *testing.T) []byte {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	write := func(pkg string, u *ir.Unit) {
@@ -218,6 +221,8 @@ type descTable struct {
 // dumpDescriptors generates the variable module for a unit, runs a node probe
 // that prints its unit registry as JSON, and returns the parsed tables.
 func dumpDescriptors(t *testing.T, u *ir.Unit) []descTable {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	node := jsNode(t)
 	out, err := generateVariableFiles(u, nil)
@@ -465,6 +470,8 @@ func retainCounters(prefix string, r tabletext.Report) []string {
 // retainNodeProbe runs a node probe script from `dir`, where newer and older
 // modules were written as CardsVariable.js and OldVariable.js.
 func retainNodeProbe(t *testing.T, dir, script string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	node := jsNode(t)
 	path := filepath.Join(dir, "probe.mjs")

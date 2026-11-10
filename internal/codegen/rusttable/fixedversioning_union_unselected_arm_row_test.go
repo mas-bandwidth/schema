@@ -2,6 +2,7 @@ package rusttable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,8 @@ import (
 // IgnoredGoFiles instead of running it.)
 
 func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := versionCorpus(t)
 	file := filepath.Join(corpus, "old_union_append.bin")
 

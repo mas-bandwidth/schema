@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -19,6 +20,8 @@ import (
 // (SPEC-TABLES §4: a widening arm's length must be the incoming kind's width)
 // and the Java reader must answer the same.
 func TestJavaFixUnionArmKindWidened(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	hexMutant := "01010801000000020f030208cb04fb711f01000004080200000000c03a5cb5072eb708ea0ce83094fde47c8cec01864cdc63af23d79807ef564cd90400000000000000"
 	mutant, err := hex.DecodeString(hexMutant)

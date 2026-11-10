@@ -4,9 +4,9 @@
 //
 // A login, a match result and a store purchase are the shape the message form
 // exists for: a vocabulary close to the field count, where §3's per-file id
-// table amortizes over nothing. The unit declares no pointer, and its
-// announcement carries the node-table id and the three blob type ids all the
-// same — the unconditional tail, and this is the unit that pins it.
+// table amortizes over nothing. Its announcement carries the message
+// closure's vocabulary only: no node-table id, no blob type ids, no table
+// name ids.
 package backenddemo
 
 enum Region { NA, EU, APAC, SA }

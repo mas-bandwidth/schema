@@ -47,6 +47,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -677,6 +678,8 @@ func versionHasField(st *ir.Struct, name string) bool {
 // toolchain. A probe is generated, never hand-written, so a row and its
 // negative control cost the same (§5.9 #18).
 func runVersionProbe(t *testing.T, dartBin, reader string, older []string, retire int, file, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := versionSchema(t, reader)
 	lineage := map[string][]FixedLineageEntry{}

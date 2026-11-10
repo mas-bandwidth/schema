@@ -674,11 +674,11 @@ namespace Tabledemo
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
-                    new TableFieldInfo { Name = "display_name", Json = "name", TypeName = "string", Id = 0x2d21d7cd66bd5a5d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).DisplayName; }, GetCount = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).DisplayNameLength; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.ShipEntry)o).DisplayNameLength = n; }, MessageSlot = 95, Ordinal = 0, NativeOffset = 0, NativeElementSize = 33, NativeCountOffset = 36, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; Array.Clear(value.DisplayName, 0, value.DisplayName.Length); value.DisplayNameLength = 0; } },
+                    new TableFieldInfo { Name = "display_name", Json = "name", TypeName = "string", Id = 0x2d21d7cd66bd5a5d, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayBound = 32, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).DisplayName; }, GetCount = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).DisplayNameLength; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.ShipEntry)o).DisplayNameLength = n; }, MessageSlot = 89, Ordinal = 0, NativeOffset = 0, NativeElementSize = 33, NativeCountOffset = 36, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; Array.Clear(value.DisplayName, 0, value.DisplayName.Length); value.DisplayNameLength = 0; } },
                     new TableFieldInfo { Name = "health", Json = "health", TypeName = "float32", Id = 0x7f69d4b5288ba9cf, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.ShipEntry)o).Health)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ShipEntry)o).Health = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 14, Ordinal = 1, NativeOffset = 40, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; value.Health = 100.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(100.0f)), NonFiniteField = "ShipEntry.health", NonFiniteReason = "non_finite_float: ShipEntry.health", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "mass", Json = "mass", TypeName = "float32", Id = 0x1f3757a2ce7b0ab1, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.ShipEntry)o).Mass)); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ShipEntry)o).Mass = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 15, Ordinal = 2, NativeOffset = 44, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; value.Mass = 1.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(1.0f)), NonFiniteField = "ShipEntry.mass", NonFiniteReason = "non_finite_float: ShipEntry.mass", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
-                    new TableFieldInfo { Name = "hardpoints", Json = "hardpoints", TypeName = "int32", Id = 0x95d0cce09ca82b73, Kind = 4, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 8.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ShipEntry)o).Hardpoints[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ShipEntry)o).Hardpoints[i] = unchecked((int)(long)r); }, GetCount = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).HardpointsCount; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.ShipEntry)o).HardpointsCount = n; }, MessageSlot = 96, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x8ul)), Ordinal = 3, NativeOffset = 48, NativeElementSize = 4, NativeCountOffset = 64, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; Array.Clear(value.Hardpoints, 0, value.Hardpoints.Length); value.HardpointsCount = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 8L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 8) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
-                    new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.ShipEntry)o).Gunner; }, GetPresent = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).GunnerPresent; }, SetPresent = delegate (object o, bool p) { ((global::Tabledemo.ShipEntry)o).GunnerPresent = p; }, MessageSlot = 97, Ordinal = 4, NativeOffset = 68, NativeElementSize = 36, NativeCountOffset = -1, NativePresentOffset = 104, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; TableReset(value.Gunner); } },
+                    new TableFieldInfo { Name = "hardpoints", Json = "hardpoints", TypeName = "int32", Id = 0x95d0cce09ca82b73, Kind = 4, IsArray = true, Counted = true, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 8.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return unchecked((ulong)(long)(((global::Tabledemo.ShipEntry)o).Hardpoints[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.ShipEntry)o).Hardpoints[i] = unchecked((int)(long)r); }, GetCount = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).HardpointsCount; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.ShipEntry)o).HardpointsCount = n; }, MessageSlot = 90, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x8ul)), Ordinal = 3, NativeOffset = 48, NativeElementSize = 4, NativeCountOffset = 64, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; Array.Clear(value.Hardpoints, 0, value.Hardpoints.Length); value.HardpointsCount = 0; }, DefaultRaw = unchecked((ulong)(long)(0)), RangeJsonInteger = delegate (ulong raw, TableReport r) { long v = unchecked((long)raw); if (v < 0L || v > 8L) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RangeRaw = delegate (ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 8) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return unchecked((ulong)(long)(v)); } },
+                    new TableFieldInfo { Name = "gunner", Json = "gunner", TypeName = "GunnerSettings", Id = 0x40dbb648c0cd44aa, Kind = 13, IsArray = false, Counted = false, Optional = true, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return GunnerSettingsTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate (object o, int i) { return ((global::Tabledemo.ShipEntry)o).Gunner; }, GetPresent = delegate (object o) { return ((global::Tabledemo.ShipEntry)o).GunnerPresent; }, SetPresent = delegate (object o, bool p) { ((global::Tabledemo.ShipEntry)o).GunnerPresent = p; }, MessageSlot = 91, Ordinal = 4, NativeOffset = 68, NativeElementSize = 36, NativeCountOffset = -1, NativePresentOffset = 104, ResetField = delegate (object o) { var value = (global::Tabledemo.ShipEntry)o; TableReset(value.Gunner); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.ShipEntry)o); };
                 info.Doc = TableDocNone;
@@ -1202,6 +1202,13 @@ namespace Tabledemo
                             else { GunnerSettingsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            GunnerSettingsFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             GunnerSettingsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -1358,7 +1365,7 @@ namespace Tabledemo
 
         public static readonly TableFixedPlan GunnerSettingsFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(4u, 1u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(4u, 1u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(5u, 2u, 24u, 3u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
         });
 
@@ -1796,6 +1803,13 @@ namespace Tabledemo
                             else { ShipEntryFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            ShipEntryFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             ShipEntryFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -1956,9 +1970,9 @@ namespace Tabledemo
             new TableFixedEntry(40u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(44u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(48u, 5u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(64u, 6u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(64u, 6u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(65u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(69u, 8u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(69u, 8u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(70u, 9u, 24u, 10u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
         });
 
@@ -2376,6 +2390,13 @@ namespace Tabledemo
                                 GlobalSettingsFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
                             }
                             else { GlobalSettingsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            GlobalSettingsFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
                     case TableFixedWire.Flat:
@@ -3259,6 +3280,13 @@ namespace Tabledemo
                             else { PackConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            PackConfigFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             PackConfigFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -3424,27 +3452,27 @@ namespace Tabledemo
             new TableFixedEntry(113u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(117u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(121u, 11u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(137u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(137u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(138u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(142u, 14u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(142u, 14u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(143u, 15u, 24u, 16u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(171u, 17u, 32u, 18u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(207u, 19u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(211u, 20u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(215u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(219u, 22u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(235u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(235u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(236u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(240u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(240u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(241u, 26u, 24u, 27u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(269u, 28u, 32u, 29u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(305u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(309u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(313u, 32u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(317u, 33u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(333u, 34u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(333u, 34u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(334u, 35u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(338u, 36u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(338u, 36u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(339u, 37u, 24u, 38u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(367u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(371u, 40u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -3455,27 +3483,27 @@ namespace Tabledemo
             new TableFixedEntry(423u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(427u, 47u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(431u, 48u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(447u, 49u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(447u, 49u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(448u, 50u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(452u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(452u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(453u, 52u, 24u, 53u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(481u, 54u, 32u, 55u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(517u, 56u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(521u, 57u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(525u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(529u, 59u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(545u, 60u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(545u, 60u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(546u, 61u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(550u, 62u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(550u, 62u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(551u, 63u, 24u, 64u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(579u, 65u, 32u, 66u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
             new TableFixedEntry(615u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(619u, 68u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(623u, 69u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(627u, 70u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0, 1),
-            new TableFixedEntry(643u, 71u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(643u, 71u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(644u, 72u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(648u, 73u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(648u, 73u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(649u, 74u, 24u, 75u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1, 1),
         });
 

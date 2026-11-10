@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -642,6 +643,8 @@ func newCMessageUnitBuilds(t *testing.T) *cMessageUnitBuilds {
 
 // of returns the unit's shared build, compiling it on first use.
 func (b *cMessageUnitBuilds) of(t *testing.T, name string, u *ir.Unit) *cMessageUnitBuild {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	b.mu.Lock()
 	build, ok := b.by[name]
@@ -696,6 +699,8 @@ func (b *cMessageUnitBuild) compile(u *ir.Unit) error {
 // runCMessageUnit executes the generated C announcement and batch surface
 // (§3.3): the row's own main, compiled against its unit's shared objects.
 func runCMessageUnit(t *testing.T, build *cMessageUnitBuild, source string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cc, err := exec.LookPath("cc")
 	if err != nil {

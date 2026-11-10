@@ -24,6 +24,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -429,6 +430,8 @@ var (
 // is a failure under SCHEMA_REQUIRE_CORPUS, which `make tables-cs-versioning`
 // sets: a target that needs a sibling runtime is named as not run, never faked.
 func t06WideRun(t *testing.T) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	runtime, err := filepath.Abs("../../../../serialize.cs")
 	if err != nil {

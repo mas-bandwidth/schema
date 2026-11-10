@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -42,6 +43,8 @@ import (
 //   - the WRITE refusal (SPEC.md §4.12): a value longer than N code units is
 //     refused (Save null, Measure -1) as a field, an arm and a map value.
 func TestFixedPointAndWideTextOnTheTableWireJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")

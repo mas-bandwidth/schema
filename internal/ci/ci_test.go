@@ -1319,6 +1319,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-squirrel-resource-bounds.yml:nightly",
 		"schema-squirrel-runs-hostile-corpus.yml:fast",
 		"schema-squirrel-runs-hostile-corpus.yml:nightly",
+		"tla-nightly.yml:tlc",
 	}
 	if strings.Join(gotKeys, ",") != strings.Join(wantKeys, ",") {
 		t.Fatalf("enumerated self-hosted jobs = %v, want %v", gotKeys, wantKeys)

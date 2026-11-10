@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -52,6 +53,8 @@ import (
 // itself: the oracle decodes it and re-encodes the same bytes, and writes the
 // committed text.
 func TestVariableClassBeyondCardConstructsRust(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	if _, err := exec.LookPath("rustc"); err != nil {

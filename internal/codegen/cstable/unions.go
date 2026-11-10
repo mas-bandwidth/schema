@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -59,7 +60,7 @@ func (g *tableGen) unionArmsValue(un *ir.Union) string {
 	for _, v := range un.Variants {
 		b.WriteString(", new TableUnionArmInfo { ")
 		if g.messageUnions()[un.Name] {
-			fmt.Fprintf(&b, "MessageSlot = %d, ", ir.TableVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
+			fmt.Fprintf(&b, "MessageSlot = %d, ", tablewire.MessageVocabularySlots(g.unit)[ir.TableArmEntry(v).Key()])
 		}
 		if !v.Void() {
 			row := &tableGen{unit: g.unit, owner: unionOwner(un), arm: true, outside: g.outside}

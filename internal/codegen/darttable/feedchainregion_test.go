@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -123,6 +124,8 @@ type feedChainAnswer struct {
 // feedChainProbe runs the generated StreamdemoWire measure, a tolerant load
 // and a save over one mutant, one answer a line.
 func feedChainProbe(t *testing.T, wire []byte, mutantHex string) feedChainAnswer {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "StreamdemoWire.dart"), wire, 0o600); err != nil {
@@ -245,6 +248,8 @@ func TestCardWireFuzzMutantRefusedDart(t *testing.T) {
 }
 
 func cardWireProbe(t *testing.T, wire []byte, mutantHex string, packet map[string][]byte) feedChainAnswer {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	writeFiles(t, dir, packet)

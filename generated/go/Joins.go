@@ -353,6 +353,14 @@ func WriteArmAlign(stream *serialize.WriteStream, value *ArmAlign) error {
 		if stream.Err() != nil { // the length guards the slice
 			return stream.Err()
 		}
+		for _, unit := range value.S[:value.SLength] {
+			if unit == 0 {
+				return serialize.ErrValueOutOfRange
+			}
+		}
+		if !utf8.ValidString(string(value.S[:value.SLength])) {
+			return serialize.ErrValueOutOfRange
+		}
 		stream.SerializeBytes(value.S[:value.SLength])
 	} else {
 		stream.SerializeBits(&value.B, 10)
@@ -811,6 +819,14 @@ func WriteRegainAfterAlign(stream *serialize.WriteStream, value *RegainAfterAlig
 	stream.SerializeBits(&offsetValue3, 3)
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
+	}
+	for _, unit := range value.S[:value.SLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.S[:value.SLength])) {
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.S[:value.SLength])
 	f0 := uint64(value.P) & 0xffffffff

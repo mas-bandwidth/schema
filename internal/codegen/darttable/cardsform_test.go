@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -251,6 +252,8 @@ func cardsUnit(t *testing.T) *ir.Unit {
 // form byte, the root body's ref/kind/payload framing, the id-table trailer in
 // first-use order, kind 17 node indices for *string and kind 14 arrays for []T.
 func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	u := cardsUnit(t)
@@ -350,6 +353,8 @@ void main(List<String> args) {
 // over-bound string are refused by the report — never silently dropped, never
 // cut through a multi-byte character.
 func TestCardTextFormMatchesGo(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	u := cardsUnit(t)
@@ -451,6 +456,8 @@ void main(List<String> args) {
 // whose enum fields sit at their default refuses on write and counts a loss
 // on read, so the facade can never publish it.
 func TestCardTextFormEnumNoneRoundTrips(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	u := cardsUnit(t)

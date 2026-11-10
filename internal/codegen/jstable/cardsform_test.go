@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -191,6 +192,8 @@ func writeCardsVariable(t *testing.T) string {
 // rename (done_when) found by id and the *string blobs round-tripped through
 // the node table.
 func TestCardConstructsRoundTripTheVariableForm(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	dir := writeCardsVariable(t)
@@ -247,6 +250,8 @@ console.log("round-trip", wire.length, "bytes, byte for byte");
 // card-populated.wire equals tables/cards/fuzz/card-populated.json byte for
 // byte, and that JSON read back saves to card-populated.wire byte for byte.
 func TestCardTextFormMatchesGo(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	dir := writeCardsVariable(t)

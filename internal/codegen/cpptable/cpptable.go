@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -125,6 +126,9 @@ type tableGen struct {
 	// entry takes, keyed by the triple (§3.3), so a generated field header
 	// carries its reference as a literal and a save does no lookup at all.
 	slots map[string]uint64
+	// msgClosure is the MESSAGE CLOSURE (tablewire.MessageClosure), derived
+	// on first use: only its members carry a message body codec.
+	msgClosure map[string]bool
 	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
 	// each id takes in ir.TableWireIds, which is the set TableIds's capacity
 	// counts. A generated field header carries its ordinal as a literal beside
@@ -1979,7 +1983,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// for the unit: every id the closure can put on a wire, and the slot the
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
-	slots := ir.TableVocabularySlots(u)
+	slots := tablewire.MessageVocabularySlots(u)
 	// THE ID VOCABULARY'S ORDINALS (docs/SPEC-TABLES.md §3), derived once for
 	// the unit beside the message form's slots: every id a generated header
 	// can name, and the index it takes in the ascending set TableIds's

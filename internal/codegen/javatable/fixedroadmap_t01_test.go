@@ -14,6 +14,7 @@ package javatable
 
 import (
 	"encoding/binary"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,6 +57,8 @@ func (e *t01Env) forge(t *testing.T, name string, mutate func(b []byte) []byte) 
 // deep runs the poisoned reader over a file with the TOTAL poison, the one a
 // nested value needs (see poisonFinals in the probe).
 func t01Deep(t *testing.T, classes, file string) probeRun {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	_, javaBin := javaTools(t)
 	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Probe_reads", file, "deep").CombinedOutput()

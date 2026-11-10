@@ -7,6 +7,7 @@ package darttable
 
 import (
 	"bytes"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +36,8 @@ var cookWriteAbsentDart = map[string]string{}
 // which make's tables-dart-block-build builds first; a bare `go test` without
 // the corpus skips by name, and SCHEMA_REQUIRE_CORPUS=1 makes that a failure.
 func TestCookWriteAnswersEveryCookWriteRowDart(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	dart := dartBinary(t)
 	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))

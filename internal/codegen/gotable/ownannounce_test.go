@@ -5,7 +5,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Every unit announces its own vocabulary and its own reader accepts it. The
@@ -46,7 +45,7 @@ func TestEngineAcceptsItsOwnAnnouncement(t *testing.T) {
 			t.Parallel()
 			var v tablewire.Vocabulary
 			var report tabletext.Report
-			if err := v.AnnounceRead(ir.TableAnnouncement(unitFrom(t, schema)), &report); err != nil || report.Refused {
+			if err := v.AnnounceRead(tablewire.Announce(unitFrom(t, schema)), &report); err != nil || report.Refused {
 				t.Fatalf("the engine refused a unit's own announcement: err %v, report %+v", err, report)
 			}
 		})

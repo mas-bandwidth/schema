@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestRegistryDiscoversAPlantedLanguage is the registry gate
@@ -18,6 +20,7 @@ import (
 // same tree BEFORE planting and requires zz absent, which is what says the
 // discovery is doing the work rather than a list somewhere.
 func TestRegistryDiscoversAPlantedLanguage(t *testing.T) {
+	slowtest.Gate(t, "make and sh (the conformance registry tools)")
 	root, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
