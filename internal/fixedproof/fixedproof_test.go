@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -324,34 +328,92 @@ func stubValidLayout(b []byte) bool {
 	return true
 }
 
-// checkMemoryCeilingOverlap proves that an inner ceiling scope keeps the
-// process bounded after an overlapping outer scope releases, and that the
-// original limit returns only when the last scope exits.
+// checkMemoryCeilingOverlap proves that an inner ceiling scope keeps the Go
+// heap ceiling in force after an overlapping outer scope releases, and that
+// the original heap target returns only when the last scope exits. It also
+// proves the ceiling never touches the test process's kernel address-space
+// limit: the bounded probes carry their own RLIMIT_AS, so the Go process keeps
+// its full address space for the race detector's shadow memory.
 func checkMemoryCeilingOverlap(t *testing.T) {
 	t.Helper()
-	before, ok := addressSpaceLimit()
-	if !ok {
-		return
-	}
+	rlimitBefore, haveRlimit := addressSpaceLimit()
+	heapBefore := debug.SetMemoryLimit(-1)
 	releaseOuter := acquireMemoryCeiling()
 	releaseInner := acquireMemoryCeiling()
 	releaseOuter()
-	active, ok := addressSpaceLimit()
-	if !ok {
+	heapActive := debug.SetMemoryLimit(-1)
+	if heapActive != HardMemoryLimitBytes {
 		releaseInner()
-		t.Fatal("cannot read RLIMIT_AS with an inner ceiling active")
+		t.Fatalf("overlapping ceiling: after outer release with inner active Go heap limit=%d, want %d", heapActive, HardMemoryLimitBytes)
 	}
-	if active > uint64(HardMemoryLimitBytes) {
-		releaseInner()
-		t.Fatalf("overlapping ceiling: after outer release with inner active RLIMIT_AS=%d, want <= %d", active, uint64(HardMemoryLimitBytes))
+	if haveRlimit {
+		rlimitActive, ok := addressSpaceLimit()
+		if !ok {
+			releaseInner()
+			t.Fatal("cannot read RLIMIT_AS with an inner ceiling active")
+		}
+		if rlimitActive != rlimitBefore {
+			releaseInner()
+			t.Fatalf("ceiling altered the Go process RLIMIT_AS to %d, want original %d", rlimitActive, rlimitBefore)
+		}
 	}
 	releaseInner()
-	restored, ok := addressSpaceLimit()
-	if !ok {
-		t.Fatal("cannot read RLIMIT_AS after the ceiling released")
+	heapRestored := debug.SetMemoryLimit(-1)
+	if heapRestored != heapBefore {
+		t.Fatalf("ceiling restored Go heap limit to %d, want original %d", heapRestored, heapBefore)
 	}
-	if restored != before {
-		t.Fatalf("ceiling restored RLIMIT_AS to %d, want original %d", restored, before)
+	if haveRlimit {
+		rlimitRestored, ok := addressSpaceLimit()
+		if !ok {
+			t.Fatal("cannot read RLIMIT_AS after the ceiling released")
+		}
+		if rlimitRestored != rlimitBefore {
+			t.Fatalf("ceiling restored RLIMIT_AS to %d, want original %d", rlimitRestored, rlimitBefore)
+		}
+	}
+}
+
+// TestProbeAddressSpaceCeilingFunctional compiles a C++ child that carries the
+// same address-space ceiling the generated oracle probes embed, runs it, and
+// proves the child lowers its own soft RLIMIT_AS to HardMemoryLimitBytes while
+// the Go test process keeps its full address space.
+func TestProbeAddressSpaceCeilingFunctional(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C++ compiler")
+	apply := addressSpaceCeilingApply()
+	if apply == "" {
+		t.Skip("platform has no kernel address-space ceiling")
+	}
+	dir := t.TempDir()
+	cpp := filepath.Join(dir, "ceil.cpp")
+	bin := filepath.Join(dir, "ceil")
+	src := "#include <cstdio>\n" + addressSpaceCeilingInclude() + "\n" +
+		"int main(void) {\n" + apply + "\n" +
+		"    struct rlimit rl;\n" +
+		"    if (getrlimit(RLIMIT_AS, &rl) != 0) return 2;\n" +
+		"    printf(\"%llu\\n\", (unsigned long long) rl.rlim_cur);\n" +
+		"    return 0;\n" +
+		"}\n"
+	if err := os.WriteFile(cpp, []byte(src), 0o600); err != nil {
+		t.Fatalf("write ceil.cpp: %v", err)
+	}
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	if out, err := exec.Command(cxx, "-std=c++17", "-O1", cpp, "-o", bin).CombinedOutput(); err != nil {
+		t.Fatalf("C++ ceiling shim does not compile: %v\n%s", err, out)
+	}
+	out, err := exec.Command(bin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("C++ ceiling shim failed: %v\n%s", err, out)
+	}
+	limit, err := strconv.ParseUint(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		t.Fatalf("C++ ceiling shim printed a non-numeric limit %q: %v", strings.TrimSpace(string(out)), err)
+	}
+	if limit == 0 || limit > uint64(HardMemoryLimitBytes) {
+		t.Fatalf("probe child RLIMIT_AS=%d, want 0 < limit <= %d", limit, uint64(HardMemoryLimitBytes))
 	}
 }
 
