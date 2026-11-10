@@ -1439,7 +1439,7 @@ int main( int argc, char ** argv )
     }
     return 1;
 }
-`, tc.Root, tc.Count, tc.CppSetup, tableHeader)
+`, tc.Root, tc.Count, tc.CppSetup, tableHeader, addressSpaceCeilingInclude(), addressSpaceCeilingApply())
 	probeCpp := filepath.Join(dir, "probe.cpp")
 	probeBin := filepath.Join(dir, "probe")
 	if err := os.WriteFile(probeCpp, []byte(src), 0o600); err != nil {
