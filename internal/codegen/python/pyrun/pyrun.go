@@ -132,6 +132,7 @@ func run(t testing.TB, python, dir, main string, inputs map[string][]byte) []byt
 // requires it to go red, so the failure is handed back with both streams.
 func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdout, stderr string, err error) {
 	t.Helper()
+	slowtest.Gate(t, "the pinned Python interpreter")
 	for name, data := range inputs {
 		if werr := os.WriteFile(filepath.Join(dir, name), data, 0o644); werr != nil {
 			t.Fatal(werr)
@@ -151,6 +152,7 @@ func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdo
 // It returns the combined output and the error.
 func Analyze(t testing.TB, dir string, paths ...string) (string, error) {
 	t.Helper()
+	slowtest.Gate(t, "the pinned mypy")
 	args := append([]string{"--strict", "--python-version", "3.11", "--no-color-output", "--cache-dir", filepath.Join(dir, ".mypy_cache")}, paths...)
 	cmd := exec.Command(Mypy(t), args...)
 	cmd.Dir = dir

@@ -591,10 +591,10 @@ int main(void)
 					}
 					t.Skipf("named as not run: the sibling serialize.c runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
 				}
-				runCGenerated(t, tc.schema, tc.main, append(identityCCFlags(), "-I", ser)...)
+				runCGenerated(t, tc.schema, tc.main, append(identityCCFlags(t), "-I", ser)...)
 				return
 			}
-			runCGenerated(t, tc.schema, tc.main, identityCCFlags()...)
+			runCGenerated(t, tc.schema, tc.main, identityCCFlags(t)...)
 		})
 	}
 }

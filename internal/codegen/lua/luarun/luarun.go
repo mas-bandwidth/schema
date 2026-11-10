@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -89,6 +91,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 // does not resolve still fails t.
 func Try(t testing.TB, dir, main string, inputs map[string][]byte) (stdout, stderr string, err error) {
 	t.Helper()
+	slowtest.Gate(t, "the pinned Lua interpreter")
 	lua := Interpreter(t)
 	if werr := os.WriteFile(filepath.Join(dir, "inputs.lua"), InputsModule(inputs), 0o644); werr != nil {
 		t.Fatal(werr)

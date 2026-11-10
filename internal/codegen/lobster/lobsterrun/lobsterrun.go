@@ -123,9 +123,7 @@ func runFlags(t testing.TB, dir, main string, flags []string, inputs map[string]
 	// make test-lobster and ci-full set SCHEMA_REQUIRE_CORPUS / SCHEMA_SLOW, so
 	// the gates always run it, and a bare `go test ./...` without the pin skips
 	// by name rather than failing
-	if !slowtest.Enabled() {
-		t.Skipf("SCHEMA_SLOW: this test shells out to the Lobster toolchain; set SCHEMA_SLOW=1 to run it (ci-full.yml and the make leg gates always do)")
-	}
+	slowtest.Gate(t, "the Lobster toolchain")
 	lobster, why := Interpreter()
 	if lobster == "" {
 		t.Fatalf("lobsterrun: the Lobster toolchain does not resolve: %s", why)

@@ -952,7 +952,7 @@ int main(void)
     }
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }
 
 // c/R27 [verify] — "the manifest is the wire". FIXED-FORM-ALGORITHM §5.9 #32:
@@ -1074,7 +1074,7 @@ int main(void)
     CHECK(answered == 2 * 14 * (int) need);
     return 0;
 }
-`, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags()...)...)
+`, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags(t)...)...)
 	// AND THE SAME SWEEP OVER THE THREE-UNION CHAIN, so the guard chain's code
 	// on both plans takes every forged byte too: one of three answers, and a
 	// read that lands values holds each tag it landed inside its two arms.
@@ -1132,7 +1132,7 @@ int main(void)
     CHECK(answered == 2 * 14 * (int) need);
     return 0;
 }
-`, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags()...)...)
+`, append([]string{"-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-g"}, identityCCFlags(t)...)...)
 }
 
 // cT08WrongPlanSchema is P4's pair: Fxnew widens `narrow`, renames `renamed`
@@ -1212,5 +1212,5 @@ int main(void)
     CHECK(back.renamed == 321 && back.narrow == 40000 && back.keep == 4242);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }

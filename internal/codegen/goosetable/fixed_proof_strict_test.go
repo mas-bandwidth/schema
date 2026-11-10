@@ -22,6 +22,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const strictProofOracleSchema = `package probe
@@ -93,6 +94,7 @@ func writeCppOracleHeaders(t *testing.T, schemaText string) (string, string) {
 // records and strict refusal on out-of-range scalars, forged ordinals, and
 // wire-damaged bool/present bytes.
 func TestGooseFixedProofSuiteStrict(t *testing.T) {
+	slowtest.Gate(t, "c++ and the Goose toolchain (it builds the C++ oracle and runs a Goose probe)")
 	t.Parallel()
 	const cppSetup = `    value[0].x = 7;
     value[0].mode = Mode::Active;
@@ -210,6 +212,7 @@ func TestGooseFixedProofSuiteStrict(t *testing.T) {
 // and requires both the static strict check and the oracle compilation/runtime
 // verification to fail.
 func TestGooseFixedProofSuiteStrictNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "c++ and the Goose toolchain (it builds the C++ oracle and runs a Goose probe)")
 	t.Parallel()
 	const cppSetup = `    value[0].x = 7;
     value[0].mode = Mode::Active;

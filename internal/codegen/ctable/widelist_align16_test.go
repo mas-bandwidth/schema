@@ -111,7 +111,7 @@ int main(void)
     return 0;
 }
 `, t09Check, cRef.String(), cWiden.String())
-	runCGenerated(t, string(schemaBytes), mainSrc, append(identityCCFlags(), "-I", ser)...)
+	runCGenerated(t, string(schemaBytes), mainSrc, append(identityCCFlags(t), "-I", ser)...)
 }
 
 // TestUnplacedBlobMarkDoesNotCountBlobSharedC pins the arms_gate_text random
@@ -166,5 +166,5 @@ int main(void)
     return 0;
 }
 `, t09Check, cMut.String())
-	runCGenerated(t, string(schemaBytes), mainSrc, identityCCFlags()...)
+	runCGenerated(t, string(schemaBytes), mainSrc, identityCCFlags(t)...)
 }

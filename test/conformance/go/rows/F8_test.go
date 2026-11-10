@@ -9,7 +9,8 @@ import (
 	"testing"
 )
 
-// f8Gate skips the row unless the slow half is enabled. This module cannot
+// f8Gate skips the row unless the slow half is enabled; every row here that
+// shells out (F8, R6, W13) calls it first. This module cannot
 // import internal/slowtest, so it repeats the environment check the gate makes.
 func f8Gate(t *testing.T) {
 	t.Helper()

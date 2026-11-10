@@ -56,7 +56,11 @@ func tableH(t *testing.T, src string) string {
 	return ""
 }
 
-func identityCCFlags() []string {
+// identityCCFlags probes the C compiler (gnuCC runs it), so it gates first:
+// a caller evaluates it as an argument before the probe helper's own gate.
+func identityCCFlags(t testing.TB) []string {
+	t.Helper()
+	slowtest.Gate(t, "an external toolchain")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
@@ -330,7 +334,7 @@ int main(void)
     CHECK(loaded.label_length == 0);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }
 
 func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
@@ -371,5 +375,5 @@ int main(void)
     CHECK((int64_t)sizeof(loaded) == 8);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }
