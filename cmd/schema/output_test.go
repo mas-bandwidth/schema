@@ -42,6 +42,29 @@ func TestGeneratedOutputIsConfined(t *testing.T) {
 	}
 }
 
+func TestGeneratedWritesNestedPaths(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	files := map[string][]byte{
+		"a/b/c.txt": []byte("nested"),
+		"top.txt":   []byte("top"),
+	}
+	if err := writeGenerated(dir, files, "go", false, "", nil, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "a", "b", "c.txt"))
+	if err != nil || string(data) != "nested" {
+		t.Fatalf("nested file: %q, %v", data, err)
+	}
+	data, err = os.ReadFile(filepath.Join(dir, "top.txt"))
+	if err != nil || string(data) != "top" {
+		t.Fatalf("top file: %q, %v", data, err)
+	}
+	if err := writeGenerated(dir, map[string][]byte{"../x": []byte("no")}, "go", false, "", nil, false); err == nil {
+		t.Fatal("accepted ../x")
+	}
+}
+
 const messagePackSchemaV1 = `package msg
 
 fixed table Command {
