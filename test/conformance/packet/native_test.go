@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -109,6 +110,12 @@ var legs = []leg{
 		}
 		return []string{node, filepath.Join(dir, "main.mjs")}
 	}},
+	{name: "lua", target: "lua", build: func(t *testing.T, dir string, gen map[string][]byte, rt runtimes) []string {
+		// the generated tree vendors the serialize.lua runtime beside the unit
+		gen["main.lua"] = driverSource(t, "lua", "main.lua")
+		writeTree(t, dir, gen)
+		return []string{luarun.Interpreter(t), filepath.Join(dir, "main.lua")}
+	}},
 	{name: "rust", target: "rust", build: func(t *testing.T, dir string, gen map[string][]byte, rt runtimes) []string {
 		files := map[string][]byte{
 			"seed/Cargo.toml": []byte("[package]\nname = \"seed\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n" +
@@ -150,7 +157,7 @@ func sibling(envName, dir, marker string) string {
 // the instance, and every reader gives the same verdict and value for every
 // one-bit flip of the reference packets.
 func TestPacketCarrier(t *testing.T) {
-	slowtest.Gate(t, "cc, c++, go, cargo and node (it builds and runs one driver per language)")
+	slowtest.Gate(t, "cc, c++, go, cargo, node and lua (it builds and runs one driver per language)")
 	t.Chdir("../../..")
 	rt := runtimes{
 		cpp:       sibling("SERIALIZE", "serialize", "serialize.h"),
