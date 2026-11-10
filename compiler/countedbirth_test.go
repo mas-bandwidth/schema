@@ -90,7 +90,10 @@ var bornAtMinimum = map[string]string{
 // held to it by assertsInDebug.
 var refusesEveryBuild = map[string][]string{
 	"elixir": {"if n < 2 do", "if n > 8 do", "raise ArgumentError"},
-	"go":     {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
+	// The Go entry's boundary is also executed end to end by TestWriteRefusalPacket
+	// (test/conformance/harness), which writes the lawful count and the two
+	// values outside it through the generated packet writer.
+	"go": {"if value.WindowCount < 2 || value.WindowCount > 8 {", "return serialize.ErrValueOutOfRange"},
 	// Goose's `assert` aborts in every build and the language has no
 	// build-removable check, so the writer returns the refusal kind, Go's form
 	// (internal/codegen/goose/write.go)

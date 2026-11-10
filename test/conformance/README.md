@@ -192,19 +192,28 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
-**The four `write-refusal` surfaces hold the write contract** (docs/SPEC.md
-§5.1): each row loads one wire, sets ONE field to a value its declaration does
-or does not admit, and runs the writer its surface names. A refused row owes
-`refused\n`; the lawful twin at the same boundary owes `wrote\n`, so a leg that
-refused everything fails half the battery. An assert leg answers from its DEBUG
-build, where the check is active — C and C++ fork one child per case and read an
-abort as the refusal, C# installs a throwing `TraceListener`, Rust catches the
-panic, the Java driver runs those surfaces under `-ea` and the Dart leg builds a
-second binary with `--enable-asserts` — and every other leg answers from its
-ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
+**The four table-form `write-refusal` surfaces hold the write contract**
+(docs/SPEC.md §5.1): each row loads one wire, sets ONE field to a value its
+declaration does or does not admit, and runs the writer its surface names. A
+refused row owes `refused\n`; the lawful twin at the same boundary owes
+`wrote\n`, so a leg that refused everything fails half the battery. An assert
+leg answers from its DEBUG build, where the check is active — C and C++ fork
+one child per case and read an abort as the refusal, C# installs a throwing
+`TraceListener`, Rust catches the panic, the Java driver runs those surfaces
+under `-ea` and the Dart leg builds a second binary with `--enable-asserts` —
+and every other leg answers from its ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
+
+**The packet wire has its own surface, `write-refusal-packet`** (docs/SPEC.md
+§5.1): a generated packet type carries one field per row, and the surface runs
+the packet `Write` over each refused value and its lawful twin at the same
+boundary. It starts with the Go leg: `TestWriteRefusalPacket` in
+`test/conformance/harness` generates the unit, compiles it against serialize.go
+and runs the battery behind `slowtest.Gate`, then runs a negative control that
+changes the emitter's upper-bound comparison and requires the boundary row to
+go red.
 
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.

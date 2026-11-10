@@ -2564,16 +2564,23 @@ reader refuses.
 **The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
 leg, and refuses ill-formed text (SPEC-TABLES §16.3).
 
-**Held by test**: four conformance surfaces (test/conformance/README.md), one
-per writer, each loading one instance, setting one field and saving it.
-`write-refusal` saves through the variable-form `Save`, `write-refusal-fixed`
-through `FixedSave`, `write-refusal-message` through `SaveMessages` against a
-connection's vocabulary, and `write-refusal-json` through the text writer. The
-battery covers a ranged integer above and below its range, a `bits(6)` past its
-width, a count past `Max`, a text past `N`, an enum ordinal and a union tag past
-their sets, a NaN and an infinity, ill-formed UTF-8 (`61 FF 62`) and a lone
-surrogate (`0061 D800 0062`), and every refused row has a lawful twin at the
-same boundary that must be written, so a leg that refused everything would fail.
+**Held by test**: five conformance surfaces (test/conformance/README.md). Four
+hold the table forms, one per writer, each loading one instance, setting one
+field and saving it. `write-refusal` saves through the variable-form `Save`,
+`write-refusal-fixed` through `FixedSave`, `write-refusal-message` through
+`SaveMessages` against a connection's vocabulary, and `write-refusal-json`
+through the text writer. The fifth, `write-refusal-packet`, holds the packet
+`Write` on a generated type carrying one field per row: a ranged scalar, an
+enum ordinal, a union tag, a counted array's count, a `string`'s length and
+content, and a constant or reserved-range field's only lawful value. It starts
+with the Go leg; `TestWriteRefusalPacket` in test/conformance/harness runs the
+battery and a negative control that changes the emitter's upper-bound
+comparison, requiring the boundary row to go red. The four table-form batteries
+cover a ranged integer above and below its range, a `bits(6)` past its width, a
+count past `Max`, a text past `N`, an enum ordinal and a union tag past their
+sets, a NaN and an infinity, ill-formed UTF-8 (`61 FF 62`) and a lone surrogate
+(`0061 D800 0062`), and every refused row has a lawful twin at the same
+boundary that must be written, so a leg that refused everything would fail.
 An assert leg answers from its DEBUG build — C and C++ fork one child per case
 and read an abort as the refusal, C# installs a throwing `TraceListener`, Rust
 catches the panic, the Java driver runs those surfaces under `-ea` and the Dart
