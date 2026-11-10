@@ -17,22 +17,61 @@ import (
 // in declaration order: the checker assembles them beside the decl stream.
 func tableUnionsOf(f *ir.File) []*ir.Union { return f.TableUnions }
 
-// tableUnionsHeldBy returns, in field order, the unions of `unions` that st
-// holds by value — the ones that must be emitted before st's struct.
-func tableUnionsHeldBy(st *ir.Struct, unions []*ir.Union) []*ir.Union {
-	var out []*ir.Union
-	for _, f := range st.Fields {
-		un, ok := f.Type.Ref.(*ir.Union)
-		if !ok || f.Type.Kind != ir.TNamed {
-			continue
-		}
-		for _, cand := range unions {
-			if cand == un {
-				out = append(out, un)
-			}
+// emitTableShapes emits this file's tables and table-armed unions in BY-VALUE
+// DEPENDENCY ORDER: every shape is defined before the storage that holds it.
+// The dependency walk follows a struct's fields and a union's arms, so a union
+// an arm holds by value is emitted before that union however deep the chain
+// runs. Names outside this file are another header's to emit (noteRef includes
+// it), so the walk stops at them.
+func (g *tableGen) emitTableShapes(members []*ir.Struct, unions []*ir.Union) {
+	local := map[string]bool{}
+	for _, st := range members {
+		if st.IsTable {
+			local[st.Name] = true
 		}
 	}
-	return out
+	for _, un := range unions {
+		local[un.Name] = true
+	}
+	done := map[string]bool{}
+	var field func(*ir.Field)
+	var shape func(string)
+	field = func(f *ir.Field) {
+		if f.IsMap() {
+			shape(f.MapEntry.Name)
+			return
+		}
+		if !f.Type.Pointer && f.Type.Kind == ir.TNamed {
+			shape(f.Type.Name)
+		}
+	}
+	shape = func(name string) {
+		if done[name] || !local[name] {
+			return
+		}
+		done[name] = true
+		if st := g.unit.Tables[name]; st != nil {
+			for _, f := range st.Fields {
+				field(f)
+			}
+			g.emitTableStruct(st)
+		} else if un := g.unit.TableUnions[name]; un != nil {
+			for _, v := range un.Variants {
+				if !v.Void() {
+					field(v.F)
+				}
+			}
+			g.emitTableUnion(un)
+		}
+	}
+	for _, st := range members {
+		if st.IsTable {
+			shape(st.Name)
+		}
+	}
+	for _, un := range unions {
+		shape(un.Name)
+	}
 }
 
 // emitTableUnion emits one table-armed union: the <Name>Type tag enum, then

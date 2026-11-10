@@ -1987,28 +1987,9 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		}
 		unions := tableUnionsOf(f)
 		if len(members) > 0 {
-			// a table-armed union is emitted before the first table that holds
-			// it and after its same-file arms, which orderTables placed ahead
-			// of that holder; one no same-file table holds follows the structs
-			emittedUnion := map[string]bool{}
-			for _, st := range members {
-				if !st.IsTable {
-					continue
-				}
-				for _, un := range tableUnionsHeldBy(st, unions) {
-					if !emittedUnion[un.Name] {
-						emittedUnion[un.Name] = true
-						g.emitTableUnion(un)
-					}
-				}
-				g.emitTableStruct(st)
-			}
-			for _, un := range unions {
-				if !emittedUnion[un.Name] {
-					emittedUnion[un.Name] = true
-					g.emitTableUnion(un)
-				}
-			}
+			// every table and table-armed union is emitted after the shapes it
+			// holds by value, so nothing is used before its definition
+			g.emitTableShapes(members, unions)
 			for _, e := range tableEnums(members) {
 				g.emitEnumIdentity(e)
 			}
