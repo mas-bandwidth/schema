@@ -37,6 +37,7 @@ var spawnPaths = []spawnPath{
 	{file: "internal/codegen/squirrel/sqrun/sqrun.go", fn: "interpreterFor", spawn: "Interpreter()"}, // resolves the binary Run then spawns
 	{file: "internal/codegen/squirrel/sqrun/sqrun.go", fn: "Run", gate: "interpreterFor(t)"},
 	{file: "internal/fixedproof/fixedproof.go", fn: "CppOracle"},
+	{file: "internal/codegen/luatable/textdifferential_test.go", fn: "luaFuzzCommand"},
 	{file: "internal/codegen/goosetable/fixed_proof_strict_test.go", fn: "TestGooseFixedProofSuiteStrict", spawn: "buildAndRunCppFixedOracle("},
 	{file: "internal/codegen/goosetable/fixed_proof_strict_test.go", fn: "TestGooseFixedProofSuiteStrictNegativeControl", spawn: "compileAndRunCppFixedOracleFiles("},
 	{file: "internal/codegen/ctable/identity_test.go", fn: "identityCCFlags", spawn: "gccFortifySilence("},
