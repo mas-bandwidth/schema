@@ -76,7 +76,7 @@ fixed table T
 }
 `
 
-func TestFixedLineagePlanCapCoversAnEvolvedUnionArray(t *testing.T) {
+func TestFixedLineagePlanCapCoversAnEvolvedUnionArrayNative(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it builds and runs the generated reader)")
 	if _, err := exec.LookPath("rustc"); err != nil {
