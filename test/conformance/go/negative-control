@@ -4,8 +4,11 @@
 # wire reader, an absent case that writes no `.absent` answer, the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
 # reader (frame-cap), a text writer that emits map keys out of order
-# (key-order), and a text writer that writes storage that is not text
-# (text-refusal).
+# (key-order), a text writer that writes storage that is not text
+# (text-refusal), the generated variable and fixed writers' ranged-int
+# refusal (write-refusal), the generated FixedSave's ranged-int refusal
+# (write-refusal-fixed) and the generated SaveMessages's ranged-int refusal
+# (write-refusal-message).
 set -eu
 
 mode=$1
@@ -54,6 +57,19 @@ write-refusal)
         echo "negative control patched nothing: $mode ($source)" >&2
         exit 1
     fi
+    ;;
+write-refusal-fixed)
+    # the fixed writer's ranged-scalar check removed from a copy of the
+    # generated Go: the write-refusal-fixed rows must go red while the
+    # variable writer and the message form stay green
+    source=$(grep -l '^func WeaponConfigFixedCheckBody(' build/tables-generated-go/examples/*.go)
+    sed '/^func WeaponConfigFixedCheckBody(/,/^}/ s/if value.Penetration < 0 || value.Penetration > 10 {/if false { \/\/ SABOTAGED: fixed range check removed/' "$source" > "$out/source.gotext"
+    ;;
+write-refusal-message)
+    # the message writer's ranged-int refusal taken out of the generated
+    # backenddemo StorePurchase message body
+    source=$(grep -l '^func StorePurchaseSaveMessageBody(' build/tables-generated-go/backend/*.go)
+    sed '/^func StorePurchaseSaveMessageBody(/,/^}/ s/if value.Quantity < 1 || value.Quantity > 99 {/if false { \/\/ SABOTAGED: a ranged int writes unchecked/' "$source" > "$out/source.gotext"
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
@@ -164,6 +180,15 @@ else
         grep -q 'go / write-refusal: wref_range_high' "$out/log"
         grep -q 'go / write-refusal-fixed: fref_range_high' "$out/log"
         grep -q 'message       pass' "$out/log"
+    elif [ "$mode" = write-refusal-fixed ]; then
+        grep -q 'go / write-refusal-fixed: fref_range_high' "$out/log"
+        grep -q '^write-refusal pass' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = write-refusal-message ]; then
+        grep -q 'go / write-refusal-message: mref_range_high' "$out/log"
+        grep -q 'go / write-refusal-message: mref_range_low' "$out/log"
+        grep -q '^message       pass' "$out/log"
+        grep -q 'wire          pass' "$out/log"
     else
         grep -q 'go / json-hostile:' "$out/log"
         grep -q 'wire          pass' "$out/log"

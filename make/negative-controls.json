@@ -181,7 +181,9 @@
         "conformance-negative-control-go-key-order",
         "conformance-negative-control-go-text-refusal",
         "conformance-negative-control-go-framing",
-        "conformance-negative-control-go-write-refusal"
+        "conformance-negative-control-go-write-refusal",
+        "conformance-negative-control-go-write-refusal-fixed",
+        "conformance-negative-control-go-write-refusal-message"
       ]
     },
     {
@@ -2716,6 +2718,48 @@
         "write-refusal-storage-release-dart-negative-control"
       ],
       "dart": "3.13.2"
+    },
+    {
+      "name": "base-cpp-write-refusal",
+      "when": "pull-request",
+      "why": "the write contract's C++ controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C++ tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
+      "targets": [
+        "conformance-negative-control-cpp-write-refusal",
+        "conformance-negative-control-cpp-write-refusal-fixed",
+        "conformance-negative-control-cpp-write-refusal-message"
+      ]
+    },
+    {
+      "name": "base-c-write-refusal",
+      "when": "pull-request",
+      "why": "the write contract's C controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
+      "targets": [
+        "conformance-negative-control-c-write-refusal",
+        "conformance-negative-control-c-write-refusal-fixed",
+        "conformance-negative-control-c-write-refusal-message"
+      ]
+    },
+    {
+      "name": "rust-write-refusal",
+      "when": "pull-request",
+      "why": "the Rust leg's write-contract controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated crates, the conformance driver rebuilt against the copy in the dev profile, and the writer's surface required red with the surface beside it green.",
+      "rust": "stable",
+      "targets": [
+        "conformance-negative-control-rust-write-refusal",
+        "conformance-negative-control-rust-write-refusal-fixed",
+        "conformance-negative-control-rust-write-refusal-message"
+      ]
+    },
+    {
+      "name": "cs-write-refusal",
+      "when": "pull-request",
+      "why": "the C# leg's write-contract controls (docs/SPEC.md §5.1): the Debug conformance driver built against a copy of the generated tree with one writer check removed, and the writer's surface required red with the surface beside it green.",
+      "dotnet": "pin",
+      "targets": [
+        "conformance-negative-control-cs-write-refusal",
+        "conformance-negative-control-cs-write-refusal-fixed",
+        "conformance-negative-control-cs-write-refusal-message"
+      ]
     }
   ],
   "excluded": [

@@ -178,7 +178,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
 	test/conformance/c/unit_tblw2.c build/tables-generated-c/w2/W2Table.c \
-	test/conformance/c/main.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
+	test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
 	test/conformance/c/unit_tblg1.c build/tables-generated-c/g1/G1Table.c \
 	test/conformance/c/unit_tblp2.c build/tables-generated-c/p2/P2Table.c \
 	test/conformance/c/unit_streamdemo.c build/tables-generated-c/stream/StreamTable.c \
@@ -2122,3 +2122,47 @@ write-refusal-storage-release-c-negative-control: bin/schema $(STORAGE_RELEASE_S
 		  cat $(STORAGE_RELEASE_C)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_C)-negative/log
 	@echo "negative control: removing the C storage guard turns the release gate RED"
+
+# THE WRITE CONTRACT'S NEGATIVE CONTROLS, C side (docs/SPEC.md §5.1): one check
+# is removed from a copy of the generated C tree, the leg's driver is rebuilt
+# against the copy, and the surface that writer serves must go red while the
+# surface beside it stays green. Nothing tracked is written to.
+define conformance-negative-control-c-wref
+	@rm -rf build/conformance-negative-c-$(1) && mkdir -p build/conformance-negative-c-$(1)
+	@cp -R build/tables-generated-c build/conformance-negative-c-$(1)/generated
+	@files=$$(grep -rlF '$(2)' build/conformance-negative-c-$(1)/generated); \
+		[ -n "$$files" ] || { echo "NEGATIVE CONTROL FAILED: the $(1) check matches no generated line"; exit 1; }; \
+		sed -i 's@$(2)@$(3)@g' $$files
+	@grep -rqF '$(4)' build/conformance-negative-c-$(1)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: the $(1) check did not change"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_SOURCES)) -o build/conformance-negative-c-$(1)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/driver
+	@chmod +x build/conformance-negative-c-$(1)/driver
+	@printf 'c %s/driver\n' "$(CURDIR)/build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-c-$(1)/drivers.txt \
+			--work build/conformance-negative-c-$(1)/work > build/conformance-negative-c-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C $(5) writer without its $(1) check left the harness green"; \
+		cat build/conformance-negative-c-$(1)/log; exit 1; \
+	fi
+	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -Eq '^$(6) +pass ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(6) went red too, so the control localizes nothing"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -m1 "c / $(5)" build/conformance-negative-c-$(1)/log
+	@echo "negative control: the C $(5) writer without its $(1) check turns the harness RED on $(5)"
+endef
+
+.PHONY: conformance-negative-control-c-write-refusal
+conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal,if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no variable length check,write-refusal,wire)
+
+.PHONY: conformance-negative-control-c-write-refusal-fixed
+conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-fixed,schema_assert( value->version_note_length >= 0 && value->version_note_length <= 16 );,(void)0; /* SABOTAGED: no fixed length check */,SABOTAGED: no fixed length check,write-refusal-fixed,wire)
+
+.PHONY: conformance-negative-control-c-write-refusal-message
+conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-message,if ( value->sku_length < 0 || value->sku_length > 32 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no message length check,write-refusal-message,message)
