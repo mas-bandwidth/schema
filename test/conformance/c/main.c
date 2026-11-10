@@ -775,6 +775,62 @@ static int surface_retain(const char * out,int saved)
  return 0;
 }
 
+/* THE WRITE CONTRACT's batteries (docs/SPEC.md §5.1): one forked case per row,
+   run by wref.c, which says why a child. The message surface's <unit> is a
+   CONNECTION: its unit and its announcement come from the connection line, as
+   the `message` surface's do. */
+static int surface_write_refusal( const char * out, const char * surface, int writer )
+{
+    int i, j;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceCodec * codec;
+        const char * unit;
+        uint8_t * wire, * announcement = NULL;
+        size_t bytes = 0, announcement_bytes = 0;
+        int verdict;
+        const char * answer;
+        if ( strcmp( f->field[0], surface ) != 0 ) { continue; }
+        /* <surface> <case> <unit> <root> <wire> <path> <kind> <value> */
+        if ( f->count < 8 ) { fprintf( stderr, "driver: short %s line\n", surface ); return 1; }
+        unit = f->field[2];
+        if ( writer == CONFORMANCE_WRITE_MESSAGE )
+        {
+            const Line * connection = NULL;
+            for ( j = 0; j < num_lines; j++ )
+            {
+                if ( !strcmp( lines[j].field[0], "connection" ) && !strcmp( lines[j].field[1], f->field[2] ) ) { connection = lines + j; break; }
+            }
+            if ( connection == NULL ) { fprintf( stderr, "driver: no connection %s\n", f->field[2] ); return 1; }
+            unit = connection->field[2];
+            announcement = slurp( connection->field[4], &announcement_bytes );
+            if ( announcement == NULL ) { fprintf( stderr, "driver: cannot read %s\n", connection->field[4] ); return 1; }
+        }
+        codec = find_codec( unit, f->field[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit, f->field[3] ); free( announcement ); return 1; }
+        wire = slurp( f->field[4], &bytes );
+        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
+                                                  f->field[3], f->field[5], f->field[6], f->field[7] );
+        free( wire );
+        free( announcement );
+        if ( verdict == CONFORMANCE_NO_SETTER )
+        {
+            fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
+            return 1;
+        }
+        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED )
+        {
+            fprintf( stderr, "driver: %s %s: the case did not run\n", surface, f->field[1] );
+            return 1;
+        }
+        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : "refused\n";
+        if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
+    }
+    return 0;
+}
+
 int main( int argc, char ** argv )
 {
     const char * surface;
@@ -788,7 +844,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -816,5 +872,9 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+    if ( strcmp( surface, "write-refusal" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
+    if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }
+    if ( strcmp( surface, "write-refusal-message" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_MESSAGE ); }
+    if ( strcmp( surface, "write-refusal-json" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_JSON ); }
     return 2;
 }

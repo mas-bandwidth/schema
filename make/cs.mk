@@ -1473,3 +1473,28 @@ write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_
 		  cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log
 	@echo "negative control: removing the C# storage guard turns the release gate RED"
+
+# THE WRITE-REFUSAL NEGATIVE CONTROLS, C# side (docs/SPEC.md §5.1). The
+# conformance driver is built Debug against a copy of the generated tree with
+# one write check removed, and the surface that writer serves must go red while
+# the surface beside it stays green. Nothing tracked is written to.
+.PHONY: conformance-negative-control-cs-write-refusal
+conformance-negative-control-cs-write-refusal: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-control \
+		's/if \(!float\.IsFinite\(v\.Damage\)\) return false;/\/* SABOTAGED: a non-finite float writes *\//' \
+		'if \(!float\.IsFinite\(v\.Damage\)\) return false;' write-refusal wire
+	@echo 'C# write-refusal negative control: the writer without its finite check is detected by cs / write-refusal; wire stays green'
+
+.PHONY: conformance-negative-control-cs-write-refusal-fixed
+conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-fixed-control \
+		's/System\.Diagnostics\.Debug\.Assert\(len_version_note <= 16\);/\/* SABOTAGED: no fixed length check *\//' \
+		'Debug\.Assert\(len_version_note <= 16\);' write-refusal-fixed wire
+	@echo 'C# write-refusal-fixed negative control: the fixed writer without its length check is detected by cs / write-refusal-fixed; wire stays green'
+
+.PHONY: conformance-negative-control-cs-write-refusal-message
+conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
+		's/if \(f\.Counted && \(Count\(value, f\) < 0 \|\| Count\(value, f\) > f\.ArrayBound\)\) \{ return false; \}/if (false) { return false; } \/* SABOTAGED: no message length check *\//' \
+		'f\.Counted && \(Count\(value, f\) < 0' write-refusal-message message
+	@echo 'C# write-refusal-message negative control: the message writer without its count check is detected by cs / write-refusal-message; message stays green'
