@@ -857,10 +857,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
-		// Interior nulls are writer misuse; the read side rejects them (§4.7).
+		// string(N) refuses an interior NUL or malformed UTF-8 before those
+		// bytes ride. bytes(N) carries either. NUL is valid UTF-8, so it is
+		// its own check.
 		g.emitWriteRangedFold32(name+"Length", "0", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			ir.BitsRequired(big.NewInt(0), big.NewInt(f.Type.Size)), true, ind)
 		g.pf("%sif stream.Err() != nil { // the length guards the slice\n%s\treturn stream.Err()\n%s}\n", ind, ind, ind)
+		if f.Type.Kind == ir.TString {
+			g.needsUTF8 = true
+			g.pf("%sfor _, unit := range %s[:%sLength] {\n", ind, name, name)
+			g.pf("%s\tif unit == 0 {\n%s\t\treturn serialize.ErrValueOutOfRange\n%s\t}\n%s}\n", ind, ind, ind, ind)
+			g.pf("%sif !utf8.ValidString(string(%s[:%sLength])) {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, name, name, ind, ind)
+		}
 		g.pf("%sstream.SerializeBytes(%s[:%sLength])\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
