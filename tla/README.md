@@ -646,14 +646,16 @@ group kill lands.
 
 A LAYOUT model of the packet wire's static byte-alignment analysis
 (`ir/wire.go`: `wirePos`, `AlignedFixedByteArrays`, `walkAligned`,
-`afterField`, `unionAlignExit`; docs/SPEC.md §4.3, §4.4, §4.7, §4.8, §4.12).
+`afterField`; docs/SPEC.md §4.3, §4.4, §4.7, §4.8, §4.12).
 The analysis walks a struct's items carrying the bit position modulo 8, or
 unknown, and marks a fixed `[N]uint8` field whose first element provably
 begins on a byte boundary; a backend bulk-copies a marked field (align, then
 memcpy), which is the same wire only when that align adds no bits. The model
 carries the analysis's own arithmetic, `(pos + bits) % 8` with unknown
 absorbing, beside a writer that walks the same items at an ABSOLUTE bit offset
-entered anywhere in `0..7` and takes every legal width.
+entered anywhere in `0..7` and takes every legal width. A union field gives
+the position up: its wire is the tag then the selected arm, so the analysis
+keeps no known exit across it.
 
 ## The finite instance
 

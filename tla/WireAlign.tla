@@ -1,7 +1,7 @@
 ------------------------------ MODULE WireAlign ------------------------------
 \* A LAYOUT model of the packet wire's static byte-alignment analysis
-\* (ir/wire.go: wirePos, AlignedFixedByteArrays, walkAligned, afterField,
-\* unionAlignExit; docs/SPEC.md §4.3, §4.4, §4.7, §4.8, §4.12). The analysis
+\* (ir/wire.go: wirePos, AlignedFixedByteArrays, walkAligned, afterField;
+\* docs/SPEC.md §4.3, §4.4, §4.7, §4.8, §4.12). The analysis
 \* walks a struct's items carrying the wire bit position MODULO 8, or UNKNOWN,
 \* and marks a fixed [N]uint8 field when its first element provably begins on
 \* a byte boundary; a backend then bulk-copies that field (align, then memcpy),
@@ -12,7 +12,7 @@
 \*   the analysis   Walk(items, pos, mark), the code's rules over the same
 \*                  modulo-8 arithmetic: ((pos + bits) % 8), align and text
 \*                  reset to 0, a branch is known only when both sides agree,
-\*                  a union only when every arm and None agree
+\*                  a union always gives the position up
 \*   the wire       a cursor over the items with the ABSOLUTE bit offset the
 \*                  writer reaches, entered at any offset 0..7 (a struct may be
 \*                  embedded anywhere), choosing every legal width: a string's
@@ -109,12 +109,12 @@ StepPos(it, pos, mark) ==
             IN << [it EXCEPT !.t = t[1], !.e = e[1]],
                   IF t[2] # U /\ t[2] = e[2] THEN t[2] ELSE U >>
       [] it.k = "union"   ->
-            LET tagged == Add(pos, Bits(Len(it.arms)))
-                exits  == {Walk(it.arms[i], tagged, FALSE)[2] : i \in 1..Len(it.arms)}
-            IN << it,
+            \* the wire is the tag then one arm, so the exit depends on which
+            \* arm is selected: the code gives the position up.
+            << it,
                   IF VariableAsFixed
                   THEN Add(pos, Bits(Len(it.arms)) + MaxArm(it.arms))
-                  ELSE IF tagged # U /\ exits \subseteq {tagged} THEN tagged ELSE U >>
+                  ELSE U >>
 
 \* ------------------------------------------------------------- the wire
 
