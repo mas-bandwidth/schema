@@ -29,8 +29,8 @@ Root [AGENTS.md](../AGENTS.md) is a generated map of the tree, not the home of
 these rules. OpenCode and Codex read AGENTS.md natively; Claude Code **2.1.277
 and later** reads it when the folder has no `CLAUDE.md`. On an older Claude
 Code nothing loads it, so open the session with `read AGENTS.md first`.
-**There is no `CLAUDE.md`, no pointer file and no symlink** — Glenn's ruling
-of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
+**There is no `CLAUDE.md`, no pointer file and no symlink** — 2026-09-18,
+docs/rulings.json `agents-md-alone`: AGENTS.md alone. The maintainer context behind these rules is
 [MAINTAINERS.md](MAINTAINERS.md).
 
 **Who this repo is for.** Schema is the data language for games: you declare
@@ -93,8 +93,8 @@ the paired before/after, and its refutations reported plainly; a wrong-magnitude
 prediction is a refutation, not a rounding error. Suspected vulnerabilities
 follow [SECURITY.md](SECURITY.md).
 
-**Everything lands on `main` by pull request** (Glenn, 2026-10-30: "Start
-landing languages in main please"). A fix is one pull request into `main` per
+**Everything lands on `main` by pull request** (2026-10-30, docs/rulings.json
+`main-by-pr`: "Start landing languages in main please"). A fix is one pull request into `main` per
 independent cause. A language's work is squash-merged into its branch
 `lang/<lang>` (or `lang/<lang>-300`), and that branch reaches `main` once, by
 one pull request with a merge commit. `dev` and the `sprint/*` stream branches

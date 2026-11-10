@@ -4830,7 +4830,7 @@ one document rather than two.
   refuses the same byte by the same name (§3.4).
 
   **A FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN** (SPEC.md
-  §4.3; Glenn, 2026-10-27: "tables go finite-only too, same rule as
+  §4.3; 2026-10-27, docs/rulings.json `finite-float-tables`: "tables go finite-only too, same rule as
   packets"). Kind `10` is the four bytes the field holds and kind `11` the
   eight, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED,
   and no writer normalizes one. A NaN (any sign, any payload, quiet or
@@ -6705,7 +6705,7 @@ compressed float is defined for the FINITE values in `[min, max]`.
 A NaN and the infinities are stated here because every comparison against a
 NaN is false, so a bounds test of `< min` and `> max` alone would hand one
 through whole. The rule follows the plain float's and the packet wire's
-(Glenn, 2026-10-27, "same rule as packets"; SPEC.md §4.3), the same in the
+(2026-10-27, docs/rulings.json `finite-float-tables`, "same rule as packets"; SPEC.md §4.3), the same in the
 message, fixed, variable and text forms:
 
 - **A NaN OR AN INFINITY IS REFUSED ON WRITE AND ON READ.** Every
@@ -6783,7 +6783,7 @@ one any writer refuses.**
   no range for `-0` to be inside. `-0` in, `-0` out, in every form, and
   nothing counts it.
 - **A NaN, `+Inf` AND `-Inf` ARE REFUSED ON WRITE AND ON READ, IN EVERY
-  FORM** (Glenn, 2026-10-27, overturning the 2026-10-18/19 rule under which
+  FORM** (2026-10-27, docs/rulings.json `finite-float-tables`, overturning the 2026-10-18/19 rule under which
   they rode the binary forms and only the strict read refused them). The
   rule is serialize format 2.0's, the packet wire's (SPEC.md §4.3): a quiet
   NaN, a signalling NaN, a NaN with any payload, either sign and either
@@ -19936,7 +19936,7 @@ a second digest.
 **A fixed table's file is read by a build at least as new as the one that wrote it, and by no other.**
 A newer reader reads every older file. An older reader given a newer file refuses it by name, before any
 record, and reads nothing. There is no partial read of a fixed table: no clamp across versions, no value
-landed as `None` for want of a name, no field dropped because the reader lacked it. (Glenn, 2026-09-10:
+landed as `None` for want of a name, no field dropped because the reader lacked it. (2026-09-10, docs/rulings.json `fixed-table-reads-backward`:
 "Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new
 versions, and complain loudly and refuse. Nothing else makes sense." The bill is
 `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the algorithm is `docs/FIXED-FORM-ALGORITHM.md` §5.)

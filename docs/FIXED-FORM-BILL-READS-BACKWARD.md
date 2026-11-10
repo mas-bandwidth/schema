@@ -3,7 +3,8 @@
 Purpose, in Glenn's words: "this is not perfect and does not do everything, but it does work, and extends
 from a pattern coded by one person that is a footgun, to something that could work on a larger team."
 
-Glenn, 2026-09-10, in Rowan's window, after walking three cases (an old reader sent a new enum variant, an
+2026-09-10, docs/rulings.json `fixed-table-reads-backward`, in Rowan's window, after walking three cases (an
+old reader sent a new enum variant, an
 old reader sent a longer array, an old reader sent a layout whose definitions moved): "The only correct is
 reject." "Newer versions of the fixed table should be able to read OLD versions." "But old versions CANNOT
 read new versions, and complain loudly and refuse. Nothing else makes sense." "You can take an enum and widen

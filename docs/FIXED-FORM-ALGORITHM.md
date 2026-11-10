@@ -425,7 +425,8 @@ rest (§5.8 row 4).
 ## 5. Evolution: the fixed table reads backward, never forward
 
 The bill is `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the spec is SPEC-TABLES §21. This section is the
-algorithm. Glenn, 2026-09-10: "Newer versions of the fixed table should be able to read OLD versions. But
+algorithm. 2026-09-10, docs/rulings.json `fixed-table-reads-backward`: "Newer versions of the fixed table
+should be able to read OLD versions. But
 old versions CANNOT read new versions, and complain loudly and refuse." The order of work: basic versioning
 on the fixed table first (this section), then the bitpacked fixed form; the variable table is HELD.
 

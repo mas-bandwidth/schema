@@ -203,6 +203,30 @@
         "all features across all languages"
       ],
       "source": "the maintainer, recorded in docs/SPEC.md §7.2: strict IEEE-754 arithmetic with no fused multiply-add in any language's compressed-float quantization. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "agents-md-alone",
+      "date": "2026-09-18",
+      "quotes": [
+        "AGENTS.md from now on! We should standardize on it, instead of CLAUDE.md."
+      ],
+      "source": "Glenn's words recorded in commit 740b6018f6efe18d2b918df02bff759e239b634c (docs: AGENTS.md, the one page every harness loads). The no-pointer and no-symlink consequence is documented in docs/CONTRIBUTING.md and rendered in AGENTS.md. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "main-by-pr",
+      "date": "2026-10-30",
+      "quotes": [
+        "Start landing languages in main please"
+      ],
+      "source": "Glenn's words recorded in commit e037d7a68e12f8088f8d1bf136a6164e5e211a13 and docs/CONTRIBUTING.md. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "fixed-table-reads-backward",
+      "date": "2026-09-10",
+      "quotes": [
+        "Newer versions of the fixed table should be able to read OLD versions. But old versions CANNOT read new versions, and complain loudly and refuse. Nothing else makes sense."
+      ],
+      "source": "Glenn's words recorded in docs/SPEC-TABLES.md §21 and docs/FIXED-FORM-BILL-READS-BACKWARD.md, added with commit 95ddf5c681717fbc3102a5b185e0a8af9f4b4112. This ruling makes nothing not-applicable."
     }
   ]
 }

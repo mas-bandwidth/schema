@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	namedRulingCitation = regexp.MustCompile(`\bGlenn(?:\s+Fiedler)?\s*,?\s*\d{4}-\d{2}-\d{2}`)
+	namedRulingCitation = regexp.MustCompile(`\bGlenn(?:\s+Fiedler)?(?:'s\s+ruling\s+of)?\s*,?\s*\d{4}-\d{2}-\d{2}`)
 	rulingKeyCitation   = regexp.MustCompile("docs/rulings\\.json`?[,\\s]+`([^`\\n]+)`")
 )
 
@@ -42,7 +42,7 @@ func TestRulingCitationsUseRegistryKeys(t *testing.T) {
 		t.Fatal("docs/rulings.json has no rulings — this gate would pass over an empty set")
 	}
 
-	files := []string{"docs/SPEC.md"}
+	files := []string{"AGENTS.md", "docs/CONTRIBUTING.md", "docs/SPEC.md", "docs/SPEC-TABLES.md"}
 	ciDir := filepath.Join(root, "internal", "ci")
 	err = filepath.WalkDir(ciDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -101,6 +101,7 @@ func TestRulingCitationGateNegativeControls(t *testing.T) {
 	}{
 		{"author name", owner + ", 2026-10-22: the rule", true, "", false},
 		{"author name without a comma", owner + " 2026-10-22: the rule", true, "", false},
+		{"possessive author name", owner + "'s ruling of 2026-10-22: the rule", true, "", false},
 		{"unknown key", "2026-10-22, " + registry + " `" + missing + "`", false, missing, false},
 		{"registry form", "2026-10-22, " + registry + " `finite-float-packet`", false, "finite-float-packet", true},
 	} {
