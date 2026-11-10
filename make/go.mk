@@ -1296,20 +1296,19 @@ conformance-negative-control-go-cycle: build/conformance-harness build/conforman
 
 test-go: conformance-negative-control-go-cycle
 # DAMAGE DISCARDS THE WHOLE LOAD in the Go leg (docs/SPEC-TABLES.md §4): each
-# sabotage removes one discard guard from a COPY of the emitter, reached
-# through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go red on
-# that guard's own line: the fixed LoadTolerant's (read.go) hands back the
-# fixed value it decoded, and the region load's (regions.go) hands back its
-# root. Nothing tracked is written to.
+# sabotage removes a strict-load discard guard from a COPY of the emitter,
+# reached through a Go overlay, and TestDamageDiscardsTheWholeLoadGo must go
+# red on the fixed load accepting damage or the region load returning a root.
+# Nothing tracked is written to.
 GO_DISCARD_NC := build/go-discard-nc
 .PHONY: tables-go-discard-negative-control
 tables-go-discard-negative-control:
 	@rm -rf $(GO_DISCARD_NC) && mkdir -p $(GO_DISCARD_NC)
-	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 {/if false {/' \
-		-e 's/n := rest \/ recordBytes/_ = rest; n := int64(1); for len(at) < int(recordBytes) { at = append(at, 0) }/' \
+	@SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadGo$$' ./internal/codegen/gotable
+	@sed -e 's/if recordBytes <= 8 || rest%%recordBytes != 0 || (rest == 0 && len(values) == 1) {/if false {/' \
 		internal/codegen/gotable/fixedform.go > $(GO_DISCARD_NC)/fixedform.go.txt
-	@cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; } || true
+	@if cmp -s internal/codegen/gotable/fixedform.go $(GO_DISCARD_NC)/fixedform.go.txt; then \
+		echo "NEGATIVE CONTROL: the Go fixed discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/$(GO_DISCARD_NC)/fixedform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/fixed.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/fixed.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
@@ -1317,13 +1316,13 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the Go fixed discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/fixed.log; exit 1; \
 	fi
-	@grep -q "fixed: LoadTolerant answered true on damage" $(GO_DISCARD_NC)/fixed.log || \
+	@grep -q "fixed: RootFixedLoad accepted damaged input" $(GO_DISCARD_NC)/fixed.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/fixed.log; exit 1; }
-	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/' -e 's/if root==nil||read.Refused()/if root==nil/' \
+	@sed -e 's/if report.Refused(){clear(region);return nil}/if false{clear(region);return nil}/g' -e 's/if root==nil||read.Refused()/if root==nil/' \
 		internal/codegen/gotable/regions.go > $(GO_DISCARD_NC)/regions.go.txt
-	@cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt && \
-		{ echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; } || true
+	@if cmp -s internal/codegen/gotable/regions.go $(GO_DISCARD_NC)/regions.go.txt; then \
+		echo "NEGATIVE CONTROL: the Go region discard sabotage patched nothing"; exit 1; fi
 	@printf '{"Replace":{"%s/internal/codegen/gotable/regions.go":"%s/$(GO_DISCARD_NC)/regions.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GO_DISCARD_NC)/region.json
 	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(GO_DISCARD_NC)/region.json -run '^TestDamageDiscardsTheWholeLoadGo$$' \
@@ -1331,7 +1330,7 @@ tables-go-discard-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the Go region discard is gone and the gate stayed green"; \
 		cat $(GO_DISCARD_NC)/region.log; exit 1; \
 	fi
-	@grep -q "variable: LoadTolerant handed back a root on damage" $(GO_DISCARD_NC)/region.log || \
+	@grep -q "variable: GraphLoad returned a root on damage" $(GO_DISCARD_NC)/region.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the region gate went red for some other reason"; \
 		  cat $(GO_DISCARD_NC)/region.log; exit 1; }
 	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"

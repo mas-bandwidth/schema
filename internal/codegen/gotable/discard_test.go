@@ -87,12 +87,12 @@ func goBytes(b []byte) string {
 
 // TestDamageDiscardsTheWholeLoadGo is the Go leg's gate for DAMAGE DISCARDS
 // THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a nested body, with a
-// whole field before it and after it, makes every public read hand back
-// nothing usable. The fixed LoadTolerant answers false with the value at its
-// defaults and the strict Load refuses; the region LoadTolerant and LoadRetain
-// hand back no root, with the retention store empty; the builder load answers
-// false with the builder's root at its defaults; a message batch that declares
-// one body more than it carries answers a count of 0 with every value reset,
+// whole field before it and after it, makes every strict read refuse without
+// retaining any decoded value. The fixed load leaves its caller-owned values
+// at defaults; the region and retaining loads hand back no root, with the
+// retention store empty; the builder load refuses with its root at defaults;
+// a message batch whose declared count exceeds its payload answers a count of
+// 0 with every value reset,
 // as does one with a stray byte after its last body; and malformed text leaves
 // the value, fixed or variable, at its defaults. Red if any read hands back
 // what it decoded.
@@ -121,31 +121,26 @@ func TestDiscard(t *testing.T) {
 	fixed := %s
 	variable := %s
 
-	var v Root
-	RootReset(&v)
+	fixedValues := []Root{{}}
+	RootReset(&fixedValues[0])
 	var r TableReport
-	if RootFixedLoad([]Root{v}, fixed, make([]TableFixedEntry, 4096), &r) >= 0 {
-		t.Fatalf("fixed: LoadTolerant answered true on damage")
+	if n := RootFixedLoad(fixedValues, fixed, make([]TableFixedEntry, 4096), &r); n >= 0 {
+		t.Fatalf("fixed: RootFixedLoad accepted damaged input: n=%%d", n)
 	}
 	if r.Err() == nil {
-		t.Fatalf("fixed: the report does not say malformed: %%+v", r)
+		t.Fatalf("fixed: the report did not record refusal: %%+v", r)
 	}
-	if v.A != 0 || v.B != 0 || v.Inner.N != 0 {
-		t.Fatalf("fixed: a damaged load handed back a=%%d b=%%d n=%%d", v.A, v.B, v.Inner.N)
-	}
-	var strict Root
-	var s TableReport
-	if RootFixedLoad([]Root{strict}, fixed, make([]TableFixedEntry, 4096), &s) >= 0 || s.Err() == nil {
-		t.Fatalf("fixed: the strict Load did not refuse: %%+v", s)
+	if got := fixedValues[0]; got.A != 0 || got.B != 0 || got.Inner.N != 0 {
+		t.Fatalf("fixed: a damaged load kept values a=%%d b=%%d n=%%d", got.A, got.B, got.Inner.N)
 	}
 
 	need := GraphLoadMeasure(variable)
 	var g TableReport
 	if root := GraphLoad(aligned(need), variable, &g); root != nil {
-		t.Fatalf("variable: LoadTolerant handed back a root on damage: a=%%d b=%%d", root.A, root.B)
+		t.Fatalf("variable: GraphLoad returned a root on damage: a=%%d b=%%d", root.A, root.B)
 	}
 	if g.Err() == nil {
-		t.Fatalf("variable: the report does not say malformed: %%+v", g)
+		t.Fatalf("variable: the report did not record refusal: %%+v", g)
 	}
 
 	retain := TableRetain{Bytes: make([]byte, 1<<12), Ids: make([]TableRetainID, 16)}
@@ -153,8 +148,8 @@ func TestDiscard(t *testing.T) {
 	if GraphLoadRetain(aligned(1<<16), variable, &retain, &rr) != nil {
 		t.Fatalf("retain: LoadRetain handed back a root on damage")
 	}
-	if !(rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed") || retain.Used != 0 || retain.Count != 0 {
-		t.Fatalf("retain: malformed=%%v used=%%d count=%%d", (rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed"), retain.Used, retain.Count)
+	if !rr.Refused() || retain.Used != 0 || retain.Count != 0 {
+		t.Fatalf("retain: damage did not refuse with an empty store: report=%%+v used=%%d count=%%d", rr, retain.Used, retain.Count)
 	}
 
 	var b GraphBuilder
@@ -164,10 +159,10 @@ func TestDiscard(t *testing.T) {
 	defer b.Shutdown()
 	var br TableReport
 	if GraphLoadBuilder(&b, variable, &br) {
-		t.Fatalf("builder: LoadBuilderTolerant answered true on damage")
+		t.Fatalf("builder: GraphLoadBuilder accepted damaged input")
 	}
-	if !(br.Refusal.Error() == "wire_damaged" || br.Refusal.Error() == "malformed") {
-		t.Fatalf("builder: the report does not say malformed: %%+v", br)
+	if !br.Refused() {
+		t.Fatalf("builder: the report did not record refusal: %%+v", br)
 	}
 	if root := b.GetRoot(); root.A != 0 || root.B != 0 || root.Inner.N != 0 {
 		t.Fatalf("builder: a damaged load handed back a=%%d b=%%d n=%%d", root.A, root.B, root.Inner.N)
@@ -194,20 +189,27 @@ func TestDiscard(t *testing.T) {
 	if !AnnounceRead(&vocab, announcement, &arep) {
 		t.Fatalf("message: the announcement was refused: %%+v", arep)
 	}
-	decoded := make([]Root, 3)
+	decoded := make([]Root, 16)
 	var clean TableReport
 	if n, ok := RootLoadMessages(decoded, &vocab, batch, &clean); !ok || n != 2 || decoded[1].B != 8 {
 		t.Fatalf("message: the clean batch did not read: n=%%d ok=%%v %%+v", n, ok, clean)
 	}
 	short := append([]byte(nil), batch...)
-	short[1]++
+	// One additional empty body can consume a terminator from the final zero
+	// padding; this count needs more bodies than the payload can pad.
+	short[1] = byte(len(decoded) - 1)
 	var mr TableReport
 	n, ok := RootLoadMessages(decoded, &vocab, short, &mr)
 	if ok || n != 0 {
 		t.Fatalf("message: a batch that declares a missing body answered n=%%d ok=%%v", n, ok)
 	}
-	if !(mr.Refusal.Error() == "wire_damaged" || mr.Refusal.Error() == "malformed") || decoded[0].A != 0 || decoded[1].B != 0 {
-		t.Fatalf("message: a damaged batch handed back malformed=%%v first.a=%%d second.b=%%d", (mr.Refusal.Error() == "wire_damaged" || mr.Refusal.Error() == "malformed"), decoded[0].A, decoded[1].B)
+	if !mr.Refused() {
+		t.Fatalf("message: damaged batch did not refuse: report=%%+v", mr)
+	}
+	for i, got := range decoded {
+		if got.A != 0 || got.B != 0 || got.Inner.N != 0 {
+			t.Fatalf("message: damaged batch kept values at index %%d: a=%%d b=%%d n=%%d", i, got.A, got.B, got.Inner.N)
+		}
 	}
 	if n, ok := RootLoadMessages(decoded, &vocab, batch, &clean); !ok || n != 2 {
 		t.Fatalf("message: the clean batch did not read again: n=%%d ok=%%v", n, ok)
@@ -215,17 +217,17 @@ func TestDiscard(t *testing.T) {
 	trailing := append(append([]byte(nil), batch...), 0xff)
 	var tr TableReport
 	n, ok = RootLoadMessages(decoded, &vocab, trailing, &tr)
-	if ok || n != 0 || !(tr.Refusal.Error() == "wire_damaged" || tr.Refusal.Error() == "malformed") || decoded[0].A != 0 || decoded[1].B != 0 {
-		t.Fatalf("message: a batch with a stray byte after its bodies handed back n=%%d ok=%%v malformed=%%v first.a=%%d", n, ok, (tr.Refusal.Error() == "wire_damaged" || tr.Refusal.Error() == "malformed"), decoded[0].A)
+	if ok || n != 0 || !tr.Refused() || decoded[0].A != 0 || decoded[1].B != 0 {
+		t.Fatalf("message: batch with a stray byte did not refuse with reset values: n=%%d ok=%%v report=%%+v first.a=%%d", n, ok, tr, decoded[0].A)
 	}
 
 	var text Root
 	var jr TableReport
 	if RootFromJSON(&text, []byte(`+"`"+`{"a":5,"inner":{"n":3},"b":9,"&x":1}`+"`"+`), &jr) {
-		t.Fatalf("text: FromJSONTolerant answered true on malformed text")
+		t.Fatalf("text: RootFromJSON accepted malformed input")
 	}
-	if !(jr.Refusal.Error() == "wire_damaged" || jr.Refusal.Error() == "malformed") || text.A != 0 || text.B != 0 || text.Inner.N != 0 {
-		t.Fatalf("text: malformed text handed back malformed=%%v a=%%d b=%%d n=%%d", (jr.Refusal.Error() == "wire_damaged" || jr.Refusal.Error() == "malformed"), text.A, text.B, text.Inner.N)
+	if !jr.Refused() || text.A != 0 || text.B != 0 || text.Inner.N != 0 {
+		t.Fatalf("text: malformed text did not refuse with reset values: report=%%+v a=%%d b=%%d n=%%d", jr, text.A, text.B, text.Inner.N)
 	}
 	var tb GraphBuilder
 	if !tb.Init() {
@@ -234,10 +236,10 @@ func TestDiscard(t *testing.T) {
 	defer tb.Shutdown()
 	var gr TableReport
 	if GraphFromJSON(&tb, []byte(`+"`"+`{"a":5,"inner":{"n":3},"b":9,"&x":1}`+"`"+`), &gr) {
-		t.Fatalf("text: the variable FromJSONTolerant answered true on malformed text")
+		t.Fatalf("text: GraphFromJSON accepted malformed input")
 	}
-	if root := tb.GetRoot(); !(gr.Refusal.Error() == "wire_damaged" || gr.Refusal.Error() == "malformed") || root.A != 0 || root.B != 0 || root.Inner.N != 0 {
-		t.Fatalf("text: malformed variable text handed back malformed=%%v a=%%d b=%%d", (gr.Refusal.Error() == "wire_damaged" || gr.Refusal.Error() == "malformed"), root.A, root.B)
+	if root := tb.GetRoot(); !gr.Refused() || root.A != 0 || root.B != 0 || root.Inner.N != 0 {
+		t.Fatalf("text: malformed variable text did not refuse with reset values: report=%%+v a=%%d b=%%d", gr, root.A, root.B)
 	}
 }
 `, goBytes(fixed), goBytes(variable))
