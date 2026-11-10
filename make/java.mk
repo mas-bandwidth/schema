@@ -1899,7 +1899,7 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_NODE_INDEX_SABOTAGE) && mkdir -p $(JAVA_NODE_INDEX_SABOTAGE)/generated $(JAVA_NODE_INDEX_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_NODE_INDEX_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_NODE_INDEX_SABOTAGE)/generated/*/TableVariable.java; do \
-		sed 's/report\.malformed = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's/report\.damaged = true; \/\/ a reference above the entry count is damage/\/\/ SABOTAGED node index check/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED node index check' $(JAVA_NODE_INDEX_SABOTAGE)/generated/stream/TableVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java node-index sabotage did not apply'; exit 1; }
@@ -1930,7 +1930,7 @@ tables-java-map-key-damage-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_MAP_KEY_SABOTAGE) && mkdir -p $(JAVA_MAP_KEY_SABOTAGE)/generated $(JAVA_MAP_KEY_SABOTAGE)/classes
 	@for u in $(JAVA_WIRE_FUZZ_UNITS); do cp -R build/tables-generated-java/$$u $(JAVA_MAP_KEY_SABOTAGE)/generated/$$u || exit 1; done
 	@for f in $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/*Variable.java; do \
-		sed 's/if (r\.fail || report\.malformed) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+		sed 's/if (r\.fail || report\.damaged) return;/if (r.fail) return; \/\/ SABOTAGED map key damage/' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
 	@grep -q 'SABOTAGED map key damage' $(JAVA_MAP_KEY_SABOTAGE)/generated/maps/CellsVariable.java || \
 		{ echo 'NEGATIVE CONTROL: the Java map-key sabotage did not apply'; exit 1; }

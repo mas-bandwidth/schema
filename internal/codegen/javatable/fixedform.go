@@ -1418,8 +1418,27 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		if f.Type.Signed {
 			typ = "Int128"
 		}
-		g.pf("%s%s = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
-			ind, expr, typ, buf, at, off+8, buf, at, off)
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			// A 128-BIT FIELD'S DECLARED RANGE IS HELD ON LOAD, like the
+			// narrower scalars above: the oracle refuses a value outside it
+			// (docs/SPEC-TABLES.md §3.4, §4 / ALGORITHM §4.6).
+			loLit := fixedNarrowLit(typ, lo)
+			hiLit := fixedNarrowLit(typ, hi)
+			cmp := "compareTo"
+			if !f.Type.Signed {
+				cmp = "compareUnsigned"
+			}
+			g.pf("%s{\n", ind)
+			g.pf("%s    %s q = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
+				ind, typ, typ, buf, at, off+8, buf, at, off)
+			g.pf("%s    if (q.%s(%s) < 0 || q.%s(%s) > 0) { %s.refuse(TableFixed.Reason.outOfRange); }\n",
+				ind, cmp, loLit, cmp, hiLit, rep)
+			g.pf("%s    %s = q;\n", ind, expr)
+			g.pf("%s}\n", ind)
+		} else {
+			g.pf("%s%s = new %s(TableFixed.get64(%s, %s + %d), TableFixed.get64(%s, %s + %d));\n",
+				ind, expr, typ, buf, at, off+8, buf, at, off)
+		}
 		return
 	}
 	typ := fixedScalarType(f.Type)
