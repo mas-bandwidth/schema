@@ -1447,3 +1447,18 @@ write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_
 		  cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log
 	@echo "negative control: removing the C# storage guard turns the release gate RED"
+# THE WRITE CONTRACT'S controls (docs/SPEC.md §5.1): one per writer. Each
+# removes one write guard from a COPY of the generated C# tree and rebuilds the
+# conformance driver against it, so the surface it names must go red while the
+# read surface beside it stays green.
+.PHONY: conformance-negative-control-cs-write-refusal
+conformance-negative-control-cs-write-refusal: build/conformance-harness build/tables-generated-cs/.stamp cards-cs-generate
+	WR_DOTNET="$(DOTNET)" sh test/conformance/write-refusal-negative-control cs write-refusal
+
+.PHONY: conformance-negative-control-cs-write-refusal-fixed
+conformance-negative-control-cs-write-refusal-fixed: build/conformance-harness build/tables-generated-cs/.stamp cards-cs-generate
+	WR_DOTNET="$(DOTNET)" sh test/conformance/write-refusal-negative-control cs write-refusal-fixed
+
+.PHONY: conformance-negative-control-cs-write-refusal-message
+conformance-negative-control-cs-write-refusal-message: build/conformance-harness build/tables-generated-cs/.stamp cards-cs-generate
+	WR_DOTNET="$(DOTNET)" sh test/conformance/write-refusal-negative-control cs write-refusal-message

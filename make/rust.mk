@@ -1804,3 +1804,18 @@ write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEAS
 		  cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; }
 	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log
 	@echo "negative control: removing the Rust storage guard turns the release gate RED"
+# THE WRITE CONTRACT'S controls (docs/SPEC.md §5.1): one per writer. Each
+# removes one write guard from a COPY of the generated Rust crate and rebuilds
+# the conformance driver against it, so the surface it names must go red while
+# the read surface beside it stays green.
+.PHONY: conformance-negative-control-rust-write-refusal
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+	WR_RUSTUP="$(RUSTUP_BIN)" sh test/conformance/write-refusal-negative-control rust write-refusal
+
+.PHONY: conformance-negative-control-rust-write-refusal-fixed
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+	WR_RUSTUP="$(RUSTUP_BIN)" sh test/conformance/write-refusal-negative-control rust write-refusal-fixed
+
+.PHONY: conformance-negative-control-rust-write-refusal-message
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+	WR_RUSTUP="$(RUSTUP_BIN)" sh test/conformance/write-refusal-negative-control rust write-refusal-message
