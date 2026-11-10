@@ -303,6 +303,11 @@ func (s *scan) field(at int64, f *ir.Field) error {
 		return nil
 	}
 	value := pieces[0]
+	if f.Type.Optional {
+		if p := s.buf[pieces[len(pieces)-1].Offset]; p > 1 {
+			return fmt.Errorf("the optional's present byte is %d, not 0 or 1", p)
+		}
+	}
 	switch {
 	case f.IsMap():
 		if f.Type.Optional && s.buf[pieces[len(pieces)-1].Offset] == 0 {
@@ -605,6 +610,15 @@ func (s *scan) element(at int64, f *ir.Field) error {
 		return s.ref(at, f) // an element of an array of pointers (§2.1)
 	}
 	switch f.Type.Kind {
+	case ir.TBool:
+		// A BOOL'S STORAGE BYTE IS 0 OR 1 (docs/SPEC-TABLES.md §7): the
+		// mapped readers load it as a bool, and a byte that is neither is
+		// undefined behaviour in them, so the check refuses it as it refuses
+		// a non-finite float
+		if b := s.buf[at]; b > 1 {
+			return fmt.Errorf("the bool byte is %d, not 0 or 1", b)
+		}
+		return nil
 	case ir.TFloat32:
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the check is the cook's
 		// strict validator (§7), and it refuses a NaN or an infinity on its raw
