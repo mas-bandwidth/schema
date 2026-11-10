@@ -73,23 +73,6 @@ local function utf8_seq(s, i)
   return n
 end
 
-local function utf8_decode(s)
-  local c = s:byte(1)
-  if c < 0x80 then return c end
-  local code, n
-  if c < 0xe0 then
-    code, n = c & 0x1f, 2
-  elseif c < 0xf0 then
-    code, n = c & 0x0f, 3
-  else
-    code, n = c & 0x07, 4
-  end
-  for i = 2, n do
-    code = (code << 6) | (s:byte(i) & 0x3f)
-  end
-  return code
-end
-
 ----------------------------------------------------------------------------
 -- the parser (§16.9.1): gap, comments, atoms, strings and lists
 ----------------------------------------------------------------------------
