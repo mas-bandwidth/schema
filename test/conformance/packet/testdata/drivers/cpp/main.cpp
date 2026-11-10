@@ -52,6 +52,7 @@ static bool ReadSeedT( const Packet & packet, Fields & f )
         memcpy( buffer.data(), packet.data(), packet.size() );
     serialize::ReadStream stream( buffer.data(), int64_t( packet.size() ) );
     seed::T v;
+    v.u.SelectA(); // every arm's storage initialized before the read replaces it
     if ( !seed::ReadT( stream, v ) )
         return false;
     f.push_back( int64_t( v.u.type ) );
