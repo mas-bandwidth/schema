@@ -1200,7 +1200,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	if len(lineage) > 1 {
-		planCap := max(int(body)+2*len(entries)+256, 512)
+		// THE PLAN'S STORAGE IS SIZED BY THE PLAN: the exact maximum entry count
+		// the runtime's own walk pushes for any layout in the lineage, not a
+		// guess from the record's byte size. A union under an array makes the
+		// two diverge (fixedplancap.go).
+		planCap := fixedLineagePlanCap(block, entries, lineage, ownIndex)
 		remapCap := 1024 + 32*len(entries)
 		// THE GUARD CHAIN'S POOL CAPACITY: each union arm lays its chain down
 		// as one contiguous run of (guard, arg, argw) links, and the chain's
