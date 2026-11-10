@@ -1,9 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -365,6 +370,105 @@ func TestTheCommittedProofIsWellFormed(t *testing.T) {
 	}
 	if !slices.Equal(MarshalProof(p), mustRead(t, filepath.Join(testRoot(t), proofPath))) {
 		t.Errorf("%s is not in the form the tool writes; run `make proof-write`", proofPath)
+	}
+}
+
+// harnessRunPath is the file that holds the harness's surface list.
+const harnessRunPath = "test/conformance/harness/run.go"
+
+// harnessSurfaces reads the `surfaces` list out of the harness's run.go
+// source. The harness is a main package, so tools/matrix parses it rather
+// than importing it.
+func harnessSurfaces(src []byte) ([]string, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), harnessRunPath, src, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	for _, decl := range f.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs := spec.(*ast.ValueSpec)
+			for i, name := range vs.Names {
+				if name.Name != "surfaces" || i >= len(vs.Values) {
+					continue
+				}
+				lit, ok := vs.Values[i].(*ast.CompositeLit)
+				if !ok {
+					return nil, fmt.Errorf("%s: surfaces is not a literal list", harnessRunPath)
+				}
+				var out []string
+				for _, elt := range lit.Elts {
+					bl, ok := elt.(*ast.BasicLit)
+					if !ok || bl.Kind != token.STRING {
+						return nil, fmt.Errorf("%s: surfaces holds a non-string element", harnessRunPath)
+					}
+					s, err := strconv.Unquote(bl.Value)
+					if err != nil {
+						return nil, err
+					}
+					out = append(out, s)
+				}
+				return out, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("%s declares no surfaces list", harnessRunPath)
+}
+
+// surfacesDiffer names every way two surface lists differ: a surface in one
+// and not the other, or the same surfaces in another order.
+func surfacesDiffer(harness, matrix []string) []string {
+	var out []string
+	for _, s := range harness {
+		if !slices.Contains(matrix, s) {
+			out = append(out, fmt.Sprintf("surface %q is in the harness and not in Surfaces", s))
+		}
+	}
+	for _, s := range matrix {
+		if !slices.Contains(harness, s) {
+			out = append(out, fmt.Sprintf("surface %q is in Surfaces and not in the harness", s))
+		}
+	}
+	if len(out) == 0 && !slices.Equal(harness, matrix) {
+		out = append(out, fmt.Sprintf("Surfaces is in another order than the harness: %v, want %v", matrix, harness))
+	}
+	return out
+}
+
+// TestSurfacesAreTheHarnessSurfaces: Surfaces is the harness's surface list,
+// in its order, read from the harness's own source, so a drift is caught by
+// go test rather than by the proof job's refusal. Its negative control drops
+// one surface from a copy of that source and the comparison must go red
+// naming it.
+func TestSurfacesAreTheHarnessSurfaces(t *testing.T) {
+	t.Parallel()
+	src := mustRead(t, filepath.Join(testRoot(t), harnessRunPath))
+	harness, err := harnessSurfaces(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range surfacesDiffer(harness, Surfaces) {
+		t.Error(d)
+	}
+
+	const dropped = "cook-forgery"
+	planted := strings.Replace(string(src), strconv.Quote(dropped)+",", "", 1)
+	if planted == string(src) {
+		t.Fatalf("negative control: %s no longer lists %q to drop", harnessRunPath, dropped)
+	}
+	short, err := harnessSurfaces([]byte(planted))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(short) != len(harness)-1 {
+		t.Fatalf("negative control: dropping %q left %d surfaces, want %d", dropped, len(short), len(harness)-1)
+	}
+	d := surfacesDiffer(short, Surfaces)
+	if !slices.ContainsFunc(d, func(s string) bool { return strings.Contains(s, strconv.Quote(dropped)) }) {
+		t.Errorf("negative control: a harness list without %q gave %q, want a difference naming it", dropped, d)
 	}
 }
 
