@@ -1408,3 +1408,42 @@ test-cs: cards-cs-retain-negative-control
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-cs/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A counted array whose count is
+# past the storage it indexes is refused in EVERY build, so this gate runs the
+# generated writer in -c Release and requires the message writer to refuse
+# before the first byte. The control strips the generated guard and requires
+# the same release gate to go red.
+STORAGE_RELEASE_CS := build/storage-release-cs
+.PHONY: write-refusal-storage-release-cs write-refusal-storage-release-cs-negative-control
+write-refusal-storage-release-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_release.cs test/conformance/cs/storage-release/StorageRelease.csproj
+	@rm -rf $(STORAGE_RELEASE_CS) && mkdir -p $(STORAGE_RELEASE_CS)/generated
+	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
+		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)/generated \
+		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/obj/ \
+		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/bin/
+
+write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_release.cs test/conformance/cs/storage-release/StorageRelease.csproj
+	@rm -rf $(STORAGE_RELEASE_CS)-negative && mkdir -p $(STORAGE_RELEASE_CS)-negative/generated
+	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak -e 's/Count(value, f) < 0 || Count(value, f) > f.ArrayBound/Count(value, f) < 0 \/* SABOTAGED *\//g' \
+		-e 's/count < 0 || count > f.ArrayBound/count < 0 \/* SABOTAGED *\//g' \
+		$(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
+	@if $(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
+			-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/generated \
+			-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
+			-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/obj/ \
+			-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/bin/ \
+			> $(STORAGE_RELEASE_CS)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
+		cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
+		  cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log
+	@echo "negative control: removing the C# storage guard turns the release gate RED"

@@ -2086,3 +2086,39 @@ test-c: tables-c-cycle
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-c/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
+# storage it indexes is refused in EVERY build, so this gate compiles the
+# generated writer -DNDEBUG and requires the message writer to refuse before
+# the first byte. The control strips the generated guard and requires the same
+# release gate to go red.
+STORAGE_RELEASE_C := build/storage-release-c
+STORAGE_RELEASE_SCHEMA := test/conformance/storage-release/Storage.schema
+.PHONY: write-refusal-storage-release-c write-refusal-storage-release-c-negative-control
+write-refusal-storage-release-c: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/c/storage_release.c
+	@rm -rf $(STORAGE_RELEASE_C) && mkdir -p $(STORAGE_RELEASE_C)/generated
+	./bin/schema generate --lang c --out $(STORAGE_RELEASE_C)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG -I$(STORAGE_RELEASE_C)/generated \
+		test/conformance/c/storage_release.c $(STORAGE_RELEASE_C)/generated/StorageTable.c \
+		-o $(STORAGE_RELEASE_C)/gate -lm
+	./$(STORAGE_RELEASE_C)/gate
+
+write-refusal-storage-release-c-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/c/storage_release.c
+	@rm -rf $(STORAGE_RELEASE_C)-negative && mkdir -p $(STORAGE_RELEASE_C)-negative/generated
+	./bin/schema generate --lang c --out $(STORAGE_RELEASE_C)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak 's/if(value->wide_length<0 || value->wide_length>8) return 0;/if(0) return 0; \/* SABOTAGED *\//g' \
+		$(STORAGE_RELEASE_C)-negative/generated/StorageTable.h
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_C)-negative/generated/StorageTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
+	$(CC) $(TABLES_CFLAGS) -DNDEBUG -I$(STORAGE_RELEASE_C)-negative/generated \
+		test/conformance/c/storage_release.c $(STORAGE_RELEASE_C)-negative/generated/StorageTable.c \
+		-o $(STORAGE_RELEASE_C)-negative/gate -lm
+	@if ./$(STORAGE_RELEASE_C)-negative/gate > $(STORAGE_RELEASE_C)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
+		cat $(STORAGE_RELEASE_C)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_C)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
+		  cat $(STORAGE_RELEASE_C)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_C)-negative/log
+	@echo "negative control: removing the C storage guard turns the release gate RED"

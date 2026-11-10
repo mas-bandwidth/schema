@@ -2671,6 +2671,51 @@
       "targets": [
         "release-refuses-on-differential-negative-control"
       ]
+    },
+    {
+      "name": "write-refusal-storage-release-c",
+      "when": "pull-request",
+      "why": "the C and C++ release storage gates (docs/SPEC.md §5.1): each generates a small table unit, compiles the message writer with the language's release flags (-DNDEBUG for both), and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. Two small compiler runs, with no toolchain beyond the host C and C++ compilers.",
+      "targets": [
+        "write-refusal-storage-release-c-negative-control",
+        "write-refusal-storage-release-cpp-negative-control"
+      ]
+    },
+    {
+      "name": "write-refusal-storage-release-cs",
+      "when": "pull-request",
+      "why": "the C# release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in -c Release, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small .NET build.",
+      "targets": [
+        "write-refusal-storage-release-cs-negative-control"
+      ],
+      "dotnet": "pin"
+    },
+    {
+      "name": "write-refusal-storage-release-rust",
+      "when": "pull-request",
+      "why": "the Rust release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in --release with debug assertions off, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small cargo build.",
+      "targets": [
+        "write-refusal-storage-release-rust-negative-control"
+      ],
+      "rust": "stable"
+    },
+    {
+      "name": "write-refusal-storage-release-java",
+      "when": "pull-request",
+      "why": "the Java release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer without -ea, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small javac and java run.",
+      "targets": [
+        "write-refusal-storage-release-java-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "write-refusal-storage-release-dart",
+      "when": "pull-request",
+      "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
+      "targets": [
+        "write-refusal-storage-release-dart-negative-control"
+      ],
+      "dart": "3.13.2"
     }
   ],
   "excluded": [

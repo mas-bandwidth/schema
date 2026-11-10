@@ -2394,3 +2394,36 @@ test-java: conformance-java-framing
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
+# storage it indexes is refused in EVERY build, so this gate runs the generated
+# writer without -ea and requires the message writer to refuse before the first
+# byte. The control strips the generated guard and requires the same release
+# gate to go red.
+STORAGE_RELEASE_JAVA := build/storage-release-java
+.PHONY: write-refusal-storage-release-java write-refusal-storage-release-java-negative-control
+write-refusal-storage-release-java: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/java/StorageRelease.java
+	@rm -rf $(STORAGE_RELEASE_JAVA) && mkdir -p $(STORAGE_RELEASE_JAVA)/generated $(STORAGE_RELEASE_JAVA)/classes
+	./bin/schema generate --lang java --out $(STORAGE_RELEASE_JAVA)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(JAVAC) --release 17 -nowarn -d $(STORAGE_RELEASE_JAVA)/classes \
+		$(STORAGE_RELEASE_JAVA)/generated/*.java test/conformance/java/StorageRelease.java
+	$(JAVA) -cp $(STORAGE_RELEASE_JAVA)/classes StorageRelease
+
+write-refusal-storage-release-java-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/java/StorageRelease.java
+	@rm -rf $(STORAGE_RELEASE_JAVA)-negative && mkdir -p $(STORAGE_RELEASE_JAVA)-negative/generated $(STORAGE_RELEASE_JAVA)-negative/classes
+	./bin/schema generate --lang java --out $(STORAGE_RELEASE_JAVA)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak 's/if (v.itemsCount < 0 || v.itemsCount > 8) {/if (false) { \/\/ SABOTAGED/g' \
+		$(STORAGE_RELEASE_JAVA)-negative/generated/RootMessage.java
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_JAVA)-negative/generated/RootMessage.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(STORAGE_RELEASE_JAVA)-negative/classes \
+		$(STORAGE_RELEASE_JAVA)-negative/generated/*.java test/conformance/java/StorageRelease.java
+	@if $(JAVA) -cp $(STORAGE_RELEASE_JAVA)-negative/classes StorageRelease > $(STORAGE_RELEASE_JAVA)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
+		cat $(STORAGE_RELEASE_JAVA)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_JAVA)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
+		  cat $(STORAGE_RELEASE_JAVA)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_JAVA)-negative/log
+	@echo "negative control: removing the Java storage guard turns the release gate RED"
