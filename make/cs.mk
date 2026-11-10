@@ -1447,18 +1447,21 @@ write-refusal-storage-release-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conf
 	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)/generated $(STORAGE_RELEASE_SCHEMA)
 	$(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
 		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)/generated \
+		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
 		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/obj/ \
 		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/bin/
 
 write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_release.cs test/conformance/cs/storage-release/StorageRelease.csproj
 	@rm -rf $(STORAGE_RELEASE_CS)-negative && mkdir -p $(STORAGE_RELEASE_CS)-negative/generated
 	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/if (count_0 < 0 || count_0 > 8) return false;/if (false) return false; \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_CS)-negative/generated/StorageTable.cs
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CS)-negative/generated/StorageTable.cs || \
+	@sed -i.bak -e 's/Count(value, f) < 0 || Count(value, f) > f.ArrayBound/Count(value, f) < 0 \/* SABOTAGED *\//g' \
+		-e 's/count < 0 || count > f.ArrayBound/count < 0 \/* SABOTAGED *\//g' \
+		$(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs || \
 		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
 	@if $(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
 			-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/generated \
+			-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
 			-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/obj/ \
 			-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/bin/ \
 			> $(STORAGE_RELEASE_CS)-negative/log 2>&1; then \
