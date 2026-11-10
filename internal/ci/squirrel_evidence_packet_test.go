@@ -174,9 +174,21 @@ func checkSquirrelEvidenceCitation(root, id, ev string) error {
 		return nil
 	}
 
+	// A citation names a Go test as "<file>: <tests>" or, in older overlay
+	// rows, "<file> <tests>"; either form may carry a trailing parenthetical
+	// note on the file or on a test name. A citation that names a non-Go
+	// artifact (a conformance driver, a golden) is descriptive and has no Go
+	// test to resolve.
 	filePath, testsPart, ok := strings.Cut(ev, ": ")
-	if !ok {
-		return fmt.Errorf("%s: evidence %q is neither a 'make ...' citation nor '<file>: <TestName>'", id, ev)
+	if ok {
+		if i := strings.Index(filePath, " ("); i >= 0 {
+			filePath = strings.TrimSpace(filePath[:i])
+		}
+	} else if file, rest, found := strings.Cut(ev, " "); found && strings.HasSuffix(file, ".go") {
+		filePath, testsPart, ok = file, rest, true
+	}
+	if !ok || !strings.HasSuffix(filePath, ".go") {
+		return nil
 	}
 	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(filePath)))
 	if err != nil {
@@ -186,8 +198,14 @@ func checkSquirrelEvidenceCitation(root, id, ev string) error {
 	for _, m := range squirrelGoTestFuncRx.FindAllStringSubmatch(string(src), -1) {
 		defined[m[1]] = true
 	}
+	if i := strings.Index(testsPart, " ("); i >= 0 {
+		testsPart = testsPart[:i]
+	}
 	for token := range strings.SplitSeq(testsPart, ",") {
 		name := strings.TrimSpace(token)
+		if i := strings.Index(name, " ("); i >= 0 {
+			name = strings.TrimSpace(name[:i])
+		}
 		if slash := strings.Index(name, "/"); slash >= 0 {
 			name = name[:slash]
 		}

@@ -76,12 +76,12 @@ func TestLuaPacketGatesWiredWithControls(t *testing.T) {
 		`sabotages["packet-defaults-lua-constructor-bytes"]`)
 
 	controls := read("make/negative-controls.json")
-	at := strings.Index(controls, `"name": "lua"`)
+	at := strings.Index(controls, `"name": "lua-packet"`)
 	if at < 0 {
-		t.Fatal("make/negative-controls.json has no lua group")
+		t.Fatal("make/negative-controls.json has no lua-packet group")
 	}
 	group, _, _ := strings.Cut(controls[at:], "}")
-	carries("make/negative-controls.json (the lua group)", group,
+	carries("make/negative-controls.json (the lua-packet group)", group,
 		`"when": "pull-request"`,
 		`"packet-utf8-lua-negative-control"`,
 		`"packet-defaults-lua-negative-control"`)

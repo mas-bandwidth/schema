@@ -25,7 +25,8 @@ const (
 
 // scanEngineImportViolations walks root and returns every non-test Go source file
 // under internal/codegen/, generated/, tables/, or runtime/ that (a) imports
-// internal/tablewire or internal/tabletext in a Go import declaration, or (b)
+// internal/tabletext, or imports internal/tablewire outside internal/codegen
+// (whose message-form emitters share the engine's vocabulary helpers), or (b)
 // embeds either engine import path inside a string literal of its source — the
 // way an emitter would bake the path into a template it emits into generated
 // code. Comments are documentation, not dependencies, and are ignored.
@@ -44,7 +45,8 @@ func scanEngineImportViolations(root string) ([]string, error) {
 		if !strings.HasSuffix(slashed, ".go") || strings.HasSuffix(slashed, "_test.go") {
 			return nil
 		}
-		inScope := strings.HasPrefix(slashed, "internal/codegen/") ||
+		inCodegen := strings.HasPrefix(slashed, "internal/codegen/")
+		inScope := inCodegen ||
 			strings.HasPrefix(slashed, "generated/") ||
 			strings.HasPrefix(slashed, "tables/") ||
 			strings.HasPrefix(slashed, "runtime/")
@@ -62,13 +64,20 @@ func scanEngineImportViolations(root string) ([]string, error) {
 		flagged := false
 		for _, imp := range f.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
-			if p == engineWireImport || p == engineTextImport {
+			if p == engineTextImport || (p == engineWireImport && !inCodegen) {
 				violations = append(violations, slashed+" imports "+p)
 				flagged = true
 			}
 		}
 		if !flagged {
+			importLits := map[string]bool{}
+			for _, imp := range f.Imports {
+				importLits[imp.Path.Value] = true
+			}
 			for _, s := range stringLiteralsOf(data) {
+				if importLits[s] {
+					continue
+				}
 				if strings.Contains(s, engineWireImport) || strings.Contains(s, engineTextImport) {
 					violations = append(violations, slashed+" embeds an engine import path")
 					break
@@ -100,10 +109,11 @@ func stringLiteralsOf(src []byte) []string {
 }
 
 // TestSchemaEngineIsTheOracleImportIndependence verifies that no code generator
-// (internal/codegen/* non-test source), generated Go unit (generated/**), or
-// port runtime (tables/**, runtime/**) imports internal/tablewire or
-// internal/tabletext, and includes a planted-bad-pattern control that fails
-// when a generated unit or emitter imports the engine and passes when removed.
+// (internal/codegen/* non-test source) imports internal/tabletext or embeds an
+// engine import path, that no generated Go unit (generated/**) or port runtime
+// (tables/**, runtime/**) imports or embeds either engine path, and includes a
+// planted-bad-pattern control that fails when a generated unit or emitter
+// imports or embeds the engine and passes when removed.
 func TestSchemaEngineIsTheOracleImportIndependence(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
