@@ -24,7 +24,7 @@ const (
 
 // luaFixed49CutRows are the eight fixed rows the cut rewrites; they are
 // recorded by their own card (lua-4), each citing its own per-row proof in
-// luaFixedCutProofFile and never the 49-row suite.
+// luaFixedCutProofFile and never the 48-row suite.
 var luaFixed49CutRows = []string{
 	"numeric-evolution",
 	"reports",
@@ -134,7 +134,7 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	}
 	for _, cut := range luaFixed49CutRows {
 		if suiteRows[cut] {
-			return fmt.Errorf("cut row %s is part of the 49-row suite", cut)
+			return fmt.Errorf("cut row %s is part of the 48-row suite", cut)
 		}
 	}
 	if len(luaFixed49EvolutionRows) != 16 {
@@ -142,7 +142,7 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	}
 	for row := range luaFixed49EvolutionRows {
 		if !suiteRows[row] {
-			return fmt.Errorf("evolution row %s is not one of the 49 suite rows", row)
+			return fmt.Errorf("evolution row %s is not one of the 48 suite rows", row)
 		}
 	}
 
@@ -168,7 +168,7 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 		fixedIDs = append(fixedIDs, m[1])
 		if slices.Contains(luaFixed49CutRows, strings.TrimPrefix(m[1], luaFixed49IDPrefix)) {
 			if !strings.Contains(trimmed, luaFixedCutProof) || strings.Contains(trimmed, luaFixed49SuiteFile) {
-				return fmt.Errorf("cut row %s must cite its own proof (%s...) and not the 49-row suite", m[1], luaFixedCutProof)
+				return fmt.Errorf("cut row %s must cite its own proof (%s...) and not the 48-row suite", m[1], luaFixedCutProof)
 			}
 			if st := squirrelOverlayStateRx.FindStringSubmatch(trimmed); st == nil || st[1] != "done" {
 				return fmt.Errorf("%s: a recorded cut row must be :state :done", m[1])
