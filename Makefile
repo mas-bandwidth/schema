@@ -5104,7 +5104,7 @@ clean:
 # of the two minutes, and sharding per language leg, the way the type wire's
 # nine legs already are, is what the numbers say to do if that stops holding;
 # it is not needed at this size.
-CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/listslist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
+CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/lists -Ibuild/tables-generated/widelist -Ibuild/tables-generated/examples -Ibuild/tables-generated/v1 \
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
@@ -5126,7 +5126,7 @@ CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildc
 	build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp \
 	build/tables-generated/g1/G1Table.cpp \
 	build/tables-generated/backend/BackendTable.cpp build/tables-generated/vocab/VocabTable.cpp build/tables-generated/vocab9/Vocab9Table.cpp \
-	CaptionTable.cpp build/tables-generated/features/FeaturesTable.cpp
+	build/tables-generated/features/FeaturesTable.cpp
 
 # the harness LINKS the compiler's own engine — internal/tablewire and
 # internal/tabletext, reached through compiler/ — so its dependencies are the

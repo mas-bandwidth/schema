@@ -415,10 +415,8 @@ def surface_json_write(text:string):
             for(rec.fields) sl:
                 if sl.fd.name == damage[1]:
                     hit = true
-                    if damage[0] == "narrow":
-                        sl.cell.s = "a\xffb"
-                    else:
-                        sl.cell.units = [0x61, 0xd800, 0x62]
+                    assert damage[0] == "narrow"
+                    sl.cell.s = "a\xffb"
             assert hit
         let out, why = schema_rt.json_write(rec)
         if why != "":

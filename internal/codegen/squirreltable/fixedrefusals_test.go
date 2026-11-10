@@ -70,6 +70,59 @@ func TestSquirrelFixedLoadNamesEveryRefusal(t *testing.T) {
 	t.Logf("checked %d refusals by name against the Go oracle", len(cases))
 }
 
+// TestSquirrelFixedSaveRefusesWhatItsLoadRefuses holds the write side of the
+// same rule (docs/SPEC-TABLES.md §3.4): a string(N) or bytes(N) past its bound,
+// or a string that is not UTF-8, is refused by <Root>FixedSave under the name
+// FixedLoad would answer for those bytes, and a value at the bound is written.
+func TestSquirrelFixedSaveRefusesWhatItsLoadRefuses(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
+	root, err := sqrun.RepoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqDir := t.TempDir()
+	writeGenerated(t, sqDir, fixedLoadUnit(t, root, "test/tables/FX1.schema"))
+	const probe = `local S = dofile("schema_module.nut", true);
+local T = S.require("Tblfx1Tables");
+local over = blob(7);
+local fits = blob(6);
+local rows = [
+  ["label_at_bound", function(r) { r.Label = "01234567"; }],
+  ["label_over_bound", function(r) { r.Label = "0123456789abcdef"; }],
+  ["label_ill_formed", function(r) { r.Label = "\xff\xfe"; }],
+  ["blob_at_bound", function(r) { r.Blob = fits; }],
+  ["blob_over_bound", function(r) { r.Blob = over; }],
+];
+foreach (row in rows) {
+  local r = T.FxRoot();
+  row[1](r);
+  local n = T.FxRootFixedSave(blob(512), [r]);
+  print(row[0] + "=" + (n < 0 ? T.FixedReason : "wrote") + "\n");
+}
+`
+	if err := os.WriteFile(filepath.Join(sqDir, "save.nut"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"label_at_bound":   "wrote",
+		"label_over_bound": "length_over_bound",
+		"label_ill_formed": "text_ill_formed",
+		"blob_at_bound":    "wrote",
+		"blob_over_bound":  "length_over_bound",
+	}
+	got := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(string(sqrun.Run(t, sqDir, "save.nut", nil)), "\n"), "\n") {
+		k, v, _ := strings.Cut(line, "=")
+		got[k] = v
+	}
+	for k, w := range want {
+		if got[k] != w {
+			t.Errorf("%s: FixedSave answered %q, want %q", k, got[k], w)
+		}
+	}
+}
+
 type hostileCase struct {
 	name string
 	data []byte

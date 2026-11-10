@@ -194,6 +194,19 @@ local wireKind = function(d) {
   return d.kind;
 };
 
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the sum of the elements'
+// byte lengths, an absent `?string` element counting zero, is past the
+// declared total. Save and Measure refuse such a value with nothing written.
+local textTotalPast = function(d, val) {
+  local sum = 0;
+  foreach (rec in val) {
+    if (rec == null || (d.textlist == 2 && !rec.ValuePresent)) continue;
+    sum += rec.Value.len();
+    if (sum > d.total) return true;
+  }
+  return false;
+};
+
 local hexBytes = function(b) {
   local s = "";
   for (local i = 0; i < b.len(); i++) s = s + format("%02x", b[i] & 0xff);

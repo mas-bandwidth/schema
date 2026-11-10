@@ -251,7 +251,7 @@ packet_units =
 packet_module = fn schema ->
   if not Map.has_key?(packet_units, schema), do: raise("no Elixir packet unit for schema #{schema}")
   [_, package] = Regex.run(~r/^\s*package\s+([A-Za-z_][A-Za-z0-9_]*)/m, File.read!(schema))
-  Module.concat([Macro.camelize(package), Path.basename(schema, ".schema")])
+  Module.concat([Macro.camelize(package), Macro.camelize(Path.basename(schema, ".schema"))])
 end
 
 packet_fun = fn mod, prefix, type, suffix ->

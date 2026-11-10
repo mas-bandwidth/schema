@@ -474,6 +474,10 @@ func fixedIsText(f *ir.Field) bool {
 // then that many bytes, the slack left at the template's zeros
 // (docs/SPEC-TABLES.md §3.4, §7.2).
 func fixedEmitWriteText(m *Module, f *ir.Field, off, expr, ind string) {
+	m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"length_over_bound\";\n", ind, expr, expr, f.Type.Size)
+	if f.Type.Kind == ir.TString {
+		m.Printf("%sif (_rt_fixed.textIllFormed(%s, 0, %s.len())) return \"text_ill_formed\";\n", ind, expr, expr)
+	}
 	m.Printf("%s_rt_fixed.puti32(b, at + %s, %s.len());\n", ind, off, expr)
 	m.Printf("%sfor (local i = 0; i < %s.len(); i++) b[at + %s + %d + i] = %s[i] & 0xff;\n", ind, expr, off, fixedCountBytes, expr)
 }

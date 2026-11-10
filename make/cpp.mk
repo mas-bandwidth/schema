@@ -416,7 +416,7 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A string(N) length past the
 # storage it indexes is refused in EVERY build, so this gate compiles the
 # generated writer -DNDEBUG and requires the message writer to refuse before
 # the first byte. The control strips the generated guard and requires the same
