@@ -1800,3 +1800,36 @@ tables-rust-bool-byte-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(RUST_BOOL_NC)/log; exit 1; }
 	@echo "negative control: a Rust fixed read that lands a bool byte of 2 turns TestFixedBoolByteIsDamageRust RED"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
+# storage it indexes is refused in EVERY build, so this gate runs the generated
+# writer in --release, where every debug_assert! is gone, and requires the
+# message writer to refuse before the first byte. The control strips the
+# generated guard and requires the same release gate to go red.
+STORAGE_RELEASE_RUST := build/storage-release-rust
+.PHONY: write-refusal-storage-release-rust write-refusal-storage-release-rust-negative-control
+write-refusal-storage-release-rust: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
+	@rm -rf $(STORAGE_RELEASE_RUST) && mkdir -p $(STORAGE_RELEASE_RUST)/src
+	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)/src $(STORAGE_RELEASE_SCHEMA)
+	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)/src/main.rs
+	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)/Cargo.toml
+
+write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
+	@rm -rf $(STORAGE_RELEASE_RUST)-negative && mkdir -p $(STORAGE_RELEASE_RUST)-negative/src
+	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)-negative/src $(STORAGE_RELEASE_SCHEMA)
+	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)-negative/src/main.rs
+	@sed -i.bak 's/if value.wide_length < 0 || value.wide_length > 8 { return false; }/if false { return false; } \/\/ SABOTAGED/g' \
+		$(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs
+	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
+	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)-negative/Cargo.toml
+	@if PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)-negative/Cargo.toml > $(STORAGE_RELEASE_RUST)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
+		cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
+		  cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log
+	@echo "negative control: removing the Rust storage guard turns the release gate RED"
