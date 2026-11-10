@@ -268,12 +268,11 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #515
-and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
-FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
-the write template, the plan-driven read and the LAYOUT / vocabulary block — and
-neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+these surfaces too. Rust, Elixir and Java carry both table wires, form
+1 and form 3 (§3.4), beside the block and cook read halves. **Dart and
+JavaScript carry both wires too**, form 1 and form 3 (§3.4): form 3 is
+the FIXED form — the write template, the plan-driven read and the LAYOUT /
+vocabulary block — and form 1 is the id-table wire. Their fixed forms carry the
 fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
 §3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
 block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
