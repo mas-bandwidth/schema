@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -251,6 +252,8 @@ if (AnnounceRead(keep, new Uint8Array(readFileSync("./keep.bin")), keepReport) |
 // surface from the emitted home module and calls `fail(why)` on any breach; the
 // process exits non-zero, and the combined output names the clause.
 func jsRunAnnounceProbe(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := js.Generate(u)
 	if err != nil {

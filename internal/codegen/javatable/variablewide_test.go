@@ -6,11 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 func TestJavaVariableWideValues(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	u := unitFrom(t, "package probe\ntype Line { text wstring(4) }\ntable Root {\n title wstring(7)\n line Line\n lines [..3]Line\n tail int32\n}\n")
 	model := tabletext.NewModel(u)

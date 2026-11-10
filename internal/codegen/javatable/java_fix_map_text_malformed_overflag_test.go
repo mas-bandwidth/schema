@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -25,6 +26,8 @@ import (
 // keep the value, the same unknown and widened counts and the same saved
 // value bytes. Reason names are never compared.
 func TestJavaFixMapTextMalformedOverflag(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	const mutantHex = "01010e260d0211020c05616c706861030c0566697273740011020c0462657461030c067365636f6e6400040e150d01120207050003210a4100e9002d4e3dd800de00050e240d02100204fdffffff030e000604deadbeef0010020402000000030e060604000180ff00060409000000004f8168f2ff28b7afec105b36194ac93dea0ce83094fde47cca5c7155f6f133a65b92de9cabeae214e9ea716f0f0182bf0600000000000000"
 	wire, err := hex.DecodeString(mutantHex)

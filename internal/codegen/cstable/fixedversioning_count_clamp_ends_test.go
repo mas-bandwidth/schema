@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 // count of 4 is the WRITER's bound carried by the plan, never the reader's own
 // 8 and never the forged 9.
 func TestFixedVersioningCountClampEnds(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

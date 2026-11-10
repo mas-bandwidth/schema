@@ -39,6 +39,7 @@ package ctable
 // SCHEMA_REQUIRE_CORPUS says the corpus was built and means to prove it.
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -80,6 +81,8 @@ const t09Check = `#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s
 // back, and assert the loaded value (and report.clamped at each declared
 // bound).
 func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	tests := []struct {
 		id     string

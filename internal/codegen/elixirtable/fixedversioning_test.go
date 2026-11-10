@@ -54,6 +54,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -625,6 +626,8 @@ func fixedCorpus(t *testing.T) string {
 // else). A bench with no Elixir anywhere still skips, and still FAILS under
 // SCHEMA_REQUIRE_CORPUS: the leg's gate is never satisfied by absence.
 func elixirBinary(t *testing.T) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if env := os.Getenv("ELIXIR"); env != "" {
 		if _, err := os.Stat(env); err == nil {
@@ -918,6 +921,8 @@ func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 // toolchain. A probe is generated, never hand-written, so a row and its
 // negative control cost the same (§5.9 #18).
 func runVersionProbe(t *testing.T, elixirBin, reader string, older []string, retire int, file, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := versionSchema(t, reader)
 	lineage := map[string][]FixedLineageEntry{}
@@ -1027,6 +1032,8 @@ Probe.run()
 // is where CI's OTP is — and what it returns is PREPENDED to PATH rather than
 // replacing it, so a directory that turns out to hold no `erl` costs nothing.
 func otpBin(t *testing.T) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if env := os.Getenv("ERL_BIN"); env != "" {
 		return env

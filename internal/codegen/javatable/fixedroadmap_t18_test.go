@@ -23,6 +23,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -564,6 +565,8 @@ type t18Gen struct {
 }
 
 func t18BuildTree(t *testing.T, dir string, gens []*t18Gen) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, _ := javaTools(t)
 	src := filepath.Join(dir, "src")
@@ -794,6 +797,8 @@ fixed table CfloatRangeWiden
 // target refuses (a union closure, compiler/target_java.go refuseTableArms) or
 // a root the leg emits no fixed form for is named and not loaded.
 func t18R27(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := corpusDir(t)
 	type task struct {
 		r    t18Row
@@ -953,6 +958,8 @@ func t18R27(t *testing.T) {
 // t18RequireJava is javaTools with the gate the card asks for: a missing
 // toolchain skips by name, and under SCHEMA_REQUIRE_CORPUS it FAILS by name.
 func t18RequireJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
 		javaTools(t) // skips, naming the missing JDK, when there is none
@@ -981,6 +988,8 @@ func t18RequireJava(t *testing.T) {
 // t18Compile generates an inline unit's fixed form and compiles it with the
 // probes (name -> source, in package `probe`).
 func t18Compile(t *testing.T, schema string, probes map[string]string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := unitFrom(t, schema)
 	files, err := Generate(u)

@@ -220,6 +220,8 @@ func gnuCC(cc string) bool {
 }
 
 func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
@@ -237,6 +239,8 @@ func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
 }
 
 func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cc := os.Getenv("CC")
 	if cc == "" {

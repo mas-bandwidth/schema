@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -578,6 +579,8 @@ func generatedTree(u *ir.Unit) map[string][]byte {
 // jsRunMessageProbe writes the unit's whole generated tree plus `extra` files
 // into one directory and runs `probe` there under the leg's own node.
 func jsRunMessageProbe(t *testing.T, node string, u *ir.Unit, extra map[string][]byte, probe string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files := generatedTree(u)
 	dir := t.TempDir()

@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 // skip/skipExtent already step kind 31 by L; this test pins it, emitted into
 // a real variable codec and read back, so the escape cannot regress silently.
 func TestEscapeKind31SkippedAndCountedJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(unitFrom(t, `package probe

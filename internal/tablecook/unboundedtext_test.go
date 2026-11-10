@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -96,6 +97,8 @@ func TestUnboundedTextMinimalLayoutAndRoundTrip(t *testing.T) {
 }
 
 func TestUnboundedTextAllShapesAndGeneratedGoEquivalence(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	const schema = "package probe\ntable Note {\n    lines []string\n}\ntable Where {\n    capped [..3]string\n    maybe_capped [..3]?string\n    open []string\n    maybe_open []?string\n    by_name map[string]int32\n    note *Note\n}\n"
 	u, m := unitFromSource(t, schema)
 	root := m.Lookup("Where")

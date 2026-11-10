@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -56,6 +57,8 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 // the root's loadMeasure, the load report (unknown, widened, damaged,
 // refused), the report's reason and whether load returned a value.
 func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report, reason string, loaded bool) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -165,6 +168,8 @@ type javaPinVerdict struct {
 // javaPinVerdicts compiles the unit's Java once and reads every wire through
 // Root's loadMeasure and load.
 func javaPinVerdicts(t *testing.T, u *ir.Unit, wires [][]byte) []javaPinVerdict {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {

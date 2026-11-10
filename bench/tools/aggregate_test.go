@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,8 @@ func writeRound(t *testing.T, dir, name, round string, rows ...string) string {
 // that binary, so the exit status observed is the tool's own — `go run` would
 // report the tool's exit 2 as its own exit 1.
 func runTool(t *testing.T, args ...string) (string, string, int) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "bench-tools")
 	build := exec.Command("go", "build", "-o", bin, ".")

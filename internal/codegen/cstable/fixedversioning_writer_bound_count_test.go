@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 // row exists to settle: 4. The two wrong answers it tells apart are the reader's
 // own bound 8 and the forged word 7, and both must fail before 4 can land.
 func TestFixedVersioningWriterBoundCount(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -168,6 +169,8 @@ public final class TextDiffProbe {
 // javaToolsRequired is javaTools, except that SCHEMA_REQUIRE_CORPUS=1 turns
 // a missing JDK into a failure by name rather than a skip.
 func javaToolsRequired(t *testing.T) (string, string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "1" {
 		ok := false
@@ -195,6 +198,8 @@ func javaToolsRequired(t *testing.T) (string, string) {
 // returns the divergence messages and a non-nil error when any instance
 // differs, so the negative control asserts on what the row itself prints.
 func runTextDifferentialJava(t *testing.T, edit func(map[string][]byte)) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaToolsRequired(t)
 	u := unitFrom(t, textDifferentialJavaSchema)

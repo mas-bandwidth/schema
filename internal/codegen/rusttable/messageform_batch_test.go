@@ -41,6 +41,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -338,6 +339,8 @@ func messageBatchTable(u *ir.Unit, name string) *ir.Struct {
 // messageBatchRustc is the functional gate: rustc on PATH, or a skip by name,
 // or — under SCHEMA_REQUIRE_CORPUS — a failure by name.
 func messageBatchRustc(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -353,6 +356,8 @@ func messageBatchRustc(t *testing.T) {
 // needed. The probe prints one `BATCH <id> ok` or `BATCH <id> BAD <why>` line
 // per clause.
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {

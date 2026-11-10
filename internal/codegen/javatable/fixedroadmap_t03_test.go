@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"math"
 	"os"
 	"os/exec"
@@ -1002,6 +1003,8 @@ func t03BytesOf(t *testing.T, out string) string {
 // runJava runs one compiled probe and answers its combined output, with the
 // harness's file arguments when the probe reads any.
 func runJava(t *testing.T, javaBin, classes, class string, args ...string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cmdArgs := append([]string{"-ea", "-cp", classes, class}, args...)
 	out, err := exec.Command(javaBin, cmdArgs...).CombinedOutput()

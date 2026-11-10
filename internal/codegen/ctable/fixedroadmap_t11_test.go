@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,6 +56,8 @@ func TestFixedRoadmapCT11Optionals(t *testing.T) {
 // cRunVersionProbe shape with the corpus file and the load scaffolding removed:
 // the body owns the whole run.
 func cT11Run(t *testing.T, src, body string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := cUnitOf(t, src)
 	files, err := cgen.Generate(u)

@@ -28,6 +28,8 @@ import (
 // build/conformance-go wherever the serialize.go sibling it links is present). It runs the Dart toolchain, so it is a functional test: it reaches the
 // SDK through dartBinary(t) and skips by name without one.
 func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	dart := dartBinary(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

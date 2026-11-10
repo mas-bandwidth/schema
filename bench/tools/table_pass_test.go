@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +43,8 @@ func tablePassFixture(t *testing.T, fail string) (string, []string) {
 }
 
 func TestTablePassInterleavesAfterEveryBuild(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	root, env := tablePassFixture(t, "")
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp", "--rounds", "2", "--bare")
 	cmd.Dir, cmd.Env = root, env
@@ -59,6 +62,8 @@ func TestTablePassInterleavesAfterEveryBuild(t *testing.T) {
 }
 
 func TestTablePassRefusesFailedProducerWithoutPublishingRows(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	root, env := tablePassFixture(t, "cpp")
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp", "--bare")
 	cmd.Dir, cmd.Env = root, env
@@ -73,6 +78,8 @@ func TestTablePassRefusesFailedProducerWithoutPublishingRows(t *testing.T) {
 }
 
 func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	root, env := tablePassFixture(t, "")
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp,cs", "--bare")
 	cmd.Dir, cmd.Env = root, env
@@ -86,6 +93,8 @@ func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
 }
 
 func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	root, env := tablePassFixture(t, "")
 	leg := filepath.Join(root, "bench", "tables", "lua", "leg")
 	if err := os.MkdirAll(filepath.Dir(leg), 0o755); err != nil {

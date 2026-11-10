@@ -33,9 +33,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestCPPFixedLoadNamesEveryRefusal(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	cxx := os.Getenv("CXX")

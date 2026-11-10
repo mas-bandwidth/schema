@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -22,6 +23,8 @@ import (
 // read does (tablewire.Decode): the mutant's arm is a changed kind, which
 // refuses the whole load (docs/plans/strict-only.md).
 func TestDepthLoadMeasureCoversFramingJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 

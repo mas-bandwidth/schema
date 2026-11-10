@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -123,6 +124,8 @@ process.stdout.write(JSON.stringify({ package: v.package, protocolId: v.protocol
 // viewRun generates one corpus unit's view module, runs the probe over it
 // under node and decodes the dump.
 func viewRun(t *testing.T, node, dir string) (*ir.Unit, viewDump) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := loadUnitPaths(t, []string{filepath.Join("..", "..", "..", "tables", dir)})
 	files, err := Generate(u)

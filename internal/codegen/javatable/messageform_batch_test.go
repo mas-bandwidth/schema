@@ -28,6 +28,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -450,6 +451,8 @@ func messageBatchLoadPaths(t *testing.T, root string, paths []string) *ir.Unit {
 }
 
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(u)

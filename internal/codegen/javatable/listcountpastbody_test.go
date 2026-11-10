@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -26,6 +27,8 @@ import (
 // oracle's framing refuses, and keep answering the clean wire as the oracle
 // does (saved bytes, unknown and widened).
 func TestJavaFixListCountPastBodyInMapValue(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "maps"))

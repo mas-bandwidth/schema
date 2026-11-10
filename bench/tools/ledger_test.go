@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -351,6 +352,8 @@ func TestARegressionAcrossMachinesIsNotAnAxis(t *testing.T) {
 // the awk the record is printed with and the Go the record is gated with rule
 // the same way on the same bytes.
 func renderAwk(t *testing.T, file string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cmd := exec.Command("awk", "-F,", "-v", "skips=", "-f", "../render.awk", file)
 	var out, errb strings.Builder

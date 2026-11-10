@@ -30,6 +30,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -84,6 +85,8 @@ func loadUnitDir(t *testing.T, root, dir string) *ir.Unit {
 // runMessageJava compiles one unit's generated TableVocabulary beside a driver
 // and runs the driver, returning its combined stdout.
 func runMessageJava(t *testing.T, u *ir.Unit, main string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(u)

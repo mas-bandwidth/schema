@@ -2,6 +2,7 @@ package rusttable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +17,8 @@ import (
 // counter is asserted == 1 exactly, and never >= 1.
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := versionCorpus(t)
 
 	tests := fmt.Sprintf(`

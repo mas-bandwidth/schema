@@ -29,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const t13Schema = `package probe
@@ -125,6 +126,8 @@ var (
 )
 
 func t13Discover(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	t13dotnet = os.Getenv("DOTNET")
@@ -169,6 +172,8 @@ func t13Run(t *testing.T) ([]byte, error) {
 }
 
 func t13BuildAndRun(t *testing.T) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	u := unitFrom(t, t13Schema)

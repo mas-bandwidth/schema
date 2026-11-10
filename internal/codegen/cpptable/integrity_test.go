@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -137,6 +138,8 @@ func generateCPPHeaders(t *testing.T, u *ir.Unit) (map[string][]byte, string) {
 }
 
 func writeAndCompile(t *testing.T, files map[string][]byte, header, driver string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -103,6 +104,8 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 // unit it names no module for answers known=0 (absent, which make/js.mk pins).
 // It is a toolchain test: node comes through jsNode(t).
 func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -160,6 +163,8 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 // The managed Load API has builder count-cap semantics. The protocol's
 // Refused bit names a wire-form refusal, not this out-of-band storage limit.
 func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -230,6 +235,8 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 
 // A failed independent measurement must not suppress the managed reader report.
 func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -298,6 +305,8 @@ func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
 // wire-fuzz pipe has to name that refusal: a null value with the refused bit
 // clear is the oracle refusing and the leg staying silent.
 func TestWireFuzzKindMismatchNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -366,6 +375,8 @@ func TestWireFuzzKindMismatchNamesTheRefusalJavaScript(t *testing.T) {
 	}
 }
 func TestWireFuzzArrayTailNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -466,6 +477,8 @@ func TestWireFuzzArrayTailNamesTheRefusalJavaScript(t *testing.T) {
 // 2^31, past the extent cap. The oracle refuses. The pipe names that refusal
 // and does not call the unread tail damage.
 func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -543,6 +556,8 @@ func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
 // placed child. The oracle accepts with one unknown. The leg must accept too,
 // and the saved bytes must be the oracle's canonical encoding.
 func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -639,6 +654,8 @@ func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
 // reference is zero, so the record's frame holds bytes after its terminator.
 // The oracle refuses that wire. The leg must refuse it as damage.
 func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -734,6 +751,8 @@ func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
 // must be the oracle's canonical encoding. A node-record body whose
 // terminator leaves bytes in its frame stays damage (the graph_tree tail).
 func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -823,6 +842,8 @@ func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
 // accepts with one unknown. The leg must accept too, and the saved bytes
 // must be the oracle's canonical encoding.
 func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -912,6 +933,8 @@ func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
 // it names the same blob record alias names. The oracle refuses the wire
 // blob_shared. The leg must refuse it too, and must not call the wire damage.
 func TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -996,6 +1019,8 @@ func TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 // entries name one string-blob record. The oracle refuses the wire
 // blob_shared. The leg must refuse it too, and must not call the wire damage.
 func TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1080,6 +1105,8 @@ func TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 // wire_damaged, because map keys must ascend strictly. The leg must name
 // that damage and must not accept the wire.
 func TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1158,6 +1185,8 @@ func TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript(t *testing.T) {
 }
 
 func TestWireFuzzFixedRootNamesPreviousFormJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1350,6 +1379,8 @@ func TestWireFuzzEmptyMessageNamesTheRefusalJavaScript(t *testing.T) {
 }
 
 func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire []byte) []byte {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	var input bytes.Buffer
 	binary.Write(&input, binary.LittleEndian, uint32(1))

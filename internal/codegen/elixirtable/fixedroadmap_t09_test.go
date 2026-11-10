@@ -39,6 +39,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -48,6 +49,8 @@ import (
 // consumer does. It is [runVersionProbe]'s sibling for an INLINE unit: a
 // capability fixture is a few lines and needs no corpus on disk.
 func t09Run(t *testing.T, u *ir.Unit, root, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	packet, err := elixir.Generate(u)
 	if err != nil {
