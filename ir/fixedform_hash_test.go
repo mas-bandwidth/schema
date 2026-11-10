@@ -292,3 +292,84 @@ func TestTableFixedDefinitionsDigestFloatBoundIsItsFloat64Bits(t *testing.T) {
 		t.Fatal("two float ranges inside the same integer truncation must not share a digest")
 	}
 }
+
+// TestTableFixedDefinitionsDigestWideBoundsAreDistinct pins the integer range
+// row for bounds outside int64: the digest must carry each bound's full value,
+// not the zero a narrowed read would leave, so two different uint64 maxima are
+// two different definitions.
+func TestTableFixedDefinitionsDigestWideBoundsAreDistinct(t *testing.T) {
+	t.Parallel()
+	field := func(max *big.Int) *Struct {
+		return &Struct{Name: "Wide", Fields: []*Field{{
+			Name:        "n",
+			Type:        FieldType{Kind: TInt, Width: 64},
+			HasIntRange: true,
+			IntMin:      big.NewInt(0),
+			IntMax:      max,
+		}}}
+	}
+	half, full := field(new(big.Int).Lsh(big.NewInt(1), 63)), field(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)))
+	dh, df := TableFixedDefinitionsDigest(half), TableFixedDefinitionsDigest(full)
+	if bytes.Equal(dh, df) {
+		t.Fatalf("2^63 and 2^64-1 bounds share a digest: %x", dh)
+	}
+	layout := []byte{0x01, 0x02, 0x03, 0x04}
+	if TableFixedLayoutHash(layout, half) == TableFixedLayoutHash(layout, full) {
+		t.Fatal("a bound outside int64 must move the wire hash, or two different definitions are indistinguishable")
+	}
+	// A 128-bit bound carries bits the low sixty-four do not.
+	wide := field(new(big.Int).Lsh(big.NewInt(1), 100))
+	narrow := field(new(big.Int).Lsh(big.NewInt(1), 63))
+	if bytes.Equal(TableFixedDefinitionsDigest(wide), TableFixedDefinitionsDigest(narrow)) {
+		t.Fatal("bounds sharing their low sixty-four bits must not share a digest")
+	}
+}
+
+// TestTableFixedDefinitionsDigestRepeatedFlagsReference pins the per-field
+// reference for a flags type already seen: {a F1; b F1; c F2} and
+// {a F1; b F2; c F2} are different definitions even when F1 and F2 agree on
+// every wire bit, so the digest cannot depend on only the first use.
+func TestTableFixedDefinitionsDigestRepeatedFlagsReference(t *testing.T) {
+	t.Parallel()
+	f1 := &Flags{Name: "F1", Variants: []string{"A", "B"}, WireBits: 2}
+	f2 := &Flags{Name: "F2", Variants: []string{"A", "B"}, WireBits: 2}
+	field := func(name string, fl *Flags) *Field {
+		return &Field{Name: name, Type: FieldType{Kind: TNamed, Name: fl.Name, Ref: fl}}
+	}
+	first := &Struct{Name: "First", Fields: []*Field{
+		field("a", f1), field("b", f1), field("c", f2),
+	}}
+	second := &Struct{Name: "Second", Fields: []*Field{
+		field("a", f1), field("b", f2), field("c", f2),
+	}}
+	d1, d2 := TableFixedDefinitionsDigest(first), TableFixedDefinitionsDigest(second)
+	if bytes.Equal(d1, d2) {
+		t.Fatalf("a repeated flags type has no per-field reference, so two definitions share a digest: %x", d1)
+	}
+	layout := []byte{0x01, 0x02, 0x03, 0x04}
+	if TableFixedLayoutHash(layout, first) == TableFixedLayoutHash(layout, second) {
+		t.Fatal("a repeated flags type must move the wire hash, or two different definitions are indistinguishable")
+	}
+}
+
+// TestTableFixedDefinitionsDigestInRangeRowUnchanged pins the committed row for
+// a range whose bounds fit int64: the wide-bound fix must not move a schema
+// that has no bound outside int64.
+func TestTableFixedDefinitionsDigestInRangeRowUnchanged(t *testing.T) {
+	t.Parallel()
+	st := &Struct{Name: "Ranged", Fields: []*Field{{
+		Name:        "n",
+		Type:        FieldType{Kind: TInt, Width: 32},
+		HasIntRange: true,
+		IntMin:      big.NewInt(0),
+		IntMax:      big.NewInt(100),
+	}}}
+	want := []byte{
+		'R',
+		0, 0, 0, 0, 0, 0, 0, 0,
+		100, 0, 0, 0, 0, 0, 0, 0,
+	}
+	if got := TableFixedDefinitionsDigest(st); !bytes.Equal(got, want) {
+		t.Fatalf("an in-int64 range row moved: got %x, want %x", got, want)
+	}
+}

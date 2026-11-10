@@ -666,10 +666,16 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 // Layout format is unchanged; the hash moves when a range, a flags bit count,
 // a bits(N), a fixed I/F split, or a reader-side limit does.
 //
-// Byte layout, per field, declared order, depth first; each named type once:
+// Byte layout, per field, declared order, depth first; each named type's
+// definition once, plus a reference at each later flags use:
 //
-//	'R'  integer, float or fixed-point range: min then max, each i64 LE
-//	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'R'  an integer or fixed-point range whose bounds fit int64, or any float
+//	     range: min then max, each i64 LE (a float bound is the IEEE-754 bits
+//	     of the float64)
+//	'W'  an integer range with a bound OUTSIDE int64: min then max, each a
+//	     16-byte two's-complement little-endian value. A narrowed i64 read
+//	     would make every out-of-int64 bound zero, so 2^63 and 2^64-1 would
+//	     digest identically
 //	'Q'  a COMPRESSED FLOAT's RESOLUTION, beside the 'R' its min and max went
 //	     into: the IEEE-754 bits of the float64 step, u64 LE. It is a
 //	     DEFINITION and never wire — in the fixed form a compressed float
@@ -678,7 +684,11 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //	     it (bill §2: the range widens, the resolution refines, else refuse)
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
-//	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
+//	'F'  a flags type's DEFINITION, at its first use: wire bit count as u32 LE,
+//	     then per flag 'f' and fnv1a64(name) as u64 LE
+//	'G'  a flags type's REFERENCE, at every later use: fnv1a64(name) as u64 LE,
+//	     so a repeated flags type leaves a per-field mark. Without it
+//	     {a F1; b F1; c F2} and {a F1; b F2; c F2} digest identically
 //	'L'  a reader-side limit: the limit as u64 LE. RESERVED: no table spelling
 //	     of a reader-side limit exists (the compiler flag --fixed-record-limit
 //	     is outside the law, algorithm §6). The row is empty until one does.
@@ -709,9 +719,7 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	}
 	switch {
 	case f.HasIntRange:
-		*b = append(*b, 'R')
-		*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
-		*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+		*b = tableFixedDigestIntRange(*b, f.IntMin, f.IntMax)
 	case f.HasFloatRange:
 		*b = append(*b, 'R')
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
@@ -741,6 +749,12 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	switch r := f.Type.Ref.(type) {
 	case *Flags:
 		if seen[r.Name] {
+			// THE REFERENCE IS PER FIELD, not only at the first use. A flags
+			// type digested once by name loses which field named it the second
+			// time, so {a F1; b F1; c F2} and {a F1; b F2; c F2} would digest
+			// identically whenever F1 and F2 agree on their wire bits.
+			*b = append(*b, 'G')
+			*b = tableFixedDigestU64(*b, TableWireId(r.Name))
 			break
 		}
 		seen[r.Name] = true
@@ -782,14 +796,54 @@ func tableFixedDigestI64(b []byte, v int64) []byte {
 	return tableFixedDigestU64(b, uint64(v))
 }
 
+// tableFixedDigestIntRange appends an integer range. A range whose bounds both
+// fit int64 keeps the committed 'R' row byte for byte; one with a bound outside
+// int64 takes the 'W' row so the full value is carried instead of every such
+// bound narrowing to zero.
+func tableFixedDigestIntRange(b []byte, min, max *big.Int) []byte {
+	if bigInt64Fits(min) && bigInt64Fits(max) {
+		b = append(b, 'R')
+		b = tableFixedDigestI64(b, bigInt64(min))
+		b = tableFixedDigestI64(b, bigInt64(max))
+		return b
+	}
+	b = append(b, 'W')
+	b = tableFixedDigestWide(b, min)
+	b = tableFixedDigestWide(b, max)
+	return b
+}
+
+func bigInt64Fits(n *big.Int) bool {
+	return n == nil || n.IsInt64()
+}
+
+// tableFixedDigestWide appends one bound as a 16-byte two's-complement
+// little-endian value. Every declarable integer and fixed-point bound fits
+// signed 128 bits, which is the widest storage the declaration admits.
+func tableFixedDigestWide(b []byte, n *big.Int) []byte {
+	v := new(big.Int)
+	if n != nil {
+		v.Set(n)
+	}
+	if v.Sign() < 0 {
+		v.Add(v, new(big.Int).Lsh(big.NewInt(1), 128))
+	}
+	var be [16]byte
+	v.FillBytes(be[:])
+	for i := len(be) - 1; i >= 0; i-- {
+		b = append(b, be[i])
+	}
+	return b
+}
+
+// bigInt64 is the narrow read for a bound already known to fit int64. A bound
+// outside int64 is never narrowed through it; [tableFixedDigestIntRange] takes
+// the wide row instead.
 func bigInt64(n *big.Int) int64 {
 	if n == nil {
 		return 0
 	}
-	if n.IsInt64() {
-		return n.Int64()
-	}
-	return 0
+	return n.Int64()
 }
 
 // ---------------------------------------------------------------------------
