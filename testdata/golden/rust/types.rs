@@ -24,6 +24,9 @@ pub const VEC3_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_vec3(stream: &mut WriteStream<'_>, value: &Vec3) -> Result {
+    debug_assert!(value.x.is_finite(), "x is not finite");
+    debug_assert!(value.y.is_finite(), "y is not finite");
+    debug_assert!(value.z.is_finite(), "z is not finite");
     let f0: u64 = value.x.to_bits();
     let f1: u64 = value.y.to_bits();
     let f2: u64 = value.z.to_bits();
@@ -64,10 +67,22 @@ pub fn read_vec3(stream: &mut ReadStream<'_>, value: &mut Vec3) -> Result {
     stream.serialize_bits(&mut c, 32)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
+    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.x = f64::from_bits(v0);
     let v1: u64 = c2 | (c3 << 32);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.y = f64::from_bits(v1);
     let v2: u64 = c4 | (c5 << 32);
+    if v2 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.z = f64::from_bits(v2);
     Ok(())
 }
@@ -90,6 +105,10 @@ pub const QUAT_MAX_BYTES: usize = 32;
 
 #[inline(always)]
 pub fn write_quat(stream: &mut WriteStream<'_>, value: &Quat) -> Result {
+    debug_assert!(value.x.is_finite(), "x is not finite");
+    debug_assert!(value.y.is_finite(), "y is not finite");
+    debug_assert!(value.z.is_finite(), "z is not finite");
+    debug_assert!(value.w.is_finite(), "w is not finite");
     let f0: u64 = value.x.to_bits();
     let f1: u64 = value.y.to_bits();
     let f2: u64 = value.z.to_bits();
@@ -141,12 +160,28 @@ pub fn read_quat(stream: &mut ReadStream<'_>, value: &mut Quat) -> Result {
     stream.serialize_bits(&mut c, 32)?;
     let c7 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
+    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.x = f64::from_bits(v0);
     let v1: u64 = c2 | (c3 << 32);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.y = f64::from_bits(v1);
     let v2: u64 = c4 | (c5 << 32);
+    if v2 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.z = f64::from_bits(v2);
     let v3: u64 = c6 | (c7 << 32);
+    if v3 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.w = f64::from_bits(v3);
     Ok(())
 }
@@ -457,6 +492,11 @@ pub const INPUT_MAX_BYTES: usize = 24;
 
 #[inline(always)]
 pub fn write_input(stream: &mut WriteStream<'_>, value: &Input) -> Result {
+    debug_assert!(value.stick_x.is_finite(), "stick_x is not finite");
+    debug_assert!(value.stick_y.is_finite(), "stick_y is not finite");
+    debug_assert!(value.throttle.is_finite(), "throttle is not finite");
+    debug_assert!(value.yaw.is_finite(), "yaw is not finite");
+    debug_assert!(value.pitch.is_finite(), "pitch is not finite");
     let f0: u64 = u64::from(value.stick_x.to_bits());
     let f1: u64 = u64::from(value.stick_y.to_bits());
     let f2: u64 = u64::from(value.throttle.to_bits());
@@ -507,14 +547,34 @@ pub fn read_input(stream: &mut ReadStream<'_>, value: &mut Input) -> Result {
     stream.serialize_bits(&mut c, 8)?;
     let c5 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
+    if v0 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.stick_x = f32::from_bits(v0 as u32);
     let v1: u64 = c1 & 0xffffffff;
+    if v1 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.stick_y = f32::from_bits(v1 as u32);
     let v2: u64 = c2 & 0xffffffff;
+    if v2 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.throttle = f32::from_bits(v2 as u32);
     let v3: u64 = c3 & 0xffffffff;
+    if v3 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.yaw = f32::from_bits(v3 as u32);
     let v4: u64 = c4 & 0xffffffff;
+    if v4 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.pitch = f32::from_bits(v4 as u32);
     let v5: u64 = c5 & 0x1;
     value.fire = v5 != 0;

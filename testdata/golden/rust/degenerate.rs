@@ -23,6 +23,8 @@ pub const VEC2_MAX_BYTES: usize = 16;
 
 #[inline(always)]
 pub fn write_vec2(stream: &mut WriteStream<'_>, value: &Vec2) -> Result {
+    debug_assert!(value.x.is_finite(), "x is not finite");
+    debug_assert!(value.y.is_finite(), "y is not finite");
     let f0: u64 = value.x.to_bits();
     let f1: u64 = value.y.to_bits();
     // word 0, 32 bits: x[0..32]
@@ -52,8 +54,16 @@ pub fn read_vec2(stream: &mut ReadStream<'_>, value: &mut Vec2) -> Result {
     stream.serialize_bits(&mut c, 32)?;
     let c3 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
+    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.x = f64::from_bits(v0);
     let v1: u64 = c2 | (c3 << 32);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.y = f64::from_bits(v1);
     Ok(())
 }
