@@ -27,11 +27,15 @@ func Parse(path string, src []byte) (*ast.File, []error) {
 	return p.file, p.errs
 }
 
+const maxNestingDepth = 64
+
 type parser struct {
-	toks []scanner.Token
-	i    int
-	file *ast.File
-	errs []error
+	toks       []scanner.Token
+	i          int
+	file       *ast.File
+	errs       []error
+	blockDepth int
+	exprDepth  int
 }
 
 func (p *parser) tok() scanner.Token { return p.toks[p.i] }
@@ -118,6 +122,64 @@ func (p *parser) skipToTerminator() {
 		p.advance()
 	}
 	if p.kind() == scanner.Newline {
+		p.advance()
+	}
+}
+
+// skipBlock consumes a brace-delimited block without descending into it, so a
+// block past the nesting bound still recovers at its closing brace.
+func (p *parser) skipBlock() {
+	if p.kind() != scanner.LBrace {
+		return
+	}
+	depth := 0
+	for p.kind() != scanner.EOF {
+		switch p.kind() {
+		case scanner.LBrace:
+			depth++
+		case scanner.RBrace:
+			depth--
+		}
+		p.advance()
+		if depth == 0 {
+			return
+		}
+	}
+}
+
+// skipParens consumes through the parenthesis that closes an opening '(' the
+// caller has already consumed.
+func (p *parser) skipParens() {
+	depth := 1
+	for depth > 0 && p.kind() != scanner.EOF {
+		switch p.kind() {
+		case scanner.LParen:
+			depth++
+		case scanner.RParen:
+			depth--
+		}
+		p.advance()
+	}
+}
+
+// skipExpr consumes the rest of an expression without descending, up to the
+// first top-level newline, comma or closing delimiter.
+func (p *parser) skipExpr() {
+	depth := 0
+	for p.kind() != scanner.EOF {
+		switch p.kind() {
+		case scanner.LParen, scanner.LBrack, scanner.LBrace:
+			depth++
+		case scanner.RParen, scanner.RBrack, scanner.RBrace:
+			if depth == 0 {
+				return
+			}
+			depth--
+		case scanner.Newline, scanner.Comma:
+			if depth == 0 {
+				return
+			}
+		}
 		p.advance()
 	}
 }
@@ -472,6 +534,13 @@ func (p *parser) skipNewlineBeforeBrace() {
 func (p *parser) parseBlock() *ast.Block {
 	b := &ast.Block{}
 	p.skipNewlineBeforeBrace()
+	if p.kind() == scanner.LBrace && p.blockDepth >= maxNestingDepth {
+		p.errf(p.tok().Pos, "block nesting exceeds the %d-level limit", maxNestingDepth)
+		p.skipBlock()
+		return b
+	}
+	p.blockDepth++
+	defer func() { p.blockDepth-- }()
 	p.expect(scanner.LBrace, "{")
 	for {
 		switch p.kind() {
@@ -1005,7 +1074,15 @@ func (p *parser) parseMul() ast.Expr {
 func (p *parser) parseUnary() ast.Expr {
 	if p.kind() == scanner.Minus {
 		t := p.advance()
-		return &ast.UnaryExpr{Pos: t.Pos, Op: "-", X: p.parseUnary()}
+		if p.exprDepth >= maxNestingDepth {
+			p.errf(t.Pos, "expression nesting exceeds the %d-level limit", maxNestingDepth)
+			p.skipExpr()
+			return &ast.IntLit{Pos: t.Pos, Value: big.NewInt(0), Text: "0"}
+		}
+		p.exprDepth++
+		x := p.parseUnary()
+		p.exprDepth--
+		return &ast.UnaryExpr{Pos: t.Pos, Op: "-", X: x}
 	}
 	return p.parsePrimary()
 }
@@ -1062,8 +1139,16 @@ func (p *parser) parsePrimary() ast.Expr {
 		}
 		return &ast.IdentExpr{Pos: t.Pos, Name: name.String()}
 	case scanner.LParen:
+		if p.exprDepth >= maxNestingDepth {
+			p.errf(t.Pos, "expression nesting exceeds the %d-level limit", maxNestingDepth)
+			p.advance()
+			p.skipParens()
+			return &ast.IntLit{Pos: t.Pos, Value: big.NewInt(0), Text: "0"}
+		}
 		p.advance()
+		p.exprDepth++
 		x := p.parseExpr()
+		p.exprDepth--
 		p.expect(scanner.RParen, ")")
 		return &ast.ParenExpr{Pos: t.Pos, X: x}
 	default:
