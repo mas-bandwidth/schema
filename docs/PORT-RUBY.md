@@ -25,7 +25,7 @@ owner rules on it; nothing is built on an unruled decision.
 
 | | decision | options | recommendation |
 |---|---|---|---|
-| D1 | what runs | (a) pure Ruby, standard library only; (b) (a) plus an optional C extension built from the same source; (c) a hand-written or generated C extension, or the C leg's codecs through a foreign-function interface | **Pure Ruby, standard library only, with two code shapes measured against each other and YJIT on and off.** The packet layer emits straight-line code with locals bound and a descriptor walk for one type, and the leg keeps whichever measures faster. A C extension is a separate, later add-on, shipped only if the bench justifies it; recommended, awaiting the ruling |
+| D1 | what runs | (a) pure Ruby, standard library only; (b) (a) plus an optional C extension; (c) a hand-written or generated C extension, or the C leg's codecs through a foreign-function interface | **Pure Ruby, standard library only, with two code shapes measured against each other, YJIT on and off, and a C-extension comparison in R4.** The packet layer emits straight-line code with locals bound and a descriptor walk for one type, and the leg keeps whichever measures faster. The same pinned interpreter benchmarks a Ruby C API extension around the generated C codec, including the Ruby call and value conversion costs, against the same byte-checked workload. R4 records all three comparisons; shipping an optional extension is a separate, later decision, made only if those numbers justify it; recommended, awaiting the ruling |
 | D2 | which Ruby | (a) one current CRuby; (b) a floor and a current pin; (c) a different implementation, such as JRuby or TruffleRuby | **A floor and a current pin.** The floor is the oldest CRuby series still in normal maintenance at pin time; the current pin is the newest stable release at pin time. Both are confirmed on ruby-lang.org on the day they are pinned, never recalled, and the generated code and runtime use nothing newer than the floor; recommended, awaiting the ruling |
 | D3 | the toolchain | (a) the ruby-lang.org source tarball, pinned by sha256, built into `dist/`; (b) a third party's prebuilt archives; (c) the interpreter found on `PATH` | **The ruby-lang.org source tarball, pinned by sha256 into `dist/`**, as the Python and Lua legs build theirs. The analyzers (RuboCop and Steep with RBS) come from a hash-locked list, installed offline into the pinned interpreter; recommended, awaiting the ruling |
 | D4 | the bit layer | (a) serialize.rb, a serialize-family sibling at format 2.0 in its own repository; (b) no sibling, with the schema runtime carrying its own bit reader and writer | **serialize.rb**, a serialize-family sibling at format 2.0, judged by the family corpus before schema stands on it. It is staged in this tree until its public repository exists, then vendored by sha256; recommended, awaiting the ruling |
@@ -72,8 +72,14 @@ Every interpreter the leg starts runs isolated: `RUBYOPT` is empty,
 `--disable-gems`, so no user gem, environment option or `PATH` lookup can
 change what runs.
 
+R1 exposes `make toolchain-ruby` and a standalone control in the support
+fragment. It does not yet add Ruby to `TOOLCHAIN_LEGS`: the aggregate's skip
+names come from `TEST_LEGS`, which arrives with the skeleton in R3. R3
+registers `test-ruby`, `TOOLCHAIN_LEGS` and `TOOLCHAIN_PINS_ruby` together in
+`make/ruby.mk`, then runs the aggregate toolchain control.
+
 The gates over the pin are `make toolchain-ruby` (each pin resolves, or
-`make test` refuses by the leg's name and the pin's), `make
+the gate refuses by the leg's name and the pin's), `make
 ruby-toolchain-check` (each interpreter's own `RUBY_VERSION` is its pinned
 release, the analyzers' own `--version` output is the lock's, and no file of
 the leg starts an interpreter from `PATH`), and the controls of both.
@@ -105,7 +111,6 @@ is what holds a value to its width.
 | an enum `E` | `Integer` | the default variant's number, else `0` |
 | a `flags` set `F` | `Integer`: the uint64 mask | `0`, or the default mask |
 | `string(N)` | `String`, UTF-8 | frozen `""`, or the default |
-| `wstring(N)` | `String`, at most N UTF-16 code units | frozen `""` (a `wstring` takes no default) |
 | `bytes(N)` | `String`, ASCII-8BIT | frozen `"".b`, or the default |
 | `[N]T` | `Array` of exactly N | each element at its default |
 | `[..N]T`, `[A..N]T` | `Array`; its length is the count, in [A, N] | A elements at their defaults (SPEC §4.6) |
@@ -145,7 +150,7 @@ add.
 | `*bytes`, `*string` | an ASCII-8BIT `String` or a UTF-8 `String`, or `nil` | `nil` |
 | `?T` | the value, or `nil` for absent | `nil` |
 | `[]T`, text lists | `Array` | `[]` |
-| `[E]T` (§2.4) | the generated keyed-array class over an `Array` of exactly `E::Max`, the element for variant k at index k − 1; its `[]` refuses `nil` and any key above `Max` with `IndexError`, as §2.4 requires of every port, so a plain negative index can never reach the last slot | each element at its default |
+| `[E]T` (§2.4) | the generated keyed-array class over an `Array` of exactly `E::Max`, the element for variant k at index k − 1; every accessor, including `[]` and `[]=`, first requires an `Integer` key in `1..E::Max`, otherwise raises `IndexError`, and only then subtracts one; this refuses `None = 0`, negative keys, `nil` and keys above `Max`, as §2.4 requires | each element at its default |
 | `map[K]V` | `Hash`; the save writes it sorted by key | `{}` |
 | a union with table arms | as a packet union | `type = 0` |
 
@@ -191,9 +196,10 @@ Each table class also carries its **descriptor**, the table as data
   `valid_encoding?`, and refuses an invalid sequence as `Refused`
   (`invalid_utf8`). A packet `string(N)` refuses an embedded NUL, and its bound
   is N bytes of UTF-8, not N characters.
-- **Wide text** (`wstring(N)`) is a `String` whose UTF-16LE encoding is at
-  most N code units. A write refuses a lone surrogate and an interior zero
-  code unit (SPEC §4.12), and a read refuses both.
+- **No wide text type.** `wstring` and every spelling derived from it are
+  refused by the parser (SPEC §4.12). The Ruby leg carries only UTF-8 text;
+  conversion from another encoding belongs at the application's boundary.
+  serialize format 2.0 has no wide-string operation.
 - **Bytes.** A read returns a new ASCII-8BIT `String`, which the caller owns,
   never a view that pins the input buffer. A write accepts a `String` whose
   encoding is ASCII-8BIT; a string with another encoding is refused rather
@@ -207,21 +213,32 @@ Each table class also carries its **descriptor**, the table as data
 
 ```ruby
 p = Snapshot.read(data)        # a packet: the value, or raises Refused
+p, bits = Snapshot.read_bits(data, bit_offset: 0) # also reports bits consumed
 data = p.write                 # the bytes, or raises InvalidValue
 v = Player.load(data)          # a table: the value, or raises Refused
 data = v.save                  # the bytes, or raises InvalidValue
 ```
 
-- A read takes a `String` and reads all of it: a packet read ends with
-  serialize's `end`, so trailing bytes and a set padding bit refuse, and a
-  table load refuses input past the record as its form defines.
+- A packet read takes a `String` and consumes exactly the encoded bits.
+  `Snapshot.read_bits(data, bit_offset: 0)` returns `[value, bits_consumed]`,
+  where the count is relative to the supplied starting bit offset. It
+  validates the offset and all fields and padding inside that packet, and
+  raises `Refused` without returning a value or count on failure. It does
+  not call serialize's `end`: remaining bits and bytes belong to the caller
+  (SPEC §5). In a bit-packed stream, the next read starts at
+  `bit_offset + bits_consumed`. Byte-framed callers instead advance by their
+  frame length, including any final padding from the writer.
+  `Snapshot.read(data)` is the convenience form at offset zero that returns
+  only the value, with the same trailing-input policy. A table load refuses
+  input past the record as its form defines.
 - `Refused` and `InvalidValue` are `StandardError` subclasses, so code that
   catches `StandardError` catches both. Each unit defines its own pair in its
   namespace; a caller handling several units catches `StandardError`.
 - `Refused#reason` is the refusal's name (`past_end`, `non_finite_float`, ...),
   a diagnostic. It is never compared across languages; only the verdict is.
 - A refusal carries no value and does not touch the caller's objects. A read
-  builds a new value and returns it only when the whole input has been read.
+  builds a new value and returns it only when the whole packet or table
+  record has been read.
 - A table load takes an optional report object, a `LoadReport` from the
   runtime, which receives the load's counters (`unknown`, `widened`,
   `retained`, `retain_lost`) on success only. A refused load leaves it as it
@@ -285,7 +302,9 @@ unit, named for the unit's package:
   name. A schema file's base name is its file name and must be a valid Ruby
   identifier; two files whose names differ only in case are refused, because
   macOS and Windows fold case. A file named for the runtime (`_schema`) is
-  refused.
+  refused, as is `serialize`, because `serialize.rb` is emitted beside the
+  schema files. These reserved basenames are checked case-insensitively,
+  before any file is written.
 
 | file | what it is |
 |---|---|
@@ -332,7 +351,7 @@ rows do, and nothing is escaped. Then, by rule, in the Ruby target:
   module-level constant, and the generated module names these unqualified.
 - **A field must be a valid Ruby method name and not a generated member.**
   Fields keep snake_case and become methods, so a field named for a generated
-  member (`read`, `write`, `load`, `save`, `descriptor`, `initialize`,
+  member (`read`, `read_bits`, `write`, `load`, `save`, `descriptor`, `initialize`,
   `inspect`, `eql?`, `hash`, `class`, `freeze`, `dup`, `clone`, `send`,
   `method`, `object_id`) is refused by name. The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in

@@ -11,7 +11,8 @@ import (
 
 // TestRubyDesignPage holds the Ruby design to the page the other legs are
 // written in: every section and decision row is present, and every layer of
-// the plan is a todo task in the port/ruby work-set.
+// the plan has a task in the port/ruby work-set. Decision rulings and task
+// progress may change; roadmap-check validates task states and their evidence.
 func TestRubyDesignPage(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -52,9 +53,6 @@ func TestRubyDesignPage(t *testing.T) {
 				continue
 			}
 			found = true
-			if !strings.Contains(line, "recommended, awaiting the ruling") {
-				t.Errorf("docs/PORT-RUBY.md decision D%d is not marked recommended, awaiting the ruling", d)
-			}
 			break
 		}
 		if !found {
@@ -99,13 +97,10 @@ func TestRubyDesignPage(t *testing.T) {
 		t.Fatalf("docs/roadmap.sexp has no port/ruby work-set")
 	}
 	for _, id := range ids {
-		line, ok := tasks[id]
+		_, ok := tasks[id]
 		if !ok {
 			t.Errorf("docs/roadmap.sexp has no task %q for a plan layer", id)
 			continue
-		}
-		if !strings.Contains(line, ":state :todo") {
-			t.Errorf("docs/roadmap.sexp task %q is not :todo", id)
 		}
 		if !strings.Contains(workSet, `"`+id+`"`) {
 			t.Errorf("the port/ruby work-set does not list %q", id)
