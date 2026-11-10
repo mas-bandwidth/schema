@@ -116,10 +116,12 @@ func (g *gen) readR(bits int64, ind string) {
 // failRead is the refusal every read check takes: -1 out of the Bits entry.
 const failRead = "return -1;"
 
-// boundRead emits the bounds check `bitsRead + need > numBits` -> refuse.
+// boundRead emits the bounds check `(long) bitsRead + need > numBits` -> refuse.
+// The addition is long so a very large caller-supplied bitsRead cannot wrap the
+// int sum into a false pass that would let a later read touch the buffer.
 func (g *gen) boundRead(need, ind string) {
 	g.usesRead = true
-	g.pf("%sif (bitsRead + %s > numBits) {\n%s    %s\n%s}\n", ind, need, ind, failRead, ind)
+	g.pf("%sif ((long) bitsRead + %s > numBits) {\n%s    %s\n%s}\n", ind, need, ind, failRead, ind)
 }
 
 // ---- nested types: a call to the callee's own Bits entry ----
@@ -378,11 +380,9 @@ func (g *gen) emitReadFunction(name string, walk func(ind string)) {
 	g.bpf("    // family read verdict refusing the wire (bounds, ranges, wire constants,\n")
 	g.bpf("    // padding). Hostile bytes never throw. No slack past the payload is required.\n")
 	g.bpf("    public static int read%sBits(%s value, byte[] data, int bitOffset, int numBits) {\n", name, name)
-	if g.usesRead {
-		g.bpf("        if (bitOffset < 0 || numBits > (long) data.length * 8) {\n")
-		g.bpf("            return -1; // the payload cannot exceed the buffer behind data\n")
-		g.bpf("        }\n")
-	}
+	g.bpf("        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {\n")
+	g.bpf("            return -1; // the payload cannot exceed the buffer behind data\n")
+	g.bpf("        }\n")
 	if g.usesPeek {
 		g.use("loadTail")
 		g.bpf("        // the final 64-bit window, assembled once so every load stays inside\n")
