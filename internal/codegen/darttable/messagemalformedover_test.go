@@ -15,6 +15,7 @@ package darttable
 // step's one exception: a reference naming a RESERVED id stays malformed.
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"testing"
@@ -65,29 +66,56 @@ func TestMessageMalformedOverflagDart(t *testing.T) {
 	for _, c := range malformedOverflagCases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			agreeOnMessageMutant(t, c.unitPath, c.root, mustMessageHex(t, c.hex))
+			u := batchUnit(t, c.unitPath)
+			agreeOnMessageMutant(t, c.unitPath, c.root, tablewire.Announce(u), mustMessageHex(t, c.hex))
 		})
 	}
-	// THE STEP OVER AN UNKNOWN SLOT STOPS AT A RESERVED ID (§3.1, §3.3): every
-	// vocabulary names the node table (ir.TableVocabulary), and a body
-	// reference to it is malformed with no unknown counted, because the Go
-	// reference body walk's reserved-id arm runs before its unknown-slot rule.
-	// A step that took it for one more unknown kind-0 slot reads the body
-	// clean.
+	// THE STEP OVER AN UNKNOWN SLOT STOPS AT A RESERVED ID (§3.1, §3.3): the
+	// message closure announces no node table, but a peer whose build still
+	// announced one carries it once, and a body reference to it is malformed
+	// with no unknown counted, because the Go reference body walk's
+	// reserved-id arm runs before its unknown-slot rule. A step that took it
+	// for one more unknown kind-0 slot reads the body clean.
 	for _, c := range nodeRefCases {
 		t.Run(c.name+".node_ref", func(t *testing.T) {
 			t.Parallel()
-			agreeOnMessageMutant(t, c.unitPath, c.root, nodeRefMutant(t, batchUnit(t, c.unitPath)))
+			u := batchUnit(t, c.unitPath)
+			entries := append(tablewire.MessageVocabulary(u), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})
+			agreeOnMessageMutant(t, c.unitPath, c.root, announcementOf(u, entries), nodeRefMutant(t, entries))
 		})
 	}
+}
+
+// announcementOf is the unit's announcement over the given entries, laid out
+// as tablewire.Announce lays out the unit's own: a form-1 file carrying the
+// build version and the vocabulary under their reserved ids.
+func announcementOf(u *ir.Unit, entries []ir.TableVocabularyEntry) []byte {
+	leb := func(out []byte, v uint64) []byte {
+		for v >= 0x80 {
+			out = append(out, byte(v)|0x80)
+			v >>= 7
+		}
+		return append(out, byte(v))
+	}
+	vocabulary := ir.TableVocabularyBytes(entries)
+	out := []byte{ir.TableWireForm, 1, uint8(ir.TableKindU64)}
+	out = binary.LittleEndian.AppendUint64(out, ir.BuildVersion(u))
+	out = append(out, 2, uint8(ir.TableKindArray))
+	body := leb([]byte{uint8(ir.TableKindU8)}, uint64(len(vocabulary)))
+	body = append(body, vocabulary...)
+	out = leb(out, uint64(len(body)))
+	out = append(out, body...)
+	out = append(out, 0)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableBuildVersionWireId)
+	out = binary.LittleEndian.AppendUint64(out, ir.TableMessageVocabularyWireId)
+	return binary.LittleEndian.AppendUint64(out, 2)
 }
 
 // nodeRefMutant is a batch of one body whose first reference names the
 // vocabulary's node-table entry, then the zero reference and the zero pad
 // (references ride least significant bit first, as the bit reader reads them).
-func nodeRefMutant(t *testing.T, u *ir.Unit) []byte {
+func nodeRefMutant(t *testing.T, entries []ir.TableVocabularyEntry) []byte {
 	t.Helper()
-	entries := tablewire.MessageVocabulary(u)
 	slot := uint64(0)
 	for i, e := range entries {
 		if e.Id == ir.TableNodeWireId {
@@ -118,7 +146,7 @@ func nodeRefMutant(t *testing.T, u *ir.Unit) []byte {
 // agreeOnMessageMutant loads one mutant through the Go message decode and the
 // generated Dart batch message load and requires the same count, refusal,
 // malformed flag and unknown counter.
-func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
+func agreeOnMessageMutant(t *testing.T, unitPath, root string, announcement, mutant []byte) {
 	t.Helper()
 	u := batchUnit(t, unitPath)
 	m := tabletext.NewModel(u)
@@ -127,7 +155,7 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
 		t.Fatalf("unit %s declares no table %s", unitPath, root)
 	}
 	vocab := &tablewire.Vocabulary{}
-	if err := vocab.AnnounceRead(tablewire.Announce(u), &tabletext.Report{}); err != nil {
+	if err := vocab.AnnounceRead(announcement, &tabletext.Report{}); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
 	bodies, _ := tablewire.MessageCount(mutant, vocab)
@@ -150,7 +178,7 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
 
 	body := fmt.Sprintf(`
   final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
-  check(h.announceRead(vocab, h.tableAnnouncement, h.TableReport()), 'announce');
+  check(h.announceRead(vocab, Uint8List.fromList(%s), h.TableReport()), 'announce');
   final values = <h.%s>[for (var i = 0; i < 256; i++) h.%s()];
   final rep = h.TableReport();
   final count = r.%sLoadMessages(values, Uint8List.fromList(%s), vocab, rep);
@@ -158,7 +186,7 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
   check(rep.refused == %v, 'refused: got ${rep.refused} want %v');
   check(rep.refused == %v, 'refused: got ${rep.refused} want %v');
   check(rep.unknown == %d, 'unknown: got ${rep.unknown} want %d');
-`, root, root, lowerFirst(root), dartBytes(mutant),
+`, dartBytes(announcement), root, root, lowerFirst(root), dartBytes(mutant),
 		countGo, countGo, refused, refused, malformedGo, malformedGo, rep.Unknown, rep.Unknown)
 	out, err := runBatchProbe(t, u, root, body)
 	if err != nil {

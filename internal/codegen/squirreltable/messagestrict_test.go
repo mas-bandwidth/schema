@@ -406,6 +406,11 @@ func messageStrictRows() []messageStrictRow {
 		batch: func(v *messageStrictVocab) []byte {
 			b := newMsgBits(1, v.refBits())
 			bodyA(v, b, 5)
+			// aim's quantized index moves the body's end off a byte at an
+			// even reference width, whatever that width is
+			aim := v.field("aim")
+			b.ref(v.slot(aim))
+			b.put(0, int(ir.TableMessageValueBits(aim.Kind, aim.Shape)))
 			b.ref(0)
 			if b.bits%8 == 0 {
 				panic("the body ends on a byte: no pad to spoil")
