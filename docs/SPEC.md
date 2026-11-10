@@ -2562,7 +2562,7 @@ reader refuses.
 **The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
 leg, and refuses ill-formed text (SPEC-TABLES §16.3).
 
-**Held by test**: five conformance surfaces (test/conformance/README.md), one
+**Held by test**: four conformance surfaces (test/conformance/README.md), one
 per writer, each loading one instance, setting one field and saving it.
 `write-refusal` saves through the variable-form `Save`, `write-refusal-fixed`
 through `FixedSave`, `write-refusal-message` through `SaveMessages` against a
@@ -2580,11 +2580,14 @@ answers from its ordinary build. Each leg carries negative controls,
 `conformance-negative-control-<lang>-write-refusal`, `-write-refusal-fixed` and
 `-write-refusal-message`, that remove one check from a copy of the generated
 code and require that surface to go red while `wire` (or `message`) stays green.
-The fifth surface, `write-refusal-packet`, drives a packet `Write` over one type
-that carries the same refused values — a ranged integer and a fixed raw value, a
-`bits(N)` value, a counted array, a text length, an enum ordinal and a union
-tag — starting with the Go leg; its negative control removes one check from a
-copy of the emitter and requires that surface to go red.
+The packet `Write` is held on the Go leg by `write-refusal-packet`
+(test/conformance/harness/writerefusal_packet_test.go). One type carries a
+ranged integer and a fixed raw value, a counted array's count, a `string`
+length and a `bytes` length, an enum ordinal and a union tag. Each refused
+value sits beside the lawful value at the same boundary, and a lawful write's
+bytes carry the declared `const` and zero `reserved` bits. The negative
+control flips the high-bound comparison in a copy of the Go emitter and
+requires that surface to go red.
 
 ## 6. Generated code
 
