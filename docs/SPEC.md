@@ -2583,8 +2583,9 @@ code and require that surface to go red while `wire` (or `message`) stays green.
 The packet `Write` is held on the Go leg by `write-refusal-packet`
 (test/conformance/harness/writerefusal_packet_test.go). One type carries a
 ranged integer and a fixed raw value, a counted array's count, a `string`
-length and a `bytes` length, an enum ordinal and a union tag. Each refused
-value sits beside the lawful value at the same boundary, and a lawful write's
+length and its content (a NUL or malformed UTF-8, which `bytes` carries), a
+`bytes` length, an enum ordinal and a union tag. Each refused value sits beside
+the lawful value at the same boundary, and a lawful write's
 bytes carry the declared `const` and zero `reserved` bits. The negative
 control flips the high-bound comparison in a copy of the Go emitter and
 requires that surface to go red.

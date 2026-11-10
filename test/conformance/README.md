@@ -209,11 +209,12 @@ a copy of the generated code and require that surface to go red while `wire`
 **The packet writer has its own surface**, `write-refusal-packet`: the Go leg
 generates one packet type and executes `Write`
 (test/conformance/harness/writerefusal_packet_test.go). The type carries a
-ranged integer and a fixed raw value, a counted array, a text length and a
-byte length, an enum ordinal and a union tag, each refused value beside the
-lawful value at the same boundary, and a lawful write emits the declared
-constant and zero reserved bits. The negative control flips the high-bound
-comparison in a copy of the emitter and requires the surface to go red.
+ranged integer and a fixed raw value, a counted array, a text length and its
+content (a NUL or malformed UTF-8, which a byte block carries), a byte length,
+an enum ordinal and a union tag, each refused value beside the lawful value at
+the same boundary, and a lawful write emits the declared constant and zero
+reserved bits. The negative control flips the high-bound comparison in a copy
+of the emitter and requires the surface to go red.
 
 **Every read has one outcome: acceptance or refusal.** Binary, message,
 retaining and text readers return the complete value or refuse the whole read.
