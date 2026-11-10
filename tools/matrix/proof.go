@@ -56,7 +56,7 @@ const (
 // whose surfaces differ, so the two cannot drift apart silently.
 var Surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
-	"cook-reason", "block-reason"}
+	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
 
 // PortingRows are the porting register's 3.0.0 correctness rows. A
 // performance-only row is outside the table: "Yes, this is after 3.0.0"
