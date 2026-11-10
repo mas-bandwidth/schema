@@ -44,7 +44,8 @@ const (
 	ReasonBatchTooLarge      = "batch_too_large"
 	ReasonCountRefusal       = "count_refusal"
 	// ReasonNonFiniteFloat is every read's refusal of a float whose bits are a
-	// NaN or an infinity (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
+	// NaN or an infinity (docs/SPEC-TABLES.md §3.3; 2026-10-27,
+	// docs/rulings.json tables-finite-only).
 	ReasonNonFiniteFloat = "non_finite_float"
 
 	// ProbeSchemaPath is the manifest's name for the one schema that is not in

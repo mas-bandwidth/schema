@@ -1,5 +1,5 @@
 {
-  "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes Glenn verbatim, with the date he said it and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from Glenn's own words.",
+  "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes the maintainer verbatim, with the date it was said and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from the maintainer's own words.",
   "rulings": [
     {
       "id": "message-form-fixed-only",
@@ -171,6 +171,46 @@
         "It is our intent to refuse the write of out of range values. In low level languages like C/C++ our intent is to do this at debug time for speed. Keep that behavior. In languages that do not have asserts it is OK to refuse in release build. Some mechanism for refusal of invalid values or write must exist."
       ],
       "source": "relayed by Rowan from the live session. Every leg refuses a value its declaration does not admit: a debug-only assert where the language's own idiom is one (C, C++, C#, Rust, Java, Dart), and a refusal in every build where it is not (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose). Under strict-only there is no clamp to fall back on: a value outside its declaration refuses on both sides, and a compressed or ranged float off its range is refused by the writer (docs/plans/strict-only.md, decision 8). docs/SPEC.md §5.1 carries the per-leg table and the four conformance surfaces write-refusal, write-refusal-fixed, write-refusal-message and write-refusal-json hold it. This ruling makes nothing not-applicable."
+    },
+    {
+      "id": "packet-floats-finite",
+      "date": "2026-10-22",
+      "quotes": [
+        "float and double carry finite values only, in every language"
+      ],
+      "source": "recorded in docs/SPEC.md §4.3; the maintainer's ruling that packet floats are finite-only in every language."
+    },
+    {
+      "id": "tables-finite-only",
+      "date": "2026-10-27",
+      "quotes": [
+        "Tables go finite-only too, same rule as packets. NaN/inf refused on write and read, -0 and subnormals kept; overturn the 10-18/19 table NaN rule."
+      ],
+      "source": "recorded in docs/SPEC-TABLES.md §3.3 and docs/roadmap.sexp; the maintainer's ruling that table floats are finite-only too."
+    },
+    {
+      "id": "target-name-safety",
+      "date": "2026-10-21",
+      "quotes": [
+        "generated output never puts out keywords in Y"
+      ],
+      "source": "recorded in docs/SPEC.md §3; the maintainer's ruling that generated output never puts out keywords in a target language."
+    },
+    {
+      "id": "strict-ieee-arithmetic",
+      "date": "2026-10-12",
+      "quotes": [
+        "all features across all languages"
+      ],
+      "source": "recorded in docs/SPEC.md §4.3; the maintainer's ruling that strict IEEE-754 semantics apply to all features across all languages."
+    },
+    {
+      "id": "agents-md-alone",
+      "date": "2026-09-18",
+      "quotes": [
+        "AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink"
+      ],
+      "source": "recorded in docs/CONTRIBUTING.md; the maintainer's ruling that AGENTS.md stands alone."
     }
   ]
 }
