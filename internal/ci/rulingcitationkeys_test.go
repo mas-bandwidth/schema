@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	namedRulingCitation = regexp.MustCompile(`\bGlenn(?:\s+Fiedler)?\s*,\s*\d{4}-\d{2}-\d{2}`)
+	namedRulingCitation = regexp.MustCompile(`\bGlenn(?:\s+Fiedler)?\s*,?\s*\d{4}-\d{2}-\d{2}`)
 	rulingKeyCitation   = regexp.MustCompile("docs/rulings\\.json`?[,\\s]+`([^`\\n]+)`")
 )
 
