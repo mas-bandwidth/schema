@@ -150,8 +150,8 @@ func TestLuauRoadmapNotesAreCurrent(t *testing.T) {
 
 	noLegTwin := strings.Replace(
 		roadmapText,
-		`:id "port/luau/conformance" :type :task :title "Luau (the Roblox dialect of Lua) port: the conformance leg: the shared wire vectors the C++ reference writes, the packet-text, packet-wide and packet-defaults gates, the table goldens, and their negative controls" :state :todo :evidence nil :note "`,
-		`:id "port/luau/conformance" :type :task :title "Luau (the Roblox dialect of Lua) port: the conformance leg: the shared wire vectors the C++ reference writes, the packet-text, packet-wide and packet-defaults gates, the table goldens, and their negative controls" :state :todo :evidence nil :note "no generator, runtime or conformance leg exists `,
+		`:id "port/luau/conformance" :type :task :title "Luau (the Roblox dialect of Lua) port: the conformance leg: the shared wire vectors the C++ reference writes, the packet-text and packet-defaults gates, the table goldens, and their negative controls" :state :todo :evidence nil :note "`,
+		`:id "port/luau/conformance" :type :task :title "Luau (the Roblox dialect of Lua) port: the conformance leg: the shared wire vectors the C++ reference writes, the packet-text and packet-defaults gates, the table goldens, and their negative controls" :state :todo :evidence nil :note "no generator, runtime or conformance leg exists `,
 		1,
 	)
 	if err := checkLuauRoadmapNotesAndMake(noLegTwin, luauMkText, luauSerializeMkText); err == nil {

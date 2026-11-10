@@ -104,7 +104,7 @@ func TestLuauUndeclaredUnitKeepsTableAndRuntime(t *testing.T) {
 // this constant. Moved when every table module began registering the unit's wire
 // ids (retainids.go, docs/SPEC-TABLES.md §6.6), and when the announcement's
 // tail lost its third blob id with wide text (§3.3).
-const wantUndeclaredSchemaDigest = "f3185081ce14a14c74c25e5723930a6e17492a35cf147d0db2f3b5c431f809b3"
+const wantUndeclaredSchemaDigest = "4cc958d167810f465954ea2e58bf7aa81fca1f1edd3f4e5b760dc856300f36d5"
 
 // schemaModuleDigest hashes the named schema-dependent modules of a unit —
 // name then bytes, in sorted name order — so an edit to either is pinned

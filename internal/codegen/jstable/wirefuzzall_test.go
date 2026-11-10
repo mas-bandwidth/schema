@@ -1387,7 +1387,10 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if root == nil {
 		t.Fatal("LoginRequest is not a root of backenddemo")
 	}
-	mutant, err := hex.DecodeString("02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403801")
+	// The fuzz receipt's references re-slotted for today's announcement, whose
+	// tail lost the wstring blob id (docs/SPEC-TABLES.md §3.3): one bit lower,
+	// it decodes to the same instance with the same two unknowns.
+	mutant, err := hex.DecodeString("02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800003801")
 	if err != nil {
 		t.Fatal(err)
 	}
