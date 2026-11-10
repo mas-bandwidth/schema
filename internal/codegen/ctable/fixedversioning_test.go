@@ -50,6 +50,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -790,6 +791,8 @@ func cHasField(st *ir.Struct, name string) bool {
 // the reset and immediately before the load — §5.7's 0x5A over the destination,
 // for the rows whose claim is that the PREFILL WRITES.
 func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, file, body, poison string, pre ...string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := cUnitOf(t, reader)
 	lineage := map[string][]FixedLineageEntry{}

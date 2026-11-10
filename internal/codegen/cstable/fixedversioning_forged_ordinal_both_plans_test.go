@@ -3,6 +3,7 @@ package cstable
 import (
 	"bytes"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,8 @@ import (
 // == 1 on both plans — never >= 1, since a leg that also counts in the ordinal
 // op lands 2; the equality of the two clamped counts is the row's whole proof.
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

@@ -32,7 +32,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
@@ -399,58 +398,15 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 	return r
 }
 
-// gooseGoDecode is the Go reference's read of a batch under the unit's
-// announcement: the values the bytes carry.
-var gooseEncodeMu sync.Mutex
-
-// gooseEncodeMessages encodes insts under ir.TableVocabulary(m.Unit), the
-// untrimmed vocabulary that ir.TableAnnouncement(m.Unit) and the Goose leg
-// announce.
+// gooseEncodeMessages is the Go reference's encode, under the message
+// closure's vocabulary that tablewire.Announce(m.Unit) and the Goose leg both
+// announce (docs/SPEC-TABLES.md §3.3).
 func gooseEncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, error) {
-	if len(insts) == 0 {
-		return tablewire.EncodeMessages(m, insts)
-	}
-	gooseEncodeMu.Lock()
-	defer gooseEncodeMu.Unlock()
-	u := m.Unit
-	variants := []string{"bytes", "string", "wstring", "__goose_node_tail__"}
-	for _, t := range u.Tables {
-		variants = append(variants, t.WireName())
-	}
-	var target *ir.Field
-	for _, t := range u.Tables {
-		if !t.FixedDeclared {
-			continue
-		}
-		for _, f := range t.Fields {
-			if f.KeyEnum == "" {
-				target = f
-				break
-			}
-		}
-		if target != nil {
-			break
-		}
-	}
-	if target != nil {
-		origEnum := target.KeyEnumRef
-		target.KeyEnumRef = &ir.Enum{Variants: variants}
-		defer func() { target.KeyEnumRef = origEnum }()
-	}
-	origHook := ir.TableWireIdHook
-	ir.TableWireIdHook = func(name string) (uint64, bool) {
-		if name == "__goose_node_tail__" {
-			return ir.TableNodeWireId, true
-		}
-		if origHook != nil {
-			return origHook(name)
-		}
-		return 0, false
-	}
-	defer func() { ir.TableWireIdHook = origHook }()
 	return tablewire.EncodeMessages(m, insts)
 }
 
+// gooseGoDecode is the Go reference's read of a batch under the unit's
+// announcement: the values the bytes carry.
 func gooseGoDecode(t *testing.T, u *ir.Unit, root string, announce, batch []byte, bodies int) []*tabletext.Instance {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -694,7 +650,7 @@ func TestGooseMessageFormAgreesWithTheReference(t *testing.T) {
 					t.Fatalf("the save refused %s with its floats made finite", refused)
 				}
 			}
-			insts := gooseGoDecode(t, u, v.root, ir.TableAnnouncement(u), batch, n)
+			insts := gooseGoDecode(t, u, v.root, tablewire.Announce(u), batch, n)
 			want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 			if err != nil {
 				t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -797,7 +753,7 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	insts := gooseGoDecode(t, u, "Shapes", ir.TableAnnouncement(u), batch, len(values))
+	insts := gooseGoDecode(t, u, "Shapes", tablewire.Announce(u), batch, len(values))
 	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -923,7 +879,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	insts := gooseGoDecode(t, u, "SimState", ir.TableAnnouncement(u), batch, len(values))
+	insts := gooseGoDecode(t, u, "SimState", tablewire.Announce(u), batch, len(values))
 	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -948,7 +904,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	}
 	var vocab tablewire.Vocabulary
 	var arep tabletext.Report
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &arep); err != nil {
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &arep); err != nil {
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)

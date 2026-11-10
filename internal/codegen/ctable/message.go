@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -56,7 +57,7 @@ func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
 func tableMessageForm(u *ir.Unit, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
-	entries, announcement := ir.TableVocabulary(u), ir.TableAnnouncement(u)
+	entries, announcement := tablewire.MessageVocabulary(u), tablewire.Announce(u)
 	fmt.Fprintf(&b, "enum { kTableMessageRefBitsHere=%d, kTableMessageEntriesHere=%d, kTableAnnounceBytes=%d, kTableMessageBatchMax=256 };\n", ir.TableMessageRefBits(len(entries)), len(entries), len(announcement))
 	b.WriteString("static const uint8_t kTableAnnounce[kTableAnnounceBytes]={")
 	for _, v := range announcement {

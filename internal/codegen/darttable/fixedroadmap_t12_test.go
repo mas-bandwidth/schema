@@ -23,6 +23,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -81,6 +82,8 @@ func t12Func(src, decl string) string {
 // leg's own toolchain, and returns its combined output. A red probe is a
 // finding: the caller's subtest fails and the card names it.
 func t12Capability(t *testing.T, src, body string, records int) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := unitFrom(t, src)
 	st := versionRoot(t, u)
@@ -602,6 +605,8 @@ func t12Emit(t *testing.T, u *ir.Unit) (string, string, string, string, string) 
 
 // t12RunProbe writes a probe into dir and runs it with the leg's toolchain.
 func t12RunProbe(t *testing.T, dir, name, probe string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)

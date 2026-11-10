@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -137,6 +138,8 @@ func generateCPPHeaders(t *testing.T, u *ir.Unit) (map[string][]byte, string) {
 }
 
 func writeAndCompile(t *testing.T, files map[string][]byte, header, driver string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
@@ -525,8 +528,8 @@ fixed table Plain
 }
 `
 
-const integrityMessagePlainGolden = "0200411f0000d0010000"
-const integrityMessageLedgerGolden = "0200411f0000d001000022c51159"
+const integrityMessagePlainGolden = "0200a10f0000780000"
+const integrityMessageLedgerGolden = "0200a10f000078000073cfdf7e"
 
 const messageDriver = `#include <stdio.h>
 #include <string.h>
@@ -555,7 +558,8 @@ int main()
     uint8_t lb[64], pb[64];
     if ( LedgerSaveMessages( &l, 1, lb, (int64_t) sizeof( lb ), &report ) != ln ) { printf( "SAVE Ledger\n" ); return 1; }
     if ( PlainSaveMessages( &p, 1, pb, (int64_t) sizeof( pb ), &report ) != pn ) { printf( "SAVE Plain\n" ); return 1; }
-    if ( LedgerSaveMessages( &l, 1, lb, ln - 1, &report ) >= 0 ) { printf( "SAVE short did not refuse\n" ); return 1; }
+    uint8_t short_buffer[64]; // a refused save may have written into its buffer: never lb
+    if ( LedgerSaveMessages( &l, 1, short_buffer, ln - 1, &report ) >= 0 ) { printf( "SAVE short did not refuse\n" ); return 1; }
 
     hex( pb, pn, "PLAIN" );
     hex( lb, ln, "LEDGER" );

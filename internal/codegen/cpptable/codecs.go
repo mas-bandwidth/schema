@@ -740,12 +740,19 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("        default: return false;\n")
 	g.pf("    }\n}\n")
 	// THE MESSAGE FORM's half: the SLOT, a literal, with no id table in sight
-	// (docs/SPEC-TABLES.md §3.3)
+	// (docs/SPEC-TABLES.md §3.3). A variant rides under its WIRE name; one the
+	// message closure does not reach has no slot, so it answers false like a
+	// value no variant names (every variant keeps its case: -Wswitch-enum).
 	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %[1]s::None:\n            slot = 0;\n            return true;\n", e.Name)
-	for _, v := range e.Variants {
-		g.pf("        case %[1]s::%[2]s:\n            slot = %[3]d;\n            return true;\n", e.Name, v, g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(v)}.Key()])
+	for i, v := range e.Variants {
+		slot, ok := g.slots[ir.TableVocabularyEntry{Id: ir.TableWireId(e.VariantWireName(i))}.Key()]
+		if !ok {
+			g.pf("        case %[1]s::%[2]s:\n            return false; // outside the message closure: no slot\n", e.Name, v)
+			continue
+		}
+		g.pf("        case %[1]s::%[2]s:\n            slot = %[3]d;\n            return true;\n", e.Name, v, slot)
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")

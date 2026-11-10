@@ -28,6 +28,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -123,6 +124,7 @@ func (g *sqEvoGen) dropLine(t *testing.T, needles ...string) {
 // control whose planted break raises still reads as red.
 func (g *sqEvoGen) exec(t *testing.T, main string, inputs map[string][]byte) (string, error) {
 	t.Helper()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sq := sqrun.Require(t)
 	if err := os.WriteFile(filepath.Join(g.dir, "inputs.nut"), sqrun.InputsModule(inputs), 0o644); err != nil {
 		t.Fatal(err)

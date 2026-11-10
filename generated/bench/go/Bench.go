@@ -1294,6 +1294,14 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
+	for _, unit := range value.PlayerName[:value.PlayerNameLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.PlayerName[:value.PlayerNameLength])) {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
 	if value.PayloadLength < 0 || value.PayloadLength > 16 {
 		return serialize.ErrValueOutOfRange

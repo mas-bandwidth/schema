@@ -32,6 +32,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cppRunFixedProbe generates the cpp fixed form for `schemaPath` (a unit under
@@ -40,6 +41,8 @@ import (
 // where `back` is the decoded array, `r` the report, `data`/`len` the file and
 // `plan` the caller's entry storage.
 func cppRunFixedProbe(t *testing.T, schemaPath, root, body string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := loadUnit(t, schemaPath)
 	files, err := cpp.Generate(u)

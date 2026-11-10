@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,6 +21,8 @@ import (
 // docs/SPEC-TABLES.md §4): a count past the reader's bound refuses the whole
 // load in both engines, and the Java leg hands back no value.
 func TestJavaFixClampedArrayNotMalformed(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repo, "tables", "scalars")

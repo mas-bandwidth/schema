@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -18,6 +19,8 @@ import (
 // truncated manifest instance wire hand back no root and the report says
 // malformed, as internal/tablewire.Decode does.
 func TestDamagedWireLoadsNothingJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")

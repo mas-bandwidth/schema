@@ -26,6 +26,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -72,7 +73,7 @@ func (g *gen) messageModule() []byte {
 	if len(members) == 0 {
 		return nil
 	}
-	m := &msgGen{u: g.unit, slots: ir.TableVocabularySlots(g.unit), orig: map[*ir.Field]*ir.Field{}}
+	m := &msgGen{u: g.unit, slots: tablewire.MessageVocabularySlots(g.unit), orig: map[*ir.Field]*ir.Field{}}
 	m.pf("%s", header(g.file.Base, g.unit.Package, "THE MESSAGE FORM's bodies, form byte 2 (docs/SPEC-TABLES.md §3.3)"))
 	m.pf(`//
 // A body is a run of (reference, value) pairs under the announced vocabulary,
@@ -141,7 +142,7 @@ func (m *msgGen) slot(e ir.TableVocabularyEntry) uint64 {
 // id, which is how an enum value and a keyed slot ride (§3.3); 0 is a name the
 // vocabulary does not carry.
 func (m *msgGen) nameSlot(id uint64) uint64 {
-	for i, e := range ir.TableVocabulary(m.u) {
+	for i, e := range tablewire.MessageVocabulary(m.u) {
 		if e.Id == id && e.Kind == 0 {
 			return uint64(i + 1)
 		}

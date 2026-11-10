@@ -25,6 +25,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -524,6 +525,8 @@ func t03Put(b []byte, id uint64, kind byte, size, children uint32) []byte {
 // the BOUND. It is the Go twin of the reference's record_bound_case() and
 // gotable's TestFixedFormRecordBound (dart/W10's shared leaf).
 func t03R14(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	const schema = `package probe
 
 fixed table Host

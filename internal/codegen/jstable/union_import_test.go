@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -51,6 +52,8 @@ import (
 // round trip on every wire the IR says carries it, and a union no wire carries
 // fails by name — so an addition is either covered or red.
 func TestUnionClassesImportTheTablesTheyBuild(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 

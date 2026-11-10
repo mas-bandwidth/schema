@@ -11,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -71,7 +72,7 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 		}
 		slot := 0
 		entry := ir.TableFieldEntry(u.Tables["Cell"].Fields[0])
-		for i, v := range ir.TableVocabulary(u) {
+		for i, v := range tablewire.MessageVocabulary(u) {
 			if entry.Key() == v.Key() {
 				slot = i + 1
 			}

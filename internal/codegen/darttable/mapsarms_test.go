@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -132,6 +133,8 @@ func manifestRows(t *testing.T, repo, unit string) []oracleRow {
 // never the form-1 wire codec. A variable root rides <root>WireLoad/
 // <root>WireSave. A row with a refusal must instead throw the refusal's name.
 func resaveOracleRows(t *testing.T, wireName string, files map[string][]byte, repo string, u *ir.Unit, rows []oracleRow) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	writeFiles(t, dir, packetFiles(t, u))

@@ -27,6 +27,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -64,6 +65,8 @@ func TestFixedRoadmapRustT12FramingText(t *testing.T) {
 // t12RequireRustToolchain gates the functional probe on rustc and cargo using
 // the same SCHEMA_REQUIRE_CORPUS contract as `versionCorpus`.
 func t12RequireRustToolchain(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	for _, bin := range []string{"rustc", "cargo"} {
 		if _, err := exec.LookPath(bin); err != nil {
@@ -386,6 +389,8 @@ var (
 )
 
 func t12FixedFormRun(t *testing.T, corpus string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	_ = corpus
 	t12FixedFormOnce.Do(func() {
@@ -418,6 +423,8 @@ func t12ProbeRun(t *testing.T, corpus string) string {
 }
 
 func t12BuildAndRunProbe(t *testing.T, corpus string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	uOld := versionUnit(t, versionSchema(t, "VOLD_field_append"))
 	uNew := versionUnit(t, versionSchema(t, "VNEW_field_append"))

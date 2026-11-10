@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -73,10 +74,10 @@ type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabular
 // message form compiles without any of it.
 func tableMessageRuntime(u *ir.Unit) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))), len(ir.TableVocabulary(u)))
-	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(ir.TableAnnouncement(u)))
+	fmt.Fprintf(&b, "const TableMessageBatchMax = 256\nconst TableMessageRefBitsHere = %d\nconst TableMessageEntriesHere = %d\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))), len(tablewire.MessageVocabulary(u)))
+	fmt.Fprintf(&b, "var tableAnnouncement = [...]byte{%s}\n", byteLiterals(tablewire.Announce(u)))
 	b.WriteString("var tableMessageEntries = [...]TableMessageEntry{\n")
-	for _, e := range ir.TableVocabulary(u) {
+	for _, e := range tablewire.MessageVocabulary(u) {
 		fmt.Fprintf(&b, "%s,\n", messageEntryLiteral(e))
 	}
 	b.WriteString("}\n")
@@ -157,7 +158,7 @@ func byteLiterals(b []byte) string {
 	return s.String()
 }
 func (g *tableGen) messageSlot(e ir.TableVocabularyEntry) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
 		if e.Key() == v.Key() {
 			return i + 1
 		}

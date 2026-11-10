@@ -10,7 +10,7 @@ package darttable
 // a unit at run time.
 //
 // The wire is the C++ reference's, pinned by testdata/conformance/tables/
-// MANIFEST.txt's `connection` rows and rebuilt here by ir.TableAnnouncement.
+// MANIFEST.txt's `connection` rows and rebuilt here by tablewire.Announce.
 // The surface and its names follow the C# leg (internal/codegen/cstable/
 // message.go), which is the reference for this form: TableVocabulary, Announce
 // and AnnounceMeasure (this card), AnnounceRead (this card), then
@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -36,11 +37,11 @@ func (g *fixedModule) emitMessageAnnouncement() {
 	g.pf("%s", dartTableAnnouncementConstant(g.unit))
 }
 
-// dartTableAnnouncementConstant renders ir.TableAnnouncement(u) as a Dart
+// dartTableAnnouncementConstant renders tablewire.Announce(u) as a Dart
 // constant, the same way the reference legs emit it: a const byte list and its
 // length. `final` rather than `const` because Uint8List is not a const type.
 func dartTableAnnouncementConstant(u *ir.Unit) string {
-	b := ir.TableAnnouncement(u)
+	b := tablewire.Announce(u)
 	var out strings.Builder
 	out.WriteString("/// THE ANNOUNCEMENT: the unit's id table, settled byte for byte by the\n")
 	out.WriteString("/// compiler. It is an ordinary form-`1` file whose body carries the build\n")
@@ -125,7 +126,7 @@ class TableMessageEntry {
 }
 
 /// THE REPORT the announcement read answers on. A refusal is terminal: it
-/// sets 'refused' and 'reason' and nothing else moves.
+/// sets 'refused' and 'reason' and clears the counts.
 class TableReport {
   bool refused = false;
   int unknown = 0;
@@ -137,14 +138,20 @@ class TableReport {
   /// <Table>.<field>, '' when it found none (docs/SPEC-TABLES.md §3.3).
   String nonFiniteFloat = '';
 
+  // A refused read keeps no count of what it met before the refusal: the
+  // report is the refusal alone, as the Go reference's (tablewire refuseReport).
   void Damage() {
     refused = true;
     reason = 'wire_damaged';
+    unknown = 0;
+    widened = 0;
   }
 
   bool Refuse(String why) {
     refused = true;
     reason = why;
+    unknown = 0;
+    widened = 0;
     return false;
   }
 

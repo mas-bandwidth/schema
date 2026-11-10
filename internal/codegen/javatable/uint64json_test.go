@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -23,6 +24,8 @@ import (
 // 0..2^64-1 must be kept exactly; a value past the range refuses the whole read
 // (§16.2, docs/plans/strict-only.md). Also verifies that int64 stays signed.
 func TestFromJsonKeepsUint64AboveInt64MaxJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	src := `package probe

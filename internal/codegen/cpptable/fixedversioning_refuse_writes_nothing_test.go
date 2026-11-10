@@ -21,9 +21,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := cppFixedCorpus(t)
 	row := "nested_append"
 

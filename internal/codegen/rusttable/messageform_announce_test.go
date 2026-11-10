@@ -28,6 +28,8 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -68,7 +70,7 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 		loaded[conn.unit] = &announceUnit{
 			buildVersion: conn.buildVersion,
 			announcement: want,
-			entries:      ir.TableVocabulary(u),
+			entries:      tablewire.MessageVocabulary(u),
 			files:        out,
 		}
 	}
@@ -258,6 +260,8 @@ func announcementBytes(t *testing.T, module string) []byte {
 // announce_read runs over the pinned bytes and their forgeries, and each clause
 // reads its own verdict line.
 func runAnnounceProbe(t *testing.T, u *announceUnit) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		t.Fatalf("rustc is not on PATH: %v", err)

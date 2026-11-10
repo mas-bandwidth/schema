@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -81,6 +82,8 @@ func TestMapsAndUnionArmsOnTheTableWireJava(t *testing.T) {
 
 // Compile each unit once, then apply its native typed codecs to every row.
 func javaVariableFixtures(t *testing.T, schema string, fixtures []javaVariableFixture) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := unitFromDir(t, schema)
 	files, err := Generate(u)

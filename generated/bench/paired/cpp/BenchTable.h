@@ -1287,7 +1287,7 @@ static const int64_t kTableMessageRefBitsHere = 7;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 74;
+static const int64_t kTableMessageEntriesHere = 70;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1861,7 +1861,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 74 entries and 923 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 70 entries and 887 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1879,7 +1879,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 923;
+static const int64_t kTableAnnounceBytes = 887;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1902,10 +1902,10 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x41,
     0x02,
     0x0e,
-    0xf3,
+    0xcf,
     0x06,
     0x06,
-    0xf0,
+    0xcc,
     0x06,
     0xa8,
     0x28,
@@ -2751,42 +2751,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xa3,
     0x9f,
     0x0d,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x00,
-    0xe4,
-    0x4f,
-    0x1c,
-    0x4f,
-    0x47,
-    0xc0,
-    0x2e,
-    0x2f,
-    0x00,
-    0x58,
-    0xfc,
-    0xaf,
-    0xfa,
-    0xd8,
-    0xe0,
-    0x4b,
-    0x70,
-    0x00,
-    0xb3,
-    0x46,
-    0xa7,
-    0xdc,
-    0x9c,
-    0x36,
-    0xdf,
-    0x85,
-    0x00,
     0x00,
     0xfe,
     0xff,

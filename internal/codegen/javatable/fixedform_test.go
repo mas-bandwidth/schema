@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -111,6 +112,8 @@ fixed table ByRoot
 // Pin identity==compiled on a sibling ByRoot `blob bytes(N)`, and the live-count
 // stain: count=1, slack 0xFF, after load object slack is zeros.
 func TestIdentityCompiledBytesN(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	javac, err := exec.LookPath("javac")
 	if err != nil {
 		t.Skip("javac not on PATH")
@@ -378,6 +381,8 @@ fixed table LiveRoot
 // `make tables-java-fixedform-arm-negative-control`, whose case reads a record
 // through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatal(err)
@@ -510,6 +515,8 @@ func writeFixedJava(t *testing.T, dir, pkg string, files map[string][]byte) {
 }
 
 func javaTools(t *testing.T) (javac, javaBin string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	try := func(jc, j string) bool {
 		if jc == "" || j == "" {
@@ -674,6 +681,8 @@ const fu1fu2Driver = `public final class Driver {
 //     14). Capped at 255 it lost the 256th variant on, each landing None as
 //     though this reader did not name it.
 func TestFixedHostileGuardAndOrdinal(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	javac, javaBin := javaTools(t)
 	u := schemaUnit(t, "FU1.schema")
 	files, err := Generate(u)

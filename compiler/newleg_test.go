@@ -120,6 +120,7 @@ func TestNewLegZigFixturePasses(t *testing.T) {
 }
 
 func TestNewLegBenchScaffoldIsUnavailable(t *testing.T) {
+	slowtest.Gate(t, "the generated leg script (it runs it as a subprocess)")
 	files, err := NewLeg("zig")
 	if err != nil {
 		t.Fatal(err)

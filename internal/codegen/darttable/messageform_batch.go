@@ -24,13 +24,14 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // messageSlot answers the 1-based vocabulary slot an entry rides under, the
 // writer's half of the reference a body spends on a field (§3.3).
 func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
 		if e.Key() == v.Key() {
 			return i + 1
 		}
@@ -41,7 +42,7 @@ func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
 // messageNameSlot answers the slot of a NAME entry — a kind-0 entry under an
 // enum variant's or a reserved id's wire name (§3.3: a variant rides by NAME).
 func (g *fixedModule) messageNameSlot(id uint64) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
 		if v.Id == id && v.Kind == 0 {
 			return i + 1
 		}
@@ -54,7 +55,7 @@ func (g *fixedModule) messageNameSlot(id uint64) int {
 func (g *fixedModule) emitMessageBatchRuntime() {
 	runtime := dartMessageBatchRuntime
 	usesFloat32, usesFloat64 := false, false
-	for _, entry := range ir.TableVocabulary(g.unit) {
+	for _, entry := range tablewire.MessageVocabulary(g.unit) {
 		usesFloat32 = usesFloat32 || entry.Kind == ir.TableKindF32
 		usesFloat64 = usesFloat64 || entry.Kind == ir.TableKindF64
 		for shape := &entry.Shape; shape != nil; shape = shape.Inner {
@@ -75,7 +76,7 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 		runtime = strings.Replace(runtime, "class TableBitWriter {\n", "class TableBitWriter {\n"+cells, 1)
 	}
 	g.pf("%s", runtime)
-	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
+	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
 	// THE THREE IDS THE LANGUAGE HOLDS BACK (docs/SPEC-TABLES.md §3.1, §3.3,
 	// §5) are malformed anywhere but their own transport, and the rule
@@ -89,11 +90,12 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 }
 
 // emitMessageBody emits <T>SaveMessageBody and <T>LoadMessageBody for one
-// struct of the closure, in the home beside the fixed write/decode bodies. A
-// variable table gets none: the message form is fixed tables only
-// (docs/SPEC-TABLES.md §3.3), even where its fields would fit a fixed layout.
+// struct of the MESSAGE CLOSURE, in the home beside the fixed write/decode
+// bodies. A variable table, and a type only variable tables reach, gets none:
+// the message form is fixed tables only (docs/SPEC-TABLES.md §3.3), even where
+// its fields would fit a fixed layout, and their fields take no slot.
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
-	if st.IsMapEntry() || (st.IsTable && !st.FixedDeclared) {
+	if st.IsMapEntry() || (st.IsTable && !st.FixedDeclared) || !tablewire.MessageClosure(g.unit)[st.Name] {
 		return
 	}
 	// A `type`'s class and its in-place reset live in the packet emitter's own

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func completeCoverage(shape map[coverageKey]*coverageExpected) ([]coverageRow, map[string]string) {
@@ -199,6 +201,7 @@ func TestCoverageReportKeepsReadableRowsAfterDamagedInput(t *testing.T) {
 }
 
 func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
+	slowtest.Gate(t, "bash (the coverage workflow shell)")
 	needShell(t)
 	raw, err := os.ReadFile("../../../.github/workflows/nightly-conformance.yml")
 	if err != nil {

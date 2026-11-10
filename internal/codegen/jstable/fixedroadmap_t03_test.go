@@ -47,6 +47,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -120,6 +121,8 @@ func t03PutEntry(layout []byte, id uint64, kind uint8, size, children uint32) []
 // by name, with no accepted entry, and the run is the whole of the clause —
 // not a substring of the source.
 func t03JsR14(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	const schema = `package probe
 
 fixed table Host

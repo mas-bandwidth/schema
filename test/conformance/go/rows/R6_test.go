@@ -22,6 +22,7 @@ import (
 )
 
 func TestRowR6(t *testing.T) {
+	f8Gate(t)
 	// Write a minimal schema with two fixed tables: Small (within the ceiling)
 	// and Huge (one byte past).
 	const schemaSrc = `package probe

@@ -982,6 +982,14 @@ func WriteStrs(stream *serialize.WriteStream, value *Strs) error {
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
+	for _, unit := range value.S[:value.SLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.S[:value.SLength])) {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBytes(value.S[:value.SLength])
 	if value.BLength < 0 || value.BLength > 8 {
 		return serialize.ErrValueOutOfRange

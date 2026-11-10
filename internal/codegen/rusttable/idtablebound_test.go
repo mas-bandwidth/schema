@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -64,6 +65,8 @@ func buildUnknownFieldsWire(ids []uint64, refAll bool) []byte {
 // the Go leg that enforces the format-wide 4096-entry id-table bound; the
 // tablewire trailer carries no such cap, so this is the oracle for (a).
 func goTableOracle(t *testing.T, u *ir.Unit, wire []byte) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	mods, err := gotable.Generate(u)
 	if err != nil {
@@ -139,6 +142,8 @@ func extractRustFn(src, sig string) (string, error) {
 //     array with multiplicative hash (id * 0x9e3779b97f4a7c15) >> 51, with
 //     neither Vec::with_capacity(count) nor O(count^2) ids.contains(&id).
 func TestRustIdTableReaderContract(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	u := unitFrom(t, idTableBoundProbeSchema)

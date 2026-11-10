@@ -62,6 +62,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1170,6 +1171,8 @@ func versionRun(t *testing.T) string {
 }
 
 func versionBuildAndRun(t *testing.T, corpus string) versionResult {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	repo, err := filepath.Abs("../../..")
 	if err != nil {

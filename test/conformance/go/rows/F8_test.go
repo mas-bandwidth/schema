@@ -9,6 +9,17 @@ import (
 	"testing"
 )
 
+// f8Gate skips the row unless the slow half is enabled; every row here that
+// shells out (F8, R6, W13) calls it first. This module cannot
+// import internal/slowtest, so it repeats the environment check the gate makes.
+func f8Gate(t *testing.T) {
+	t.Helper()
+	if os.Getenv("SCHEMA_SLOW") == "1" || os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		return
+	}
+	t.Skipf("SCHEMA_SLOW: this test shells out to go and bin/schema; set SCHEMA_SLOW=1 to run it")
+}
+
 // TestRowF8 is the conformance assertion for cell go/F8 of schema#876 /
 // schema#898: "malformed, ragged tail". The law (docs/FIXED-FORM-ALGORITHM.md:894):
 //
@@ -27,6 +38,7 @@ import (
 // the condition reads `recordBytes <= 8 || false`; a one-extra-byte file then
 // reads clean and the test goes RED.
 func TestRowF8(t *testing.T) {
+	f8Gate(t)
 	schema := `package probe
 fixed table Point {
 	x int32 = 1
@@ -130,6 +142,7 @@ func TestRaggedTail(t *testing.T) {
 // is turned into `false`, so a one-extra-byte file reads clean and the test
 // must go RED.
 func TestRowF8NegativeControl(t *testing.T) {
+	f8Gate(t)
 	schema := `package probe
 fixed table Point {
 	x int32 = 1
@@ -237,6 +250,7 @@ func TestRaggedTail(t *testing.T) {
 // a batch that holds a whole number of records — tail 0, or a whole extra
 // record — reads clean and counts them all.
 func TestRowF8RaggedTailByName(t *testing.T) {
+	f8Gate(t)
 	t.Parallel()
 	schema := `package probe
 fixed table Point {

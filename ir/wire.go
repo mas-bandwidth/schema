@@ -375,7 +375,8 @@ func fixedField(f *Field, m map[*Struct]fixedAnswer) bool {
 // wirePos tracks the wire bit position modulo 8 through a struct's items.
 // known=false means the position cannot be determined statically; the
 // analysis is conservative — unknown never enables an optimization, so a
-// wrong "unknown" costs speed, never wire bytes.
+// wrong "unknown" costs speed, never wire bytes. tla/WireAlign.tla is its
+// layout model.
 type wirePos struct {
 	mod   int64
 	known bool

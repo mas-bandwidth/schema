@@ -3,15 +3,16 @@ package jstable
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/hex"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestWireFuzzAllTargetJavaScript pins the JavaScript wire-fuzz target to the
@@ -103,6 +104,8 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 // unit it names no module for answers known=0 (absent, which make/js.mk pins).
 // It is a toolchain test: node comes through jsNode(t).
 func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -160,6 +163,8 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 // The managed Load API has builder count-cap semantics. The protocol's
 // Refused bit names a wire-form refusal, not this out-of-band storage limit.
 func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -230,6 +235,8 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 
 // A failed independent measurement must not suppress the managed reader report.
 func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -298,6 +305,8 @@ func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
 // wire-fuzz pipe has to name that refusal: a null value with the refused bit
 // clear is the oracle refusing and the leg staying silent.
 func TestWireFuzzKindMismatchNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -366,6 +375,8 @@ func TestWireFuzzKindMismatchNamesTheRefusalJavaScript(t *testing.T) {
 	}
 }
 func TestWireFuzzArrayTailNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -466,6 +477,8 @@ func TestWireFuzzArrayTailNamesTheRefusalJavaScript(t *testing.T) {
 // 2^31, past the extent cap. The oracle refuses. The pipe names that refusal
 // and does not call the unread tail damage.
 func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -543,6 +556,8 @@ func TestWireFuzzCountCapNamesTheRefusalJavaScript(t *testing.T) {
 // placed child. The oracle accepts with one unknown. The leg must accept too,
 // and the saved bytes must be the oracle's canonical encoding.
 func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -639,6 +654,8 @@ func TestWireFuzzUnknownNodeEdgesKeepTheChildJavaScript(t *testing.T) {
 // reference is zero, so the record's frame holds bytes after its terminator.
 // The oracle refuses that wire. The leg must refuse it as damage.
 func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -734,6 +751,8 @@ func TestWireFuzzRecordBodyTailNamesTheRefusalJavaScript(t *testing.T) {
 // must be the oracle's canonical encoding. A node-record body whose
 // terminator leaves bytes in its frame stays damage (the graph_tree tail).
 func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -823,6 +842,8 @@ func TestWireFuzzUnknownUnionNamesItsEdgesJavaScript(t *testing.T) {
 // accepts with one unknown. The leg must accept too, and the saved bytes
 // must be the oracle's canonical encoding.
 func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -912,6 +933,8 @@ func TestWireFuzzUnknownArmNamesItsEdgesJavaScript(t *testing.T) {
 // it names the same blob record alias names. The oracle refuses the wire
 // blob_shared. The leg must refuse it too, and must not call the wire damage.
 func TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -996,6 +1019,8 @@ func TestWireFuzzUnknownBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 // entries name one string-blob record. The oracle refuses the wire
 // blob_shared. The leg must refuse it too, and must not call the wire damage.
 func TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1080,6 +1105,8 @@ func TestWireFuzzUnknownMapBlobEdgeNamesTheShareJavaScript(t *testing.T) {
 // wire_damaged, because map keys must ascend strictly. The leg must name
 // that damage and must not accept the wire.
 func TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1158,6 +1185,8 @@ func TestWireFuzzMapKeyOrderNamesTheRefusalJavaScript(t *testing.T) {
 }
 
 func TestWireFuzzFixedRootNamesPreviousFormJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -1290,7 +1319,7 @@ func TestWireFuzzEmptyMessageNamesTheRefusalJavaScript(t *testing.T) {
 	}
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	fullInst := model.New(root)
@@ -1350,6 +1379,8 @@ func TestWireFuzzEmptyMessageNamesTheRefusalJavaScript(t *testing.T) {
 }
 
 func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire []byte) []byte {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	var input bytes.Buffer
 	binary.Write(&input, binary.LittleEndian, uint32(1))
@@ -1375,6 +1406,50 @@ func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire
 	return output.Bytes()
 }
 
+// loginWithTwoUnknowns is a batch of one LoginRequest body carrying its two
+// known scalars, player_id and client_build, between two entries the backend
+// vocabulary announces and LoginRequest does not declare (match_id and
+// quantity), spelled against the unit's own announcement. Every value is a
+// scalar, so no field aligns and the body is the bits it lists.
+func loginWithTwoUnknowns(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	vocabulary := tablewire.MessageVocabulary(u)
+	refBits := ir.TableMessageRefBits(len(vocabulary))
+	slot := func(name string) (uint64, ir.TableVocabularyEntry) {
+		for i, e := range vocabulary {
+			if e.Id == ir.TableWireId(name) {
+				return uint64(i + 1), e
+			}
+		}
+		t.Fatalf("the backend vocabulary announces no %s", name)
+		return 0, ir.TableVocabularyEntry{}
+	}
+	out := []byte{ir.TableWireMessageForm, 0}
+	at := 16
+	put := func(value uint64, width int) {
+		for i := range width {
+			if at/8 == len(out) {
+				out = append(out, 0)
+			}
+			if value>>uint(i)&1 == 1 {
+				out[at/8] |= 1 << uint(at%8)
+			}
+			at++
+		}
+	}
+	field := func(name string, value uint64) {
+		ref, e := slot(name)
+		put(ref, refBits)
+		put(value, int(ir.TableMessageValueBits(e.Kind, e.Shape)))
+	}
+	field("match_id", 0x1122334455667788)
+	field("player_id", 5)
+	field("quantity", 3)
+	field("client_build", 77)
+	put(0, refBits)
+	return out
+}
+
 func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -1387,16 +1462,10 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if root == nil {
 		t.Fatal("LoginRequest is not a root of backenddemo")
 	}
-	// The fuzz receipt's references re-slotted for today's announcement, whose
-	// tail lost the wstring blob id (docs/SPEC-TABLES.md §3.3): one bit lower,
-	// it decodes to the same instance with the same two unknowns.
-	mutant, err := hex.DecodeString("02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800003801")
-	if err != nil {
-		t.Fatal(err)
-	}
+	mutant := loginWithTwoUnknowns(t, u)
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	inst := model.New(root)
@@ -1409,8 +1478,8 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(encoded) != 50 || encoded[2] != 0x22 {
-		t.Fatalf("oracle save len %d byte2 %02x", len(encoded), encoded[2])
+	if len(encoded) < 3 || len(encoded) >= len(mutant) {
+		t.Fatalf("oracle save len %d of a %d-byte mutant: the two unknowns were not dropped", len(encoded), len(mutant))
 	}
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "backend")

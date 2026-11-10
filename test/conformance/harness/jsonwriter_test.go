@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixirtable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/jstable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -189,6 +190,7 @@ func generateCanonicalJSONCodegenSources(t *testing.T) (rustSrc, jsSrc, elixirSr
 // codegen invariants across the Rust, JavaScript, and Elixir table emitters.
 func TestCanonicalJSONWriterCodegenStrict(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "node (the JavaScript runtime)")
 	rustSrc, jsSrc, elixirSrc, jsFiles, root := generateCanonicalJSONCodegenSources(t)
 	if err := checkCanonicalJSONWriterCodegenStrict(rustSrc, jsSrc, elixirSrc); err != nil {
 		t.Fatal(err)

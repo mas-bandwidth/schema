@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // Pin is the moo commit `make dist-moo` builds: mas-bandwidth/moo v1.3.0.
@@ -107,6 +109,7 @@ func Run(t testing.TB, dir, main string, inputs map[string][]byte) []byte {
 // control expects one).
 func RunErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, error) {
 	t.Helper()
+	slowtest.Gate(t, "the pinned moo interpreter")
 	moo, why := Interpreter()
 	if moo == "" {
 		t.Fatalf("moorun: the moo interpreter does not resolve: %s", why)
@@ -129,6 +132,7 @@ func RunErr(t testing.TB, dir, main string, inputs map[string][]byte) ([]byte, e
 // caller asserts, because moo-analyze exits 0 on a lint warning.
 func Analyze(t testing.TB, dir string, files ...string) string {
 	t.Helper()
+	slowtest.Gate(t, "moo-analyze")
 	analyze, why := Analyzer()
 	if analyze == "" {
 		t.Fatalf("moorun: moo-analyze does not resolve: %s", why)

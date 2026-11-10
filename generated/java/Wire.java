@@ -2104,11 +2104,19 @@ public final class Wire {
         }
         scratch = alignBits(data, pos, scratch);
         pos = (pos + 7) & -8;
-        // byte-aligned payload — the fused bulk copy (flush, copy, reload),
-        // wire-identical to the per-byte merge
-        flushBits(data, pos, scratch);
-        System.arraycopy(value.fixedBytes, 0, data, pos >>> 3, 17);
-        pos += 136;
+        if ((pos & 7) == 0) {
+            // byte-aligned payload — the fused bulk copy (flush, copy, reload),
+            // wire-identical to the per-byte merge
+            flushBits(data, pos, scratch);
+            System.arraycopy(value.fixedBytes, 0, data, pos >>> 3, 17);
+            pos += 136;
+        } else {
+            for (int i0 = 0; i0 < 17; i0++) {
+                scratch = putBits(data, pos, scratch, value.fixedBytes[i0] & 0xffL, 8);
+                pos += 8;
+            }
+            flushBits(data, pos, scratch);
+        }
         scratch = loadBits(data, pos);
         scratch = putBits(data, pos, scratch, (value.textLength) & 0xffL, 8);
         pos += 8;
@@ -2264,8 +2272,16 @@ public final class Wire {
         if (bitsRead + 136 > numBits) {
             return -1;
         }
-        System.arraycopy(data, bitsRead >>> 3, value.fixedBytes, 0, 17);
-        bitsRead += 136;
+        if ((bitsRead & 7) == 0) {
+            System.arraycopy(data, bitsRead >>> 3, value.fixedBytes, 0, 17);
+            bitsRead += 136;
+        } else {
+            for (int i0 = 0; i0 < 17; i0++) {
+                v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
+                bitsRead += 8;
+                value.fixedBytes[i0] = (byte) v;
+            }
+        }
         if (bitsRead + 8 > numBits) {
             return -1;
         }

@@ -16,6 +16,7 @@ package javatable
 // _test.go is a GOARCH build constraint.)
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,8 @@ import (
 )
 
 func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := corpusDir(t)
 	oldFile := filepath.Join(corpus, "old_union_append.bin")
 	if _, err := os.Stat(oldFile); err != nil {

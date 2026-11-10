@@ -13,6 +13,7 @@ package cstable
 // emitted text alone: no dotnet, no clock, no socket, no network.
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -316,6 +317,8 @@ if (t0 == 0) { Console.WriteLine("T18 tag-past-the-arm-set ok"); }
 // and never skips (a driven clause that cannot run is red, not skipped), so this
 // local discover only decides early skip/fatal then hands off to t08RunCS.
 func t18Discover(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	require := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	dotnet := os.Getenv("DOTNET")

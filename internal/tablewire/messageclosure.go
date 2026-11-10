@@ -151,6 +151,18 @@ func MessageVocabulary(u *ir.Unit) []ir.TableVocabularyEntry {
 	return out
 }
 
+// MessageVocabularySlots is the writer's half of [MessageVocabulary]: the
+// SLOT each announced entry takes, keyed by the triple, so a generated field
+// header carries its reference as a literal. An entry the message closure
+// cannot put on the wire has no slot.
+func MessageVocabularySlots(u *ir.Unit) map[string]uint64 {
+	slots := map[string]uint64{}
+	for i, e := range MessageVocabulary(u) {
+		slots[e.Key()] = uint64(i + 1)
+	}
+	return slots
+}
+
 // messageAnnouncement is the unit's ID TABLE MESSAGE over the MESSAGE
 // CLOSURE's vocabulary, byte for byte as [ir.TableAnnouncement] spells the
 // whole-closure one: a form-`1` file whose body carries the build version

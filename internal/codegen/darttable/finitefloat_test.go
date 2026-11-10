@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -302,7 +303,7 @@ func finiteFloatFiles(t *testing.T) map[string][]byte {
 	u := unitFrom(t, finiteFloatSchema)
 	slot := func(f *ir.Field) int {
 		entry := ir.TableFieldEntry(f)
-		for i, v := range ir.TableVocabulary(u) {
+		for i, v := range tablewire.MessageVocabulary(u) {
 			if entry.Key() == v.Key() {
 				return i + 1
 			}

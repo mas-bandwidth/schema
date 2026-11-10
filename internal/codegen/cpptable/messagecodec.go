@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -40,8 +41,16 @@ func msgValueBits(kind uint8, shape ir.TableMessageShape) int64 {
 	return ir.TableMessageValueBits(kind, shape)
 }
 
-// msgSlot is one entry's slot as a literal.
-func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] }
+// msgSlot is one entry's slot as a literal. An entry outside the message
+// closure's vocabulary has none, and a body that names one is a generator
+// fault, never a zero reference on the wire.
+func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 {
+	slot, ok := g.slots[entry.Key()]
+	if !ok {
+		panic("cpptable: message entry outside the message closure's vocabulary: " + entry.Key())
+	}
+	return slot
+}
 
 // msgMeasureCall renders a nested MEASURE call on a closure member, which is
 // a fixed table: the message form is fixed tables only (§3.3).
@@ -106,9 +115,14 @@ func (g *tableGen) emitMessageBodyDeclarations(members []*ir.Struct) {
 }
 
 // hasMessageCodec reports whether a closure member carries the message form's
-// body codec: a FIXED table does, and a variable table and a map entry do not.
+// body codec: a member of the MESSAGE CLOSURE does (a fixed table and what it
+// reaches by value), and a variable table, a map entry and a type only
+// variable tables reach do not (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) hasMessageCodec(st *ir.Struct) bool {
-	return !g.isVar(st.Name) && !st.IsMapEntry()
+	if g.msgClosure == nil {
+		g.msgClosure = tablewire.MessageClosure(g.unit)
+	}
+	return !g.isVar(st.Name) && !st.IsMapEntry() && g.msgClosure[st.Name]
 }
 
 func (g *tableGen) emitMessageCodec(st *ir.Struct) {

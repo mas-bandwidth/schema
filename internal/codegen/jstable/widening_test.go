@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -59,6 +60,8 @@ table Rec
 // truncated, unaligned_base, bad_layout) are judged by the cook-reason and
 // block-reason conformance surfaces against the manifest's refusal rows.
 func TestWideningReasonsJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")

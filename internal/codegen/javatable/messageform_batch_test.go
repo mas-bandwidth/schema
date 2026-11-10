@@ -28,6 +28,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -116,7 +117,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 			var insts []*tabletext.Instance
 			var body strings.Builder
 			var names []string
-			announce := ir.TableAnnouncement(u)
+			announce := tablewire.Announce(u)
 			for _, name := range instanceNames {
 				raw, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", name+".json"))
 				if err != nil {
@@ -162,7 +163,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 				}
 				insts = append(insts, inst)
 			}
-			announce := ir.TableAnnouncement(u)
+			announce := tablewire.Announce(u)
 			var body strings.Builder
 			var names []string
 			for i, inst := range insts {
@@ -209,7 +210,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the oracle did not encode the older batch: %v", err)
 		}
-		announce := ir.TableAnnouncement(older)
+		announce := tablewire.Announce(older)
 		decode := func(t *testing.T, newer *ir.Unit) ([]*tabletext.Instance, tabletext.Report, bool) {
 			mn := tabletext.NewModel(newer)
 			v := &tablewire.Vocabulary{}
@@ -450,6 +451,8 @@ func messageBatchLoadPaths(t *testing.T, root string, paths []string) *ir.Unit {
 }
 
 func runMessageBatchProbe(t *testing.T, u *ir.Unit, body string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(u)

@@ -37,6 +37,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -428,6 +429,8 @@ static class ProbeMain
 // declarations the fixture references, one file per string, written beside the
 // generated files.
 func t08RunCS(t *testing.T, schemaSrc, body string, extra ...string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := unitFrom(t, schemaSrc)
 	files, err := Generate(u)

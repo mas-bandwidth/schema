@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -169,6 +170,7 @@ func TestGrowIdTable(t *testing.T) {
 // message surface scores a `message` row against the message golden and a
 // `malformed` row against a refusal verdict.
 func TestLimitTheGrownRowsReachADriver(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (materialise builds and runs cookgen)")
 	m, _, _ := corpus(t)
 	ensureGrownRows(m)
 	work := t.TempDir()

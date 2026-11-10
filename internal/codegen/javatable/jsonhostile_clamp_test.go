@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -23,6 +24,8 @@ import (
 // where the oracle reads, and refuses (no value, the report refused or
 // damaged) exactly where it refuses, one subtest per row.
 func TestJsonHostileReportClampCounterJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 

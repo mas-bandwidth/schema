@@ -83,12 +83,10 @@ func Require(t *testing.T) string {
 }
 
 // interpreterFor is Require's edge for a test that carries only a testing.TB:
-// it gates when the concrete receiver is a *testing.T and otherwise resolves
-// without gating (a helper that only ever sees the test's own *testing.T).
+// it gates the same way, so a benchmark skips at the same door.
 func interpreterFor(t testing.TB) string {
-	if tt, ok := t.(*testing.T); ok {
-		return Require(tt)
-	}
+	t.Helper()
+	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	sq, err := Interpreter()
 	if err != nil {
 		t.Fatalf("the pinned Squirrel interpreter does not resolve (%v); run make dist-squirrel, or point SQ at sq64 built with -DSQUSEDOUBLE (make/squirrel.mk)", err)

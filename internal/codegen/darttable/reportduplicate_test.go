@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -21,6 +22,8 @@ import (
 // EQUALS the previous landed key is a duplicate, the earlier entry's slot is
 // replaced, and the map's count excludes it.
 func TestWireReportCountsDuplicateKeysDart(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	const src = `package probe
@@ -120,6 +123,8 @@ void main(List<String> args) {
 // (§4): there Dart owes malformed and nothing else is compared. A key under a
 // foreign kind empties the map with ONE kind_mismatch.
 func TestWireMapKeyScanMatchesGoDart(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	const src = `package probe

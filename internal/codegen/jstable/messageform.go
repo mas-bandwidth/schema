@@ -9,7 +9,7 @@ package jstable
 // §3.3 is a form-1 FILE the unit's compiler settles whole: "THE WHOLE
 // ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT ... a backend emits
 // `Announce` and `AnnounceMeasure` as a constant byte array and its length
-// rather than as a walk." The byte array is `ir.TableAnnouncement`, the same
+// rather than as a walk." The byte array is `tablewire.Announce`, the same
 // bytes every other backend emits and the manifest pins.
 //
 // THE READER IS EMITTED (docs/SPEC-TABLES.md §3.3): `AnnounceRead` resolves an
@@ -29,19 +29,19 @@ import (
 func messageAnnouncementRuntime(u *ir.Unit) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "\nexport const TableMessageBatchMax = 256;\n")
-	// The reader resolves the unit's whole announcement. The canonical
-	// write-back uses the message closure's reference width, which is what
+	// The announcement, the reader and the writer all use the message
+	// closure's vocabulary (docs/SPEC-TABLES.md §3.3), which is what
 	// tablewire.EncodeMessages writes. The let is the writer's width; a
-	// caller narrows it for that write and restores it.
-	fmt.Fprintf(&b, "export let TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
+	// caller may set it for one write and restore it.
+	fmt.Fprintf(&b, "export let TableMessageRefBitsHere = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))))
 	fmt.Fprintf(&b, "export const TableMessageWriteRefBitsHere = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))))
 	fmt.Fprintf(&b, "export function TableMessageSetRefBits(n) {\n")
 	fmt.Fprintf(&b, "  const prev = TableMessageRefBitsHere;\n")
 	fmt.Fprintf(&b, "  TableMessageRefBitsHere = n;\n")
 	fmt.Fprintf(&b, "  return prev;\n")
 	fmt.Fprintf(&b, "}\n")
-	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(ir.TableVocabulary(u)))
-	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(ir.TableAnnouncement(u)))
+	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(tablewire.MessageVocabulary(u)))
+	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
 	b.WriteString(jsAnnounceRuntime)
 	return b.String()
 }

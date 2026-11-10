@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -125,7 +127,7 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 		for _, un := range units {
 			u := loadUnit(t, un.path)
 			conn := conns[un.unit]
-			vocabulary := ir.TableVocabulary(u)
+			vocabulary := tablewire.MessageVocabulary(u)
 			pairs := make([]string, 0, len(vocabulary))
 			for _, e := range vocabulary {
 				pairs = append(pairs, fmt.Sprintf("[%s,%d]", dartInt(int64(e.Id)), int(e.Kind)))
@@ -161,8 +163,8 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 		t.Parallel()
 		u := loadUnit(t, units[0].path)
 		conn := conns[units[0].unit]
-		vocabBytes := ir.TableVocabularyBytes(ir.TableVocabulary(u))
-		vocabCount := len(ir.TableVocabulary(u))
+		vocabBytes := ir.TableVocabularyBytes(tablewire.MessageVocabulary(u))
+		vocabCount := len(tablewire.MessageVocabulary(u))
 		noVersion := craftAnnouncement(vocabBytes, ir.BuildVersion(u), false, true)
 		noVocab := craftAnnouncement(vocabBytes, ir.BuildVersion(u), true, false)
 		// A later minor's added field: an id the vocabulary does not name,
@@ -371,6 +373,8 @@ func dartInt(v int64) string { return strconv.FormatInt(v, 10) }
 // announceDartBinary is the leg's own Dart: the DART the Makefile passes, then
 // the unpacked SDK, then the PATH. A missing toolchain is a skip, never a green.
 func announceDartBinary(t *testing.T) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {
 		return env
@@ -393,6 +397,8 @@ func announceDartBinary(t *testing.T) string {
 // runs it with the leg's own toolchain. The surface is executed on its own so a
 // defect in an unrelated form does not decide whether the announcement compiles.
 func runAnnounceProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	lib := "import 'dart:typed_data';\n\n" + dartMessageAnnounceRuntime + "\n" + dartTableAnnouncementConstant(u)

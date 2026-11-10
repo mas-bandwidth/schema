@@ -6,7 +6,7 @@
 // AnnounceMeasure as a constant byte array and its length rather than as a
 // walk" (§3.3). The bytes are the C++ reference's, pinned by
 // testdata/conformance/tables/MANIFEST.txt's `connection` rows and rebuilt
-// here by ir.TableAnnouncement.
+// here by tablewire.Announce.
 //
 // The surface and its names follow the C# leg (internal/codegen/cstable/
 // message.go): TableVocabulary, Announce, AnnounceMeasure and AnnounceRead
@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -41,7 +42,7 @@ const MessageRuntimeModule = "message_runtime"
 // then owns TableReport, TableReason and TABLE_WIRE_FORM (see tableReportRust):
 // this module reaches them through crate::*.
 func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
-	announcement := ir.TableAnnouncement(u)
+	announcement := tablewire.Announce(u)
 	var b strings.Builder
 	b.WriteString(header(runtimeSourceName(u), u.Package,
 		"THE MESSAGE FORM's shared runtime (docs/SPEC-TABLES.md §3.3)"))
@@ -74,7 +75,7 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	b.WriteString("/// vocabulary field's own length before an entry is touched.\n")
 	b.WriteString("pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;\n\n")
 
-	b.WriteString("/// THE ANNOUNCEMENT, byte for byte: the unit's whole vocabulary as a\n")
+	b.WriteString("/// THE ANNOUNCEMENT, byte for byte: the unit's message vocabulary as a\n")
 	b.WriteString("/// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body\n")
 	b.WriteString("/// carries the build version at kind 9 and the vocabulary at kind 14 over\n")
 	b.WriteString("/// element kind 6, and whose trailer is those two reserved ids.\n")
@@ -91,7 +92,7 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	// of the announcement it sent, and the zero reference beside them.
 	b.WriteString("/// The width of a reference on a body this build WRITES: bits_required(0, n)\n")
 	b.WriteString("/// over its own announced vocabulary of n entries (§3.3).\n")
-	fmt.Fprintf(&b, "pub const TABLE_MESSAGE_REF_BITS: u32 = %d;\n\n", ir.TableMessageRefBits(len(ir.TableVocabulary(u))))
+	fmt.Fprintf(&b, "pub const TABLE_MESSAGE_REF_BITS: u32 = %d;\n\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))))
 
 	b.WriteString(messageRuntimeBody)
 	if ownsReport {

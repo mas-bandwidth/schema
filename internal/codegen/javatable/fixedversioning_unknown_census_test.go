@@ -13,6 +13,7 @@ package javatable
 // endpoint owes the same number again, which is the second half of the row.
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,8 @@ import (
 )
 
 func TestFixedVersioningUnknownCensus(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := corpusDir(t)
 	file := filepath.Join(corpus, "old_unknown_census.bin")
 	if _, err := os.Stat(file); err != nil {

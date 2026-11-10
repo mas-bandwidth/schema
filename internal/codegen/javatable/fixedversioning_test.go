@@ -48,6 +48,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -715,6 +716,8 @@ func lineageOf(t *testing.T, older []string, retire int) map[string][]FixedLinea
 // compiles the lot with this leg's own toolchain. One `javac` per row; the column
 // is still the unit (§5.9 #18).
 func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaBuild, string) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, _ := javaTools(t)
 	src := filepath.Join(dir, "src")
@@ -760,6 +763,8 @@ func buildRow(t *testing.T, dir, row string, sides []sideSpec) (map[string]javaB
 }
 
 func runProbe(t *testing.T, classes, class, file string) probeRun {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	_, javaBin := javaTools(t)
 	cmd := exec.Command(javaBin, "-ea", "-cp", classes, class, file)
@@ -1209,6 +1214,8 @@ func TestFixedVersioningTextUnderArmTrueBytes(t *testing.T) {
 }
 
 func runFixedVersioningTextUnderArm(t *testing.T, trueBytes bool) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	corpus := corpusDir(t)
 	fu1Bin := filepath.Join(corpus, "fu1.bin")
@@ -1413,6 +1420,8 @@ public final class ArmProbe {
 // is refused as planTooLarge with no counter moved and the poisoned destination
 // untouched, while the same file reads cleanly at sufficient capacity.
 func TestFixedVersioningPlanTooLarge(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := corpusDir(t)
 	fu1Bin := filepath.Join(corpus, "fu1.bin")
 	if _, err := os.Stat(fu1Bin); err != nil {

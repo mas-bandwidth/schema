@@ -31,6 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1338,6 +1339,7 @@ typedef unsigned __int128 uint128_t;
 // runs C++ FixedLoad + FixedSave to prove byte-for-byte agreement.
 func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error) {
 	t.Helper()
+	slowtest.Gate(t, "the C++ compiler")
 	files, err := cpp.Generate(u)
 	if err != nil {
 		t.Fatalf("%s: cpp.Generate: %v", tc.ID, err)
