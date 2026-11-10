@@ -840,13 +840,12 @@ impl<'a> Jr<'a> {
                      }
                      // a repeated key inside a skipped object refuses the read,
                      // exactly as it does in a placed object (§16.3)
-                     if let Some(k) = &key {
-                         if !seen.insert(k.clone()) {
-                             self.damaged = true;
-                             self.depth -= 1;
-                             return;
-                         }
-                     }
+                      if let Some(k) = &key
+                          && !seen.insert(k.clone()) {
+                              self.damaged = true;
+                              self.depth -= 1;
+                              return;
+                          }
                     self.space();
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
