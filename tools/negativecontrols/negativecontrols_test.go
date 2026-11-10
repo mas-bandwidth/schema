@@ -1160,7 +1160,7 @@ func logicalLines(body string) []string {
 	var out []string
 	var buf string
 	cont := false
-	for _, raw := range strings.SplitSeq(body, "\n") {
+	for raw := range strings.SplitSeq(body, "\n") {
 		more := strings.HasSuffix(raw, "\\")
 		text := raw
 		if more {
