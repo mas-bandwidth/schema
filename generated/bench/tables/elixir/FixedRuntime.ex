@@ -227,6 +227,14 @@ defmodule Benchtable.FixedRuntime do
   def range_check(report, 0), do: report
   def range_check(_report, _n), do: throw({:refuse, :out_of_range})
 
+  # THE ORDINAL OP DOES NOT REFUSE BY ITSELF (§4.6). It lands None and marks
+  # the read; the load refuses out_of_range on that mark, after the plan has
+  # returned an image. A direct run still sees the None.
+  def forged_check(%{forged: true}), do: throw({:refuse, :out_of_range})
+  def forged_check(report), do: report
+
+  defp mark_forged(report), do: Map.put(report, :forged, true)
+
   @doc """
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
@@ -1752,10 +1760,13 @@ defmodule Benchtable.FixedRuntime do
   # A body too short to hold the tag counts nothing: a short record is the
   # caller's verdict through the record bounds, not this op's to invent.
   defp step([{:tagcount, src, size, arms} | rest], body, writes, report) do
+    # A TAG PAST THE WRITER'S ARM COUNT marks the read (§4.6). The op writes
+    # nothing, so the prefill's None stands, and the load refuses out_of_range
+    # on the mark. The op itself does not throw: a direct run still returns.
     case body do
       <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>>
       when raw > arms ->
-        step(rest, body, writes, bump(report, :unknown))
+        step(rest, body, writes, mark_forged(report))
 
       _ ->
         step(rest, body, writes, report)
@@ -1833,9 +1844,8 @@ defmodule Benchtable.FixedRuntime do
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
   # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
-  # ALL: it lands None and counts one `out_of_range`, which is the answer §3 gives
-  # every other value outside its range and the answer a union tag beyond the
-  # declared arm count gets too. TAG 0 IS None and is not a clamp.
+  # ALL (§4.6): the read refuses `out_of_range` and lands nothing. TAG 0 IS
+  # None and is not a refusal.
   #
   # `remap` is the WRITER's table where the two sides can disagree about
   # what a number means, and the plain VARIANT COUNT where they cannot — which
@@ -1844,16 +1854,18 @@ defmodule Benchtable.FixedRuntime do
   defp ordinal(0, _remap, report), do: {0, report}
 
   defp ordinal(raw, variants, report) when is_integer(variants) do
-    if raw <= variants, do: {raw, report}, else: {0, bump(report, :unknown)}
+    # PAST THE WRITER'S VARIANT COUNT IS NOT A VARIANT (§4.6): refuse the
+    # whole read. Landing None and counting would be the retired census.
+    if raw <= variants, do: {raw, report}, else: {0, mark_forged(report)}
   end
 
   defp ordinal(raw, remap, report) do
     # THE LENGTH WORD IS THE BOUND (§5.2): slot 0 holds the writer's
-    # variant count n and slots 1..n the remap, so a raw past n lands None
-    # exactly as a raw past the writer's set does on every leg.
+    # variant count n and slots 1..n the remap. A raw past n refuses
+    # out_of_range, the same answer as the identity plan's bounds pass.
     if raw <= elem(remap, 0),
       do: {elem(remap, raw), report},
-      else: {0, bump(report, :unknown)}
+      else: {0, mark_forged(report)}
   end
 
   defp clamp_count(raw, max, report) do

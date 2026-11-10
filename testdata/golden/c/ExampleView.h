@@ -281,6 +281,7 @@ static SCHEMA_UNUSED void example_table_non_finite_float( example_table_report_t
 {
     report->refused = 1;
     report->reason = SCHEMA_EXAMPLE_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_EXAMPLE_TABLE_REFUSE_NON_FINITE_FLOAT;
     report->non_finite_floats++;
 }
 /* table_non_finite_refused is that load's end: 1 when the walk met a
@@ -291,6 +292,7 @@ static SCHEMA_UNUSED int example_table_non_finite_refused( example_table_report_
     if ( report->non_finite_floats == before ) { return 0; }
     report->refused = 1;
     report->reason = SCHEMA_EXAMPLE_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_EXAMPLE_TABLE_REFUSE_NON_FINITE_FLOAT;
     return 1;
 }
 static SCHEMA_UNUSED uint32_t schema_example_table_crc32c_( const uint8_t * data, int64_t bytes )

@@ -255,11 +255,17 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     }
     {
         let at = 49;
-        value.moving = b[at] != 0;
+        if b[at] > 1 && report.slack == 0 {
+            report.damaged = true;
+        }
+        value.moving = b[at] == 1;
     }
     {
         let at = 50;
-        value.firing = b[at] != 0;
+        if b[at] > 1 && report.slack == 0 {
+            report.damaged = true;
+        }
+        value.firing = b[at] == 1;
     }
 }
 
@@ -368,7 +374,10 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
     }
     {
         let at = 12;
-        value.crit = b[at] != 0;
+        if b[at] > 1 && report.slack == 0 {
+            report.damaged = true;
+        }
+        value.crit = b[at] == 1;
     }
 }
 
@@ -616,10 +625,13 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         value.entities_count = held;
     }
     for i in 0..8 {
+        let slack = u32::from(i as i32 >= value.entities_count);
+        report.slack += slack;
         {
             let at = 56 + i * 51;
             mixed_entity_fixed_scatter(&b[at..at + 51], &mut value.entities[i], report);
         }
+        report.slack -= slack;
     }
     {
         let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
@@ -630,10 +642,13 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
         value.stats_count = held;
     }
     for i in 0..80 {
+        let slack = u32::from(i as i32 >= value.stats_count);
+        report.slack += slack;
         {
             let at = 468 + i * 8;
             mixed_stat_fixed_scatter(&b[at..at + 8], &mut value.stats[i], report);
         }
+        report.slack -= slack;
     }
     {
         let at = 1108;
@@ -708,7 +723,10 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     }
     {
         let at = 1227;
-        value.has_extra = b[at] != 0;
+        if b[at] > 1 && report.slack == 0 {
+            report.damaged = true;
+        }
+        value.has_extra = b[at] == 1;
     }
     {
         let at = 1228;

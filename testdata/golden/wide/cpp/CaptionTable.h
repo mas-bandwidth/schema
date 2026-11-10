@@ -1020,10 +1020,22 @@ inline bool TableReadSignedAt( TableReader & r, uint8_t kind, int64_t & out )
 {
     switch ( kind )
     {
-        case 2: if ( !r.has( 1 ) ) { return false; } out = (int8_t) r.get8(); return true;
-        case 3: if ( !r.has( 2 ) ) { return false; } out = (int16_t) r.get16(); return true;
-        case 4: if ( !r.has( 4 ) ) { return false; } out = (int32_t) r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = (int64_t) r.get64(); return true;
+        case 2:
+            if ( !r.has( 1 ) ) { return false; }
+            out = (int8_t) r.get8();
+            return true;
+        case 3:
+            if ( !r.has( 2 ) ) { return false; }
+            out = (int16_t) r.get16();
+            return true;
+        case 4:
+            if ( !r.has( 4 ) ) { return false; }
+            out = (int32_t) r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = (int64_t) r.get64();
+            return true;
     }
 }
 
@@ -1355,7 +1367,7 @@ static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 // THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
 // of every body it writes, which is a compile-time constant because the
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
-static const int64_t kTableMessageRefBitsHere = 5;
+static const int64_t kTableMessageRefBitsHere = 4;
 
 // THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
 // its resolved vocabulary when it talks only to endpoints of this schema (§3.3).
@@ -1363,7 +1375,7 @@ static const int64_t kTableMessageRefBitsHere = 5;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 16;
+static const int64_t kTableMessageEntriesHere = 10;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1938,7 +1950,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 16 entries and 197 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 10 entries and 141 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1956,7 +1968,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 197;
+static const int64_t kTableAnnounceBytes = 141;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1979,11 +1991,9 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x54,
     0x02,
     0x0e,
-    0x9d,
-    0x01,
+    0x66,
     0x06,
-    0x9a,
-    0x01,
+    0x64,
     0x29,
     0x60,
     0x1b,
@@ -2083,60 +2093,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xe5,
     0xb1,
     0x04,
-    0x00,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x00,
-    0xe4,
-    0x4f,
-    0x1c,
-    0x4f,
-    0x47,
-    0xc0,
-    0x2e,
-    0x2f,
-    0x00,
-    0x58,
-    0xfc,
-    0xaf,
-    0xfa,
-    0xd8,
-    0xe0,
-    0x4b,
-    0x70,
-    0x00,
-    0xc7,
-    0xd4,
-    0x7b,
-    0x26,
-    0xb0,
-    0x9d,
-    0x29,
-    0x5f,
-    0x00,
-    0x05,
-    0x8b,
-    0x3a,
-    0x59,
-    0xa7,
-    0xf3,
-    0x2e,
-    0x83,
-    0x00,
-    0xa4,
-    0x93,
-    0xdb,
-    0xb7,
-    0x13,
-    0x91,
-    0x3b,
-    0xae,
     0x00,
     0x00,
     0xfe,
@@ -2875,6 +2831,7 @@ enum : uint8_t
     kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
     kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedPresentDefaults = 9, // a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (§3.4: an absent payload is IGNORED on read)
 };
 
 // meta on a kTableFixedText entry
@@ -3011,6 +2968,12 @@ struct TableFixedEntry
 // order is free, and what it buys is that the entries that are nearly all of
 // the plan never test a guard at all. Under a per-entry guard test the whole
 // read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF: an absent optional's declared
+// defaults must run AFTER the guarded arm entries of the payload they replace,
+// so a kTableFixedPresentDefaults entry is deferred past the split even when it
+// answers to no tag. The second loop applies a guardless entry there
+// unconditionally; its guard lane is kTableFixedNoGuard and is never an offset.
 //
 // THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
 // one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
@@ -3171,7 +3134,7 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    int32_t & oor_count, int32_t & widened )
+    int32_t & oor_count, int32_t & widened, const uint8_t * defaults = nullptr )
 {
     switch ( p.op )
     {
@@ -3303,6 +3266,18 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
+        case kTableFixedPresentDefaults:
+        {
+            // THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT (§3.4):
+            // the payload copy above laid the wire's bytes down; when the flag
+            // is 0 those bytes are slack and never a value, so the reader
+            // overwrites them with the caller's own Reset image. Aux is the
+            // payload's storage offset and Size its storage bytes.
+            const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
+            dst[p.dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -3312,7 +3287,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
     const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr,
+    const uint8_t * defaults = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -3321,7 +3297,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     int32_t widened = 0;
     for ( int32_t i = 0; i < guarded; ++i )
     {
-        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
     for ( int32_t i = guarded; i < count; ++i )
     {
@@ -3346,12 +3322,21 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
         }
         else
         {
-            if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+            // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+            // the deferred present-defaults entry must follow the guarded
+            // payload it overwrites, so it rides after the split although
+            // it answers to no tag. Its guard lane is kTableFixedNoGuard
+            // and must never be read as an offset.
+            if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
             if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         }
-        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened );
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, oor_count, widened, defaults );
     }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     report->widened += widened;
 }
 
@@ -3397,7 +3382,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
             }
             else
             {
-                if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+                // A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+                // the deferred present-defaults entry must follow the guarded
+                // payload it overwrites, so it rides after the split although
+                // it answers to no tag. Its guard lane is kTableFixedNoGuard
+                // and must never be read as an offset.
+                if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
                 if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
             }
         }
@@ -3490,6 +3480,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        case kTableFixedPresentDefaults: lands[1] = e.dst + 1u; break; // the flag; the payload's own entries land it
         default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
@@ -4048,7 +4039,13 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
     // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
     // plan comes out partitioned without a second array to partition it in.
-    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+    // no tag: it must run AFTER the guarded payload entries it overwrites, or
+    // an absent optional whose payload holds a union would read the wire's
+    // residue back over the defaults (§3.4). The run loop applies a guardless
+    // entry in the second half unconditionally.
+    const bool second_half = ( e.guard != kTableFixedNoGuard ) || e.op == kTableFixedPresentDefaults;
+    if ( second_half != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
     // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -4242,22 +4239,34 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
-        if ( c.report != NULL ) { c.report->refused = true; c.report->refuse_reason = kind_mismatch; }
+        if ( c.report != NULL )
+        {
+            c.report->refused = true;
+            c.report->refuse_reason = kind_mismatch;
+        }
         return;
     }
     switch ( me.kind )
     {
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
+            // THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+            // when it is 0, the DECLARED DEFAULTS over the payload's slack
+            // (§3.4: an absent optional's payload is IGNORED on read). The
+            // payload's storage starts at the child's own destination and runs
+            // to the present companion, which the reader's layout puts after it.
+            const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+            const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
+            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             TableFixedEntry e;
             e.src = their_at;
             e.dst = aux_at;
-            e.size = 1;
+            e.aux = payload_dst;
+            e.size = payload_size;
             e.guard = guard;
-            e.op = kTableFixedBool;
+            e.op = kTableFixedPresentDefaults;
             e.arg = arg;
             TableFixedPush( c, e );
-            TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
         }
         case 13: // a nested table: match its fields
@@ -4502,7 +4511,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( c.report != NULL )
             {
-                c.report->refused = true; c.report->refuse_reason = kind_mismatch;
+                c.report->refused = true;
+                c.report->refuse_reason = kind_mismatch;
             }
             break;
         }
@@ -4656,7 +4666,14 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         }
         memcpy( dst + b.dst, &landed, b.width );
     }
-    if ( report != NULL ) { if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; } }
+    if ( report != NULL )
+    {
+        if ( oor_count != 0 )
+        {
+            report->refused = true;
+            report->refuse_reason = out_of_range;
+        }
+    }
 }
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
@@ -5295,13 +5312,13 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
         // lines: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
         // body length was built from, so measuring it twice can only agree.
-        int64_t elem_cache[ 3 ];
+        int64_t elem_cache[3];
         body_lines += 1 + TableLebBytes( (uint64_t) ( value.lines_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.lines_count; elem_i++ )
         {
             const int64_t elem_bytes = LineMeasureBody( ids, value.lines[elem_i] );
             if ( elem_bytes < 0 ) { return false; }
-            if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
+            if ( elem_i < 3 ) { elem_cache[elem_i] = elem_bytes; }
             body_lines += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
         w.header( ref_lines, 14 );
@@ -5311,7 +5328,7 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
         for ( int32_t elem_i = 0; elem_i < value.lines_count; elem_i++ )
         {
             {
-                const int64_t elem_len = elem_i < 3 ? elem_cache[ elem_i ] : LineMeasureBody( ids, value.lines[elem_i] );
+                const int64_t elem_len = elem_i < 3 ? elem_cache[elem_i] : LineMeasureBody( ids, value.lines[elem_i] );
                 if ( elem_len < 0 ) return false;
                 w.putleb( (uint64_t) elem_len );
                 if ( !LineSaveBody( w, ids, value.lines[elem_i] ) ) return false;
@@ -5329,7 +5346,8 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 int64_t arm_payload = 0;
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += (int64_t) value.body.wide.value_length * 2; // the code units under the arm's L, which is a BYTE length (§3)
-                w.header( arm_ref, 33 ); w.putleb( (uint64_t) arm_payload ); // wide
+                w.header( arm_ref, 33 );
+                w.putleb( (uint64_t) arm_payload ); // wide
                 if ( value.body.wide.value_length < 0 || value.body.wide.value_length > 4 ) { return false; } // storage invariant
                 for ( int32_t i = 0; i < value.body.wide.value_length; i++ ) { w.put16( (uint16_t) value.body.wide.value[i] ); } // two bytes each, little-endian
                 break;
@@ -5340,7 +5358,8 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 int64_t arm_payload = 0;
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += value.body.narrow.value_length; // the string's bytes under the arm's L
-                w.header( arm_ref, 12 ); w.putleb( (uint64_t) arm_payload ); // narrow
+                w.header( arm_ref, 12 );
+                w.putleb( (uint64_t) arm_payload ); // narrow
                 if ( value.body.narrow.value_length < 0 || value.body.narrow.value_length > 4 ) { return false; } // storage invariant
                 w.raw( value.body.narrow.value, value.body.narrow.value_length );
                 break;
@@ -5350,7 +5369,8 @@ WIDE_TABLE_INLINE bool CaptionSaveBody( TableWriter & w, TableIds & ids, const C
                 const uint64_t arm_ref = ids.ref_at( 10, 0xb1e5e28e4479a274ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                w.header( arm_ref, 4 );
+                w.putleb( (uint64_t) arm_payload ); // tally
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -5418,7 +5438,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5427,16 +5448,39 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
                 // value is L / 2 code units, so an odd L is not a wstring at any length.
-                if ( ( len & 1 ) != 0 ) { r.report->damaged = true; value.title[0] = 0; value.title_length = 0; r.offset += (int64_t) len; break; }
+                if ( ( len & 1 ) != 0 )
+                {
+                    r.report->damaged = true;
+                    value.title[0] = 0;
+                    value.title_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 const int64_t units = (int64_t) ( len / 2 );
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero
                 // code unit counts malformed, and damage discards the whole load
-                if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.title[0] = 0; value.title_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf16Valid( r.buffer + r.offset, units ) )
+                {
+                    r.report->damaged = true;
+                    value.title[0] = 0;
+                    value.title_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 int64_t keep = units;
-                if ( keep > 7 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 7 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
+                if ( keep > 7 )
+                {
+                    keep = TableUtf16Clamp( r.buffer + r.offset, units, 7 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.title[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.title[keep] = 0;
                 value.title_length = (int32_t) keep;
@@ -5449,7 +5493,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5481,7 +5526,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5509,33 +5555,53 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
-                    else if ( elem_kind != 13 ) { r.report->refused = true; r.report->refuse_reason = kind_mismatch; r.offset = body_end; break; }
+                    else if ( elem_kind != 13 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = kind_mismatch;
+                        r.offset = body_end;
+                        break;
+                    }
                     else
                     {
-                    uint64_t keep = count;
-                    if ( keep > 3 ) { keep = 3; r.report->refused = true; r.report->refuse_reason = out_of_range; }
-                    // elements are BOUNDED by the field body: a count the length
-                    // cannot cover is damage, which discards the whole load (§4), and
-                    // the following fields' bytes are never fabricated into
-                    // elements
-                    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
-                    uint64_t decoded = 0;
-                    for ( uint64_t i = 0; i < keep; i++ )
-                    {
-                        uint64_t elem_len = 0;
-                        if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) ) { r.report->damaged = true; break; }
+                        uint64_t keep = count;
+                        if ( keep > 3 )
                         {
-                            TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
-                            LineLoadBody( elem, value.lines[(int32_t) i] );
-                            if ( elem.offset != elem.size ) { r.report->damaged = true; LineReset( value.lines[(int32_t) i] ); }
+                            keep = 3;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
                         }
-                        sub.offset += (int64_t) elem_len;
-                        decoded = i + 1;
-                    }
-                    value.lines_count = (int32_t) decoded;
-                    for ( int32_t tail = value.lines_count; tail < previous_count; tail++ ) {
-                        LineReset( value.lines[tail] );
-                    }
+                        // elements are BOUNDED by the field body: a count the length
+                        // cannot cover is damage, which discards the whole load (§4), and
+                        // the following fields' bytes are never fabricated into
+                        // elements
+                        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
+                        uint64_t decoded = 0;
+                        for ( uint64_t i = 0; i < keep; i++ )
+                        {
+                            uint64_t elem_len = 0;
+                            if ( !sub.getleb( elem_len ) || !sub.room( elem_len ) )
+                            {
+                                r.report->damaged = true;
+                                break;
+                            }
+                            {
+                                TableReader elem( sub.buffer + sub.offset, (int64_t) elem_len, r.report, r.ids );
+                                LineLoadBody( elem, value.lines[(int32_t) i] );
+                                if ( elem.offset != elem.size )
+                                {
+                                    r.report->damaged = true;
+                                    LineReset( value.lines[(int32_t) i] );
+                                }
+                            }
+                            sub.offset += (int64_t) elem_len;
+                            decoded = i + 1;
+                        }
+                        value.lines_count = (int32_t) decoded;
+                        for ( int32_t tail = value.lines_count; tail < previous_count; tail++ )
+                        {
+                            LineReset( value.lines[tail] );
+                        }
                     }
                 }
                 r.offset = body_end; // excess elements and slack skip via the length
@@ -5547,7 +5613,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -5556,11 +5623,27 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                     break;
                 }
                 uint64_t arm_ref = 0;
-                if ( !r.getleb( arm_ref ) ) { r.report->damaged = true; return false; }
-                if ( arm_ref == 0 ) { value.body.type = BodyType::None; break; } // empty: the reference is the whole payload
-                if ( arm_ref > (uint64_t) r.ids->count ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( arm_ref ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
+                if ( arm_ref == 0 )
+                {
+                    value.body.type = BodyType::None;
+                    break;
+                } // empty: the reference is the whole payload
+                if ( arm_ref > (uint64_t) r.ids->count )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint64_t arm_id = r.ids->at( arm_ref );
-                if ( !r.has( 1 ) ) { r.report->damaged = true; return false; }
+                if ( !r.has( 1 ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 const uint8_t arm_kind = r.get8();
                 uint64_t body_len = 0;
                 if ( !r.getleb( body_len ) || !r.room( body_len ) )
@@ -5579,18 +5662,34 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Wide;
-                            if ( ( sub.size & 1 ) != 0 ) { value.body.type = BodyType::None; r.report->damaged = true; break; } // an odd L is not a wstring at any length (§3)
+                            if ( ( sub.size & 1 ) != 0 )
+                            {
+                                value.body.type = BodyType::None;
+                                r.report->damaged = true;
+                                break;
+                            } // an odd L is not a wstring at any length (§3)
                             memset( (void *) &value.body.wide, 0, sizeof( value.body.wide ) ); // selection establishes the arm (§2.6)
                             {
                                 const int64_t arm_units = sub.size / 2;
                                 int64_t arm_keep = arm_units;
                                 // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
-                                if ( !TableUtf16Valid( sub.buffer + sub.offset, arm_units ) ) { value.body.type = BodyType::None; r.report->damaged = true; break; }
-                                if ( arm_keep > 4 ) { arm_keep = TableUtf16Clamp( sub.buffer + sub.offset, arm_units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair
+                                if ( !TableUtf16Valid( sub.buffer + sub.offset, arm_units ) )
+                                {
+                                    value.body.type = BodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                if ( arm_keep > 4 )
+                                {
+                                    arm_keep = TableUtf16Clamp( sub.buffer + sub.offset, arm_units, 4 );
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                } // never splitting a pair
                                 for ( int64_t i = 0; i < arm_keep; i++ ) { value.body.wide.value[i] = (char16_t) TableUtf16Unit( sub.buffer + sub.offset, i ); }
                                 value.body.wide.value[arm_keep] = 0;
                                 value.body.wide.value_length = (int32_t) arm_keep;
@@ -5605,7 +5704,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Narrow;
@@ -5614,8 +5714,18 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 uint32_t arm_len = uint32_t( sub.size );
                                 uint32_t arm_keep = arm_len;
                                 // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
-                                if ( !TableUtf8Valid( sub.buffer + sub.offset, sub.size ) ) { value.body.type = BodyType::None; r.report->damaged = true; break; }
-                                if ( arm_keep > 4 ) { arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // at a code point boundary
+                                if ( !TableUtf8Valid( sub.buffer + sub.offset, sub.size ) )
+                                {
+                                    value.body.type = BodyType::None;
+                                    r.report->damaged = true;
+                                    break;
+                                }
+                                if ( arm_keep > 4 )
+                                {
+                                    arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 4 );
+                                    r.report->refused = true;
+                                    r.report->refuse_reason = out_of_range;
+                                } // at a code point boundary
                                 memcpy( value.body.narrow.value, sub.buffer + sub.offset, arm_keep );
                                 value.body.narrow.value[arm_keep] = 0;
                                 value.body.narrow.value_length = (int32_t) arm_keep;
@@ -5631,7 +5741,12 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 {
                                     // WIDENED AT AN ARM (§4): the payload decodes at its own width; an L
                                     // that is not that width is the arm's own framing damage (§3)
-                                    if ( sub.size != TableKindWidth( arm_kind ) ) { value.body.type = BodyType::None; r.report->damaged = true; break; }
+                                    if ( sub.size != TableKindWidth( arm_kind ) )
+                                    {
+                                        value.body.type = BodyType::None;
+                                        r.report->damaged = true;
+                                        break;
+                                    }
                                     memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
                                     if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
@@ -5649,7 +5764,8 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                                 // A RETYPED ARM IS JUDGED BY THE FIELD RULES (§3): the
                                 // arm skips by L, the union reads None, and the parent reads on
                                 value.body.type = BodyType::None;
-                                r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                                r.report->refused = true;
+                                r.report->refuse_reason = kind_mismatch;
                                 break;
                             }
                             value.body.type = BodyType::Tally;
@@ -5706,7 +5822,11 @@ inline TableOpenVerdict CaptionLoadVerdict( Caption & value, const uint8_t * buf
     if ( verdict != TableOpenOk )
     {
         CaptionReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -5735,10 +5855,23 @@ inline TableOpenVerdict CaptionLoadVerdict( Caption & value, const uint8_t * buf
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = CaptionLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; CaptionReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { CaptionReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        CaptionReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        CaptionReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { CaptionReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        CaptionReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -5920,15 +6053,31 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xda31296c0c1b6029ull: // title
@@ -5938,15 +6087,30 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 33 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 7 ) { kept = 7; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 7 )
+                    {
+                        kept = 7;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     bool high = false; // a high surrogate awaiting its low half
                     bool ill = false;
                     for ( uint64_t i = 0; i < n; i++ )
@@ -5960,7 +6124,11 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         else if ( u >= 0xDC00 && u <= 0xDFFF ) { ill = true; }
                         if ( (int32_t) i < kept ) { value.title[i] = (char16_t) u; }
                     }
-                    if ( high || ill ) { report->damaged = true; return false; }
+                    if ( high || ill )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     if ( kept > 0 && (uint64_t) kept < n )
                     {
                         const char16_t last = value.title[kept - 1];
@@ -5978,8 +6146,13 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 13 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 if ( !LineLoadMessageBody( r, vocabulary, report, index_bits, value.line ) ) { return false; }
@@ -5992,8 +6165,13 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 14 || entry.elem_kind != 13 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
@@ -6005,9 +6183,19 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                         if ( !r.get( raw, count_bits ) ) { report->damaged = true; return false; }
                         n = raw + (uint64_t) entry.min;
                     }
-                    if ( entry.elem_kind == 6 && !r.align() ) { report->damaged = true; return false; }
+                    if ( entry.elem_kind == 6 && !r.align() )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 3 ) { kept = 3; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 3 )
+                    {
+                        kept = 3;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     const uint64_t walk = n;
                     for ( uint64_t i = 0; i < walk; i++ )
                     {
@@ -6027,16 +6215,29 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 15 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t arm_ref = 0;
-                    if ( !r.get( arm_ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
+                    if ( !r.get( arm_ref, vocabulary.ref_bits ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     TableMessageEntry arm;
                     if ( arm_ref == 0 ) { value.body.type = BodyType::None; }
-                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) ) { report->damaged = true; return false; }
+                    else if ( !TableMessageArmEntry( vocabulary, arm_ref, arm ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     else
                     {
                         switch ( arm.id )
@@ -6045,16 +6246,32 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                             {
                                 if ( arm.kind != 33 || arm.elem_kind != 0 )
                                 {
-                                    value.body.type = BodyType::None; report->refused = true; report->refuse_reason = kind_mismatch;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
+                                    value.body.type = BodyType::None;
+                                    report->refused = true;
+                                    report->refuse_reason = kind_mismatch;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     break;
                                 }
                                 value.body.type = BodyType::Wide;
                                 {
                                     uint64_t n_2 = 0;
-                                    if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.has( (int64_t) n_2 * 16 ) ) { report->damaged = true; return false; }
+                                    if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.has( (int64_t) n_2 * 16 ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     int32_t kept_2 = 0;
-                                    if ( n_2 > (uint64_t) 4 ) { kept_2 = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept_2 = (int32_t) n_2; }
+                                    if ( n_2 > (uint64_t) 4 )
+                                    {
+                                        kept_2 = 4;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                        } else { kept_2 = (int32_t) n_2;
+                                    }
                                     bool high_2 = false; // a high surrogate awaiting its low half
                                     bool ill_2 = false;
                                     for ( uint64_t i_2 = 0; i_2 < n_2; i_2++ )
@@ -6068,7 +6285,11 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                         else if ( u_2 >= 0xDC00 && u_2 <= 0xDFFF ) { ill_2 = true; }
                                         if ( (int32_t) i_2 < kept_2 ) { value.body.wide.value[i_2] = (char16_t) u_2; }
                                     }
-                                    if ( high_2 || ill_2 ) { report->damaged = true; return false; }
+                                    if ( high_2 || ill_2 )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     if ( kept_2 > 0 && (uint64_t) kept_2 < n_2 )
                                     {
                                         const char16_t last_2 = value.body.wide.value[kept_2 - 1];
@@ -6083,18 +6304,36 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                             {
                                 if ( arm.kind != 12 || arm.elem_kind != 0 )
                                 {
-                                    value.body.type = BodyType::None; report->refused = true; report->refuse_reason = kind_mismatch;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
+                                    value.body.type = BodyType::None;
+                                    report->refused = true;
+                                    report->refuse_reason = kind_mismatch;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     break;
                                 }
                                 value.body.type = BodyType::Narrow;
                                 {
                                     uint64_t n_2 = 0;
-                                    if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.align() || !r.has( (int64_t) n_2 * 8 ) ) { report->damaged = true; return false; }
+                                    if ( !r.get( n_2, TableBitsRequired( 0, arm.max ) ) || !r.align() || !r.has( (int64_t) n_2 * 8 ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     const uint8_t * text_2 = r.buffer + ( r.offset >> 3 );
-                                    if ( !TableUtf8Valid( text_2, n_2 ) ) { report->damaged = true; return false; }
+                                    if ( !TableUtf8Valid( text_2, n_2 ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     const int32_t kept_2 = (int32_t) TableUtf8Clamp( text_2, n_2, 4 );
-                                    if ( (uint64_t) kept_2 < n_2 ) { report->refused = true; report->refuse_reason = out_of_range; }
+                                    if ( (uint64_t) kept_2 < n_2 )
+                                    {
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
                                     memcpy( value.body.narrow.value, text_2, (size_t) kept_2 );
                                     value.body.narrow.value[kept_2] = 0;
                                     r.offset += (int64_t) n_2 * 8;
@@ -6113,7 +6352,11 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                         {
                                             const int64_t width_2 = arm.value_bits;
                                             uint64_t raw_2 = 0;
-                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                                            if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                                            {
+                                                report->damaged = true;
+                                                return false;
+                                            }
                                             int64_t decoded_wide_2 = (int64_t) raw_2;
                                             if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
                                             else if ( width_2 > 0 && width_2 < 64 )
@@ -6121,23 +6364,43 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                                 const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
                                                 if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
                                             }
-                                            if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
-                                            if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                                            if ( decoded_wide_2 < -2147483648ll )
+                                            {
+                                                decoded_wide_2 = -2147483648ll;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
+                                            if ( decoded_wide_2 > 2147483647ll )
+                                            {
+                                                decoded_wide_2 = 2147483647ll;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
                                             int32_t decoded_v_2 = (int32_t) decoded_wide_2;
                                             value.body.tally = decoded_v_2;
                                         }
                                         report->widened++;
                                         break;
                                     }
-                                    value.body.type = BodyType::None; report->refused = true; report->refuse_reason = kind_mismatch;
-                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
+                                    value.body.type = BodyType::None;
+                                    report->refused = true;
+                                    report->refuse_reason = kind_mismatch;
+                                    if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     break;
                                 }
                                 value.body.type = BodyType::Tally;
                                 {
                                     const int64_t width_2 = arm.value_bits;
                                     uint64_t raw_2 = 0;
-                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) ) { report->damaged = true; return false; }
+                                    if ( width_2 < 0 || !r.get( raw_2, width_2 ) )
+                                    {
+                                        report->damaged = true;
+                                        return false;
+                                    }
                                     int64_t decoded_wide_2 = (int64_t) raw_2;
                                     if ( arm.packing == 1 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
                                     else if ( width_2 > 0 && width_2 < 64 )
@@ -6145,16 +6408,31 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
                                         const uint64_t sign_2 = uint64_t(1) << ( width_2 - 1 );
                                         if ( ( raw_2 & sign_2 ) != 0 ) { decoded_wide_2 = (int64_t) ( raw_2 | ~( ( uint64_t(1) << width_2 ) - 1 ) ); }
                                     }
-                                    if ( decoded_wide_2 < -2147483648ll ) { decoded_wide_2 = -2147483648ll; report->refused = true; report->refuse_reason = out_of_range; }
-                                    if ( decoded_wide_2 > 2147483647ll ) { decoded_wide_2 = 2147483647ll; report->refused = true; report->refuse_reason = out_of_range; }
+                                    if ( decoded_wide_2 < -2147483648ll )
+                                    {
+                                        decoded_wide_2 = -2147483648ll;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
+                                    if ( decoded_wide_2 > 2147483647ll )
+                                    {
+                                        decoded_wide_2 = 2147483647ll;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
                                     int32_t decoded_v_2 = (int32_t) decoded_wide_2;
                                     value.body.tally = decoded_v_2;
                                 }
                                 break;
                             }
                             default:
-                                value.body.type = BodyType::None; report->unknown++;
-                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) ) { report->damaged = true; return false; }
+                                value.body.type = BodyType::None;
+                                report->unknown++;
+                                if ( !TableMessageSkip( r, vocabulary, index_bits, arm ) )
+                                {
+                                    report->damaged = true;
+                                    return false;
+                                }
                                 break;
                         }
                     }
@@ -6163,7 +6441,11 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -6184,7 +6466,11 @@ inline bool CaptionLoadMessageBody( TableBitReader & r, const TableVocabulary & 
 inline int64_t CaptionMeasureMessages( const Caption * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -6198,7 +6484,11 @@ inline int64_t CaptionMeasureMessages( const Caption * values, int64_t count, Ta
 inline int64_t CaptionSaveMessages( const Caption * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6226,13 +6516,22 @@ inline bool CaptionLoadMessages( Caption * values, int64_t * count, const TableV
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !CaptionLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { CaptionReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -6335,7 +6634,8 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6344,16 +6644,39 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
                 // value is L / 2 code units, so an odd L is not a wstring at any length.
-                if ( ( len & 1 ) != 0 ) { r.report->damaged = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( ( len & 1 ) != 0 )
+                {
+                    r.report->damaged = true;
+                    value.label[0] = 0;
+                    value.label_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 const int64_t units = (int64_t) ( len / 2 );
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero
                 // code unit counts malformed, and damage discards the whole load
-                if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.label[0] = 0; value.label_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf16Valid( r.buffer + r.offset, units ) )
+                {
+                    r.report->damaged = true;
+                    value.label[0] = 0;
+                    value.label_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 int64_t keep = units;
-                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
+                if ( keep > 4 )
+                {
+                    keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.label[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.label[keep] = 0;
                 value.label_length = (int32_t) keep;
@@ -6381,7 +6704,8 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6426,7 +6750,11 @@ inline TableOpenVerdict StampLoadVerdict( Stamp & value, const uint8_t * buffer,
     if ( verdict != TableOpenOk )
     {
         StampReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -6455,10 +6783,23 @@ inline TableOpenVerdict StampLoadVerdict( Stamp & value, const uint8_t * buffer,
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = StampLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; StampReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { StampReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        StampReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        StampReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { StampReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        StampReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -6549,15 +6890,31 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0x39f7fcec8fcb623dull: // label
@@ -6567,15 +6924,30 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 33 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 )
+                    {
+                        kept = 4;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     bool high = false; // a high surrogate awaiting its low half
                     bool ill = false;
                     for ( uint64_t i = 0; i < n; i++ )
@@ -6589,7 +6961,11 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                         else if ( u >= 0xDC00 && u <= 0xDFFF ) { ill = true; }
                         if ( (int32_t) i < kept ) { value.label[i] = (char16_t) u; }
                     }
-                    if ( high || ill ) { report->damaged = true; return false; }
+                    if ( high || ill )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     if ( kept > 0 && (uint64_t) kept < n )
                     {
                         const char16_t last = value.label[kept - 1];
@@ -6612,27 +6988,50 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
                         {
                             const int64_t width = entry.value_bits;
                             uint64_t raw = 0;
-                            if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                            if ( width < 0 || !r.get( raw, width ) )
+                            {
+                                report->damaged = true;
+                                return false;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                            if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                            if ( (uint64_t) decoded_wide > 4294967295ull )
+                            {
+                                decoded_wide = (int64_t) 4294967295ull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint32_t decoded_v = (uint32_t) decoded_wide;
                             value.seq = decoded_v;
                         }
                         report->widened++;
                         break;
                     }
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     const int64_t width = entry.value_bits;
                     uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) ) { report->damaged = true; return false; }
+                    if ( width < 0 || !r.get( raw, width ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 4294967295ull ) { decoded_wide = (int64_t) 4294967295ull; report->refused = true; report->refuse_reason = out_of_range; }
+                    if ( (uint64_t) decoded_wide > 4294967295ull )
+                    {
+                        decoded_wide = (int64_t) 4294967295ull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
                     value.seq = decoded_v;
                 }
@@ -6640,7 +7039,11 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -6661,7 +7064,11 @@ inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
 inline int64_t StampMeasureMessages( const Stamp * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -6675,7 +7082,11 @@ inline int64_t StampMeasureMessages( const Stamp * values, int64_t count, TableR
 inline int64_t StampSaveMessages( const Stamp * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -6703,13 +7114,22 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !StampLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { StampReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -6806,7 +7226,8 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
-                    r.report->refused = true; r.report->refuse_reason = kind_mismatch;
+                    r.report->refused = true;
+                    r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
                     {
                         r.report->damaged = true;
@@ -6815,16 +7236,39 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value )
                     break;
                 }
                 uint64_t len = 0;
-                if ( !r.getleb( len ) || !r.room( len ) ) { r.report->damaged = true; return false; }
+                if ( !r.getleb( len ) || !r.room( len ) )
+                {
+                    r.report->damaged = true;
+                    return false;
+                }
                 // AN ODD L IS FRAMING DAMAGE on the body that carries it (§3): the
                 // value is L / 2 code units, so an odd L is not a wstring at any length.
-                if ( ( len & 1 ) != 0 ) { r.report->damaged = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
+                if ( ( len & 1 ) != 0 )
+                {
+                    r.report->damaged = true;
+                    value.text[0] = 0;
+                    value.text_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 const int64_t units = (int64_t) ( len / 2 );
                 // ILL-FORMED TEXT IS DAMAGE (§3, §4): an unpaired surrogate or a zero
                 // code unit counts malformed, and damage discards the whole load
-                if ( !TableUtf16Valid( r.buffer + r.offset, units ) ) { r.report->damaged = true; value.text[0] = 0; value.text_length = 0; r.offset += (int64_t) len; break; }
+                if ( !TableUtf16Valid( r.buffer + r.offset, units ) )
+                {
+                    r.report->damaged = true;
+                    value.text[0] = 0;
+                    value.text_length = 0;
+                    r.offset += (int64_t) len;
+                    break;
+                }
                 int64_t keep = units;
-                if ( keep > 4 ) { keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 ); r.report->refused = true; r.report->refuse_reason = out_of_range; } // never splitting a pair (§3)
+                if ( keep > 4 )
+                {
+                    keep = TableUtf16Clamp( r.buffer + r.offset, units, 4 );
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                } // never splitting a pair (§3)
                 for ( int64_t i = 0; i < keep; i++ ) { value.text[i] = (char16_t) TableUtf16Unit( r.buffer + r.offset, i ); }
                 value.text[keep] = 0;
                 value.text_length = (int32_t) keep;
@@ -6859,7 +7303,11 @@ inline TableOpenVerdict LineLoadVerdict( Line & value, const uint8_t * buffer, i
     if ( verdict != TableOpenOk )
     {
         LineReset( value );
-        if ( verdict == TableOpenDamaged ) { to->damaged = true; to->refuse_reason = wire_damaged; }
+        if ( verdict == TableOpenDamaged )
+        {
+            to->damaged = true;
+            to->refuse_reason = wire_damaged;
+        }
         else
         {
             // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
@@ -6888,10 +7336,23 @@ inline TableOpenVerdict LineLoadVerdict( Line & value, const uint8_t * buffer, i
     const bool damaged_before = to->damaged;
     to->damaged = false;
     const bool whole = LineLoadBody( r, value );
-    if ( TableNonFiniteRefused( to, non_finite_before ) ) { to->damaged = to->damaged || damaged_before; LineReset( value ); return TableOpenRefused; } // a NaN or an infinity: nothing lands (§3.3)
-    if ( to->damaged ) { LineReset( value ); return TableOpenDamaged; } // damage discards the whole load (§4)
+    if ( TableNonFiniteRefused( to, non_finite_before ) )
+    {
+        to->damaged = to->damaged || damaged_before;
+        LineReset( value );
+        return TableOpenRefused;
+    } // a NaN or an infinity: nothing lands (§3.3)
+    if ( to->damaged )
+    {
+        LineReset( value );
+        return TableOpenDamaged;
+    } // damage discards the whole load (§4)
     to->damaged = damaged_before;
-    if ( !whole ) { LineReset( value ); return TableOpenBodyStopped; }
+    if ( !whole )
+    {
+        LineReset( value );
+        return TableOpenBodyStopped;
+    }
     return TableOpenOk;
 }
 
@@ -6972,15 +7433,31 @@ inline bool LineLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) ) { report->damaged = true; return false; }
-        if ( ref == 0 ) { return true; } // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( ref > (uint64_t) vocabulary.count ) { report->damaged = true; return false; }
+        if ( !r.get( ref, vocabulary.ref_bits ) )
+        {
+            report->damaged = true;
+            return false;
+        }
+        if ( ref == 0 )
+        {
+            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
+            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        }
+        if ( ref > (uint64_t) vocabulary.count )
+        {
+            report->damaged = true;
+            return false;
+        }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
         // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
         // field and is read before this walk begins, so meeting one here is
         // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) ) { report->damaged = true; return false; }
+        if ( TableMessageReserved( entry.id ) )
+        {
+            report->damaged = true;
+            return false;
+        }
         switch ( entry.id )
         {
             case 0xfa04f4ef1995407eull: // text
@@ -6990,15 +7467,30 @@ inline bool LineLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 // carries the SENDER's, so the field decodes and clamps (§4).
                 if ( entry.kind != 33 || entry.elem_kind != 0 )
                 {
-                    report->refused = true; report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                    report->refused = true;
+                    report->refuse_reason = kind_mismatch;
+                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     break;
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) ) { report->damaged = true; return false; }
+                    if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.has( (int64_t) n * 16 ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     int32_t kept = 0;
-                    if ( n > (uint64_t) 4 ) { kept = 4; report->refused = true; report->refuse_reason = out_of_range; } else { kept = (int32_t) n; }
+                    if ( n > (uint64_t) 4 )
+                    {
+                        kept = 4;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                        } else { kept = (int32_t) n;
+                    }
                     bool high = false; // a high surrogate awaiting its low half
                     bool ill = false;
                     for ( uint64_t i = 0; i < n; i++ )
@@ -7012,7 +7504,11 @@ inline bool LineLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                         else if ( u >= 0xDC00 && u <= 0xDFFF ) { ill = true; }
                         if ( (int32_t) i < kept ) { value.text[i] = (char16_t) u; }
                     }
-                    if ( high || ill ) { report->damaged = true; return false; }
+                    if ( high || ill )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                     if ( kept > 0 && (uint64_t) kept < n )
                     {
                         const char16_t last = value.text[kept - 1];
@@ -7025,7 +7521,11 @@ inline bool LineLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             }
             default:
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) ) { report->damaged = true; return false; }
+                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                {
+                    report->damaged = true;
+                    return false;
+                }
                 break;
         }
     }
@@ -7046,7 +7546,11 @@ inline bool LineLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
 inline int64_t LineMeasureMessages( const Line * values, int64_t count, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     int64_t bits = 8; // the body count, a ranged integer over [1, 256]
     for ( int64_t i = 0; i < count; i++ )
     {
@@ -7060,7 +7564,11 @@ inline int64_t LineMeasureMessages( const Line * values, int64_t count, TableRep
 inline int64_t LineSaveMessages( const Line * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
     if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    if ( count > kTableMessageBatchMax )
+    {
+        TableMessageRefuseBatch( report );
+        return -1;
+    }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -7088,13 +7596,22 @@ inline bool LineLoadMessages( Line * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL ) { to->damaged = true; return false; }
+    if ( values == NULL || count == NULL )
+    {
+        to->damaged = true;
+        return false;
+    }
     const int64_t capacity = *count;
     *count = 0;
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
     if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }
+    if ( bodies > capacity )
+    {
+        *count = bodies;
+        TableMessageRefuseBatch( to );
+        return false;
+    }
     for ( int64_t i = 0; i < bodies; i++ )
     {
         if ( !LineLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { LineReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
@@ -7141,7 +7658,8 @@ static_assert( (uint32_t) __builtin_offsetof( Body, tally ) == 4, "Body.tally: e
 // which is also what zero-fills every byte of declared slack.
 inline void LineFixedWriteBody( uint8_t * b, const Line & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     schema_assert( value.text_length >= 0 && value.text_length <= 4 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.text_length );
     memcpy( b + 4, value.text, (size_t) ( 2 * value.text_length ) );
@@ -7151,7 +7669,8 @@ inline void LineFixedWriteBody( uint8_t * b, const Line & value )
 // which is also what zero-fills every byte of declared slack.
 inline void CaptionFixedWriteBody( uint8_t * b, const Caption & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     schema_assert( value.title_length >= 0 && value.title_length <= 7 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.title_length );
     memcpy( b + 4, value.title, (size_t) ( 2 * value.title_length ) );
@@ -7192,7 +7711,8 @@ inline void CaptionFixedWriteBody( uint8_t * b, const Caption & value )
 // which is also what zero-fills every byte of declared slack.
 inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
 {
-    (void) b; (void) value;
+    (void) b;
+    (void) value;
     schema_assert( value.label_length >= 0 && value.label_length <= 4 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.label_length );
     memcpy( b + 4, value.label, (size_t) ( 2 * value.label_length ) );
@@ -7212,7 +7732,9 @@ TABLE_FIXED_INLINE bool LineFixedInRange( const Line & value )
 // Line's read-side bounds.
 inline void LineFixedClampBody( Line & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.text, (int64_t) value.text_length ) )
     {
         damaged++;
@@ -7250,7 +7772,9 @@ TABLE_FIXED_INLINE bool CaptionFixedInRange( const Caption & value )
 // Caption's read-side bounds.
 inline void CaptionFixedClampBody( Caption & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.title, (int64_t) value.title_length ) )
     {
         damaged++;
@@ -7288,7 +7812,9 @@ TABLE_FIXED_INLINE bool StampFixedInRange( const Stamp & value )
 // Stamp's read-side bounds.
 inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
 {
-    (void) value; (void) oor_count; (void) damaged;
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
     if ( !TableUtf16Valid( (const uint8_t *) value.label, (int64_t) value.label_length ) )
     {
         damaged++;
@@ -7309,8 +7835,17 @@ inline bool CaptionFixedClamp( Caption & value, TableReport * report )
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( damaged != 0 )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::text_ill_formed;
+        return false;
+    }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     return true;
 }
 
@@ -7386,8 +7921,9 @@ constexpr TableFixedDst CaptionFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry CaptionFixedPlan[] = {
     { 0u, 16u, 14u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 2, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // title
     { 18u, 32u, 8u, 20u, kTableFixedNoGuard, kTableFixedText, 0, 2, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // text
@@ -7507,7 +8043,12 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -7516,7 +8057,12 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -7525,7 +8071,12 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -7537,7 +8088,10 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = CaptionFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -7545,7 +8099,10 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = CaptionFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -7567,7 +8124,11 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -7583,7 +8144,12 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -7598,7 +8164,12 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
             const int32_t made = TableFixedCompile( parsed, CaptionFixedLayout, (int32_t) CaptionFixedLayoutBytes, CaptionFixedDst,
                                                    CaptionFixedCover, CaptionFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -7622,10 +8193,25 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -7647,6 +8233,8 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
         }
     }
     Caption defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -7661,11 +8249,51 @@ inline int64_t CaptionFixedLoadWalk( Caption * values, int64_t capacity, const u
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = CaptionFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { CaptionReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, CaptionFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, CaptionFixedGuards, NULL );
         TableFixedClampKnownRanges( CaptionFixedKnownRanges[lineage_at], CaptionFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !CaptionFixedClamp( values[k], report ) )
@@ -7714,8 +8342,17 @@ inline bool StampFixedClamp( Stamp & value, TableReport * report )
     // A CONTENT VIOLATION REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md
     // §4.5, fix 11): nothing is decoded, no counter moves, and the flag
     // that carries the verdict is `refused` + the name, never `malformed`.
-    if ( damaged != 0 ) { report->refused = true; report->reason = TableMessageReason::text_ill_formed; return false; }
-    if ( oor_count != 0 ) { report->refused = true; report->refuse_reason = out_of_range; }
+    if ( damaged != 0 )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::text_ill_formed;
+        return false;
+    }
+    if ( oor_count != 0 )
+    {
+        report->refused = true;
+        report->refuse_reason = out_of_range;
+    }
     return true;
 }
 
@@ -7759,8 +8396,9 @@ constexpr TableFixedDst StampFixedDst[] = {
 // destination in it to this compiler's own ABI. A bool field and a present
 // flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
 // language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
-// FIRST, then the arms: the entries that are nearly all of a plan never
-// test a guard at all.
+// FIRST, then the arms, then any guardless present-defaults entry that must
+// run after the guarded payload it replaces: the entries that are nearly
+// all of a plan never test a guard at all.
 constexpr TableFixedEntry StampFixedPlan[] = {
     { 0u, 12u, 8u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 2, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // label
     { 12u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0 }, // seq
@@ -7858,7 +8496,12 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
-    if ( data == NULL || bytes < 1 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( data == NULL || bytes < 1 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -7867,7 +8510,12 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
                        : TableMessageReason::newer_form;
         return -1;
     }
-    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( bytes < kTableFixedHeaderBytes + 4 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero
     // one is `malformed`, NAMED TableFixedReason::reserved_not_zero, which is what keeps them
     // spendable later.
@@ -7876,7 +8524,12 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
         if ( data[i] != 0 ) { report->damaged = true; report->reason = TableFixedReason::reserved_not_zero; return -1; }
     }
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
-    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::layout_malformed;
+        return -1;
+    }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
@@ -7888,7 +8541,10 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
     }
     if ( lineage_at < 0 )
     {
-        report->refused = true; report->reason = TableFixedReason::layout_unknown; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableFixedReason::layout_unknown;
+        report->layout_hash = hash;
+        return -1;
     }
     int32_t floor_at = StampFixedFloor;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
@@ -7896,7 +8552,10 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
 #endif
     if ( lineage_at < floor_at )
     {
-        report->refused = true; report->reason = TableMessageReason::layout_unsupported; report->layout_hash = hash; return -1;
+        report->refused = true;
+        report->reason = TableMessageReason::layout_unsupported;
+        report->layout_hash = hash;
+        return -1;
     }
     const TableFixedKnownLayout & known = StampFixedKnown[lineage_at];
     if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
@@ -7918,7 +8577,11 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
         {
             for ( int32_t i = 0; i < cache->used; ++i )
             {
-                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+                if ( cache->slots[i].hash == hash )
+                {
+                    hit = &cache->slots[i];
+                    break;
+                }
             }
         }
         if ( hit != NULL )
@@ -7934,7 +8597,12 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = TableMessageReason::layout_malformed;
-            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = TableMessageReason::layout_malformed; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) )
+            {
+                report->refused = true;
+                report->reason = TableMessageReason::layout_malformed;
+                return -1;
+            }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -7949,7 +8617,12 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
             const int32_t made = TableFixedCompile( parsed, StampFixedLayout, (int32_t) StampFixedLayoutBytes, StampFixedDst,
                                                    StampFixedCover, StampFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large; return -1; }
+            if ( made < 0 )
+            {
+                report->refused = true;
+                report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;
+                return -1;
+            }
             record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
@@ -7973,10 +8646,25 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
     // THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
     // the identity lane is a plan too, and a caller's short plan owes the
     // same name there as it does for a lineage entry.
-    if ( entry_count > plan_capacity ) { report->refused = true; report->reason = TableMessageReason::plan_too_large; return -1; }
-    if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->damaged = true; report->reason = TableFixedReason::truncated; return -1; }
+    if ( entry_count > plan_capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::plan_too_large;
+        return -1;
+    }
+    if ( record_bytes <= 8 || rest % record_bytes != 0 )
+    {
+        report->damaged = true;
+        report->reason = TableFixedReason::truncated;
+        return -1;
+    }
     const int64_t n = rest / record_bytes;
-    if ( n > capacity ) { report->refused = true; report->reason = TableMessageReason::batch_too_large; return -1; }
+    if ( n > capacity )
+    {
+        report->refused = true;
+        report->reason = TableMessageReason::batch_too_large;
+        return -1;
+    }
     // STEP 11: EVERY RECORD'S COUNT AND TEXT FIRST, in a pass of its own
     // ahead of the first prefill. A count or length past the PLAN's bound
     // refuses BY NAME — count_over_bound / length_over_bound — checked before
@@ -7998,6 +8686,8 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
         }
     }
     Stamp defaults;
+    // THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4):
+    // an absent payload reads as this Reset image, never as the wire's slack.
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) );
@@ -8012,11 +8702,51 @@ inline int64_t StampFixedLoadWalk( Stamp * values, int64_t capacity, const uint8
             report->widened = batch_widened;
             report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
         }
+        for ( int32_t i = 0; i < entry_count; ++i )
+        {
+            const TableFixedEntry & p = entries[i];
+            if ( p.op != kTableFixedBool && p.op != 9u ) { continue; }
+            if ( i >= entry_guarded )
+            {
+                if ( p.guard_count > 0 )
+                {
+                    bool matches = true;
+                    for ( uint32_t j = 0; j < p.guard_count; ++j )
+                    {
+                        const TableFixedGuardLink & l = StampFixedGuards[p.guard_index / sizeof( TableFixedGuardLink ) + j];
+                        if ( TableFixedTagAt( at + 8, l.guard, l.argw ) != l.arg )
+                        {
+                            matches = false;
+                            break;
+                        }
+                    }
+                    if ( !matches ) { continue; }
+                }
+                else
+                {
+                    if ( p.guard != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard, p.argw ) != p.arg ) { continue; }
+                    if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( at + 8, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
+                }
+            }
+            const uint32_t bool_bytes = ( p.op == kTableFixedBool ) ? p.size : 1u;
+            for ( uint32_t b = 0; b < bool_bytes; ++b )
+            {
+                if ( ( at + 8 )[p.src + b] > 1u )
+                {
+                    for ( int64_t j = 0; j < k; ++j ) { StampReset( values[j] ); }
+                    *report = TableReport();
+                    report->refused = true;
+                    report->reason = wire_damaged;
+                    report->refuse_reason = wire_damaged;
+                    return -1;
+                }
+            }
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
         // §5.8): every record written so far goes back to its defaults and
         // the counters back to what they were before the batch.
-        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, StampFixedGuards );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, StampFixedGuards, NULL );
         TableFixedClampKnownRanges( StampFixedKnownRanges[lineage_at], StampFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !StampFixedClamp( values[k], report ) )
@@ -8255,7 +8985,7 @@ inline bool CaptionCookBody( uint8_t * at, const Caption & value, TableByteOrder
     // all 3 slots: the storage is allocate-max, and a slot past the count rides as it lies (§7.2)
     for ( int32_t i = 0; i < 3; i++ )
     {
-        if ( !LineCookBody( at + 36 + i * 16, value.lines[ i ], order ) ) { return false; }
+        if ( !LineCookBody( at + 36 + i * 16, value.lines[i], order ) ) { return false; }
     }
     table_cook_put( at + 84, (uint64_t) (uint32_t) value.lines_count, 4, order );
     {
@@ -8343,7 +9073,11 @@ inline bool CaptionCook( const Caption & value, void * out, uint64_t capacity, T
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !CaptionCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !CaptionCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)
@@ -8395,7 +9129,11 @@ inline bool StampCook( const Stamp & value, void * out, uint64_t capacity, Table
     table_cook_put( raw + 40, 8, 8, order ); // the region's alignment
     // the two RESERVED words are zero, and the memset already wrote them
     // the DATA part: the region, which for a fixed root is the record at its base
-    if ( !StampCookBody( raw + 64, value, order ) ) { memset( raw, 0, (size_t) need ); return false; } // a NaN or an infinity writes no cook (§3.3)
+    if ( !StampCookBody( raw + 64, value, order ) )
+    {
+        memset( raw, 0, (size_t) need );
+        return false;
+    } // a NaN or an infinity writes no cook (§3.3)
     // the ATTRIBUTION part: the node directory (§6.3), written beside the data
     // for `schema cook-check` — one entry, the root at offset zero, and its type
     // id is the fnv1a64 of the table's name (§3.1)

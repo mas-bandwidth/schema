@@ -2626,7 +2626,7 @@ int tableMessageBits(int n) {
 /// (docs/SPEC-TABLES.md §3.3).
 final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
   0x01, 0x01, 0x09, 0x69, 0x75, 0x5a, 0x29, 0xdf, 0xf2, 0x5c, 0xd1, 0x02,
-  0x0e, 0xfe, 0x06, 0x06, 0xfb, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
+  0x0e, 0xbf, 0x06, 0x06, 0xbc, 0x06, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e,
   0x01, 0xa5, 0x04, 0x01, 0x02, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
   0xf1, 0xfb, 0x07, 0x01, 0x0c, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd,
   0xfc, 0x23, 0x07, 0x01, 0x0c, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37,
@@ -2695,16 +2695,11 @@ final Uint8List tableAnnouncement = Uint8List.fromList(const <int>[
   0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
   0xba, 0x20, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d,
   0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2, 0x0d, 0x65, 0xb7, 0xec,
-  0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00,
-  0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b,
-  0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72,
-  0x61, 0x31, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x00,
-  0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x00, 0x00, 0xfe, 0xff,
-  0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff,
-  0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x86, 0x1c, 0xa4, 0xa3, 0x9f, 0x0d, 0x00, 0xfe, 0xff, 0xff, 0xff, 0xff,
+  0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x02,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
-const int tableAnnouncementLength = 934;
+const int tableAnnouncementLength = 871;
 /// The unit's own build version, emitted beside the announcement.
 const int tableBuildVersion = -3360544181639809687;
 
@@ -4423,9 +4418,11 @@ void tableEntityFixedWriteBody(
 /// TableEntity's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -4516,8 +4513,20 @@ void tableEntityFixedDecode(
     report.refused = TableFixedRefusal.outOfRange;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
-  value.moving = view.getUint8(at + 49) != 0;
-  value.firing = view.getUint8(at + 50) != 0;
+  {
+    final b = view.getUint8(at + 49);
+    if (b > 1) {
+      report.refused = TableFixedRefusal.damaged;
+    }
+    value.moving = b != 0;
+  }
+  {
+    final b = view.getUint8(at + 50);
+    if (b > 1) {
+      report.refused = TableFixedRefusal.damaged;
+    }
+    value.firing = b != 0;
+  }
 }
 
 /// TableStat's stores. Every offset is a constant of the type and nothing is
@@ -4535,9 +4544,11 @@ void tableStatFixedWriteBody(
 /// TableStat's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -4581,9 +4592,11 @@ void tableHitEventFixedWriteBody(
 /// TableHitEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -4616,7 +4629,13 @@ void tableHitEventFixedDecode(
     value.hitKind = 7;
     report.refused = TableFixedRefusal.outOfRange;
   }
-  value.crit = view.getUint8(at + 12) != 0;
+  {
+    final b = view.getUint8(at + 12);
+    if (b > 1) {
+      report.refused = TableFixedRefusal.damaged;
+    }
+    value.crit = b != 0;
+  }
 }
 
 /// TableChatEvent's stores. Every offset is a constant of the type and nothing is
@@ -4634,9 +4653,11 @@ void tableChatEventFixedWriteBody(
 /// TableChatEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -4678,9 +4699,11 @@ void tablePickupEventFixedWriteBody(
 /// TablePickupEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -4817,9 +4840,11 @@ void tableMixedFixedWriteBody(
 /// TableMixed's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
 ///
-/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
-/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
-/// an enum ordinal past the last variant land None and count. They are
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a value past
+/// its range refuses the whole read out_of_range (docs/SPEC-TABLES.md §4),
+/// a union tag past the last arm and an enum ordinal past the last variant
+/// refuse the same way, and a bool or present byte other than 0 or 1
+/// refuses wire_damaged. They are
 /// straight line rather than plan entries, so the identity path and a
 /// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED
 /// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.
@@ -5047,7 +5072,13 @@ void tableMixedFixedDecode(
     value.crcHint = 16777215;
     report.refused = TableFixedRefusal.outOfRange;
   }
-  value.hasExtra = view.getUint8(at + 1215) != 0;
+  {
+    final b = view.getUint8(at + 1215);
+    if (b > 1) {
+      report.refused = TableFixedRefusal.damaged;
+    }
+    value.hasExtra = b != 0;
+  }
   value.extra = view.getInt32(at + 1216, Endian.little);
   if (value.extra < 0) {
     value.extra = 0;
