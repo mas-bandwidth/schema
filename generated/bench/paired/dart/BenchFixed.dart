@@ -2181,14 +2181,20 @@ class TableReport {
   /// <Table>.<field>, '' when it found none (docs/SPEC-TABLES.md §3.3).
   String nonFiniteFloat = '';
 
+  // A refused read keeps no count of what it met before the refusal: the
+  // report is the refusal alone, as the Go reference's (tablewire refuseReport).
   void Damage() {
     refused = true;
     reason = 'wire_damaged';
+    unknown = 0;
+    widened = 0;
   }
 
   bool Refuse(String why) {
     refused = true;
     reason = why;
+    unknown = 0;
+    widened = 0;
     return false;
   }
 
