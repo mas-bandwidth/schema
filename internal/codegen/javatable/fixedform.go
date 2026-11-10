@@ -1234,39 +1234,56 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 	name := javaName(f.Name)
 	base := off
 	if f.Type.Optional {
-		// BOOLS LAND AS `byte != 0`, whatever the byte holds
-		g.pf("%s%s.%sPresent = %s[%s + %d] != 0;\n", ind, val, name, buf, at, base)
+		// A PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§3.4), and the
+		// payload rides ONLY when the flag is set: an absent payload's bytes
+		// are slack and are never read (§3.4).
+		g.pf("%s{\n", ind)
+		g.pf("%s    long q = (%s[%s + %d] & 0xFF);\n", ind, buf, at, base)
+		g.pf("%s    if (q > 1L) { %s.refuse(TableFixed.Reason.wireDamaged); return; }\n", ind, rep)
+		g.pf("%s    %s.%sPresent = q != 0;\n", ind, val, name)
+		g.pf("%s}\n", ind)
 		base += fixedPresentBytes
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
+		g.emitScatterPayload(f, base, buf, at, val+"."+name, rep, indent+4)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitScatterPayload(f, base, buf, at, val+"."+name, rep, indent)
+}
+
+// emitScatterPayload lands one non-optional field's payload, or the payload of
+// an optional field that is present.
+func (g *fixedGen) emitScatterPayload(f *ir.Field, base int64, buf, at, expr, rep string, indent int) {
+	ind := strings.Repeat(" ", indent)
 	switch {
 	case f.KeyEnum != "":
-		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, expr, rep, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, expr, rep, indent)
 	case f.Array == ir.ArrayCounted:
-		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, "countOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%sCount", expr), buf, at, base, f.ArrayBound, rep, "countOverBound", indent)
 		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
 		// live count, never the slack behind it. Identity and compiled share
 		// this scatter; write still stores MAX (Dart #834).
-		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, indent)
-		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
+		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%sCount", expr), buf, at, expr, rep, indent)
+		g.emitScatterSlack(f, expr, expr+"Count", indent)
 	case f.Type.Kind == ir.TString:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "lengthOverBound", indent)
+		g.emitScatterCount(fmt.Sprintf("%sLength", expr), buf, at, base, f.Type.Size, rep, "lengthOverBound", indent)
 		// THE CONTENT RULES APPLY TO THE USED UNITS (§4.5 fix 11): UTF-8
 		// validity over the stated length, never over N, and a violation
 		// refuses by name with nothing decoded past it.
-		g.pf("%sif (!TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %s.%sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
-			ind, buf, at, base+4, val, name, rep)
-		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
-		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
-			ind, val, name, val, name, val, name, val, name, val, name)
+		g.pf("%sif (!TableFixed.textOk(TableFixed.textUtf8, %s, %s + %d, %sLength)) { %s.refuse(TableFixed.Reason.textIllFormed); return; }\n",
+			ind, buf, at, base+4, expr, rep)
+		g.pf("%sSystem.arraycopy(%s, %s + %d, %s, 0, %sLength);\n", ind, buf, at, base+4, expr, expr)
+		g.pf("%sif (%sLength < %s.length) { java.util.Arrays.fill(%s, %sLength, %s.length, (byte) 0); }\n",
+			ind, expr, expr, expr, expr, expr)
 	case f.Type.Kind == ir.TBytes:
-		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, "countOverBound", indent)
-		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
-		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
-			ind, val, name, val, name, val, name, val, name, val, name)
+		g.emitScatterCount(fmt.Sprintf("%sLength", expr), buf, at, base, f.Type.Size, rep, "countOverBound", indent)
+		g.pf("%sSystem.arraycopy(%s, %s + %d, %s, 0, %sLength);\n", ind, buf, at, base+4, expr, expr)
+		g.pf("%sif (%sLength < %s.length) { java.util.Arrays.fill(%s, %sLength, %s.length, (byte) 0); }\n",
+			ind, expr, expr, expr, expr, expr)
 	default:
-		g.emitScatterElement(f, base, buf, at, val+"."+name, rep, indent, f)
+		g.emitScatterElement(f, base, buf, at, expr, rep, indent, f)
 	}
 }
 
@@ -1355,8 +1372,12 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
-		// A BOOL LANDS AS `byte != 0`: an endpoint's 2 is true and never damage.
-		g.pf("%s%s = %s[%s + %d] != 0;\n", ind, expr, buf, at, off)
+		// A BOOL BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE (§3.4).
+		g.pf("%s{\n", ind)
+		g.pf("%s    long q = (%s[%s + %d] & 0xFF);\n", ind, buf, at, off)
+		g.pf("%s    if (q > 1L) { %s.refuse(TableFixed.Reason.wireDamaged); return; }\n", ind, rep)
+		g.pf("%s    %s = q != 0;\n", ind, expr)
+		g.pf("%s}\n", ind)
 		return
 	case ir.TFloat32, ir.TFloat64:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
