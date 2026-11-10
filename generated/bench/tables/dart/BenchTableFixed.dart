@@ -2157,7 +2157,7 @@ class TableMessageEntry {
 }
 
 /// THE REPORT the announcement read answers on. A refusal is terminal: it
-/// sets 'refused' and 'reason' and nothing else moves.
+/// sets 'refused' and 'reason' and clears the counts.
 class TableReport {
   bool refused = false;
   int unknown = 0;

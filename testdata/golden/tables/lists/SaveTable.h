@@ -9691,14 +9691,11 @@ inline bool TableEnumSlot( Grade value, uint64_t & slot )
             slot = 0;
             return true;
         case Grade::A:
-            slot = 0;
-            return true;
+            return false; // outside the message closure: no slot
         case Grade::B:
-            slot = 0;
-            return true;
+            return false; // outside the message closure: no slot
         case Grade::C:
-            slot = 0;
-            return true;
+            return false; // outside the message closure: no slot
         default: return false; // no variant names this value: no wire identity
     }
 }

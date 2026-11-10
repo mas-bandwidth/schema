@@ -30,7 +30,7 @@ pub const TABLE_NODE_TABLE_ID: u64 = 0xffff_ffff_ffff_ffff;
 /// vocabulary field's own length before an entry is touched.
 pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;
 
-/// THE ANNOUNCEMENT, byte for byte: the unit's whole vocabulary as a
+/// THE ANNOUNCEMENT, byte for byte: the unit's message vocabulary as a
 /// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body
 /// carries the build version at kind 9 and the vocabulary at kind 14 over
 /// element kind 6, and whose trailer is those two reserved ids.

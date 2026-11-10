@@ -7896,11 +7896,9 @@ inline bool TableEnumSlot( Tier value, uint64_t & slot )
             slot = 0;
             return true;
         case Tier::Low:
-            slot = 0;
-            return true;
+            return false; // outside the message closure: no slot
         case Tier::High:
-            slot = 0;
-            return true;
+            return false; // outside the message closure: no slot
         default: return false; // no variant names this value: no wire identity
     }
 }
