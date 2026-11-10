@@ -1218,8 +1218,9 @@ it (§4.6).
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
 - **A BARE FLOAT IS FINITE, AND RIDES AS ITS IEEE-754 BIT PATTERN.** This is
-  serialize format 2.0's rule (Glenn, 2026-10-22: float and double carry
-  finite values only, in every language), and the packet wire inherits it
+  serialize format 2.0's rule (2026-10-22, docs/rulings.json
+  `finite-float-packet`: float and double carry finite values only, in every
+  language), and the packet wire inherits it
   through the runtimes. A `float32` is the 32 bits it holds and a `float64`
   the 64, for every finite value, NEGATIVE ZERO AND THE SUBNORMALS INCLUDED:
   those stay bit exact, and no writer normalizes one. A NaN (any sign, any
@@ -1241,7 +1242,7 @@ it (§4.6).
   `non_finite_float`. Every packet target enforces it. A
   *quantized* `float32` is a different field: its wire is the step index and
   not the pattern, per its row below. The table forms take the same rule
-  (SPEC-TABLES.md §3.3; Glenn, 2026-10-27).
+  (SPEC-TABLES.md §3.3; 2026-10-27, docs/rulings.json `finite-float-tables`).
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.
@@ -1533,8 +1534,9 @@ All compile errors with positions:
 - Cycles in type composition, undefined types, duplicate declarations,
   `package` mismatch.
 - **Target-name safety:** a schema name is legal in EVERY supported language,
-  whatever target is generated (Glenn, 2026-10-21: "generated output never
-  puts out keywords in Y"). Every command — `check`, `generate --lang L` for
+  whatever target is generated (2026-10-21, docs/rulings.json
+  `target-name-safety`: "generated output never puts out keywords in Y").
+  Every command — `check`, `generate --lang L` for
   any L, and the rest — checks a declaration or field name against the
   reserved words of all sixteen languages: C, C++, C#, Go, Rust, Java,
   JavaScript, Dart, Elixir, Lua, Luau, moo, Squirrel, Goose, Lobster and
@@ -2441,8 +2443,8 @@ fields.
 
 ### 5.1 The write contract
 
-**Every writer refuses a value its declaration does not admit.** Glenn,
-2026-11-03: "It is our intent to refuse the write of out of range values. In
+**Every writer refuses a value its declaration does not admit.** 2026-11-03:
+"It is our intent to refuse the write of out of range values. In
 low level languages like C/C++ our intent is to do this at debug time for
 speed. Keep that behavior. In languages that do not have asserts it is OK to
 refuse in release build. Some mechanism for refusal of invalid values or write
@@ -3233,8 +3235,9 @@ step at boundary values, so every leg computes a compressed float's
 quantization without fused multiply-add — the C and C++ conformance builds
 compile with `-ffp-contract=off`, Go rounds each product explicitly (an
 explicit rounding conversion of each product), and java, cs and elixir rely
-on the language's strict semantics (Glenn, 2026-10-12, all features across
-all languages) — and the golden-wire corpus pins compressed-float values
+on the language's strict semantics (2026-10-12, docs/rulings.json
+`all-features-all-languages`, all features across all languages) — and the
+golden-wire corpus pins compressed-float values
 chosen to DISCRIMINATE — values where a fused or double-precision build
 produces a different step index — with the discrimination property itself
 asserted in the C and C++ legs, so a vector cannot quietly stop
