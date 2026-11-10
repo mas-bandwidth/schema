@@ -66,6 +66,19 @@ func wireBytes(t *testing.T, path string) []byte {
 	return data
 }
 
+// pinnedWire is the pinned wire at path, for a test to compare the bytes it
+// built against. SCHEMA_UPDATE_WIRE_GOLDENS=1 re-pins it DELIBERATELY from
+// those bytes, the same switch the C++ pin writers take (make update-goldens).
+func pinnedWire(t *testing.T, path string, built []byte) []byte {
+	t.Helper()
+	if os.Getenv("SCHEMA_UPDATE_WIRE_GOLDENS") != "" {
+		if err := os.WriteFile(path, built, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return wireBytes(t, path)
+}
+
 // fileInstance decodes one FILE-form golden into a fresh instance of its root.
 func fileInstance(t *testing.T, model *tabletext.Model, root, wire string) *tabletext.Instance {
 	t.Helper()
@@ -120,9 +133,13 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 		t.Fatal("the manifest names no connection")
 	}
 	for _, c := range m.Connections {
+		own, err := u.get(c.Unit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := tablewire.Announce(own)
+		data := pinnedWire(t, c.Wire, want)
 		unit, vocabulary := announced(t, u, c)
-		data := wireBytes(t, c.Wire)
-		want := tablewire.Announce(unit)
 		if string(want) != string(data) {
 			t.Errorf("%s: the committed announcement is %d bytes and the unit derives %d, first difference at byte %d — run: make update-goldens",
 				c.Key, len(data), len(want), firstDifference(data, want))
@@ -523,27 +540,30 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 		}
 	}
 	// A VOCABULARY PAST A BOUND, refused before an entry is touched: the bound
-	// is two numbers
+	// is two numbers, one entry and one byte under what this announcement
+	// carries
 	{
-		bounded := tablewire.Vocabulary{MaxEntries: 32}
+		entryCount := len(vocabulary.Entries())
+		byteCount := len(ir.TableVocabularyBytes(vocabulary.Entries()))
+		bounded := tablewire.Vocabulary{MaxEntries: entryCount - 1}
 		var report tabletext.Report
 		derr := bounded.AnnounceRead(announcement, &report)
 		refusal("vocabulary_too_large (entries)", derr, tablewire.ReasonVocabularyTooLarge, report)
 		if bounded.Announced() || len(bounded.Entries()) != 0 {
 			t.Error("vocabulary_too_large: an entry was touched")
 		}
-		exact := tablewire.Vocabulary{MaxEntries: 33}
+		exact := tablewire.Vocabulary{MaxEntries: entryCount}
 		if err := exact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !exact.Announced() {
 			t.Errorf("the entry bound's own value must be accepted: %v", err)
 		}
-		bytesBound := tablewire.Vocabulary{MaxBytes: 317}
+		bytesBound := tablewire.Vocabulary{MaxBytes: byteCount - 1}
 		var bytesReport tabletext.Report
 		derr = bytesBound.AnnounceRead(announcement, &bytesReport)
 		refusal("vocabulary_too_large (bytes)", derr, tablewire.ReasonVocabularyTooLarge, bytesReport)
 		if bytesBound.Announced() {
 			t.Error("vocabulary_too_large: the byte bound set a vocabulary")
 		}
-		bytesExact := tablewire.Vocabulary{MaxBytes: 318}
+		bytesExact := tablewire.Vocabulary{MaxBytes: byteCount}
 		if err := bytesExact.AnnounceRead(announcement, &tabletext.Report{}); err != nil || !bytesExact.Announced() {
 			t.Errorf("the byte bound's own value must be accepted: %v", err)
 		}
@@ -684,10 +704,12 @@ func TestDamageIsTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// each body: match_id (6 + 64), players (6, no count), ten rows of which
-	// the first carries score (6 + 17) and a terminator (6) and nine are
-	// terminators alone (6 each), then the body's terminator (6): 165 bits
-	const bodyBits = 6 + 64 + 6 + (6 + 17 + 6) + 9*6 + 6
+	// each body, at r reference bits: match_id (r + 64), players (r, no
+	// count), ten rows of which the first carries score (r + 17) and a
+	// terminator (r) and nine are terminators alone (r each), then the body's
+	// terminator (r)
+	r := vocabulary.RefBits()
+	bodyBits := r + 64 + r + (r + 17 + r) + 9*r + r
 	if want := 1 + (8+3*bodyBits+7)/8; len(batch) != want {
 		t.Fatalf("the batch is %d bytes, the arithmetic says %d", len(batch), want)
 	}
@@ -697,12 +719,17 @@ func TestDamageIsTerminal(t *testing.T) {
 		pinned string
 	}{
 		{"the second body's match_id reference", 8 + bodyBits, "testdata/wire/tables/match_batch_damaged_second_message.bin"},
-		{"the second body's first PlayerRow's score reference", 8 + bodyBits + 6 + 64 + 6, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
+		{"the second body's first PlayerRow's score reference", 8 + bodyBits + r + 64 + r, "testdata/wire/tables/match_batch_damaged_nested_message.bin"},
+	}
+	// every bit of the reference set: a slot past the entry count
+	past := uint64(1)<<uint(r) - 1
+	if past <= uint64(len(vocabulary.Entries())) {
+		t.Fatalf("%d entries fill every %d-bit reference: no slot past them to plant", len(vocabulary.Entries()), r)
 	}
 	for _, row := range rows {
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, row.at, 6, 63)
-		if pinned := wireBytes(t, row.pinned); string(pinned) != string(damaged) {
+		setBits(damaged, 1, row.at, r, past)
+		if pinned := pinnedWire(t, row.pinned, damaged); string(pinned) != string(damaged) {
 			t.Errorf("%s: the damaged batch differs from the pinned one at byte %d", row.name, firstDifference(pinned, damaged))
 		}
 		out := make([]*tabletext.Instance, 3)
@@ -733,13 +760,14 @@ func TestDamageIsTerminal(t *testing.T) {
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
-	if len(message) != 43 {
-		t.Fatalf("store_full is %d bytes, not 43", len(message))
+	// the last byte carries the body's last bits and then pad to the byte;
+	// the high bit is pad
+	if message[len(message)-1]&0x80 != 0 {
+		t.Fatal("store_full's last byte ends on its body's last bit: no pad to spoil")
 	}
-	// 341 bits: the last byte carries five bits of body and three of pad
 	badPad := append([]byte(nil), message...)
 	badPad[len(badPad)-1] |= 0x80
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_bad_pad_message.bin"); string(pinned) != string(badPad) {
+	if pinned := pinnedWire(t, "testdata/wire/tables/store_full_bad_pad_message.bin", badPad); string(pinned) != string(badPad) {
 		t.Errorf("the bad-pad wire differs from the pinned one at byte %d", firstDifference(pinned, badPad))
 	}
 	{
@@ -755,7 +783,7 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 		}
 	}
 	trailing := append(append([]byte(nil), message...), 0)
-	if pinned := wireBytes(t, "testdata/wire/tables/store_full_trailing_byte_message.bin"); string(pinned) != string(trailing) {
+	if pinned := pinnedWire(t, "testdata/wire/tables/store_full_trailing_byte_message.bin", trailing); string(pinned) != string(trailing) {
 		t.Errorf("the trailing-byte wire differs from the pinned one at byte %d", firstDifference(pinned, trailing))
 	}
 	{
@@ -768,9 +796,9 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 	}
 }
 
-// TestAReferenceAtAndAboveTheEntryCount: E is 33 and a reference is six
-// bits, so 34, 35 and 63 are spellable and damage; the entry count itself is
-// the last legal slot and must resolve. Red if a leg resolves past E, refuses
+// TestAReferenceAtAndAboveTheEntryCount: E is the entry count and a reference
+// is r bits, so E+1, E+2 and 2^r - 1 are spellable and damage; the entry count
+// itself is the last legal slot and must resolve. Red if a leg resolves past E, refuses
 // E, or hands back anything from a batch a bad reference damaged (§4).
 func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	_, model, vocabulary := backend(t)
@@ -781,15 +809,23 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// player_id: a reference and a u64, so the terminator sits at bit 78
-	if want := 1 + (8+6+64+6+7)/8; len(one) != want {
+	// player_id: a reference and a u64, so the terminator sits at bit 8+r+64
+	// of the stream (the batch count is its first eight)
+	r := vocabulary.RefBits()
+	entries := uint64(len(vocabulary.Entries()))
+	top := uint64(1)<<uint(r) - 1
+	if top < entries+2 {
+		t.Fatalf("%d entries leave no two spellable slots past them at %d bits", entries, r)
+	}
+	if want := 1 + (8+r+64+r+7)/8; len(one) != want {
 		t.Fatalf("the vector is %d bytes, the arithmetic says %d", len(one), want)
 	}
-	for _, past := range []uint64{34, 35, 63} {
+	terminator := 8 + r + 64
+	for _, past := range []uint64{entries + 1, entries + 2, top} {
 		damaged := append([]byte(nil), one...)
-		setBits(damaged, 1, 78, 6, past)
-		if past == 63 {
-			if pinned := wireBytes(t, "testdata/wire/tables/message_reference_past_table.bin"); string(pinned) != string(damaged) {
+		setBits(damaged, 1, terminator, r, past)
+		if past == top {
+			if pinned := pinnedWire(t, "testdata/wire/tables/message_reference_past_table.bin", damaged); string(pinned) != string(damaged) {
 				t.Errorf("the reference-past-table wire differs from the pinned one at byte %d", firstDifference(pinned, damaged))
 			}
 		}
@@ -806,10 +842,23 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 			t.Errorf("reference %d: the returned count reads %d", past, count)
 		}
 	}
-	// the entry count itself, 33, names StorePurchase's own type id, a kind-0
-	// entry no field of LoginRequest carries: §4's ordinary unknown, and then
-	// a terminator at bit 84
-	last := wireBytes(t, "testdata/wire/tables/message_reference_last_slot.bin")
+	// the entry count itself names the message closure's last entry, a union
+	// arm (kind 13, a nested body) no field of LoginRequest carries: §4's
+	// ordinary unknown, its nested body empty (one terminator), and then the
+	// root's terminator
+	lastEntry := vocabulary.Entries()[entries-1]
+	if lastEntry.Kind != ir.TableKindTable {
+		t.Fatalf("the last entry is kind %d, not the kind-13 arm this vector spells", lastEntry.Kind)
+	}
+	built := make([]byte, 1+(8+r+64+3*r+7)/8)
+	copy(built, one)
+	setBits(built, 1, terminator, r, entries)
+	setBits(built, 1, terminator+r, r, 0)
+	setBits(built, 1, terminator+2*r, r, 0)
+	last := pinnedWire(t, "testdata/wire/tables/message_reference_last_slot.bin", built)
+	if string(last) != string(built) {
+		t.Errorf("the last-slot wire differs from the pinned one at byte %d", firstDifference(last, built))
+	}
 	out := model.New(login)
 	var report tabletext.Report
 	count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, last, vocabulary, &report)
@@ -896,8 +945,8 @@ func TestAWideVocabulary(t *testing.T) {
 		low, wide string
 		lowBytes  int
 	}{
-		{"vocab_conn", 144, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
-		{"vocab9_conn", 284, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
+		{"vocab_conn", 130, 8, "vocab_low", "vocab_wide", 1 + (8+8+32+8+7)/8},
+		{"vocab9_conn", 260, 9, "vocab9_low", "vocab9_wide", 1 + (8+9+32+9+7)/8},
 	}
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {

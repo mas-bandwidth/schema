@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"testing"
 )
@@ -40,10 +39,7 @@ func TestLimitMessageSkipDepthVectors(t *testing.T) {
 		{"message_skip_depth_over_limit", 129, false, Counts{Unknown: 1, Refused: true}},
 	} {
 		built := skipDepthBatch(tc.levels, login, root.vocabulary.RefBits())
-		pinned, err := os.ReadFile(filepath.Join("testdata", "wire", "tables", "fuzz-vectors", tc.name+".bin"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		pinned := pinnedWire(t, filepath.Join("testdata", "wire", "tables", "fuzz-vectors", tc.name+".bin"), built)
 		if !bytes.Equal(built, pinned) {
 			t.Errorf("%s: the pinned file is not %d nested bodies of entry %d", tc.name, tc.levels, login)
 		}

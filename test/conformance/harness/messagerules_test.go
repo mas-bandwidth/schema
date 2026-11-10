@@ -262,8 +262,8 @@ func TestTheWideStringsWidth(t *testing.T) {
 	if err != nil || !v.Announced() || report.Refused {
 		t.Fatalf("the announcement with a kind-33 entry was refused: %v %+v", err, report)
 	}
-	if v.RefBits() != 6 {
-		t.Fatalf("34 entries take %d bits, not six", v.RefBits())
+	if want := ir.TableMessageRefBits(len(entries)); v.RefBits() != want {
+		t.Fatalf("%d entries take %d bits, not %d", len(entries), v.RefBits(), want)
 	}
 	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
 	body := &bitw{}
@@ -289,11 +289,10 @@ func TestTheWideStringsWidth(t *testing.T) {
 	}
 }
 
-// TestTheCountsTheDataDecide: an unbounded array and a map are announced with
-// a thirty-two bit count, because the announcement is the whole unit's
-// vocabulary (§3.3). No body carries them: they are a variable table's, and
-// the message form is fixed tables only. Red if the announcement sizes either
-// count from a declaration.
+// TestTheCountsTheDataDecide: an unbounded array and a map are a variable
+// table's, and the message form is fixed tables only, so the announcement,
+// which is the MESSAGE CLOSURE's vocabulary (§3.3), carries neither. Red if
+// either takes a slot, or if the fixed table's own field does not.
 func TestTheCountsTheDataDecide(t *testing.T) {
 	unit := tempUnit(t, `package countsdemo
 
@@ -312,15 +311,17 @@ table Ledger
 	model := tabletext.NewModel(unit)
 	v := vocabularyOf(t, unit)
 	ledger := model.Lookup("Ledger")
-	// THE ANNOUNCED SHAPES: min 0 and max 2^32 - 1, a thirty-two bit count
-	for _, name := range []string{"rows", "index"} {
+	for _, name := range []string{"rows", "index", "data"} {
 		f := fieldOf(t, model.New(ledger), name).Def
-		entry := ir.TableFieldEntry(f)
-		got := v.Entries()[slotOf(t, v, entry.Id, entry.Kind)-1]
-		if got.Kind != ir.TableKindArray || got.Shape.Min != 0 || got.Shape.Max != ir.TableMessageListMax || ir.TableMessageCountBits(got.Shape) != 32 {
-			t.Errorf("%s is announced at kind %d over [%d, %d], not a thirty-two bit count", name, got.Kind, got.Shape.Min, got.Shape.Max)
+		id := ir.TableFieldEntry(f).Id
+		for i, e := range v.Entries() {
+			if e.Id == id {
+				t.Errorf("%s, a variable table's field, takes slot %d at kind %d", name, i+1, e.Kind)
+			}
 		}
 	}
+	row := ir.TableFieldEntry(fieldOf(t, model.New(model.Lookup("Row")), "id").Def)
+	slotOf(t, v, row.Id, row.Kind)
 }
 
 // TestAReferenceOfTheWrongSort: an enum reference naming a field-name entry,
@@ -335,8 +336,15 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bunit, v := announced(t, u, bc)
+	bunit, own := announced(t, u, bc)
 	model := tabletext.NewModel(bunit)
+	// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3), but a vocabulary
+	// from a build that still announced one carries it once, so the rows read
+	// against the unit's own entries with the node-table id after them
+	v, vreport, verr := readAnnouncement(announce(own.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), own.Entries()...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})))
+	if verr != nil || !v.Announced() || vreport.Refused {
+		t.Fatalf("the announcement carrying the node-table id was refused: %v %+v", verr, vreport)
+	}
 	region := slotOf(t, v, ir.TableWireId("region"), ir.TableKindEnum)
 	playerID := slotOf(t, v, ir.TableWireId("player_id"), ir.TableKindU64)
 	nodeTable := slotOf(t, v, ir.TableNodeWireId, 0)
@@ -395,7 +403,13 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 		t.Fatal(err)
 	}
 	mm := tabletext.NewModel(unit)
-	mv := vocabularyOf(t, unit)
+	// a table's name id is announced by no message closure (§3.3), so the
+	// kind-0 entry this row names rides after the unit's own entries
+	mown := vocabularyOf(t, unit)
+	mv, mreport, merr := readAnnouncement(announce(mown.BuildVersion(), append(append([]ir.TableVocabularyEntry(nil), mown.Entries()...), ir.TableVocabularyEntry{Id: ir.TableWireId("ToolMessage")})))
+	if merr != nil || !mv.Announced() || mreport.Refused {
+		t.Fatalf("the announcement carrying a table name id was refused: %v %+v", merr, mreport)
+	}
 	body := mm.Lookup("ToolMessage")
 	var unionField *ir.Field
 	for _, f := range body.Fields {
@@ -764,7 +778,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		{"the vocabulary over element kind 8", "announce_vocabulary_element_kind", forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{2, 14, 6, 8, 1, 0, 0, 0}), ids...)},
 	}
 	for _, row := range rows {
-		if pinned := wireBytes(t, "testdata/wire/tables/"+row.golden+".bin"); string(pinned) != string(row.wire) {
+		if pinned := pinnedWire(t, "testdata/wire/tables/"+row.golden+".bin", row.wire); string(pinned) != string(row.wire) {
 			t.Errorf("%s: the crafted wire differs from the pinned %s at byte %d", row.name, row.golden, firstDifference(pinned, row.wire))
 		}
 		// A FAILED STRICT CHECK IS DAMAGE, not a refusal: the two checks are
@@ -778,11 +792,11 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	// THE TOLERANT ROW: an unknown field beside both sets the vocabulary and
 	// counts one unknown
 	tolerant := forgeAnnouncement(terminated(versionField(0x8877665544332211), []byte{3, 8, 9, 0, 0, 0}, vocabularyField(vocab)), ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, 0x1122334455667788)
-	if pinned := wireBytes(t, "testdata/wire/tables/announce_unknown_field.bin"); string(pinned) != string(tolerant) {
+	if pinned := pinnedWire(t, "testdata/wire/tables/announce_unknown_field.bin", tolerant); string(pinned) != string(tolerant) {
 		t.Errorf("the tolerant wire differs from the pinned announce_unknown_field at byte %d", firstDifference(pinned, tolerant))
 	}
 	v, report, err := readAnnouncement(tolerant)
-	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 33 {
+	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != len(backendVocabulary.Entries()) {
 		t.Errorf("the tolerant row did not set the vocabulary: err=%v announced=%v version=%016x entries=%d", err, v.Announced(), v.BuildVersion(), len(v.Entries()))
 	}
 	if report.Unknown != 1 || report.Refused {
