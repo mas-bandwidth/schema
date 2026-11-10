@@ -1,5 +1,5 @@
-// Nesting depth is bounded (SPEC §4.2, §4.5): parentheses, unary minus and
-// blocks all nest, and the parser refuses a form deeper than it accepts with a
+// Nesting depth is bounded (SPEC §4.2, §4.5): parentheses, unary minus,
+// blocks and map values all nest, and the parser refuses a form deeper than it accepts with a
 // positioned diagnostic.
 package parser
 
@@ -20,6 +20,10 @@ func nestedBlockSource(depth int) string {
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+func nestedMapSource(depth int) string {
+	return "package t\ntable T\n{\n    m " + strings.Repeat("map[uint8]", depth) + "uint8\n}\n"
 }
 
 func TestNestingDepthLimit(t *testing.T) {
@@ -72,6 +76,21 @@ func TestNestingDepthLimit(t *testing.T) {
 		}
 	})
 
+	t.Run("nested maps", func(t *testing.T) {
+		t.Parallel()
+		_, errs := Parse("T.schema", []byte(nestedMapSource(300)))
+		if len(errs) == 0 {
+			t.Fatal("300 nested maps were accepted")
+		}
+		got := errs[0].Error()
+		if !strings.Contains(got, "nesting exceeds the 64-level limit") {
+			t.Fatalf("want the nesting refusal, got %q", got)
+		}
+		if !strings.HasPrefix(got, "T.schema:4:") {
+			t.Fatalf("want a positioned diagnostic, got %q", got)
+		}
+	})
+
 	t.Run("accepted below the limit", func(t *testing.T) {
 		t.Parallel()
 		src := "package t\nconst A = " + strings.Repeat("(", 8) + "1" + strings.Repeat(")", 8) + "\n"
@@ -80,6 +99,9 @@ func TestNestingDepthLimit(t *testing.T) {
 		}
 		if _, errs := Parse("T.schema", []byte(nestedBlockSource(8))); len(errs) > 0 {
 			t.Fatalf("eight if blocks were refused: %v", errs)
+		}
+		if _, errs := Parse("T.schema", []byte(nestedMapSource(8))); len(errs) > 0 {
+			t.Fatalf("eight nested maps were refused: %v", errs)
 		}
 	})
 }
