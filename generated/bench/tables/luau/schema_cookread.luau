@@ -425,13 +425,19 @@ function putField(value: any, fd: any, got: any)
 	if fd.s == "arr" then
 		if fd.array ~= "list" and typeof(got) == "table" then
 			local dst = value[fd.slot]
-			if typeof(dst) ~= "table" then
-				dst = {}
-				value[fd.slot] = dst
-			end
 			local n = arrayCounts[got] or #got
-			for i = 1, n do
-				if got[i] ~= nil then dst[i] = got[i] end
+			if typeof(dst) == "buffer" then
+				for i = 1, n do
+					if got[i] ~= nil then buffer.writeu8(dst, i - 1, got[i]) end
+				end
+			else
+				if typeof(dst) ~= "table" then
+					dst = {}
+					value[fd.slot] = dst
+				end
+				for i = 1, n do
+					if got[i] ~= nil then dst[i] = got[i] end
+				end
 			end
 			if fd.array == "counted" then value[fd.slot .. "Count"] = n end
 			return

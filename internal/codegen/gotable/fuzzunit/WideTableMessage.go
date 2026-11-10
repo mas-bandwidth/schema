@@ -22,7 +22,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.LabelLength > 0 {
-			w.Put(107, TableMessageRefBitsHere)
+			w.Put(101, TableMessageRefBitsHere)
 			if value.LabelLength < 0 || value.LabelLength > 70000 {
 				return false
 			}
@@ -68,7 +68,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.PayloadLength > 0 {
-			w.Put(108, TableMessageRefBitsHere)
+			w.Put(102, TableMessageRefBitsHere)
 			if value.PayloadLength < 0 || value.PayloadLength > 70000 {
 				return false
 			}
@@ -84,7 +84,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			return false
 		}
 		if value.SamplesCount > 0 {
-			w.Put(109, TableMessageRefBitsHere)
+			w.Put(103, TableMessageRefBitsHere)
 			if value.SamplesCount < 0 || value.SamplesCount > 70000 {
 				return false
 			}

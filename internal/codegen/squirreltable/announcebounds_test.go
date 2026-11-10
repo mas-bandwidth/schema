@@ -10,7 +10,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestSquirrelAnnounceHonorsReceiverBounds(t *testing.T) {
@@ -20,7 +19,7 @@ func TestSquirrelAnnounceHonorsReceiverBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	u := loadUnit(t, root, []string{"tables/examples"})
-	ann := announcementWithEntries(u, ir.TableVocabulary(u))
+	ann := announcementWithEntries(u, tablewire.MessageVocabulary(u))
 
 	type bounds struct{ maxBytes, maxEntries int }
 	cases := []struct {

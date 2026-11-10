@@ -1,11 +1,11 @@
 package jstable
 
 import (
+	"testing"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
-	"testing"
 )
 
 func TestJavaScriptTimestampMessageConstruct(t *testing.T) {
@@ -38,7 +38,7 @@ if(n!==wire.length || ClockSaveMessages(storage,saved,{})!==n || !bytesEq(saved,
 const old=Array.from({length:5},()=>new Older());const oldReport={};
 if(OlderLoadMessages(old,v,wire,oldReport)!==5 || oldReport.Damaged || oldReport.Unknown!==4){fail("timestamp unknown payload skip "+JSON.stringify(oldReport));}
 ` + probeTail()
-	if out, err := jsRunMessageProbe(t, jsNode(t), u, map[string][]byte{"ann.bin": ir.TableAnnouncement(u), "batch.bin": wire}, probe); err != nil {
+	if out, err := jsRunMessageProbe(t, jsNode(t), u, map[string][]byte{"ann.bin": tablewire.Announce(u), "batch.bin": wire}, probe); err != nil {
 		t.Fatalf("timestamp messages: %v\n%s", err, out)
 	}
 }

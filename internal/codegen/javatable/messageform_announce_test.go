@@ -31,6 +31,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -209,7 +210,7 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 				// TableVocabulary with the entries the page names, the build
 				// version kept." (§3.3)
 				u := loadUnitDir(t, root, row.dir)
-				vocab := ir.TableVocabulary(u)
+				vocab := tablewire.MessageVocabulary(u)
 				out := runMessageJava(t, u, announceReadMain(u, vocab))
 				if strings.TrimSpace(out) != "ok" {
 					t.Fatalf("%s: %s", row.unit, out)
@@ -573,7 +574,7 @@ func refusalsMain(u *ir.Unit) string {
 		{"build version fewer than eight bytes", announcement(short)},
 		{"vocabulary missing", announcement(versionField(version))},
 		{"vocabulary not kind 14", announcement(append(versionField(version), vocabFieldBadKind(13)...))},
-		{"vocabulary element not kind 6", badElemAnnouncement(ir.TableAnnouncement(u))},
+		{"vocabulary element not kind 6", badElemAnnouncement(tablewire.Announce(u))},
 	}
 	var cases strings.Builder
 	cases.WriteString("        final String[] strictHex = {\n")
@@ -657,5 +658,5 @@ func refusalsMain(u *ir.Unit) string {
         }
         System.out.println("ok");
     }
-`, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, cases.String(), len(ir.TableVocabulary(u))+1, len(ir.TableVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
+`, len(tablewire.MessageVocabulary(u))+1, len(tablewire.MessageVocabulary(u))+1, len(tablewire.MessageVocabulary(u))+1, len(tablewire.MessageVocabulary(u))+1, cases.String(), len(tablewire.MessageVocabulary(u))+1, len(tablewire.MessageVocabulary(u))+1, hexOf(announcement(append(versionField(version), 2, 13))), version)
 }

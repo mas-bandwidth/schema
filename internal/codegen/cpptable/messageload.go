@@ -665,9 +665,10 @@ func (g *tableGen) emitMessageClamp(f *ir.Field, signed bool, width int, decoded
 // are PLURAL because the primitive is a batch and a single message is the
 // batch of one: a surface with a singular verb beside them would let a caller
 // write one body a call and never learn that the batch is where the bandwidth
-// is. A VARIABLE root has none: the message form is fixed tables only.
+// is. A VARIABLE root has none: the message form is fixed tables only, and a
+// root outside the message closure has no body codec to call.
 func (g *tableGen) emitMessageEntries(st *ir.Struct) {
-	if st.IsMapEntry() || g.isVar(st.Name) {
+	if !g.hasMessageCodec(st) {
 		return
 	}
 	n := st.Name

@@ -29,6 +29,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -69,7 +70,7 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 		loaded[conn.unit] = &announceUnit{
 			buildVersion: conn.buildVersion,
 			announcement: want,
-			entries:      ir.TableVocabulary(u),
+			entries:      tablewire.MessageVocabulary(u),
 			files:        out,
 		}
 	}

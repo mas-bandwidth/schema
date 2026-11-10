@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -126,7 +127,7 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 		for _, un := range units {
 			u := loadUnit(t, un.path)
 			conn := conns[un.unit]
-			vocabulary := ir.TableVocabulary(u)
+			vocabulary := tablewire.MessageVocabulary(u)
 			pairs := make([]string, 0, len(vocabulary))
 			for _, e := range vocabulary {
 				pairs = append(pairs, fmt.Sprintf("[%s,%d]", dartInt(int64(e.Id)), int(e.Kind)))
@@ -162,8 +163,8 @@ func TestMessageFormAnnounceDart(t *testing.T) {
 		t.Parallel()
 		u := loadUnit(t, units[0].path)
 		conn := conns[units[0].unit]
-		vocabBytes := ir.TableVocabularyBytes(ir.TableVocabulary(u))
-		vocabCount := len(ir.TableVocabulary(u))
+		vocabBytes := ir.TableVocabularyBytes(tablewire.MessageVocabulary(u))
+		vocabCount := len(tablewire.MessageVocabulary(u))
 		noVersion := craftAnnouncement(vocabBytes, ir.BuildVersion(u), false, true)
 		noVocab := craftAnnouncement(vocabBytes, ir.BuildVersion(u), true, false)
 		// A later minor's added field: an id the vocabulary does not name,

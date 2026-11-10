@@ -1295,7 +1295,7 @@ static const uint64_t kTableMessageListMax = 0xFFFFFFFFull;
 // THIS UNIT'S OWN REFERENCE WIDTH: the bits a writer spends on every reference
 // of every body it writes, which is a compile-time constant because the
 // vocabulary is. A READER spends the width the SENDER's vocabulary settles.
-static const int64_t kTableMessageRefBitsHere = 6;
+static const int64_t kTableMessageRefBitsHere = 3;
 
 // THIS UNIT'S OWN ENTRY COUNT, which is the CAPACITY a receiver declares for
 // its resolved vocabulary when it talks only to endpoints of this schema (§3.3).
@@ -1303,7 +1303,7 @@ static const int64_t kTableMessageRefBitsHere = 6;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 51;
+static const int64_t kTableMessageEntriesHere = 6;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1878,7 +1878,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 51 entries and 536 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 6 entries and 109 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1896,7 +1896,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 536;
+static const int64_t kTableAnnounceBytes = 109;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -1919,176 +1919,9 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xfd,
     0x02,
     0x0e,
-    0xf0,
-    0x03,
+    0x46,
     0x06,
-    0xed,
-    0x03,
-    0x86,
-    0x1b,
-    0x63,
-    0x8e,
-    0xba,
-    0xad,
-    0xbc,
-    0xc4,
-    0x0c,
-    0x10,
-    0x4c,
-    0x8a,
-    0x95,
-    0x2e,
-    0xef,
-    0x84,
-    0x49,
-    0x1e,
-    0x0d,
     0x44,
-    0x41,
-    0xc6,
-    0x45,
-    0xad,
-    0xa9,
-    0x7b,
-    0xee,
-    0x0d,
-    0x77,
-    0x6e,
-    0x48,
-    0x15,
-    0x2b,
-    0xb7,
-    0xdc,
-    0xed,
-    0x0d,
-    0x54,
-    0x0b,
-    0x60,
-    0x56,
-    0x19,
-    0x76,
-    0xaf,
-    0x77,
-    0x11,
-    0x03,
-    0x0c,
-    0x9a,
-    0x5f,
-    0xcc,
-    0x12,
-    0x8f,
-    0x0a,
-    0x11,
-    0xd5,
-    0x0c,
-    0x02,
-    0x86,
-    0x4c,
-    0xef,
-    0x63,
-    0xaf,
-    0x06,
-    0x00,
-    0x26,
-    0xe9,
-    0x01,
-    0x86,
-    0x4c,
-    0xda,
-    0x63,
-    0xaf,
-    0x06,
-    0x00,
-    0xa5,
-    0xf1,
-    0x01,
-    0x86,
-    0x4c,
-    0xdf,
-    0x63,
-    0xaf,
-    0x06,
-    0x00,
-    0x86,
-    0x1b,
-    0x63,
-    0x8e,
-    0xba,
-    0xad,
-    0xbc,
-    0xc4,
-    0x0c,
-    0x0c,
-    0x0c,
-    0xe9,
-    0x52,
-    0xe1,
-    0x81,
-    0xb9,
-    0x9e,
-    0xdd,
-    0x10,
-    0x02,
-    0x0d,
-    0x80,
-    0x83,
-    0x1c,
-    0xb2,
-    0x8a,
-    0xee,
-    0x39,
-    0x43,
-    0x0d,
-    0xea,
-    0x96,
-    0xb2,
-    0x00,
-    0x76,
-    0xe9,
-    0xd8,
-    0x75,
-    0x04,
-    0x01,
-    0x07,
-    0x00,
-    0xea,
-    0x0c,
-    0xe8,
-    0x30,
-    0x94,
-    0xfd,
-    0xe4,
-    0x7c,
-    0x04,
-    0x00,
-    0x28,
-    0xf0,
-    0x25,
-    0xa0,
-    0xba,
-    0x6c,
-    0x31,
-    0xe5,
-    0x11,
-    0x3d,
-    0x62,
-    0xcb,
-    0x8f,
-    0xec,
-    0xfc,
-    0xf7,
-    0x39,
-    0x0c,
-    0x08,
-    0xdd,
-    0x7c,
-    0x58,
-    0xd1,
-    0xba,
-    0xfb,
-    0xf8,
-    0x3b,
-    0x11,
     0x03,
     0x0b,
     0xc7,
@@ -2111,85 +1944,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x56,
     0x0c,
     0x08,
-    0x86,
-    0x1b,
-    0x63,
-    0x8e,
-    0xba,
-    0xad,
-    0xbc,
-    0xc4,
-    0x0c,
-    0x18,
-    0x37,
-    0xea,
-    0x08,
-    0x98,
-    0x2c,
-    0xc6,
-    0x62,
-    0xbb,
-    0x04,
-    0x01,
-    0x07,
-    0x00,
-    0x95,
-    0xb3,
-    0x1e,
-    0x51,
-    0xef,
-    0xb8,
-    0x25,
-    0x5b,
-    0x11,
-    0xe8,
-    0x4d,
-    0xb4,
-    0x48,
-    0x7b,
-    0x6d,
-    0x5f,
-    0xee,
-    0x11,
-    0xb7,
-    0x46,
-    0xa6,
-    0x65,
-    0xbb,
-    0x20,
-    0x92,
-    0x50,
-    0x11,
-    0x7e,
-    0x69,
-    0xbe,
-    0x95,
-    0x23,
-    0x9e,
-    0x83,
-    0x60,
-    0x0d,
-    0xdf,
-    0x22,
-    0x70,
-    0x74,
-    0x4a,
-    0xe3,
-    0x54,
-    0x45,
-    0x0e,
-    0x00,
-    0x04,
-    0x0d,
-    0x38,
-    0xac,
-    0x2e,
-    0xe3,
-    0xa2,
-    0xe9,
-    0x20,
-    0x43,
-    0x0d,
     0x66,
     0xfe,
     0x00,
@@ -2235,187 +1989,6 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x04,
     0x01,
     0x0e,
-    0x00,
-    0x3d,
-    0x62,
-    0xcb,
-    0x8f,
-    0xec,
-    0xfc,
-    0xf7,
-    0x39,
-    0x0c,
-    0x0c,
-    0xb0,
-    0x1c,
-    0x04,
-    0xa2,
-    0xad,
-    0x70,
-    0xb0,
-    0x24,
-    0x11,
-    0x05,
-    0xd8,
-    0x14,
-    0x57,
-    0x53,
-    0xaa,
-    0xaa,
-    0x76,
-    0x11,
-    0xc1,
-    0x52,
-    0x85,
-    0xb8,
-    0x19,
-    0xa3,
-    0xf3,
-    0x24,
-    0x00,
-    0x1d,
-    0xa8,
-    0xa8,
-    0x9c,
-    0xd8,
-    0xef,
-    0xee,
-    0x9d,
-    0x00,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0xff,
-    0x00,
-    0xe4,
-    0x4f,
-    0x1c,
-    0x4f,
-    0x47,
-    0xc0,
-    0x2e,
-    0x2f,
-    0x00,
-    0x58,
-    0xfc,
-    0xaf,
-    0xfa,
-    0xd8,
-    0xe0,
-    0x4b,
-    0x70,
-    0x00,
-    0xc7,
-    0xd4,
-    0x7b,
-    0x26,
-    0xb0,
-    0x9d,
-    0x29,
-    0x5f,
-    0x00,
-    0xcc,
-    0x14,
-    0x15,
-    0x7f,
-    0xcb,
-    0xc2,
-    0x58,
-    0xd8,
-    0x00,
-    0xfd,
-    0x53,
-    0x25,
-    0x70,
-    0xdc,
-    0xe6,
-    0x7f,
-    0x32,
-    0x00,
-    0xb6,
-    0x79,
-    0xed,
-    0x7a,
-    0xf7,
-    0x7e,
-    0x16,
-    0x9d,
-    0x00,
-    0xa9,
-    0x9f,
-    0xa6,
-    0xa5,
-    0x99,
-    0xc8,
-    0x0e,
-    0xf6,
-    0x00,
-    0x57,
-    0xd4,
-    0x83,
-    0xef,
-    0x3e,
-    0x8a,
-    0x45,
-    0xd6,
-    0x00,
-    0x18,
-    0x6d,
-    0x9d,
-    0xe4,
-    0xae,
-    0xea,
-    0xad,
-    0x6d,
-    0x00,
-    0x13,
-    0xf2,
-    0xb5,
-    0x3a,
-    0x62,
-    0x31,
-    0x9a,
-    0x4a,
-    0x00,
-    0xc8,
-    0xc2,
-    0x04,
-    0xb4,
-    0xa2,
-    0x8a,
-    0x8b,
-    0x9d,
-    0x00,
-    0xa4,
-    0x93,
-    0xdb,
-    0xb7,
-    0x13,
-    0x91,
-    0x3b,
-    0xae,
-    0x00,
-    0x3d,
-    0xa7,
-    0x42,
-    0x42,
-    0x90,
-    0x34,
-    0xff,
-    0x69,
-    0x00,
-    0x1d,
-    0x43,
-    0x4c,
-    0x78,
-    0xa3,
-    0x90,
-    0x7e,
-    0xb9,
     0x00,
     0x00,
     0xfe,
@@ -8206,9 +7779,6 @@ inline void ColourReset( Colour & value )
 inline int64_t StampMeasureMessageBody( int64_t at, const Stamp & value );
 inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value );
 inline bool StampLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Stamp & value );
-inline int64_t ColourMeasureMessageBody( int64_t at, const Colour & value );
-inline bool ColourSaveMessageBody( TableBitWriter & w, const Colour & value );
-inline bool ColourLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value );
 
 // ---- the arena's reset hook (docs/SPEC-TABLES.md §6) ----
 //
@@ -8582,14 +8152,14 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
-        w.put( 19, kTableMessageRefBitsHere );
+        w.put( 2, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.tag_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.tag, value.tag_length );
     }
     if ( value.seq != 0 )
     {
-        w.put( 30, kTableMessageRefBitsHere );
+        w.put( 5, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.seq ), 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9134,307 +8704,6 @@ inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, T
         return false;
     }
     out->refuse_reason = ok;
-    return true;
-}
-
-// The BITPACKED body's cost, in BITS (docs/SPEC-TABLES.md §3.3). `at` is the
-// body's own bit position in the batch, because a `string(N)` ALIGNS before
-// its bytes and an align costs what the position says it costs.
-inline int64_t ColourMeasureMessageBody( int64_t at, const Colour & value )
-{
-    int64_t bits = 0;
-    if ( value.r != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 8;
-    }
-    if ( value.g != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 8;
-    }
-    if ( value.b != 0 )
-    {
-        bits += kTableMessageRefBitsHere;
-        bits += 8;
-    }
-    bits += kTableMessageRefBitsHere; // the ZERO REFERENCE that ends the body
-    (void) at;
-    return bits;
-}
-
-// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
-// kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the VARIABLE form put an L.
-inline bool ColourSaveMessageBody( TableBitWriter & w, const Colour & value )
-{
-    if ( value.r != 0 )
-    {
-        w.put( 7, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.r ), 8 );
-    }
-    if ( value.g != 0 )
-    {
-        w.put( 8, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.g ), 8 );
-    }
-    if ( value.b != 0 )
-    {
-        w.put( 9, kTableMessageRefBitsHere );
-        w.put( (uint64_t) ( value.b ), 8 );
-    }
-    w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
-    return !w.overflow;
-}
-
-// The BITPACKED body's read (docs/SPEC-TABLES.md §3.3): the declared
-// defaults first, then whatever the wire says, field by field. An entry this
-// build cannot name is skipped by its SHAPE and counted; one whose kind is
-// not this field's is a kind mismatch and skipped the same way.
-inline bool ColourLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Colour & value )
-{
-    ColourReset( value );
-    for ( ;; )
-    {
-        uint64_t ref = 0;
-        if ( !r.get( ref, vocabulary.ref_bits ) )
-        {
-            report->damaged = true;
-            return false;
-        }
-        if ( ref == 0 )
-        {
-            if ( report->refused ) { return false; } // a refusal refuses the whole batch (§3.3, §4)
-            return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        }
-        if ( ref > (uint64_t) vocabulary.count )
-        {
-            report->damaged = true;
-            return false;
-        }
-        const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
-        // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
-        // MALFORMED (§3.1, §3.3): the node table is the ROOT body's first
-        // field and is read before this walk begins, so meeting one here is
-        // a second numbering wherever it sits
-        if ( TableMessageReserved( entry.id ) )
-        {
-            report->damaged = true;
-            return false;
-        }
-        switch ( entry.id )
-        {
-            case 0xaf63ef4c86020cd5ull: // r
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 6 || entry.elem_kind != 0 )
-                {
-                    report->refused = true;
-                    report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull )
-                    {
-                        decoded_wide = (int64_t) 255ull;
-                        report->refused = true;
-                        report->refuse_reason = out_of_range;
-                    }
-                    uint8_t decoded_v = (uint8_t) decoded_wide;
-                    value.r = decoded_v;
-                }
-                break;
-            }
-            case 0xaf63da4c8601e926ull: // g
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 6 || entry.elem_kind != 0 )
-                {
-                    report->refused = true;
-                    report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull )
-                    {
-                        decoded_wide = (int64_t) 255ull;
-                        report->refused = true;
-                        report->refuse_reason = out_of_range;
-                    }
-                    uint8_t decoded_v = (uint8_t) decoded_wide;
-                    value.g = decoded_v;
-                }
-                break;
-            }
-            case 0xaf63df4c8601f1a5ull: // b
-            {
-                // THE KIND MISMATCH IS FOUND IN THE ANNOUNCEMENT, not on the body.
-                // A RANGE that moved is not one: the shapes differ and the entry
-                // carries the SENDER's, so the field decodes and clamps (§4).
-                if ( entry.kind != 6 || entry.elem_kind != 0 )
-                {
-                    report->refused = true;
-                    report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    break;
-                }
-                {
-                    const int64_t width = entry.value_bits;
-                    uint64_t raw = 0;
-                    if ( width < 0 || !r.get( raw, width ) )
-                    {
-                        report->damaged = true;
-                        return false;
-                    }
-                    int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
-                    if ( (uint64_t) decoded_wide > 255ull )
-                    {
-                        decoded_wide = (int64_t) 255ull;
-                        report->refused = true;
-                        report->refuse_reason = out_of_range;
-                    }
-                    uint8_t decoded_v = (uint8_t) decoded_wide;
-                    value.b = decoded_v;
-                }
-                break;
-            }
-            default:
-                report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
-                {
-                    report->damaged = true;
-                    return false;
-                }
-                break;
-        }
-    }
-}
-
-// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of bodies of
-// ONE ROOT in one buffer, one count and one continuous bit stream with no
-// alignment between them. A single message is the batch of one, and there is
-// no singular verb.
-//
-// Every reference is a compile-time SLOT and every width a literal, so a save
-// does no lookup at all and costs what a save costs.
-//
-// M ABOVE 256 IS A REFUSAL BY NAME on both verbs: -1, with the report's
-// verdict set and the reason batch_too_large on it, and nothing written. The
-// refusal is learned at MEASURE time, before a buffer is allocated, and a
-// caller with more bodies calls again.
-inline int64_t ColourMeasureMessages( const Colour * values, int64_t count, TableReport * report )
-{
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax )
-    {
-        TableMessageRefuseBatch( report );
-        return -1;
-    }
-    int64_t bits = 8; // the body count, a ranged integer over [1, 256]
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        const int64_t body = ColourMeasureMessageBody( bits, values[i] );
-        if ( body < 0 ) { return -1; }
-        bits += body;
-    }
-    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
-}
-
-inline int64_t ColourSaveMessages( const Colour * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
-{
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax )
-    {
-        TableMessageRefuseBatch( report );
-        return -1;
-    }
-    TableMessageBatch batch;
-    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
-    for ( int64_t i = 0; i < count; i++ )
-    {
-        if ( !ColourSaveMessageBody( batch.w, values[i] ) ) { return -1; }
-        batch.written++;
-    }
-    return TableMessageBatchEnd( batch ); // == ColourMeasureMessages( values, count, report )
-}
-
-// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:
-// nothing is decoded, the reader says it holds no vocabulary, no counter
-// moves and malformed does not fire. A reader does not fall back to the file
-// form on its own and does not guess a vocabulary, because a guessed one
-// decodes a body under the wrong names in silence.
-//
-// `count` is IN and OUT: in, the storage the caller has room for, and out,
-// what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
-// batch_too_large, found from the count before a body is decoded, and count
-// comes back holding the WIRE's M, so the caller calls again with storage at
-// or above it and never parses a byte itself. DAMAGE ANYWHERE IN THE BATCH
-// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
-// and every body the walk touched is reset to its declared defaults.
-inline bool ColourLoadMessages( Colour * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
-{
-    TableReport ignored;
-    TableReport * to = report != NULL ? report : &ignored;
-    if ( values == NULL || count == NULL )
-    {
-        to->damaged = true;
-        return false;
-    }
-    const int64_t capacity = *count;
-    *count = 0;
-    TableMessageBatchReader br;
-    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
-    if ( bodies < 0 ) { return false; }
-    if ( bodies > capacity )
-    {
-        *count = bodies;
-        TableMessageRefuseBatch( to );
-        return false;
-    }
-    for ( int64_t i = 0; i < bodies; i++ )
-    {
-        if ( !ColourLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { ColourReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
-        br.remaining--;
-    }
-    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { ColourReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
-    *count = bodies;
     return true;
 }
 

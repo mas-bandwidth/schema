@@ -311,6 +311,11 @@ pub struct TableFixedReport {
     /// an ordinal or a tag past its bound. LOAD refuses the whole batch as
     /// out_of_range when it is non-zero; no read returns with it set.
     pub(crate) held: u32,
+    /// THE SLACK DEPTH OF THE SCATTER (§3.4, THE SLACK RULE): non-zero while
+    /// it lands bytes past a counted array's count or under an absent
+    /// optional's present byte, which are unspecified on read and never a
+    /// refusal. Zero whenever a read returns.
+    pub(crate) slack: u32,
     pub damaged: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
@@ -333,6 +338,7 @@ impl TableFixedReport {
         self.kind_changed = 0;
         self.widened = 0;
         self.held = 0;
+        self.slack = 0;
         self.damaged = false;
         self.refused = true;
         self.reason = reason;

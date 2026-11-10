@@ -13,6 +13,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestWireFuzzAllTargetJavaScript pins the JavaScript wire-fuzz target to the
@@ -1319,7 +1323,7 @@ func TestWireFuzzEmptyMessageNamesTheRefusalJavaScript(t *testing.T) {
 	}
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	fullInst := model.New(root)
@@ -1406,6 +1410,50 @@ func driveWireFuzzMessage(t *testing.T, node, repo, dir, unit, root string, wire
 	return output.Bytes()
 }
 
+// loginWithTwoUnknowns is a batch of one LoginRequest body carrying its two
+// known scalars, player_id and client_build, between two entries the backend
+// vocabulary announces and LoginRequest does not declare (match_id and
+// quantity), spelled against the unit's own announcement. Every value is a
+// scalar, so no field aligns and the body is the bits it lists.
+func loginWithTwoUnknowns(t *testing.T, u *ir.Unit) []byte {
+	t.Helper()
+	vocabulary := tablewire.MessageVocabulary(u)
+	refBits := ir.TableMessageRefBits(len(vocabulary))
+	slot := func(name string) (uint64, ir.TableVocabularyEntry) {
+		for i, e := range vocabulary {
+			if e.Id == ir.TableWireId(name) {
+				return uint64(i + 1), e
+			}
+		}
+		t.Fatalf("the backend vocabulary announces no %s", name)
+		return 0, ir.TableVocabularyEntry{}
+	}
+	out := []byte{ir.TableWireMessageForm, 0}
+	at := 16
+	put := func(value uint64, width int) {
+		for i := range width {
+			if at/8 == len(out) {
+				out = append(out, 0)
+			}
+			if value>>uint(i)&1 == 1 {
+				out[at/8] |= 1 << uint(at%8)
+			}
+			at++
+		}
+	}
+	field := func(name string, value uint64) {
+		ref, e := slot(name)
+		put(ref, refBits)
+		put(value, int(ir.TableMessageValueBits(e.Kind, e.Shape)))
+	}
+	field("match_id", 0x1122334455667788)
+	field("player_id", 5)
+	field("quantity", 3)
+	field("client_build", 77)
+	put(0, refBits)
+	return out
+}
+
 func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
@@ -1418,13 +1466,10 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if root == nil {
 		t.Fatal("LoginRequest is not a root of backenddemo")
 	}
-	mutant, err := hex.DecodeString("02004200000000000008c00002030a11181f262d343b424950575e656c737a81888f969da4abb2b9c0c7ced5dc44f28800403801")
-	if err != nil {
-		t.Fatal(err)
-	}
+	mutant := loginWithTwoUnknowns(t, u)
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	inst := model.New(root)
@@ -1437,8 +1482,8 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(encoded) != 50 || encoded[2] != 0x22 {
-		t.Fatalf("oracle save len %d byte2 %02x", len(encoded), encoded[2])
+	if len(encoded) < 3 || len(encoded) >= len(mutant) {
+		t.Fatalf("oracle save len %d of a %d-byte mutant: the two unknowns were not dropped", len(encoded), len(mutant))
 	}
 	dir := t.TempDir()
 	sub := filepath.Join(dir, "backend")

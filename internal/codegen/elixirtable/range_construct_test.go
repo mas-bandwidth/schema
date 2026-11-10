@@ -4,15 +4,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"testing"
+
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
-	"os"
-	"strconv"
-	"strings"
-	"testing"
 )
 
 // The shared corpus states exact integer endpoints beyond float64 precision.
@@ -172,7 +173,7 @@ Probe.check(Map.fetch!(loaded,String.to_existing_atom(field))==%s,field<>" fixed
 		if err != nil {
 			t.Fatal(err)
 		}
-		body := expectedStructBody(t, u, ir.TableVocabularySlots(u), u.Tables["Ranges"], map[string]any{field: json.Number(expected)})
+		body := expectedStructBody(t, u, tablewire.MessageVocabularySlots(u), u.Tables["Ranges"], map[string]any{field: json.Number(expected)})
 		fmt.Fprintf(&probe, `
 message=Base.decode16!(%q,case: :lower)
 {:ok,values}=M.load_messages(vocabulary,message)

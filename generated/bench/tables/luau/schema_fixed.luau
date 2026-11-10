@@ -806,7 +806,8 @@ local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 	end
 end
 
-function writeOne(f: any, n: Node, value: any, buf: buffer)
+local writeStruct: (d: any, n: Node, value: any, buf: buffer) -> ()
+local function writeOne(f: any, n: Node, value: any, buf: buffer)
 	local slot = f.slot
 	local own = value
 	if slot ~= nil then own = value[slot] end
@@ -889,7 +890,7 @@ local function deprecatedValue(f: any, value: any, record: any): any
 	return nil
 end
 
-function writeStruct(d: any, n: Node, value: any, buf: buffer)
+writeStruct = function(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)

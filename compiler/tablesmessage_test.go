@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// announcementWith frames one vocabulary the way ir.TableAnnouncement frames
+// announcementWith frames one vocabulary the way tablewire.Announce frames
 // the unit's own (docs/SPEC-TABLES.md §3.3): a form-1 file whose body is the
 // build version under the reserved id at kind 9 and the vocabulary bytes
 // under the reserved id at kind 14 over element kind 6. The test needs it to
@@ -49,7 +49,7 @@ func TestCppTableAnnouncementDistinctQuantizedShapes(t *testing.T) {
 fixed table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
 fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 `)
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	rate := -1
 	for i, e := range entries {
 		if e.Kind != uint8(ir.TableKindF32) {

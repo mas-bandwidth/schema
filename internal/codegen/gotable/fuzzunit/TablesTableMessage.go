@@ -22,7 +22,7 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 			return false
 		}
 		if value.VersionNoteLength > 0 {
-			w.Put(91, TableMessageRefBitsHere)
+			w.Put(85, TableMessageRefBitsHere)
 			if value.VersionNoteLength < 0 || value.VersionNoteLength > 16 {
 				return false
 			}
@@ -68,7 +68,7 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 			return false
 		}
 		if value.WeaponsCount > 0 {
-			w.Put(92, TableMessageRefBitsHere)
+			w.Put(86, TableMessageRefBitsHere)
 			if value.WeaponsCount < 0 || value.WeaponsCount > 8 {
 				return false
 			}
@@ -85,7 +85,7 @@ func RootConfigSaveMessageBody(w *TableMessageWriter, value *RootConfig) bool {
 			return false
 		}
 		if value.ProfilesCount > 0 {
-			w.Put(93, TableMessageRefBitsHere)
+			w.Put(87, TableMessageRefBitsHere)
 			if value.ProfilesCount < 0 || value.ProfilesCount > 4 {
 				return false
 			}
@@ -345,7 +345,7 @@ func RootConfigLoadMessages(values []RootConfig, vocabulary *TableVocabulary, da
 func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(21.0) {
-			w.Put(100, TableMessageRefBitsHere)
+			w.Put(94, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
 				w.Over++
 			}
@@ -357,7 +357,7 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	}
 	{
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
-			w.Put(102, TableMessageRefBitsHere)
+			w.Put(96, TableMessageRefBitsHere)
 			if value.Speed-value.Speed != 0 {
 				w.Over++
 			}
@@ -369,7 +369,7 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	}
 	{
 		if value.Penetration != 1 {
-			w.Put(103, TableMessageRefBitsHere)
+			w.Put(97, TableMessageRefBitsHere)
 			if value.Penetration < 0 || value.Penetration > 10 {
 				w.Over++
 			}
@@ -378,7 +378,7 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	}
 	{
 		if value.Channel != 0 {
-			w.Put(104, TableMessageRefBitsHere)
+			w.Put(98, TableMessageRefBitsHere)
 			if value.Channel > 63 {
 				w.Over++
 			}
@@ -387,7 +387,7 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	}
 	{
 		if value.Homing != false {
-			w.Put(105, TableMessageRefBitsHere)
+			w.Put(99, TableMessageRefBitsHere)
 			if value.Homing {
 				w.Put(1, 1)
 			} else {
@@ -397,20 +397,20 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	}
 	{
 		if value.Effect.Type != EffectTypeNone {
-			w.Put(106, TableMessageRefBitsHere)
+			w.Put(100, TableMessageRefBitsHere)
 			switch value.Effect.Type {
 			case EffectTypeNone:
 				w.Put(0, TableMessageRefBitsHere)
 			case EffectTypeBuff:
 				{
-					w.Put(128, TableMessageRefBitsHere)
+					w.Put(122, TableMessageRefBitsHere)
 					if !BuffSaveMessageBody(w, &value.Effect.Buff().Value) {
 						return false
 					}
 				}
 			case EffectTypeDebuff:
 				{
-					w.Put(129, TableMessageRefBitsHere)
+					w.Put(123, TableMessageRefBitsHere)
 					if !DebuffSaveMessageBody(w, &value.Effect.Debuff().Value) {
 						return false
 					}
@@ -1347,7 +1347,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
+			w.Put(32, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 32 {
 				return false
 			}
@@ -1393,7 +1393,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			return false
 		}
 		if value.IconLength > 0 {
-			w.Put(39, TableMessageRefBitsHere)
+			w.Put(33, TableMessageRefBitsHere)
 			if value.IconLength < 0 || value.IconLength > 16 {
 				return false
 			}
@@ -1406,49 +1406,49 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 	}
 	{
 		if value.Experience != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(34, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Experience), uint64(0))
 		}
 	}
 	{
 		if value.Tilt != 0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(35, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 2, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tilt), uint64(0))
 		}
 	}
 	{
 		if value.Heading != 0 {
-			w.Put(42, TableMessageRefBitsHere)
+			w.Put(36, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 3, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Heading), uint64(0))
 		}
 	}
 	{
 		if value.Timestamp != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(37, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Timestamp), uint64(0))
 		}
 	}
 	{
 		if value.Badge != 0 {
-			w.Put(44, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Badge), uint64(0))
 		}
 	}
 	{
 		if value.Port != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(39, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Port), uint64(0))
 		}
 	}
 	{
 		if value.Epoch != 0 {
-			w.Put(46, TableMessageRefBitsHere)
+			w.Put(40, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Epoch), uint64(0))
 		}
 	}
 	{
 		if math.Float64bits(value.Precision) != math.Float64bits(0.0) {
-			w.Put(47, TableMessageRefBitsHere)
+			w.Put(41, TableMessageRefBitsHere)
 			if value.Precision-value.Precision != 0 {
 				w.Over++
 			}
@@ -1467,7 +1467,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			}
 		}
 		if !allDefault {
-			w.Put(48, TableMessageRefBitsHere)
+			w.Put(42, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			for i := range int(4) {
 				if value.Ratings[i]-value.Ratings[i] != 0 {
@@ -1482,7 +1482,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 	}
 	{
 		if value.HasLoadout != false {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			if value.HasLoadout {
 				w.Put(1, 1)
 			} else {
@@ -1498,7 +1498,7 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(50, TableMessageRefBitsHere)
+			w.Put(44, TableMessageRefBitsHere)
 			if !LoadoutConfigSaveMessageBody(w, &value.Loadout) {
 				return false
 			}

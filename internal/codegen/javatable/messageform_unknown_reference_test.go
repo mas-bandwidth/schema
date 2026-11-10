@@ -25,7 +25,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // mutantMatchUnknownRef is the wire-fuzz mutant of match_full_message.bin that
@@ -44,7 +43,7 @@ func TestJavaFixMessageUnknownReferenceRefused(t *testing.T) {
 	u := loadUnitDir(t, root, "tables/backend")
 
 	v := &tablewire.Vocabulary{}
-	if err := v.AnnounceRead(ir.TableAnnouncement(u), &tabletext.Report{}); err != nil {
+	if err := v.AnnounceRead(tablewire.Announce(u), &tabletext.Report{}); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
 	mutant := mustHex(t, mutantMatchUnknownRef)

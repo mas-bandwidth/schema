@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -101,7 +102,7 @@ func TestMessageFormBatchJavaScript(t *testing.T) {
 		st := findTable(t, u, "TableMixed")
 		probe := messageCompressedFloatProbe(u, st)
 		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
-			"ann.bin": ir.TableAnnouncement(u),
+			"ann.bin": tablewire.Announce(u),
 		}, probe)
 		if err != nil {
 			t.Fatalf("compressed float: %v\n%s", err, out)
@@ -123,7 +124,7 @@ fixed table KeyedTeam
 		st := findTable(t, u, "KeyedTeam")
 		probe := messageKeyedArrayProbe(u, st)
 		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
-			"ann.bin": ir.TableAnnouncement(u),
+			"ann.bin": tablewire.Announce(u),
 		}, probe)
 		if err != nil {
 			t.Fatalf("keyed array: %v\n%s", err, out)
@@ -148,7 +149,7 @@ fixed table KeyedScore
 		st := findTable(t, u, "KeyedScore")
 		probe := messageByValueTypeProbe(u, st)
 		out, err := jsRunMessageProbe(t, node, u, map[string][]byte{
-			"ann.bin": ir.TableAnnouncement(u),
+			"ann.bin": tablewire.Announce(u),
 		}, probe)
 		if err != nil {
 			t.Fatalf("by-value type: %v\n%s", err, out)
@@ -352,7 +353,7 @@ const noCount = %[1]sLoadMessages(shortStorage, unannounced, threeBatch, noRepor
 if (noCount !== -1 || noReport.Verdict !== 1 || noReport.Reason !== "no_vocabulary") {
   fail("LoadMessages with no vocabulary: " + JSON.stringify(noReport));
 }
-`, st.Name, len(ir.TableVocabulary(u)))
+`, st.Name, len(tablewire.MessageVocabulary(u)))
 	b.WriteString(probeTail())
 	return b.String()
 }

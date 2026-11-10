@@ -25,6 +25,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -154,7 +155,7 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 		}},
 	}
 	refBits := ir.TableMessageRefBits(len(entries))
-	if refBits != 3 || ir.TableMessageRefBits(len(ir.TableVocabulary(u))) != 3 {
+	if refBits != 3 || ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))) != 3 {
 		t.Fatalf("refBits=%d, want 3", refBits)
 	}
 	ann := depthBoundaryAnnouncement(0x0102030405060708, ir.TableVocabularyBytes(entries))

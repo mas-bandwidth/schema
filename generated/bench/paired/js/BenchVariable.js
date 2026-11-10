@@ -401,7 +401,7 @@ function TableVariableJsonString(s) {
       const lo = s.charCodeAt(i + 1);
       if (lo >= 0xdc00 && lo <= 0xdfff) { out += s[i] + s[i + 1]; i++; continue; }
     }
-    if (c >= 0xd800 && c <= 0xdfff) { out += "�"; continue; }
+    if (c >= 0xd800 && c <= 0xdfff) { throw new RangeError("TableVariableNotText"); }
     switch (c) {
       case 0x22: out += '\\"'; break;
       case 0x5c: out += '\\\\'; break;
@@ -1449,10 +1449,11 @@ function TableVariableLoad(c, bytes, report, retain) {
   }
   const table = open.table;
   const v = c.make();
-  const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
-  const st = { missingBefore, good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
+  const raw = TableVariableNodeTableScan(bytes, table, open.end, report);
+  const st = { missingBefore, good: raw !== null, nodes: [], reached: new Set(), root: v, rootCodec: c, pending: [], maps: [], report: report };
   if (raw !== null) {
-    const place = c.place;
+    const place = c.variable ? c.place : { str: false, bytes: false, byType: new Map() };
+    const unplaced = [];
     for (const rec of raw) {
       if (rec.tid === TableStringBlobId && place.str) {
         // a text blob's content is refused on the terms a kind 12 payload is:
@@ -1471,9 +1472,21 @@ function TableVariableLoad(c, bytes, report, retain) {
         report.unknown++;
         if (retain !== null) { report.retainLost++; }
         st.nodes.push(null);
+        // A blob this root does not place is raw bytes, not a field body.
+        // Only an unplaced table record contributes pointer edges.
+        if (rec.tid === TableStringBlobId && !TableVariableUtf8Decode(rec.body).ok) { report.damaged = true; }
+        if (rec.tid !== TableStringBlobId && rec.tid !== TableBytesBlobId) { unplaced.push(rec.body); }
         continue;
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
+    }
+    // Edges are noted after every record is pushed: a pointer names a later
+    // record by index, and that index is not in the list until the scan ends.
+    for (const body of unplaced) {
+      if (!TableVariableNoteEdges(body, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+        break;
+      }
     }
     for (const n of st.nodes) {
       if (n === null || n.kind !== "t") { continue; }
@@ -1546,6 +1559,7 @@ function TableVariableResolve(st, report) {
       } else if (index - 2 >= st.nodes.length) {
         report.damaged = true;
       } else {
+        if (st.reached !== undefined) { st.reached.add(index - 2); }
         const n = st.nodes[index - 2];
         if (n !== null) {
           if (d.s === "sblob") {
@@ -1618,6 +1632,11 @@ function TableVariableResolve(st, report) {
     if (TableVariableCyclic(st.nodes.length + 1, from, to)) {
       report.damaged = true;
     }
+    if (st.reached !== undefined) {
+      for (let i = 0; i < st.nodes.length; i++) {
+        if (!st.reached.has(i)) { report.damaged = true; break; }
+      }
+    }
   }
 }
 
@@ -1668,6 +1687,196 @@ function TableVariableCyclic(count, from, to) {
 // skipped by its kind and counted unknown (and retained when the caller opted
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
+
+// AN UNPLACED RECORD STILL NAMES ITS EDGES (internal/tablewire/wirecheck.go
+// graph): the value is not built, and the unknown was counted once, but every
+// kind-17 index in the record body still reaches its target. A placed record
+// named only from here is not damage.
+function TableVariableNoteIndex(idx, st) {
+  if (idx === 0 || idx === 1) { return true; }
+  if (!Number.isSafeInteger(idx) || !st.good || idx - 2 < 0 || idx - 2 >= st.nodes.length) { return false; }
+  if (st.reached !== undefined) { st.reached.add(idx - 2); }
+  const n = st.nodes[idx - 2];
+  // A kind-17 index names its record wherever it sits: an unknown field, a
+  // map entry, an array element (internal/tablewire/wirecheck.go graph). A
+  // blob record named from two slots is the blob_shared refusal.
+  if (n !== null && (n.kind === "b" || n.kind === "s")) {
+    if (n.named) { st.report.sharedBlob++; } else { n.named = true; }
+  }
+  return true;
+}
+
+function TableVariableNoteEdges(body, table, st, report, depth) {
+  const sub = new TableVariableReader(body, 0, body.length);
+  let rode = null;
+  while (true) {
+    const ref = sub.leb();
+    if (sub.bad) { return false; }
+    if (ref === 0) { return sub.at === sub.end; }
+    if (ref > table.length || sub.at >= sub.end) { return false; }
+    if (rode === null) { rode = [ref]; }
+    else if (rode.includes(ref)) { return false; }
+    else { rode.push(ref); }
+    const id = table[ref - 1];
+    if (id === TableBuildVersionId || id === TableMessageVocabularyId || id === TableNodeTableId) { return false; }
+    if (sub.at >= sub.end) { return false; }
+    const kind = sub.u8();
+    if (!TableVariableNotePayload(sub, kind, table, st, report, depth)) { return false; }
+  }
+}
+
+function TableVariableNotePayload(sub, kind, table, st, report, depth) {
+  if (kind === 17) {
+    const idx = sub.leb();
+    if (sub.bad) { return false; }
+    return TableVariableNoteIndex(idx, st);
+  }
+  if (kind === 30) {
+    const ref = sub.leb();
+    if (sub.bad) { return false; }
+    return ref <= table.length;
+  }
+  if (kind === 15) {
+    const arm = sub.leb();
+    if (sub.bad) { return false; }
+    if (arm === 0) { return true; }
+    if (arm > table.length || sub.at >= sub.end) { return false; }
+    const ak = sub.u8();
+    const L = sub.leb();
+    if (sub.bad || sub.at + L > sub.end) { return false; }
+    const from = sub.at;
+    sub.at += L;
+    const structural = ak === 13 || ak === 14 || ak === 15 || ak === 16;
+    if (structural && depth >= 128) { return false; }
+    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, structural ? depth + 1 : depth);
+  }
+  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32 || kind === 33) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L > sub.end) { return false; }
+    const from = sub.at;
+    sub.at += L;
+    if ((kind === 13 || kind === 14 || kind === 16) && depth >= 128) { return false; }
+    const next = (kind === 13 || kind === 14 || kind === 16) ? depth + 1 : depth;
+    return TableVariableNoteContent(sub.b, from, sub.at, kind, table, st, report, next);
+  }
+  if (kind === 1) {
+    if (sub.at >= sub.end || sub.b[sub.at] > 1) { return false; }
+    sub.at += 1;
+    return true;
+  }
+  if (kind === 10 || kind === 11) {
+    const from = sub.at;
+    if (!TableVariableSkip(sub, kind)) { return false; }
+    if (!TableVariableRetainedFinite(sub.b, from, sub.at, kind)) {
+      if (!report.nonFiniteFloat) { report.nonFiniteFloat = "a float the wire carries"; }
+    }
+    return true;
+  }
+  return TableVariableSkip(sub, kind);
+}
+
+function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
+  if (kind === 13) { return TableVariableNoteEdges(b.subarray(from, to), table, st, report, depth); }
+  if (kind === 14) { return TableVariableNoteArray(new TableVariableReader(b, from, to), table, st, report, depth); }
+  if (kind === 16) { return TableVariableNoteKeyed(new TableVariableReader(b, from, to), table, st, report, depth); }
+  if (kind === 15 || kind === 17 || kind === 30) {
+    const inner = new TableVariableReader(b, from, to);
+    if (!TableVariableNotePayload(inner, kind, table, st, report, depth)) { return false; }
+    return inner.at === inner.end;
+  }
+  if (kind === 12) { return TableVariableUtf8Decode(b.subarray(from, to)).ok; }
+  if (kind === 33) {
+    if (((to - from) & 1) !== 0) { return false; }
+    return TableVariableWideDecode(b.subarray(from, to)) !== null;
+  }
+  if (kind === 31) { return true; }
+  if (kind === 32) { return from === to; }
+  const w = tableRetainWidth(kind);
+  if (w <= 0 || to - from !== w) { return false; }
+  if (kind === 1) { return b[from] <= 1; }
+  if (kind === 10 || kind === 11) {
+    if (!TableVariableRetainedFinite(b, from, to, kind)) {
+      if (!report.nonFiniteFloat) { report.nonFiniteFloat = "a float the wire carries"; }
+    }
+  }
+  return true;
+}
+
+function TableVariableNoteCount(count, report) {
+  if (!Number.isSafeInteger(count) || count > 0x7fffffff) {
+    report.refused = 1;
+    report.reason = "count_over_extent_cap";
+    return false;
+  }
+  return true;
+}
+
+function TableVariableNoteArray(inner, table, st, report, depth) {
+  if (inner.end - inner.at < 2) { return false; }
+  const ek = inner.u8();
+  const count = inner.leb();
+  if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
+  for (let i = 0; i < count; i++) {
+    if (!TableVariableNotePayload(inner, ek, table, st, report, depth)) { return false; }
+  }
+  return inner.at === inner.end;
+}
+
+function TableVariableNoteKeyed(inner, table, st, report, depth) {
+  if (inner.end - inner.at < 2) { return false; }
+  const ek = inner.u8();
+  const count = inner.leb();
+  if (inner.bad || !TableVariableNoteCount(count, report)) { return false; }
+  let seen = null;
+  for (let i = 0; i < count; i++) {
+    const key = inner.leb();
+    if (inner.bad || key === 0 || key > table.length) { return false; }
+    if (seen === null) { seen = [key]; }
+    else if (seen.includes(key)) { return false; }
+    else { seen.push(key); }
+    const L = inner.leb();
+    if (inner.bad || inner.at + L > inner.end) { return false; }
+    const from = inner.at;
+    inner.at += L;
+    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, depth)) { return false; }
+  }
+  return inner.at === inner.end;
+}
+
+function TableVariableCheckUnknown(b, from, to, kind, table, st) {
+  const sub = new TableVariableReader(b, from, to);
+  if (kind === 17) {
+    const idx = sub.leb();
+    if (sub.bad || sub.at !== to) { return false; }
+    return TableVariableNoteIndex(idx, st);
+  }
+  if (kind === 30) {
+    const ref = sub.leb();
+    return !sub.bad && sub.at === to && ref <= table.length;
+  }
+  if (kind === 13) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to) { return false; }
+    return TableVariableNoteEdges(b.subarray(sub.at, to), table, st, st.report, 1);
+  }
+  // An unknown union, array or keyed payload still names every pointer it
+  // carries (internal/tablewire/wirecheck.go graph). The field stays unknown.
+  if (kind === 14 || kind === 15 || kind === 16) {
+    const inner = new TableVariableReader(b, from, to);
+    if (!TableVariableNotePayload(inner, kind, table, st, st.report, 0)) { return false; }
+    return inner.at === to;
+  }
+  if (kind === 12 || kind === 33 || kind === 32) {
+    const L = sub.leb();
+    if (sub.bad || sub.at + L !== to) { return false; }
+    if (kind === 12) { return TableVariableUtf8Decode(b.subarray(sub.at, to)).ok; }
+    if (kind === 33) { return TableVariableWideDecode(b.subarray(sub.at, to)) !== null; }
+    return L === 0;
+  }
+  if (kind === 1) { return to - from === 1 && b[from] <= 1; }
+  return true;
+}
+
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
   const seen = c.required.length === 0 ? null : new Set();
   const missingBefore = report.missingRequired;
@@ -1684,7 +1893,12 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
     if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
     if (r.bad) { report.damaged = true; return false; }
-    if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
+    if (ref === 0) {
+      // Bytes after a body's terminator, inside the frame that holds it, are
+      // damage (internal/tablewire/wirecheck.go): no field claims them.
+      if (r.at !== r.end) { report.damaged = true; return false; }
+      return TableVariableRequireSeen(c, v, seen, report);
+    }
     if (ref > table.length) { report.damaged = true; return false; }
     if (rode === null) { rode = [ref]; } else if (rode.includes(ref)) { report.damaged = true; return false; } else { rode.push(ref); }
     if (r.at >= r.end) { report.damaged = true; return false; }
@@ -1694,28 +1908,30 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
     // and nowhere else (§3.3): in any body they are damaged
     if (id === TableBuildVersionId || id === TableMessageVocabularyId) { report.damaged = true; return false; }
     if (id === TableNodeTableId) {
-      // the node table rides in a VARIABLE root body and nowhere else (§3.1):
+      // the node table rides in a root body and nowhere else (§3.1):
       // a nested body naming it is damage; the root steps over it, the records
       // having been read first
       if (nested) { report.damaged = true; return false; }
-      if (c.variable) {
-        if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
-        continue;
-      }
+      if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
+      continue;
     }
     const fd = c.byId.get(id);
     if (fd === undefined) {
       report.unknown++;
       const from = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
+      if (!TableVariableCheckUnknown(r.b, from, r.at, kind, table, st)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+        return false;
+      }
+      // AN UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.5, §6.6):
+      // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
+      // read, named <Table>.0x<id>
+      if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
+        if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
+        continue;
+      }
       if (retain !== null) {
-        // A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (§3.3, §6.6):
-        // kind 10's or 11's raw bits, and a NaN or an infinity refuses the
-        // read, named <Table>.0x<id>
-        if (!TableVariableRetainedFinite(r.b, from, r.at, kind)) {
-          if (!report.nonFiniteFloat) { report.nonFiniteFloat = c.name + ".0x" + id.toString(16).padStart(16, "0"); }
-          continue;
-        }
         if (path === null) { report.retainLost++; }
         else { TableVariableRetainCapture(r.b, from, r.at, id, kind, table, retain, path, report); }
       }
@@ -1734,7 +1950,12 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       // the escape kind 31 and the payload-free kind 32 at a named position take
       // this same rule and no other (§3)
       report.mismatch++;
+      const mismatchFrom = r.at;
       if (!TableVariableSkip(r, kind)) { report.damaged = true; return false; }
+      if (!TableVariableCheckUnknown(r.b, mismatchFrom, r.at, kind, table, st)) { report.damaged = true; return false; }
+      if (!TableVariableRetainedFinite(r.b, mismatchFrom, r.at, kind)) {
+        if (!report.nonFiniteFloat) { report.nonFiniteFloat = fd.nf || (c.name + "." + fd.n); }
+      }
       continue;
     }
     const placed = TableVariableReadField(fd, r, table, v, report, st, retain, path);
@@ -1957,7 +2178,8 @@ function TableVariableReadArray(fd, r, table, v, report, st, retain, path) {
 // arrayBody). A count spelled wide enough therefore leaves the cursor past the
 // end it was framed by, and a bounded array's excess is oor and counts even
 // as that body covers no elements; read is bounded by the body and a count the
-// body cannot cover keeps the decoded prefix.
+// body cannot cover keeps the decoded prefix. Bytes left inside L after the
+// elements are damage.
 function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, path) {
   const L = end - r.at;
   if (L >= 2) {
@@ -1986,10 +2208,11 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     const subEnd = Math.max(r.at, end);
     const sub = new TableVariableReader(r.b, subStart, subEnd);
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
+    let filled = true;
     if (fd.s === "bytes") {
       const out = [];
       for (let i = 0; i < keep; i++) {
-        if (sub.at >= sub.end) { report.damaged = true; break; }
+        if (sub.at >= sub.end) { report.damaged = true; filled = false; break; }
         out.push(sub.u8());
       }
       v[fd.n] = new Uint8Array(out);
@@ -1999,22 +2222,28 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
       }
       const out = v[fd.n];
       for (let i = 0; i < keep; i++) {
-        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
+        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
       }
     } else {
       const out = [];
       let total = 0;
       for (let i = 0; i < keep; i++) {
         const before = report.oor;
-        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { break; }
+        if (!TableVariableReadElement(fd, sub, table, out, report, st, retain, path, ek, i)) { filled = false; break; }
         if (fd.tl) {
           if (report.oor !== before && !report.oorField) { report.oorField = fd.field; }
           total += TableVariableTextListLength(out[i]);
-          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); break; }
+          if (fd.total > 0 && total > fd.total) { out.length = i; TableVariableTextListClamp(fd, report); filled = false; break; }
         }
       }
       v[fd.n] = out;
     }
+    // A full count that leaves bytes in L is damage (decode.go arrayBody).
+    // A count past the bound stops early; the unread tail is that refusal, already counted oor.
+    if (filled && keep === count && sub.at !== sub.end) { report.damaged = true; return false; }
+  } else {
+    report.damaged = true;
+    return false;
   }
   if (fd.opt && v[fd.n] === null) { v[fd.n] = TableVariableFieldDefault(fd); }
   return true;
@@ -2721,12 +2950,12 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
   }
 }
 
-// ONE MAP (mapField): ascending against the last entry that LANDED, a repeated
-// key last-wins and counted repeated, a descending key stops the map with what
-// it has and flags damaged, a key past its bound drops its entry and counts
-// oor, and a key kind the reader does not declare empties the map for one
-// kind_mismatch. A pointer inside an entry resolves after the whole load, so
-// the Map is built again then (TableVariableResolve).
+// ONE MAP (mapField): ascending against the last entry that LANDED. A key
+// that does not ascend strictly is damage (decode.go mapField). A key past
+// its bound drops its entry and counts oor, and a key kind the reader does
+// not declare empties the map for one kind_mismatch. A pointer inside an
+// entry resolves after the whole load, so the Map is built again then
+// (TableVariableResolve).
 function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
@@ -2747,7 +2976,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
-    let last = null, landed = false, widened = false;
+    let last = null, landed = false, widened = false, kindBad = false;
     for (let i = 0; i < count; i++) {
       const elen = sub.leb();
       if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
@@ -2755,25 +2984,33 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       sub.at += elen;
       const scan = TableVariableMapKeyScan(fd, r.b, eat, eat + elen, table);
       if (scan.widened && !widened) { widened = true; report.widened++; }
-      if (scan.kindBad) { report.mismatch++; ents.length = 0; break; }
+      if (scan.kindBad) { kindBad = true; report.mismatch++; ents.length = 0; break; }
       if (!scan.ok) { report.damaged = true; break; }
       if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.oor++; continue; }
       let order = -1;
       if (landed) { order = TableVariableKeyOrder(fd, last, scan.key); }
-      if (order > 0) { report.damaged = true; break; }
+      if (order >= 0) { report.damaged = true; break; }
       const entry = fd.c.make();
-      if (path !== null) { path.push({ o: fd.o, i: order === 0 ? ents.length - 1 : ents.length }); }
-      TableVariableBodyRead(fd.c, new TableVariableReader(r.b, eat, eat + elen), table, entry, report, st, true, retain, path);
+      if (path !== null) { path.push({ o: fd.o, i: ents.length }); }
+      const er = new TableVariableReader(r.b, eat, eat + elen);
+      TableVariableBodyRead(fd.c, er, table, entry, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
       if (TableVariableCountRefused(report)) { return false; }
+      // Bytes after a nested body's terminator inside its L are damage (decode.go nested).
+      if (er.at !== er.end) { report.damaged = true; }
       entry.key = scan.key;
-      if (order === 0) { ents[ents.length - 1] = entry; report.repeated++; continue; }
       ents.push(entry);
       last = scan.key;
       landed = true;
     }
+    // Bytes left inside a map's L after its entries are damage (decode.go mapField).
+    if (!kindBad && sub.at !== sub.end) { report.damaged = true; }
     for (const e of ents) { m.set(e.key, e.value); }
     if (st !== null && st.maps !== undefined) { st.maps.push({ m, ents }); }
+  } else {
+    report.damaged = true;
+    r.at = end;
+    return false;
   }
   r.at = end;
   return true;
@@ -2786,7 +3023,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   const L = r.leb();
   if (r.bad || r.at + L > r.end) { report.damaged = true; return false; }
   const end = r.at + L;
-  if (L < 2) { r.at = end; return true; }
+  if (L < 2) { report.damaged = true; r.at = end; return false; }
   // the same parent-buffer header as a map's and an array's (decode.go keyed,
   // subTo; docs/SPEC-TABLES.md §3): a count spelled past the body leaves the
   // entry span empty rather than negative
@@ -2799,15 +3036,20 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
     report.widened++;
   }
   const arr = v[fd.n];
+  let rode = null;
   for (let i = 0; i < count; i++) {
     const key = sub.leb();
     if (sub.bad || key === 0 || key > table.length) { report.damaged = true; break; }
+    if (rode === null) { rode = [key]; } else if (rode.includes(key)) { report.damaged = true; break; } else { rode.push(key); }
     const elen = sub.leb();
     if (sub.bad || sub.at + elen > sub.end) { report.damaged = true; break; }
     const slot = fd.slotById.get(table[key - 1]);
     if (slot === undefined) {
       report.unknown++;
       if (retain !== null) { report.retainLost++; }
+      if (!TableVariableNoteContent(r.b, sub.at, sub.at + elen, ek, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+      }
       sub.at += elen;
       continue;
     }
@@ -2833,8 +3075,12 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (x !== undefined) { arr[slot] = x; }
       }
     }
+    // Bytes left inside a keyed slot after its element are damage (decode.go keyed).
+    if (er.at !== er.end) { report.damaged = true; }
     sub.at += elen;
   }
+  // Bytes left inside a keyed array's L after its slots are damage (decode.go keyed).
+  if (sub.at !== sub.end) { report.damaged = true; }
   r.at = end;
   return true;
 }
@@ -2862,6 +3108,12 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
   if (arm === undefined) {
     report.unknown++;
     if (retain !== null) { report.retainLost++; }
+    // An arm this root does not declare still names the pointers in its
+    // payload (internal/tablewire/wirecheck.go graph). The unknown was
+    // counted; a record those pointers reach is not damage.
+    if (!TableVariableNoteContent(r.b, r.at, end, kind, table, st, report, 0)) {
+      if (!TableVariableCountRefused(report)) { report.damaged = true; }
+    }
   } else if (kind !== arm.k) {
     if (!arm.void && !arm.body && TableVariableWidens(kind, arm.k)) {
       // WIDENED AT AN ARM: decoded at its own width, and an L that is not that
@@ -2874,6 +3126,9 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
       }
     } else {
       report.mismatch++;
+      if (!TableVariableNoteContent(r.b, r.at, end, kind, table, st, report, 0)) {
+        if (!TableVariableCountRefused(report)) { report.damaged = true; }
+      }
     }
   } else if (arm.body) {
     const inst = arm.c.make();
@@ -2939,6 +3194,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
     case "union": {
       const x = TableVariableUnionRead(f.u, r, table, report, st, retain, path, o);
       if (x === undefined) { return null; }
+      if (r.at !== r.end) { report.damaged = true; return null; }
       holder.value = x;
       return holder;
     }
@@ -3051,16 +3307,90 @@ function TableVariableFormatG(v, prec) {
   return (neg ? "-" : "") + s;
 }
 
+// the float32 a decimal token names, correctly rounded from the token
+// itself; x is the token's correctly-rounded double (tabletext placeFloat,
+// strconv.ParseFloat(tok, 32); docs/SPEC-TABLES.md §16.2). Number() then
+// Math.fround() rounds twice, and the two roundings part company exactly where
+// the double lands ON a float32 rounding midpoint, so a tie is broken by the
+// exact decimal, compared with the double in integer arithmetic.
+function TableVariableF32OfToken(tok, x) {
+  const f = Math.fround(x);
+  if (f === x || Number.isNaN(x)) { return f; }
+  const b = new DataView(new ArrayBuffer(8));
+  const step = (v, up) => {
+    if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+    if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+    if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+    b.setFloat32(0, v, true);
+    const u = b.getUint32(0, true);
+    b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
+    return b.getFloat32(0, true);
+  };
+  const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+  const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
+  if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
+  // the tie: the sign of (token - x), both exact rationals
+  const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+  if (m === null) { return f; }
+  const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+  if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+  let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+  b.setFloat64(0, x, true);
+  const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+  const ex = (hiw >>> 20) & 0x7ff;
+  let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+  let e2 = ex === 0 ? -1074 : ex - 1075;
+  if (ex !== 0) { mant |= 1n << 52n; }
+  let right = x < 0 ? -mant : mant;
+  if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+  if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+  if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
+  return left > right ? hi : lo;
+}
+
 // the SHORTEST precision that reads back as the same value at the field's own
 // width; a non-finite value has no JSON spelling and the writer refuses (null)
 function TableVariableFloatText(v, single) {
   if (!Number.isFinite(v)) { return null; }
+  const f32OfToken = (tok, x) => {
+    const f = Math.fround(x);
+    if (f === x || Number.isNaN(x)) { return f; }
+    const b = new DataView(new ArrayBuffer(8));
+    const step = (val, up) => {
+      if (val === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
+      if (val === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
+      if (val === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
+      b.setFloat32(0, val, true);
+      const u = b.getUint32(0, true);
+      b.setUint32(0, (val > 0) === up ? u + 1 : u - 1, true);
+      return b.getFloat32(0, true);
+    };
+    const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
+    const at = (val) => (val === Infinity ? 2 ** 128 : val === -Infinity ? -(2 ** 128) : val);
+    if (at(lo) + at(hi) !== 2 * x) { return f; }
+    const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
+    if (m === null) { return f; }
+    const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
+    if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
+    let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
+    b.setFloat64(0, x, true);
+    const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
+    const ex = (hiw >>> 20) & 0x7ff;
+    let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
+    let e2 = ex === 0 ? -1074 : ex - 1075;
+    if (ex !== 0) { mant |= 1n << 52n; }
+    let right = x < 0 ? -mant : mant;
+    if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
+    if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
+    if (left === right) { return f; }
+    return left > right ? hi : lo;
+  };
   const low = single ? 6 : 15, high = single ? 9 : 17;
   for (let digits = low; ; digits++) {
     const text = TableVariableFormatG(v, digits);
     if (digits >= high) { return text; }
     const back = Number(text);
-    if (single ? Math.fround(back) === v : back === v) { return text; }
+    if (single ? f32OfToken(text, back) === v : back === v) { return text; }
   }
 }
 
@@ -3096,6 +3426,9 @@ function TableVariableToJson(c, v) {
   TableVariableEntryCache = new Map();
   try {
     return TableVariableToJsonWalk(c, v);
+  } catch (e) {
+    if (e instanceof RangeError && e.message === "TableVariableNotText") { return null; }
+    throw e;
   } finally {
     TableVariableEntryCache = outer;
   }
@@ -3172,7 +3505,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       return true;
     case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
     // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
-    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    // tabletext writeWString), and an unpaired surrogate refuses the write
     case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
@@ -3831,42 +4164,6 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       holder[key] = false;
       return true;
     case "float": {
-      // the float32 a decimal token names, correctly rounded from the token
-      // itself; x is the token's correctly-rounded double
-      const f32OfToken = (tok, x) => {
-        const f = Math.fround(x);
-        if (f === x || Number.isNaN(x)) { return f; }
-        const b = new DataView(new ArrayBuffer(8));
-        const step = (v, up) => {
-          if (v === Infinity) { return up ? Infinity : 3.4028234663852886e38; }
-          if (v === -Infinity) { return up ? -3.4028234663852886e38 : -Infinity; }
-          if (v === 0) { return up ? 1.401298464324817e-45 : -1.401298464324817e-45; }
-          b.setFloat32(0, v, true);
-          const u = b.getUint32(0, true);
-          b.setUint32(0, (v > 0) === up ? u + 1 : u - 1, true);
-          return b.getFloat32(0, true);
-        };
-        const lo = f < x ? f : step(f, false), hi = f < x ? step(f, true) : f;
-        const at = (v) => (v === Infinity ? 2 ** 128 : v === -Infinity ? -(2 ** 128) : v);
-        if (at(lo) + at(hi) !== 2 * x) { return f; } // not a tie: one rounding is the right one
-        // the tie: the sign of (token - x), both exact rationals
-        const m = /^(-?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/.exec(tok);
-        if (m === null) { return f; }
-        const e10 = Number(m[4] ?? "0") - (m[3] ?? "").length;
-        if (!Number.isFinite(e10) || Math.abs(e10) > 100000) { return f; }
-        let left = BigInt((m[2] || "0") + (m[3] ?? "")) * (m[1] === "-" ? -1n : 1n);
-        b.setFloat64(0, x, true);
-        const hiw = b.getUint32(4, true), low = b.getUint32(0, true);
-        const ex = (hiw >>> 20) & 0x7ff;
-        let mant = (BigInt(hiw & 0xfffff) << 32n) | BigInt(low);
-        let e2 = ex === 0 ? -1074 : ex - 1075;
-        if (ex !== 0) { mant |= 1n << 52n; }
-        let right = x < 0 ? -mant : mant;
-        if (e10 >= 0) { left *= 10n ** BigInt(e10); } else { right *= 10n ** BigInt(-e10); }
-        if (e2 >= 0) { right <<= BigInt(e2); } else { left <<= BigInt(-e2); }
-        if (left === right) { return f; } // exactly on the midpoint: ties-to-even, which fround is
-        return left > right ? hi : lo;
-      };
       const n = inp.number();
       if (n === null) { inp.bad = true; return false; }
       let x = Number(n.tok);
@@ -3885,7 +4182,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         // a float32 rounding midpoint — the band between FLT_MAX and the
         // midpoint above it among them — so a tie is broken by the exact
         // decimal, compared with the double in integer arithmetic.
-        x = ranged ? Math.fround(x) : f32OfToken(n.tok, x);
+        x = ranged ? Math.fround(x) : TableVariableF32OfToken(n.tok, x);
         if (!Number.isFinite(x)) { report.mismatch++; return true; }
       }
       holder[key] = x;

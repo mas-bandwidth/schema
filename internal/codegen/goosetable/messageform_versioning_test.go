@@ -99,7 +99,7 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 					t.Fatalf("the writer refused %s", refused)
 				}
 			}
-			announce := ir.TableAnnouncement(writer)
+			announce := tablewire.Announce(writer)
 
 			// THE REFERENCE: the reader's model, the writer's announcement
 			var vocab tablewire.Vocabulary
@@ -195,7 +195,7 @@ func goEncodeAcross(t *testing.T, older, newer *ir.Unit, root string, batch []by
 	t.Helper()
 	var vocab tablewire.Vocabulary
 	var arep tabletext.Report
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(older), &arep); err != nil {
+	if err := vocab.AnnounceRead(tablewire.Announce(older), &arep); err != nil {
 		t.Fatalf("the Go reference refuses the announcement: %v", err)
 	}
 	m := tabletext.NewModel(newer)

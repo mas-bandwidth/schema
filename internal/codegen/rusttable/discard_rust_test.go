@@ -96,7 +96,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
 	u := unitFrom(t, rustDiscardUnit)
 	fixed := rustDiscardWire(t, u, "Root", `{"a":5,"inner":{"ok":true,"n":3},"b":9}`)
 	variable := rustDiscardWire(t, u, "Graph", `{"a":5,"inner":{"ok":true,"n":3},"b":9}`)
-	announce := ir.TableAnnouncement(u)
+	announce := tablewire.Announce(u)
 	body := fmt.Sprintf(`
     const FIXED: [u8; %d] = [%s];
     const VARIABLE: [u8; %d] = [%s];

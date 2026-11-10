@@ -37,7 +37,7 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 const finiteSchema = `package probe
@@ -529,7 +529,7 @@ func runFiniteProbe(t *testing.T, sabotage *finiteSabotage) map[string]string {
 			}
 		}
 	}
-	files["Driver.java"] = []byte(strings.ReplaceAll(finiteDriver, "ANNOUNCE", hex.EncodeToString(ir.TableAnnouncement(u))))
+	files["Driver.java"] = []byte(strings.ReplaceAll(finiteDriver, "ANNOUNCE", hex.EncodeToString(tablewire.Announce(u))))
 	dir := t.TempDir()
 	var sources []string
 	for name, data := range files {

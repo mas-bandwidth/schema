@@ -988,7 +988,7 @@ func TestKeyedFormWireCodeMatchesUnkeyedInTree(t *testing.T) {
 			km := tabletext.NewModel(keyedUnit)
 			vocab := &tablewire.Vocabulary{}
 			var arep tabletext.Report
-			if err := vocab.AnnounceRead(ir.TableAnnouncement(unkeyedUnit), &arep); err != nil {
+			if err := vocab.AnnounceRead(tablewire.Announce(unkeyedUnit), &arep); err != nil {
 				t.Fatalf("%s: the Go oracle refused the unkeyed announcement: %v", rel, err)
 			}
 			rb := newKeyedRebind(t, unkeyedUnit, keyedUnit)

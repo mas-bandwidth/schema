@@ -1,7 +1,7 @@
 // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2, in moo. The
 // announcement is a COMPILE-TIME CONSTANT of the unit, so every
 // <Base>Table.moo module carries the unit's announcement bytes (the bytes
-// ir.TableAnnouncement writes and the manifest's `connection` rows pin), the
+// tablewire.Announce writes and the manifest's `connection` rows pin), the
 // reference width, the entry count and the build version; and beside every
 // descriptor the module registers, the VOCABULARY SLOT of each field (or
 // arm), in declared order. The walks themselves are the runtime's
@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -26,15 +27,15 @@ func init() {
 // identity (ir.TableVocabularyEntry.Key): slot k is entry k, 1-based.
 func messageSlots(u *ir.Unit) map[string]int {
 	out := map[string]int{}
-	for i, e := range ir.TableVocabulary(u) {
+	for i, e := range tablewire.MessageVocabulary(u) {
 		out[e.Key()] = i + 1
 	}
 	return out
 }
 
 func emitMessageForm(g *Gen) error {
-	ann := ir.TableAnnouncement(g.Unit)
-	vocabulary := ir.TableVocabulary(g.Unit)
+	ann := tablewire.Announce(g.Unit)
+	vocabulary := tablewire.MessageVocabulary(g.Unit)
 	ms := g.Require("table_message")
 	g.Pf("-- THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the unit's announcement, an\n")
 	g.Pf("-- ordinary form-1 file carrying the build version and the vocabulary, a\n")

@@ -190,6 +190,14 @@ func WriteNarrowFifteen(stream *serialize.WriteStream, value *NarrowFifteen) err
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
+	for _, unit := range value.Text[:value.TextLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.Text[:value.TextLength])) {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	return stream.Err()
 }
