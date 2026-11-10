@@ -10,7 +10,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// announcementWith frames one vocabulary the way ir.TableAnnouncement frames
+// announcementWith frames one vocabulary the way tablewire.Announce frames
 // the unit's own (docs/SPEC-TABLES.md §3.3): a form-1 file whose body is the
 // build version under the reserved id at kind 9 and the vocabulary bytes
 // under the reserved id at kind 14 over element kind 6. The test needs it to

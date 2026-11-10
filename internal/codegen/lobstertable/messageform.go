@@ -2,9 +2,9 @@
 // THE CARD MAP): the facts each table module registers with
 // runtime/message.lobster. The walk lives once in the runtime; what is emitted
 // here are the compile-time constants the reference emits as literals — the
-// unit's announcement and build version (ir.TableAnnouncement), the roots that
+// unit's announcement and build version (tablewire.Announce), the roots that
 // may ride (a FIXED table's, §3.3), and the SLOT in the unit's vocabulary
-// (ir.TableVocabularySlots) of every field and every union arm a fixed table
+// (tablewire.MessageVocabularySlots) of every field and every union arm a fixed table
 // reaches, so a writer never looks a slot up by shape. A variable table
 // registers nothing: the message form is fixed tables only.
 package lobstertable

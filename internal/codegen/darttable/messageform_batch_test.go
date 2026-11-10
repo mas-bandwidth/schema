@@ -274,12 +274,22 @@ fixed table Root {
 	// refusal "newer_form", and "message_form_as_file" from the file reader.
 	t.Run("batch_damage", func(t *testing.T) {
 		t.Parallel()
+		// Other's five fields fill the announcement to E = 8 entries, a
+		// four-bit reference (docs/SPEC-TABLES.md §3.3: the message closure)
 		u := unitFrom(t, `package probe
 
 fixed table Root {
     a int32
     b bool
     c uint8
+}
+
+fixed table Other {
+    d bool
+    e bool
+    f bool
+    g bool
+    h bool
 }
 `)
 		out, err := runBatchProbe(t, u, "Root", batchDamageBody)
@@ -622,12 +632,12 @@ const nestedDefaultElidesBody = `
 // TestMessageFormSkipDepthDart is the message_skip_depth boundary on the
 // generated Dart reader (docs/SPEC-TABLES.md, limit value 128). The typed body
 // reads references at tableMessageRefBits, and skip reads vocabulary.refBits,
-// so the probe sets those equal. Root's eight fields are the unit's eight
-// slots, so its own reference width is four bits (docs/SPEC-TABLES.md §3.3:
-// the announcement is the message closure); the probe's vocabularies name no
-// field of Root, and the unknown entry rides at slot 8. Verdicts are the
-// spec's. The above-limit rows are complete zero-padded batches whose only
-// fault is depth past 128.
+// so the probe sets those equal. Slots 1..3 are Root's fields and Other's
+// five fill the unit's vocabulary to eight entries, so its reference width is
+// four bits (docs/SPEC-TABLES.md §3.3: the announcement is the message
+// closure); the unknown entry rides at slot 8. Verdicts are the spec's. The
+// above-limit rows are complete zero-padded batches whose only fault is depth
+// past 128.
 func TestMessageFormSkipDepthDart(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
@@ -636,6 +646,9 @@ fixed table Root {
     a int32
     b bool
     c uint8
+}
+
+fixed table Other {
     d bool
     e bool
     f bool
@@ -650,7 +663,7 @@ fixed table Root {
 }
 
 const dartSkipDepthBody = `
-  // Slot 8 is the probe vocabulary's unknown entry, not a field of this root.
+  // Slot 8 is Other's last field, not a field of this root (a, b, c are 1..3).
   // A reference width below 4 cannot spell it.
   check(h.tableMessageRefBits >= 4, 'skip depth slot needs four reference bits, got ${h.tableMessageRefBits}');
   final width = h.tableMessageRefBits;

@@ -1,7 +1,7 @@
 // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3), form byte 2, in moo. The
 // announcement is a COMPILE-TIME CONSTANT of the unit, so every
 // <Base>Table.moo module carries the unit's announcement bytes (the bytes
-// ir.TableAnnouncement writes and the manifest's `connection` rows pin), the
+// tablewire.Announce writes and the manifest's `connection` rows pin), the
 // reference width, the entry count and the build version; and beside every
 // descriptor the module registers, the VOCABULARY SLOT of each field (or
 // arm), in declared order. The walks themselves are the runtime's

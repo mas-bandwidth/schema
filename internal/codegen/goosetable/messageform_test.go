@@ -32,7 +32,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
@@ -404,58 +403,15 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 	return r
 }
 
-// gooseGoDecode is the Go reference's read of a batch under the unit's
-// announcement: the values the bytes carry.
-var gooseEncodeMu sync.Mutex
-
-// gooseEncodeMessages encodes insts under tablewire.MessageVocabulary(m.Unit), the
-// untrimmed vocabulary that tablewire.Announce(m.Unit) and the Goose leg
-// announce.
+// gooseEncodeMessages is the Go reference's encode, under the message
+// closure's vocabulary that tablewire.Announce(m.Unit) and the Goose leg both
+// announce (docs/SPEC-TABLES.md §3.3).
 func gooseEncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, error) {
-	if len(insts) == 0 {
-		return tablewire.EncodeMessages(m, insts)
-	}
-	gooseEncodeMu.Lock()
-	defer gooseEncodeMu.Unlock()
-	u := m.Unit
-	variants := []string{"bytes", "string", "wstring", "__goose_node_tail__"}
-	for _, t := range u.Tables {
-		variants = append(variants, t.WireName())
-	}
-	var target *ir.Field
-	for _, t := range u.Tables {
-		if !t.FixedDeclared {
-			continue
-		}
-		for _, f := range t.Fields {
-			if f.KeyEnum == "" {
-				target = f
-				break
-			}
-		}
-		if target != nil {
-			break
-		}
-	}
-	if target != nil {
-		origEnum := target.KeyEnumRef
-		target.KeyEnumRef = &ir.Enum{Variants: variants}
-		defer func() { target.KeyEnumRef = origEnum }()
-	}
-	origHook := ir.TableWireIdHook
-	ir.TableWireIdHook = func(name string) (uint64, bool) {
-		if name == "__goose_node_tail__" {
-			return ir.TableNodeWireId, true
-		}
-		if origHook != nil {
-			return origHook(name)
-		}
-		return 0, false
-	}
-	defer func() { ir.TableWireIdHook = origHook }()
 	return tablewire.EncodeMessages(m, insts)
 }
 
+// gooseGoDecode is the Go reference's read of a batch under the unit's
+// announcement: the values the bytes carry.
 func gooseGoDecode(t *testing.T, u *ir.Unit, root string, announce, batch []byte, bodies int) []*tabletext.Instance {
 	t.Helper()
 	m := tabletext.NewModel(u)

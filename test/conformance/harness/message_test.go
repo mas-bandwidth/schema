@@ -655,11 +655,17 @@ func TestTheFiveAnswers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// body 1 spans bits 8..51 of the stream; body 2's reference begins at
-		// bit 52: plant 63, the largest six bits spell and thirty past E
+		// body 1 is client_build's reference and 32 bits, then its
+		// terminator, after the 8-bit batch count; body 2's reference begins
+		// there: plant the largest the width spells, which is past E
+		r := vocabulary.RefBits()
+		top := uint64(1)<<uint(r) - 1
+		if top <= uint64(len(vocabulary.Entries())) {
+			t.Fatalf("%d entries fill every %d-bit reference: no slot past them to plant", len(vocabulary.Entries()), r)
+		}
 		damaged := append([]byte(nil), batch...)
-		setBits(damaged, 1, 52, 6, 63)
-		pinned := wireBytes(t, "testdata/wire/tables/backend_batch_damaged_second_message.bin")
+		setBits(damaged, 1, 8+r+32+r, r, top)
+		pinned := pinnedWire(t, "testdata/wire/tables/backend_batch_damaged_second_message.bin", damaged)
 		if string(pinned) != string(damaged) {
 			t.Errorf("the damaged batch differs from the pinned one at byte %d", firstDifference(pinned, damaged))
 		}
@@ -760,10 +766,15 @@ func TestDamageIsTerminal(t *testing.T) {
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
 	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
-	// the last byte carries the body's last bits and then pad to the byte;
-	// the high bit is pad
-	if message[len(message)-1]&0x80 != 0 {
-		t.Fatal("store_full's last byte ends on its body's last bit: no pad to spoil")
+	// the last byte carries the body's last bits and then pad to the byte, so
+	// its high bit is pad: the body's last reference (its terminator) ends
+	// short of the byte
+	spots := tablewire.MessageSpots(model, model.Lookup("StorePurchase"), message, vocabulary)
+	if len(spots) == 0 {
+		t.Fatal("store_full carries no reference")
+	}
+	if end := spots[len(spots)-1].Off + spots[len(spots)-1].Width; end%8 == 0 || (end+7)/8 != len(message)-1 {
+		t.Fatalf("store_full's body ends at bit %d of %d bytes after the form byte: no pad in its last byte to spoil", end, len(message)-1)
 	}
 	badPad := append([]byte(nil), message...)
 	badPad[len(badPad)-1] |= 0x80

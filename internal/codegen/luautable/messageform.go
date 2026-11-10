@@ -22,7 +22,7 @@ func init() {
 
 // emitMessageForm writes the unit's announcement, its length, the reference
 // width and the entry count into every table module (docs/SPEC-TABLES.md §3.3,
-// "The announcement"). The bytes are ir.TableAnnouncement, the same bytes every
+// "The announcement"). The bytes are tablewire.Announce, the same bytes every
 // other backend emits and the manifest's `connection` rows pin.
 func emitMessageForm(g *luau.Gen) error {
 	ann := tablewire.Announce(g.Unit)

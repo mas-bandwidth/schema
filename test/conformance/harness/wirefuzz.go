@@ -72,7 +72,7 @@ type wireRoot struct {
 	// message is the MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the mutants for
 	// this root are form 2 wires and their references resolve against the
 	// CONNECTION's table rather than a trailer of their own. `vocabulary` is
-	// that table — the unit's whole vocabulary, which is a pure function of
+	// that table — the unit's message vocabulary, which is a pure function of
 	// the build version, so both sides derive it and neither carries it.
 	message    bool
 	vocabulary *tablewire.Vocabulary

@@ -10,7 +10,7 @@ package darttable
 // a unit at run time.
 //
 // The wire is the C++ reference's, pinned by testdata/conformance/tables/
-// MANIFEST.txt's `connection` rows and rebuilt here by ir.TableAnnouncement.
+// MANIFEST.txt's `connection` rows and rebuilt here by tablewire.Announce.
 // The surface and its names follow the C# leg (internal/codegen/cstable/
 // message.go), which is the reference for this form: TableVocabulary, Announce
 // and AnnounceMeasure (this card), AnnounceRead (this card), then
@@ -126,7 +126,7 @@ class TableMessageEntry {
 }
 
 /// THE REPORT the announcement read answers on. A refusal is terminal: it
-/// sets 'refused' and 'reason' and nothing else moves.
+/// sets 'refused' and 'reason' and clears the counts.
 class TableReport {
   bool refused = false;
   int unknown = 0;

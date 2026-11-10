@@ -116,7 +116,7 @@ func (e *msgEmit) fail(format string, args ...any) {
 // vocabulary is the package module's constant.
 func (e *msgEmit) slot(entry ir.TableVocabularyEntry) string {
 	if e.slots[entry.Key()] == 0 {
-		e.fail("goose message form: the unit's vocabulary names no slot for id %016x at kind %d, and the vocabulary is the closure's whole entry set (docs/SPEC-TABLES.md §3.3)", entry.Id, entry.Kind)
+		e.fail("goose message form: the unit's vocabulary names no slot for id %016x at kind %d, and the vocabulary is the message closure's whole entry set (docs/SPEC-TABLES.md §3.3)", entry.Id, entry.Kind)
 	}
 	return msgSlotName(entry)
 }

@@ -383,17 +383,18 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		inputs["backend_ann"] = mustRead(t, filepath.Join(root, connections["backend_conn"].file))
 		inputs["damaged"] = mustRead(t, filepath.Join(root, "testdata/wire/tables/backend_batch_damaged_second_message.bin"))
 		vocab := tablewire.MessageVocabulary(units["backenddemo"])
-		nodeSlot := 0
-		for i, e := range vocab {
-			if e.Id == ir.TableNodeWireId {
-				nodeSlot = i + 1
-			}
-		}
-		inputs["reserved_node_batch"] = messageBatchRefs(ir.TableMessageRefBits(len(vocab)), uint64(nodeSlot), 0)
-		nestedAnn, nestedCount := announcementWithPeerEntry(units["backenddemo"], ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
-		inputs["reserved_nested_ann"] = nestedAnn
+		// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3); a peer whose
+		// build still announced one carries it once, after its own entries,
+		// and a body reference to it is damage
+		nodeEntries := append(append([]ir.TableVocabularyEntry(nil), vocab...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})
+		nodeSlot := len(nodeEntries)
+		inputs["reserved_node_ann"] = announcementWithEntries(units["backenddemo"], nodeEntries)
+		inputs["reserved_node_batch"] = messageBatchRefs(ir.TableMessageRefBits(len(nodeEntries)), uint64(nodeSlot), 0)
+		nestedEntries := append(append([]ir.TableVocabularyEntry(nil), nodeEntries...), ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
+		nestedCount := len(nestedEntries)
+		inputs["reserved_nested_ann"] = announcementWithEntries(units["backenddemo"], nestedEntries)
 		inputs["reserved_nested_batch"] = messageBatchRefs(ir.TableMessageRefBits(nestedCount), uint64(nestedCount), uint64(nodeSlot), 0, 0)
-		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["backend_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.bodyDamaged+"\n");}
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_node_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)
 		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_nested_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_nested_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_nested:ok\n");else print("reserved_nested:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)

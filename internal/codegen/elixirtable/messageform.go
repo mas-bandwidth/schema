@@ -50,7 +50,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  A message is a bitpacked body under a vocabulary the endpoint announces once,\n")
 	b.WriteString("  before the first body and never again. The announcement is an ordinary\n")
 	b.WriteString("  form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's\n")
-	b.WriteString("  whole VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
+	b.WriteString("  MESSAGE VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
 	b.WriteString("  compile-time constant of the unit, so `announce/0` and `announce_measure/0`\n")
 	b.WriteString("  are the constant and its length and not a walk.\n\n")
 	b.WriteString("  `announce_read/2` resolves the vocabulary ONCE into the caller's\n")

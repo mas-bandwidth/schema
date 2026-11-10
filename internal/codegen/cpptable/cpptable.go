@@ -126,6 +126,9 @@ type tableGen struct {
 	// entry takes, keyed by the triple (§3.3), so a generated field header
 	// carries its reference as a literal and a save does no lookup at all.
 	slots map[string]uint64
+	// msgClosure is the MESSAGE CLOSURE (tablewire.MessageClosure), derived
+	// on first use: only its members carry a message body codec.
+	msgClosure map[string]bool
 	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
 	// each id takes in ir.TableWireIds, which is the set TableIds's capacity
 	// counts. A generated field header carries its ordinal as a literal beside

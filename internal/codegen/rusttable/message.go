@@ -6,7 +6,7 @@
 // AnnounceMeasure as a constant byte array and its length rather than as a
 // walk" (§3.3). The bytes are the C++ reference's, pinned by
 // testdata/conformance/tables/MANIFEST.txt's `connection` rows and rebuilt
-// here by ir.TableAnnouncement.
+// here by tablewire.Announce.
 //
 // The surface and its names follow the C# leg (internal/codegen/cstable/
 // message.go): TableVocabulary, Announce, AnnounceMeasure and AnnounceRead
@@ -75,7 +75,7 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	b.WriteString("/// vocabulary field's own length before an entry is touched.\n")
 	b.WriteString("pub const TABLE_MESSAGE_MAX_BYTES: usize = 64 * 1024;\n\n")
 
-	b.WriteString("/// THE ANNOUNCEMENT, byte for byte: the unit's whole vocabulary as a\n")
+	b.WriteString("/// THE ANNOUNCEMENT, byte for byte: the unit's message vocabulary as a\n")
 	b.WriteString("/// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body\n")
 	b.WriteString("/// carries the build version at kind 9 and the vocabulary at kind 14 over\n")
 	b.WriteString("/// element kind 6, and whose trailer is those two reserved ids.\n")
