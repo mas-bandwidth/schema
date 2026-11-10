@@ -660,6 +660,66 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	return fmt.Sprintf("%s.extend_from_slice(&%s.to_le_bytes());", dst, rustCast(x, scalarRust(f), t))
 }
 
+// scalarSaveRefusal is the debug-only half of the write contract
+// (docs/SPEC.md §5.1, rows 1–2): a ranged integer off its min/max, or a
+// bits(N) value wider than its declared N bits. It returns the assert to emit
+// before a scalar field is written; "" when the field cannot hold such a
+// value (a bool or a float assert its own way, and a bits(N) whose storage
+// is exactly N bits broad cannot exceed them).
+func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
+	if lo, hi, ok := intRange(f); ok {
+		// only an end the storage can actually hold is asserted: a bound that
+		// sits on the storage's own limit cannot fire and would be an absurd
+		// comparison (deny-by-default clippy), exactly as clampStmt elides it
+		minBits, maxBits, _ := storageLimits(f)
+		var conds []string
+		if f.IntMin.Cmp(minBits) > 0 {
+			conds = append(conds, fmt.Sprintf("%s >= %s", x, lo))
+		}
+		if f.IntMax.Cmp(maxBits) < 0 {
+			conds = append(conds, fmt.Sprintf("%s <= %s", x, hi))
+		}
+		if len(conds) == 0 {
+			return ""
+		}
+		return fmt.Sprintf("%sdebug_assert!(%s, \"%s out of range [%s, %s]\");\n", ind, strings.Join(conds, " && "), f.Name, lo, hi)
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < int64(rustTypeWidth(scalarRust(f))) {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		return fmt.Sprintf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, x, maxv, f.Name, f.Type.Width)
+	}
+	return ""
+}
+
+// storageLimits is the few representable signed or unsigned value of the
+// field's Rust storage type.
+func storageLimits(f *ir.Field) (min, max *big.Int, bits uint) {
+	bits = uint(rustTypeWidth(scalarRust(f)))
+	one := new(big.Int).Lsh(big.NewInt(1), bits)
+	if strings.HasPrefix(scalarRust(f), "i") {
+		half := new(big.Int).Rsh(one, 1)
+		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1)), bits
+	}
+	return big.NewInt(0), new(big.Int).Sub(one, big.NewInt(1)), bits
+}
+
+// rustTypeWidth is the bit width of one scalar's Rust storage type.
+func rustTypeWidth(t string) int {
+	switch t {
+	case "u8", "i8":
+		return 8
+	case "u16", "i16":
+		return 16
+	case "u32", "i32":
+		return 32
+	case "u64", "i64":
+		return 64
+	case "u128", "i128":
+		return 128
+	}
+	return 0
+}
+
 // rustCast renders `(x as to)`, or `(x)` when x's storage type `from` is
 // already `to` (clippy's unnecessary_cast).
 func rustCast(x, from, to string) string {
@@ -725,6 +785,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+			// a count past the declared maximum is refused in EVERY build
+			// (docs/SPEC.md §5.1, row 3): it guards the storage the writer
+			// indexes, not a value, so the debug-only allowance does not reach it
+			fmt.Fprintf(b, "%sif %s.len() > %d { ids.refused = Some(String::from(\"invalid_value: count past max\")); }\n", inner, x, f.ArrayBound)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
@@ -754,6 +818,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "body", ordinal, ein) })
 		default:
 			fmt.Fprintf(b, "%slet _ = j;\n", ein)
+			b.WriteString(g.scalarSaveRefusal(f, "(*e)", ein))
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
@@ -806,6 +871,11 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	case vString:
 		if f.Type.TextUnbounded() {
 			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, x, x)
+		} else {
+			// a bounded string(N) refuses a length past N and a zero byte in
+			// the debug build (docs/SPEC.md §5.1, rows 4 and 8)
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, x, rustTextBound(f), f.Name, rustTextBound(f))
+			fmt.Fprintf(b, "%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
 		}
 		// at its default, empty when none is declared (§3)
 		guard := "!" + x + ".is_empty()"
@@ -849,6 +919,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		g.emitUnionSave(b, f, ordinal, x, ind)
 	default:
 		// a field holding its declared default is not written at all (§3)
+		b.WriteString(g.scalarSaveRefusal(f, x, ind))
 		guard := scalarDiffers(f, x, scalarDefault(f))
 		if f.Type.Kind == ir.TBool {
 			guard = x
