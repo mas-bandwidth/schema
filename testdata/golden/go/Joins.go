@@ -358,7 +358,7 @@ func WriteArmAlign(stream *serialize.WriteStream, value *ArmAlign) error {
 				return serialize.ErrValueOutOfRange
 			}
 		}
-		if !utf8.ValidString(string(value.S[:value.SLength])) {
+		if !utf8.Valid(value.S[:value.SLength]) {
 			return serialize.ErrValueOutOfRange
 		}
 		stream.SerializeBytes(value.S[:value.SLength])
@@ -825,7 +825,7 @@ func WriteRegainAfterAlign(stream *serialize.WriteStream, value *RegainAfterAlig
 			return serialize.ErrValueOutOfRange
 		}
 	}
-	if !utf8.ValidString(string(value.S[:value.SLength])) {
+	if !utf8.Valid(value.S[:value.SLength]) {
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.S[:value.SLength])

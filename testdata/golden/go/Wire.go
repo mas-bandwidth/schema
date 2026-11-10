@@ -952,7 +952,7 @@ func WriteChat(stream *serialize.WriteStream, value *Chat) error {
 			return serialize.ErrValueOutOfRange
 		}
 	}
-	if !utf8.ValidString(string(value.Text[:value.TextLength])) {
+	if !utf8.Valid(value.Text[:value.TextLength]) {
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
@@ -1196,7 +1196,7 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 			return serialize.ErrValueOutOfRange
 		}
 	}
-	if !utf8.ValidString(string(value.Text[:value.TextLength])) {
+	if !utf8.Valid(value.Text[:value.TextLength]) {
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])

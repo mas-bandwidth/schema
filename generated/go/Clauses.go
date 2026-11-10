@@ -987,7 +987,7 @@ func WriteStrs(stream *serialize.WriteStream, value *Strs) error {
 			return serialize.ErrValueOutOfRange
 		}
 	}
-	if !utf8.ValidString(string(value.S[:value.SLength])) {
+	if !utf8.Valid(value.S[:value.SLength]) {
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.S[:value.SLength])

@@ -1299,7 +1299,7 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 			return serialize.ErrValueOutOfRange
 		}
 	}
-	if !utf8.ValidString(string(value.PlayerName[:value.PlayerNameLength])) {
+	if !utf8.Valid(value.PlayerName[:value.PlayerNameLength]) {
 		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.PlayerName[:value.PlayerNameLength])
