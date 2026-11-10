@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 // census is 1 however many elements carry it — `4` is the divergence this row
 // exists to catch, and the exact defect rust, cpp and cs itself once carried.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

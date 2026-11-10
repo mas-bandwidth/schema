@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -24,8 +25,8 @@ import (
 // the emitter already knows. Announce is a copy and AnnounceMeasure is a
 // constant.
 func tableMessageForm(u *ir.Unit) string {
-	announcement := ir.TableAnnouncement(u)
-	entries := ir.TableVocabulary(u)
+	announcement := tablewire.Announce(u)
+	entries := tablewire.MessageVocabulary(u)
 
 	var b strings.Builder
 	fmt.Fprintf(&b, `// THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): a batch of BITPACKED bodies

@@ -947,6 +947,14 @@ func WriteChat(stream *serialize.WriteStream, value *Chat) error {
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
 	}
+	for _, unit := range value.Text[:value.TextLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.Text[:value.TextLength])) {
+		return serialize.ErrValueOutOfRange
+	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	return stream.Err()
 }
@@ -1182,6 +1190,14 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	stream.SerializeBits(&offsetValue3, 8)
 	if stream.Err() != nil { // the length guards the slice
 		return stream.Err()
+	}
+	for _, unit := range value.Text[:value.TextLength] {
+		if unit == 0 {
+			return serialize.ErrValueOutOfRange
+		}
+	}
+	if !utf8.ValidString(string(value.Text[:value.TextLength])) {
+		return serialize.ErrValueOutOfRange
 	}
 	stream.SerializeBytes(value.Text[:value.TextLength])
 	return stream.Err()

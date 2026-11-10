@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -60,6 +61,8 @@ func graphdemoUnit(t *testing.T) *ir.Unit {
 // Scene reference #42 mutant exactly as the Go oracle does: the whole load
 // refused, with the strict reason wire_damaged on both sides.
 func TestWireReportSceneReferenceMalformedDart(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	dartBin := dartBinary(t)
 	mutant, err := hex.DecodeString(sceneRef42MutantHex)

@@ -95,7 +95,7 @@ func discardMessages(t *testing.T, u *ir.Unit) []byte {
 	}
 	data = append(data, 0x01)
 	vocab := &tablewire.Vocabulary{}
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &tabletext.Report{}); err != nil {
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &tabletext.Report{}); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
 	var rep tabletext.Report

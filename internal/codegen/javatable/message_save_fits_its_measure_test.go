@@ -21,7 +21,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
@@ -65,7 +64,7 @@ func TestJavaMessageSaveFitsItsMeasure(t *testing.T) {
 			t.Parallel()
 			u := loadUnitDir(t, root, uc.dir)
 			m := tabletext.NewModel(u)
-			announce := ir.TableAnnouncement(u)
+			announce := tablewire.Announce(u)
 
 			var body strings.Builder
 			var ids []string

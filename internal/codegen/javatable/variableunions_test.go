@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,8 @@ import (
 // (docs/SPEC-TABLES.md §2.6 union arms). The tables/stream Frame arm `tag` is
 // the case that regressed; the generated Value must compile.
 func TestVariableUnionArmNamedTagCompiles(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	files, err := Generate(unitFromDir(t, "../../../tables/stream"))
 	if err != nil {

@@ -36,6 +36,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -253,6 +254,8 @@ func messageLoadUnit(t *testing.T, root string, paths []string) *ir.Unit {
 // `file` is the absolute path of the announcement under test; the forged
 // goldens live beside it in testdata/wire/tables.
 func runMessageProbe(t *testing.T, u *ir.Unit, file, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	elixirBin := elixirBinary(t)
 	tables, err := Generate(u)

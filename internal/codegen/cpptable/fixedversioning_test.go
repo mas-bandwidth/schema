@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -91,6 +92,8 @@ func cppFixedRootName(t *testing.T, u *ir.Unit) string {
 // GenerateLineage with a nil lock, exactly the way the compiler driver merges
 // the two.
 func cppRunVersionProbe(t *testing.T, row, file, body, forge string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	oldData, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+row+".schema"))

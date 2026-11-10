@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 )
 
@@ -20,6 +21,8 @@ import (
 // test/java-view/View.java walks, and `make tables-java-view` runs the same
 // comparison over every VIEW_CORPUS unit.
 func TestUnitViewRegistryJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	javac, javaBin := javaToolsRequired(t)
 	printer, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "java-view", "View.java"))

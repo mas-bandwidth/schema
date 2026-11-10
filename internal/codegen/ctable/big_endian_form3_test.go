@@ -236,7 +236,7 @@ int main(void)
     CHECK(loaded.label_length == 2 && loaded.label[0] == 'h' && loaded.label[1] == 'i' && loaded.ok == 1);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }
 
 // TestCBigEndianFormThreeReadNegativeControl plants the pre-fix defect in

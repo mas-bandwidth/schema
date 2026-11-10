@@ -32,6 +32,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // cppT07Run generates `src` under base, compiles a C++ probe whose main() is
@@ -39,6 +40,8 @@ import (
 // static `buf` and the generated header already in scope: body is the statements
 // of main.
 func cppT07Run(t *testing.T, src, base, body string, extra ...string) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	sp := filepath.Join(dir, base+".schema")

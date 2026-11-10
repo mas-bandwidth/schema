@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,8 @@ import (
 // ZERO default passes whether the prefill ran or not, on every leg, so no other
 // row here can carry this claim.
 func TestFixedVersioningPrefillWrites(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

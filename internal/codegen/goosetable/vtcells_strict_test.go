@@ -282,7 +282,7 @@ func buildGooseVtWireVectors(t *testing.T, u *ir.Unit) ([]gooseVtWireVec, []byte
 
 func buildGooseVtMessageVectors(t *testing.T, u *ir.Unit) (announce []byte, validBatch, dupFieldBatch, dupKeyBatch, damagedUnknownBatch []byte) {
 	t.Helper()
-	announce = ir.TableAnnouncement(u)
+	announce = tablewire.Announce(u)
 	var vocab tablewire.Vocabulary
 	var arep tabletext.Report
 	if err := vocab.AnnounceRead(announce, &arep); err != nil {

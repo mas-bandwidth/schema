@@ -3,6 +3,7 @@ package squirreltable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -12,13 +13,13 @@ func init() {
 
 func messageModule(m *Module) {
 	m.Runtime("message")
-	ann := ir.TableAnnouncement(m.Unit)
+	ann := tablewire.Announce(m.Unit)
 	m.Printf("// The announcement is the unit's compile-time form-1 file (section 3.3).\n")
 	m.Printf("_M.TableMessageBatchMax <- 256;\n")
-	m.Printf("_M.TableMessageRefBitsHere <- %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(m.Unit))))
-	m.Printf("_M.TableMessageEntriesHere <- %d;\n", len(ir.TableVocabulary(m.Unit)))
+	m.Printf("_M.TableMessageRefBitsHere <- %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(m.Unit))))
+	m.Printf("_M.TableMessageEntriesHere <- %d;\n", len(tablewire.MessageVocabulary(m.Unit)))
 	m.Printf("_M.TableMessageIds <- [")
-	for _, e := range ir.TableVocabulary(m.Unit) {
+	for _, e := range tablewire.MessageVocabulary(m.Unit) {
 		m.Printf("%s,", squirrel.HexLit(e.Id))
 	}
 	m.Printf("];\n")

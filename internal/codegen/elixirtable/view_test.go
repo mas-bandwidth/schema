@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/viewlisting"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -36,6 +37,8 @@ func loadDirUnit(t *testing.T, dir string) *ir.Unit {
 // (make/elixir.mk VIEW_ELIXIR_REGISTRY_ONLY) are listed from UnitView alone.
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
 func TestUnitViewDescriptorsElixir(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	elixirBin := elixirBinary(t)

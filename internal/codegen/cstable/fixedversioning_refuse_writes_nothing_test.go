@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 // still selected. Verdict: n == -1, no_layout by name, malformed false, every
 // counter zero, and a destination poisoned to 0x5A stays 0x5A in every field.
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

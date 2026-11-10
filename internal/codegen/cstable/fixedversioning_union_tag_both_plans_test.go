@@ -3,6 +3,7 @@ package cstable
 import (
 	"bytes"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,8 @@ import (
 // what its own plan does. clamped is asserted == an exact number, never >= 1:
 // a looser read is the thing this row exists to catch.
 func TestFixedVersioningUnionTagBothPlans(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

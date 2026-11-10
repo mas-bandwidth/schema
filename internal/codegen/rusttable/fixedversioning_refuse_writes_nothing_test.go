@@ -2,6 +2,7 @@ package rusttable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,8 @@ import (
 // changes no name, so a `w >= 1` check would pass the read this row exists to catch.
 
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := versionCorpus(t)
 
 	tests := fmt.Sprintf(`

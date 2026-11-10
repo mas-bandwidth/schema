@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -213,6 +214,8 @@ func patchCpp(t *testing.T, files map[string][]byte, old, new string) {
 // program's combined output and its error, so a caller can require a green run
 // or require a red one on a named line.
 func runCppGeneratedEdited(t *testing.T, schema, mainSource string, edit func(map[string][]byte)) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := cppUnitFrom(t, schema)
 	files, err := cpp.Generate(u)

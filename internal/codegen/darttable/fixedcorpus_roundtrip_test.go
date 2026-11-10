@@ -35,6 +35,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -459,6 +460,8 @@ func TestFixedFloat32CellsStoreBitsNotDoubles(t *testing.T) {
 // element is refused both ways (docs/SPEC-TABLES.md §3.3): the save writes
 // nothing and the load lands nothing, naming the field.
 func TestFixedFloat32ArrayWordViewsPreserveBits(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	u := unitFrom(t, "package probe\nfixed table Root { samples [3]float32 }\n")
 	files, err := dart.Generate(u)

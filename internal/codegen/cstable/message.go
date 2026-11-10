@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -16,7 +17,7 @@ func (g *tableGen) emitMessages() {
 // Unit-specific announcement bytes live beside region metadata; the shared
 // table runtime stays byte-identical when another source file joins the unit.
 func (g *tableGen) emitMessageVocabulary() {
-	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(ir.TableAnnouncement(g.unit)))
+	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(tablewire.Announce(g.unit)))
 	g.pf("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n\n")
 }
 
@@ -86,7 +87,7 @@ func (g *tableGen) emitMessageSurface(st *ir.Struct) {
 }
 
 func messageSlot(u *ir.Unit, f *ir.Field) string {
-	columns := fmt.Sprintf(", MessageSlot = %d", ir.TableVocabularySlots(u)[ir.TableFieldEntry(f).Key()])
+	columns := fmt.Sprintf(", MessageSlot = %d", tablewire.MessageVocabularySlots(u)[ir.TableFieldEntry(f).Key()])
 	lo, hi, ok := ir.TableRawRange(f)
 	if f.Type.Kind == ir.TBits {
 		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)), true

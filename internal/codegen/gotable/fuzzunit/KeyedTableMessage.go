@@ -19,7 +19,7 @@ import (
 func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
-			w.Put(98, TableMessageRefBitsHere)
+			w.Put(92, TableMessageRefBitsHere)
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
 				w.Over++
 			}
@@ -31,7 +31,7 @@ func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 			return false
 		}
 		if value.BannerLength > 0 {
-			w.Put(99, TableMessageRefBitsHere)
+			w.Put(93, TableMessageRefBitsHere)
 			if value.BannerLength < 0 || value.BannerLength > 16 {
 				return false
 			}
@@ -498,7 +498,7 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
-			w.Put(100, TableMessageRefBitsHere)
+			w.Put(94, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
 				w.Over++
 			}
@@ -510,7 +510,7 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
-			w.Put(101, TableMessageRefBitsHere)
+			w.Put(95, TableMessageRefBitsHere)
 			if value.Cooldown-value.Cooldown != 0 {
 				w.Over++
 			}
@@ -523,7 +523,7 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	{
 		if value.GunnerPresent {
 			if true {
-				w.Put(97, TableMessageRefBitsHere)
+				w.Put(91, TableMessageRefBitsHere)
 				if !GunnerConfigSaveMessageBody(w, &value.Gunner) {
 					return false
 				}
@@ -1473,7 +1473,7 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 			}
 		}
 		if pairs > 0 {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(88, TableMessageRefBitsHere)
 			pairs := uint64(0)
 			for i := range value.PerTeam {
 				if value.PerTeam[i] != 0 {

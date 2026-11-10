@@ -4101,8 +4101,10 @@ namespace Benchtable
                 if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 int whole = WireCheck(root.Buffer, ids, false, out _);
-                if (whole == WireCountCap) { reason = "count_over_extent_cap"; return -1; }
                 if (whole == WireDamaged) { return -1; }
+                // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+                // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+                if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
                 if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
                 long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
@@ -6004,6 +6006,10 @@ namespace Benchtable
             // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
             // WRITER's element width and DstSize the READER's.
             public const byte FlatWiden = 8;
+            // A PRESENCE BYTE OR A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): the
+            // fixed form refuses any other value, as the variable form does. Copy
+            // would land a forged byte as truth.
+            public const byte BoolByte = 9;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
@@ -7104,6 +7110,13 @@ namespace Benchtable
                         case Flat:
                             {
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                                break;
+                            }
+                        case BoolByte:
+                            {
+                                ulong raw = src[(int)p.Src];
+                                if (raw > 1) { return "wire_damaged"; }
+                                slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                                 break;
                             }
                         case FlatWiden:
@@ -9256,6 +9269,13 @@ namespace Benchtable
                             else { TableEntityFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            TableEntityFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             TableEntityFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -9423,8 +9443,8 @@ namespace Benchtable
             new TableFixedEntry(36u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(40u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(41u, 11u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(49u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(49u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
         });
 
         private static readonly byte[] TableEntityFixedLayout0 = new byte[] {
@@ -9833,6 +9853,13 @@ namespace Benchtable
                                 TableStatFixedSetWide(dst, p.Dst, new UInt128(hi, lo));
                             }
                             else { TableStatFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
+                            break;
+                        }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            TableStatFixedSetRaw(dst, p.Dst, raw, report);
                             break;
                         }
                     case TableFixedWire.Flat:
@@ -11452,6 +11479,13 @@ namespace Benchtable
                             else { TableMixedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            TableMixedFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             TableMixedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -11630,8 +11664,8 @@ namespace Benchtable
             new TableFixedEntry(94u, 20u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(98u, 21u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(99u, 22u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(107u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(108u, 24u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(107u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(108u, 24u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(109u, 25u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(113u, 26u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(117u, 27u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11644,8 +11678,8 @@ namespace Benchtable
             new TableFixedEntry(145u, 34u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(149u, 35u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(150u, 36u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(158u, 37u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(159u, 38u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(158u, 37u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(159u, 38u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(160u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(164u, 40u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(168u, 41u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11658,8 +11692,8 @@ namespace Benchtable
             new TableFixedEntry(196u, 48u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(200u, 49u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(201u, 50u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(209u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(210u, 52u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(209u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(210u, 52u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(211u, 53u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(215u, 54u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(219u, 55u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11672,8 +11706,8 @@ namespace Benchtable
             new TableFixedEntry(247u, 62u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(251u, 63u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(252u, 64u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(260u, 65u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(261u, 66u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(260u, 65u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(261u, 66u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(262u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(266u, 68u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(270u, 69u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11686,8 +11720,8 @@ namespace Benchtable
             new TableFixedEntry(298u, 76u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(302u, 77u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(303u, 78u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(311u, 79u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(312u, 80u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(311u, 79u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(312u, 80u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(313u, 81u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(317u, 82u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(321u, 83u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11700,8 +11734,8 @@ namespace Benchtable
             new TableFixedEntry(349u, 90u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(353u, 91u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(354u, 92u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(362u, 93u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(363u, 94u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(362u, 93u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(363u, 94u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(364u, 95u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(368u, 96u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(372u, 97u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11714,8 +11748,8 @@ namespace Benchtable
             new TableFixedEntry(400u, 104u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(404u, 105u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(405u, 106u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(413u, 107u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(414u, 108u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(413u, 107u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(414u, 108u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(415u, 109u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(419u, 110u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(423u, 111u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11728,8 +11762,8 @@ namespace Benchtable
             new TableFixedEntry(451u, 118u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(455u, 119u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(456u, 120u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(464u, 121u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(465u, 122u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(464u, 121u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
+            new TableFixedEntry(465u, 122u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(466u, 123u, 80u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0, 1),
             new TableFixedEntry(470u, 124u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(474u, 125u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
@@ -11904,13 +11938,13 @@ namespace Benchtable
             new TableFixedEntry(1199u, 304u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1207u, 305u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1211u, 306u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
-            new TableFixedEntry(1215u, 307u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(1215u, 307u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.BoolByte, 0, 0, 0, 0, 1),
             new TableFixedEntry(1216u, 308u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1220u, 309u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(1111u, 285u, 4u, 0u, 1110u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(1115u, 286u, 4u, 0u, 1110u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
             new TableFixedEntry(1119u, 287u, 4u, 0u, 1110u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
-            new TableFixedEntry(1123u, 288u, 1u, 0u, 1110u, TableFixedWire.Copy, 1, 0, 0, 0, 1),
+            new TableFixedEntry(1123u, 288u, 1u, 0u, 1110u, TableFixedWire.BoolByte, 1, 0, 0, 0, 1),
             new TableFixedEntry(1111u, 289u, 4u, 0u, 1110u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(1115u, 290u, 4u, 0u, 1110u, TableFixedWire.Copy, 2, 0, 0, 0, 1),
             new TableFixedEntry(1111u, 291u, 4u, 0u, 1110u, TableFixedWire.Copy, 3, 0, 0, 0, 1),

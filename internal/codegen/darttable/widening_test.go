@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -449,6 +450,8 @@ func engineLine(t *testing.T, m *tabletext.Model, st *ir.Struct, wire []byte, fi
 }
 
 func runProbe(t *testing.T, dart, dir string, args ...string) []string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cmd := exec.Command(dart, append([]string{"--enable-asserts", "probe.dart"}, args...)...)
 	cmd.Dir = dir

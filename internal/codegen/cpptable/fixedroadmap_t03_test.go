@@ -28,6 +28,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -83,6 +84,8 @@ func t03Has(t *testing.T, src, want, what string) {
 // t03RunCapability generates a unit, compiles a probe against the fixed header
 // ALONE (the fixed form takes no serialize dependency) and answers its stdout.
 func t03RunCapability(t *testing.T, u *ir.Unit, probe string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := cpp.Generate(u)
 	if err != nil {

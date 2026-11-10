@@ -3,6 +3,7 @@ package rusttable
 import (
 	"bytes"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 // that lands None silently reads the file, which this row exists to catch.
 
 func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := versionCorpus(t)
 	oldFile := filepath.Join(corpus, "old_enum_append.bin")
 	raw, err := os.ReadFile(oldFile)

@@ -1,6 +1,7 @@
 package memceiling
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"strings"
@@ -38,6 +39,8 @@ func init() {
 // TestStartKillsADescendantPastTheCeiling: a child that grows without bound
 // is killed once it passes a 256 MiB ceiling, and the kill is reported.
 func TestStartKillsADescendantPastTheCeiling(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), "MEMCEILING_CHILD=resident")
 	var mu sync.Mutex
@@ -57,6 +60,8 @@ func TestStartKillsADescendantPastTheCeiling(t *testing.T) {
 // TestHeapPanicsPastTheCeiling: Heap ends a process whose allocation passes
 // its ceiling, with the memceiling message.
 func TestHeapPanicsPastTheCeiling(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), "MEMCEILING_CHILD=heap")
 	out, err := cmd.CombinedOutput()

@@ -93,6 +93,8 @@ func TestFixedNestedDefaultCheckIsTyped(t *testing.T) {
 // Dart probe writes the same value through the Dart fixed library, so the two
 // emitters are compared directly.
 func TestNestedDefaultMessageBytesMatchGoEmitter(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	bin := nestedDefaultDartBinary(t)
 
@@ -188,6 +190,8 @@ void main() {
 // test can say why: an absent SDK is a SKIP by name, and under
 // SCHEMA_REQUIRE_CORPUS (every make leg sets it) it is a FAILURE by name.
 func nestedDefaultDartBinary(t *testing.T) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if env := os.Getenv("DART"); env != "" {
 		return env
@@ -213,6 +217,8 @@ func nestedDefaultDartBinary(t *testing.T) string {
 // names the same value the Dart probe builds, so the comparison is between the
 // two emitters rather than between Dart and a constant.
 func goNestedDefaultMessageBytes(t *testing.T, u *ir.Unit) []byte {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {

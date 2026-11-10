@@ -12,6 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -69,7 +70,7 @@ func announcementWithEntries(u *ir.Unit, entries []ir.TableVocabularyEntry) []by
 	return out
 }
 func announcementWithPeerEntry(u *ir.Unit, entry ir.TableVocabularyEntry) ([]byte, int) {
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	if len(entries) > 0 && entries[len(entries)-1].Id == ^uint64(0) {
 		entries = append(entries[:len(entries)-1], append([]ir.TableVocabularyEntry{entry}, entries[len(entries)-1:]...)...)
 	} else {
@@ -78,7 +79,7 @@ func announcementWithPeerEntry(u *ir.Unit, entry ir.TableVocabularyEntry) ([]byt
 	return announcementWithEntries(u, entries), len(entries)
 }
 func announcementWithChangedEntry(u *ir.Unit, target, replacement ir.TableVocabularyEntry) []byte {
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	found := false
 	for i := range entries {
 		if entries[i].Id == target.Id {
@@ -381,18 +382,19 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 	if units["backenddemo"] != nil {
 		inputs["backend_ann"] = mustRead(t, filepath.Join(root, connections["backend_conn"].file))
 		inputs["damaged"] = mustRead(t, filepath.Join(root, "testdata/wire/tables/backend_batch_damaged_second_message.bin"))
-		vocab := ir.TableVocabulary(units["backenddemo"])
-		nodeSlot := 0
-		for i, e := range vocab {
-			if e.Id == ir.TableNodeWireId {
-				nodeSlot = i + 1
-			}
-		}
-		inputs["reserved_node_batch"] = messageBatchRefs(ir.TableMessageRefBits(len(vocab)), uint64(nodeSlot), 0)
-		nestedAnn, nestedCount := announcementWithPeerEntry(units["backenddemo"], ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
-		inputs["reserved_nested_ann"] = nestedAnn
+		vocab := tablewire.MessageVocabulary(units["backenddemo"])
+		// THE MESSAGE CLOSURE ANNOUNCES NO NODE-TABLE ID (§3.3); a peer whose
+		// build still announced one carries it once, after its own entries,
+		// and a body reference to it is damage
+		nodeEntries := append(append([]ir.TableVocabularyEntry(nil), vocab...), ir.TableVocabularyEntry{Id: ir.TableNodeWireId})
+		nodeSlot := len(nodeEntries)
+		inputs["reserved_node_ann"] = announcementWithEntries(units["backenddemo"], nodeEntries)
+		inputs["reserved_node_batch"] = messageBatchRefs(ir.TableMessageRefBits(len(nodeEntries)), uint64(nodeSlot), 0)
+		nestedEntries := append(append([]ir.TableVocabularyEntry(nil), nodeEntries...), ir.TableVocabularyEntry{Id: 0x334567890abcdef1, Kind: ir.TableKindTable})
+		nestedCount := len(nestedEntries)
+		inputs["reserved_nested_ann"] = announcementWithEntries(units["backenddemo"], nestedEntries)
 		inputs["reserved_nested_batch"] = messageBatchRefs(ir.TableMessageRefBits(nestedCount), uint64(nestedCount), uint64(nodeSlot), 0, 0)
-		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["backend_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.bodyDamaged+"\n");}
+		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_node_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_node_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_node:ok\n");else print("reserved_node:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)
 		script.WriteString(`{local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables");local v={};local ar={};T.AnnounceRead(v,I["reserved_nested_ann"],ar);local out=[T.LoginRequest()];local rr={};local n=T.LoginRequestLoadMessages(out,v,I["reserved_nested_batch"],rr);if(n==0&&rr.bodyDamaged)print("reserved_nested:ok\n");else print("reserved_nested:fail:"+n+":"+rr.bodyDamaged+"\n");}
 `)
@@ -444,13 +446,13 @@ func runSquirrelMessages(t *testing.T, root string, units map[string]*ir.Unit, c
 		peerSKU := sku
 		peerSKU.Shape.Max = 40
 		skuSlot := 0
-		for i, e := range ir.TableVocabulary(units["backenddemo"]) {
+		for i, e := range tablewire.MessageVocabulary(units["backenddemo"]) {
 			if e.Id == sku.Id {
 				skuSlot = i + 1
 			}
 		}
 		inputs["wide_string_ann"] = announcementWithChangedEntry(units["backenddemo"], sku, peerSKU)
-		inputs["wide_string_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(len(ir.TableVocabulary(units["backenddemo"]))), uint64(skuSlot), strings.Repeat("x", 33), 40)
+		inputs["wide_string_batch"] = messageBatchWithUnknownString(ir.TableMessageRefBits(len(tablewire.MessageVocabulary(units["backenddemo"]))), uint64(skuSlot), strings.Repeat("x", 33), 40)
 		script.WriteString(`{ local T=dofile("backenddemo/schema_module.nut",true).require("BackenddemoTables"); local v={}; local ar={}; T.AnnounceRead(v,I["wide_string_ann"],ar); local out=[T.StorePurchase()]; local rr={}; local n=T.StorePurchaseLoadMessages(out,v,I["wide_string_batch"],rr); if(n==-1 && rr.refused && rr.reason=="length_over_bound" && !rr.bodyDamaged && out[0].Sku=="") print("wide_string_refused:ok\n"); else print("wide_string_refused:fail:"+n+":"+rr.reason+":"+rr.bodyDamaged+"\n"); }
 `)
 		script.WriteString("{ local T=dofile(\"backenddemo/schema_module.nut\",true).require(\"BackenddemoTables\"); local v={}; local ar={}; if(!T.AnnounceRead(v,I[\"changed_shape_ann\"],ar)) print(\"changed_shape:announce_fail\\n\"); else { local out=[T.LoginRequest()]; local rr={}; local n=T.LoginRequestLoadMessages(out,v,I[\"login_full_batch\"],rr); local m={}; local z=T.LoginRequestMeasureMessages(out,m); local b=blob(z); local sr={}; local w=T.LoginRequestSaveMessages(out,b,sr); if(n==1 && !rr.refused && w==z && same(b,I[\"login_full_batch\"])) print(\"changed_shape:ok\\n\"); else print(\"changed_shape:fail:\"+n+\":\"+rr.reason+\":\"+rr.bodyDamaged+\"\\n\"); } }\n")
@@ -636,7 +638,7 @@ func TestSquirrelBytesMessagePairs(t *testing.T) {
 	}
 	script := fmt.Sprintf(`local T=dofile("schema_module.nut",true).require(%q);local v={};local ar={};if(!T.AnnounceRead(v,T.TableMessageAnnouncement,ar)){print("bytes:announce_fail\n");return;}local x=T.ProfileConfig();local b=blob(2);b[0]=0x41;b[1]=0x42;x.Icon=b;local mr={};local z=T.ProfileConfigMeasureMessages([x],mr);local wire=blob(z);local sr={};local w=T.ProfileConfigSaveMessages([x],wire,sr);local out=[T.ProfileConfig()];local rr={};local n=T.ProfileConfigLoadMessages(out,v,wire,rr);if(n==1&&w==z&&out[0].Icon.len()==2&&out[0].Icon[0]==0x41&&out[0].Icon[1]==0x42&&!rr.bodyDamaged)print("bytes:ok\n");else print("bytes:fail:"+n+":"+rr.bodyDamaged+":"+rr.unknown+"\n");`, squirreltable.ModuleName(u))
 	writeFile(t, filepath.Join(dir, "main.nut"), []byte(script))
-	inputs := map[string][]byte{"ann": announcementWithEntries(u, ir.TableVocabulary(u))}
+	inputs := map[string][]byte{"ann": announcementWithEntries(u, tablewire.MessageVocabulary(u))}
 	out := string(sqrun.Run(t, dir, "main.nut", inputs))
 	if !strings.Contains(out, "bytes:ok") {
 		t.Fatalf("bytes message pair round trip failed: %s", out)
@@ -656,7 +658,7 @@ func TestSquirrelMessageWidensAndSignExtends(t *testing.T) {
 			writeFile(t, filepath.Join(dir, name), b)
 		}
 	}
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	changed := append([]ir.TableVocabularyEntry(nil), entries...)
 	var smallSlot uint64
 	for i, e := range entries {
@@ -692,7 +694,7 @@ func TestSquirrelMessageUnsignedRangeClampAcrossSignBit(t *testing.T) {
 			writeFile(t, filepath.Join(dir, name), b)
 		}
 	}
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	for _, tc := range []struct {
 		name     string
 		field    string
@@ -782,7 +784,7 @@ func TestSquirrelMessageWidenFloat32ToFloat64(t *testing.T) {
 			writeFile(t, filepath.Join(dir, name), b)
 		}
 	}
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	var target ir.TableVocabularyEntry
 	var slot uint64
 	for i, e := range entries {
@@ -819,7 +821,7 @@ func TestSquirrelMessageWidenArrayElements(t *testing.T) {
 			writeFile(t, filepath.Join(dir, name), b)
 		}
 	}
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	changed := append([]ir.TableVocabularyEntry(nil), entries...)
 	var slot uint64
 	for i, e := range entries {

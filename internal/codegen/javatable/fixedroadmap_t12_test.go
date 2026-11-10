@@ -22,6 +22,7 @@ package javatable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,8 @@ var (
 // t12SchemaBinary builds ./cmd/schema once so every subtest exercises the
 // registered `schema generate --lang java` CLI path directly.
 func t12SchemaBinary(t *testing.T) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	t12SchemaOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "schema-t12-bin-*")
@@ -64,6 +67,8 @@ func t12SchemaBinary(t *testing.T) string {
 // registered `schema generate --lang java` CLI target into src/<pkg>, writes
 // the probe class beside it, and compiles everything with javac --release 17.
 func t12BuildRegistered(t *testing.T, pkg string, schemas map[string]string, probeClass, probeSrc string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, _ := javaTools(t)
 	bin := t12SchemaBinary(t)
@@ -106,6 +111,8 @@ func t12BuildRegistered(t *testing.T, pkg string, schemas map[string]string, pro
 }
 
 func t12RunJava(t *testing.T, classes, mainClass string, extraArgs ...string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	_, javaBin := javaTools(t)
 	args := append([]string{"-ea", "-cp", classes, mainClass}, extraArgs...)

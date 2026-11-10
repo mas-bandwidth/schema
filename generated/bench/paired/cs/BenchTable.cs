@@ -4023,8 +4023,10 @@ namespace Bench
                 if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 int whole = WireCheck(root.Buffer, ids, false, out _);
-                if (whole == WireCountCap) { reason = "count_over_extent_cap"; return -1; }
                 if (whole == WireDamaged) { return -1; }
+                // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+                // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+                if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
                 if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
                 long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
@@ -5926,6 +5928,10 @@ namespace Bench
             // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
             // WRITER's element width and DstSize the READER's.
             public const byte FlatWiden = 8;
+            // A PRESENCE BYTE OR A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): the
+            // fixed form refuses any other value, as the variable form does. Copy
+            // would land a forged byte as truth.
+            public const byte BoolByte = 9;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
@@ -7026,6 +7032,13 @@ namespace Bench
                         case Flat:
                             {
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                                break;
+                            }
+                        case BoolByte:
+                            {
+                                ulong raw = src[(int)p.Src];
+                                if (raw > 1) { return "wire_damaged"; }
+                                slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
                                 break;
                             }
                         case FlatWiden:

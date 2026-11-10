@@ -335,7 +335,7 @@ func messageDiffers(t *testing.T, c constructCase, patch func(files map[string][
 	}
 	var vocab tablewire.Vocabulary
 	var rep tabletext.Report
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &rep); err != nil || !vocab.Announced() {
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &rep); err != nil || !vocab.Announced() {
 		return false, fmt.Sprintf("the Go engine refuses the unit's own announcement (%v %+v)", err, rep)
 	}
 	// a sealed root's trailer (§2.14, §3.3) is the Go engine's own, on both
@@ -597,7 +597,7 @@ func evolveInputs(t *testing.T, c evolveCase) (ub *ir.Unit, ann, msg []byte, wan
 	if err != nil {
 		t.Fatal(err)
 	}
-	ann = ir.TableAnnouncement(ua)
+	ann = tablewire.Announce(ua)
 	var vocab tablewire.Vocabulary
 	var rv tabletext.Report
 	if err := vocab.AnnounceRead(ann, &rv); err != nil {

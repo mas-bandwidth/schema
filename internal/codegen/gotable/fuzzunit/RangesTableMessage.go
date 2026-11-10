@@ -19,13 +19,13 @@ import (
 func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) bool {
 	{
 		if value.I8Span != 0 {
-			w.Put(51, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 2, Packing: 1, Bits: 8, Base: [2]uint64{0xffffffffffffff80, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I8Span), uint64(0))
 		}
 	}
 	{
 		if value.I8Low != 0 {
-			w.Put(52, TableMessageRefBitsHere)
+			w.Put(46, TableMessageRefBitsHere)
 			if value.I8Low > 126 {
 				w.Over++
 			}
@@ -34,7 +34,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I8High != 0 {
-			w.Put(53, TableMessageRefBitsHere)
+			w.Put(47, TableMessageRefBitsHere)
 			if value.I8High < -127 {
 				w.Over++
 			}
@@ -43,7 +43,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I8Inside != 0 {
-			w.Put(54, TableMessageRefBitsHere)
+			w.Put(48, TableMessageRefBitsHere)
 			if value.I8Inside < -127 || value.I8Inside > 126 {
 				w.Over++
 			}
@@ -52,13 +52,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16Span != 0 {
-			w.Put(55, TableMessageRefBitsHere)
+			w.Put(49, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 3, Packing: 1, Bits: 16, Base: [2]uint64{0xffffffffffff8000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I16Span), uint64(0))
 		}
 	}
 	{
 		if value.I16Low != 0 {
-			w.Put(56, TableMessageRefBitsHere)
+			w.Put(50, TableMessageRefBitsHere)
 			if value.I16Low > 32766 {
 				w.Over++
 			}
@@ -67,7 +67,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16High != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(51, TableMessageRefBitsHere)
 			if value.I16High < -32767 {
 				w.Over++
 			}
@@ -76,7 +76,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I16Inside != 0 {
-			w.Put(58, TableMessageRefBitsHere)
+			w.Put(52, TableMessageRefBitsHere)
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
 				w.Over++
 			}
@@ -85,13 +85,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32Span != 0 {
-			w.Put(59, TableMessageRefBitsHere)
+			w.Put(53, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 32, Base: [2]uint64{0xffffffff80000000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I32Span), uint64(0))
 		}
 	}
 	{
 		if value.I32Low != 0 {
-			w.Put(60, TableMessageRefBitsHere)
+			w.Put(54, TableMessageRefBitsHere)
 			if value.I32Low > 2147483646 {
 				w.Over++
 			}
@@ -100,7 +100,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32High != 0 {
-			w.Put(61, TableMessageRefBitsHere)
+			w.Put(55, TableMessageRefBitsHere)
 			if value.I32High < -2147483647 {
 				w.Over++
 			}
@@ -109,7 +109,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I32Inside != 0 {
-			w.Put(62, TableMessageRefBitsHere)
+			w.Put(56, TableMessageRefBitsHere)
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
 				w.Over++
 			}
@@ -118,13 +118,13 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64Span != 0 {
-			w.Put(63, TableMessageRefBitsHere)
+			w.Put(57, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 5, Packing: 1, Bits: 64, Base: [2]uint64{0x8000000000000000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.I64Span), uint64(0))
 		}
 	}
 	{
 		if value.I64Low != 0 {
-			w.Put(64, TableMessageRefBitsHere)
+			w.Put(58, TableMessageRefBitsHere)
 			if value.I64Low > 9223372036854775806 {
 				w.Over++
 			}
@@ -133,7 +133,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64High != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(59, TableMessageRefBitsHere)
 			if value.I64High < -9223372036854775807 {
 				w.Over++
 			}
@@ -142,7 +142,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 	}
 	{
 		if value.I64Inside != 0 {
-			w.Put(66, TableMessageRefBitsHere)
+			w.Put(60, TableMessageRefBitsHere)
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
 				w.Over++
 			}
@@ -154,7 +154,7 @@ func RangedSignedSaveMessageBody(w *TableMessageWriter, value *RangedSigned) boo
 			return false
 		}
 		if value.EdgesCount > 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(61, TableMessageRefBitsHere)
 			if value.EdgesCount < 0 || value.EdgesCount > 4 {
 				return false
 			}
@@ -927,13 +927,13 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned) bool {
 	{
 		if value.U8Span != 0 {
-			w.Put(68, TableMessageRefBitsHere)
+			w.Put(62, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U8Span), uint64(0))
 		}
 	}
 	{
 		if value.U8Low != 0 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.U8Low > 254 {
 				w.Over++
 			}
@@ -942,7 +942,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U8High != 1 {
-			w.Put(70, TableMessageRefBitsHere)
+			w.Put(64, TableMessageRefBitsHere)
 			if value.U8High < 1 {
 				w.Over++
 			}
@@ -951,7 +951,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U8Inside != 1 {
-			w.Put(71, TableMessageRefBitsHere)
+			w.Put(65, TableMessageRefBitsHere)
 			if value.U8Inside < 1 || value.U8Inside > 254 {
 				w.Over++
 			}
@@ -960,13 +960,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16Span != 0 {
-			w.Put(72, TableMessageRefBitsHere)
+			w.Put(66, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U16Span), uint64(0))
 		}
 	}
 	{
 		if value.U16Low != 0 {
-			w.Put(73, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			if value.U16Low > 65534 {
 				w.Over++
 			}
@@ -975,7 +975,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16High != 1 {
-			w.Put(74, TableMessageRefBitsHere)
+			w.Put(68, TableMessageRefBitsHere)
 			if value.U16High < 1 {
 				w.Over++
 			}
@@ -984,7 +984,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U16Inside != 1 {
-			w.Put(75, TableMessageRefBitsHere)
+			w.Put(69, TableMessageRefBitsHere)
 			if value.U16Inside < 1 || value.U16Inside > 65534 {
 				w.Over++
 			}
@@ -993,13 +993,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32Span != 0 {
-			w.Put(76, TableMessageRefBitsHere)
+			w.Put(70, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U32Span), uint64(0))
 		}
 	}
 	{
 		if value.U32Low != 0 {
-			w.Put(77, TableMessageRefBitsHere)
+			w.Put(71, TableMessageRefBitsHere)
 			if value.U32Low > 4294967294 {
 				w.Over++
 			}
@@ -1008,7 +1008,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32High != 1 {
-			w.Put(78, TableMessageRefBitsHere)
+			w.Put(72, TableMessageRefBitsHere)
 			if value.U32High < 1 {
 				w.Over++
 			}
@@ -1017,7 +1017,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U32Inside != 1 {
-			w.Put(79, TableMessageRefBitsHere)
+			w.Put(73, TableMessageRefBitsHere)
 			if value.U32Inside < 1 || value.U32Inside > 4294967294 {
 				w.Over++
 			}
@@ -1026,13 +1026,13 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64Span != 0 {
-			w.Put(80, TableMessageRefBitsHere)
+			w.Put(74, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.U64Span), uint64(0))
 		}
 	}
 	{
 		if value.U64Low != 0 {
-			w.Put(81, TableMessageRefBitsHere)
+			w.Put(75, TableMessageRefBitsHere)
 			if value.U64Low > 18446744073709551614 {
 				w.Over++
 			}
@@ -1041,7 +1041,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64High != 1 {
-			w.Put(82, TableMessageRefBitsHere)
+			w.Put(76, TableMessageRefBitsHere)
 			if value.U64High < 1 {
 				w.Over++
 			}
@@ -1050,7 +1050,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 	}
 	{
 		if value.U64Inside != 1 {
-			w.Put(83, TableMessageRefBitsHere)
+			w.Put(77, TableMessageRefBitsHere)
 			if value.U64Inside < 1 || value.U64Inside > 18446744073709551614 {
 				w.Over++
 			}
@@ -1062,7 +1062,7 @@ func RangedUnsignedSaveMessageBody(w *TableMessageWriter, value *RangedUnsigned)
 			return false
 		}
 		if value.CountsCount > 0 {
-			w.Put(84, TableMessageRefBitsHere)
+			w.Put(78, TableMessageRefBitsHere)
 			if value.CountsCount < 0 || value.CountsCount > 4 {
 				return false
 			}
@@ -1835,7 +1835,7 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) bool {
 	{
 		if value.B8 != 0 {
-			w.Put(85, TableMessageRefBitsHere)
+			w.Put(79, TableMessageRefBitsHere)
 			if value.B8 > 255 {
 				w.Over++
 			}
@@ -1844,7 +1844,7 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B16 != 0 {
-			w.Put(86, TableMessageRefBitsHere)
+			w.Put(80, TableMessageRefBitsHere)
 			if value.B16 > 65535 {
 				w.Over++
 			}
@@ -1853,19 +1853,19 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B32 != 0 {
-			w.Put(87, TableMessageRefBitsHere)
+			w.Put(81, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 1, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.B32), uint64(0))
 		}
 	}
 	{
 		if value.B64 != 0 {
-			w.Put(88, TableMessageRefBitsHere)
+			w.Put(82, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 9, Packing: 1, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.B64), uint64(0))
 		}
 	}
 	{
 		if value.B12 != 0 {
-			w.Put(89, TableMessageRefBitsHere)
+			w.Put(83, TableMessageRefBitsHere)
 			if value.B12 > 4095 {
 				w.Over++
 			}
@@ -1874,7 +1874,7 @@ func RangedWidthsSaveMessageBody(w *TableMessageWriter, value *RangedWidths) boo
 	}
 	{
 		if value.B48 != 0 {
-			w.Put(90, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			if value.B48 > 281474976710655 {
 				w.Over++
 			}

@@ -30,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -270,6 +271,8 @@ func t08R27(t *testing.T) {
 // the leg's own node: the run is the target a gate runs (jsNode, $NODE), not a
 // reading of the emitted text (docs/SPEC-TABLES.md §3.4).
 func t08Play(t *testing.T, src, body string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := unitFrom(t, src)
 	// THE PACKET MODULE TOO: a table-closure union's storage class is emitted by

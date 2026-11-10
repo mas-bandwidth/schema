@@ -22,11 +22,11 @@ fixed table Plain
 
 // integrityMessagePlainGolden is PlainSaveMessages of {{n 1000, count 7}} at
 // the card's BASE: the keyless table's batch does not move.
-const integrityMessagePlainGolden = "0200813e000020070000"
+const integrityMessagePlainGolden = "0200a10f0000780000"
 
 // integrityMessageLedgerGolden is the same batch under the declaring table:
 // the keyless batch and its CRC-32C trailer.
-const integrityMessageLedgerGolden = "0200813e00002007000078f2be34"
+const integrityMessageLedgerGolden = "0200a10f000078000073cfdf7e"
 
 const integrityMessageProbe = `package probe
 import ("encoding/binary"; "encoding/hex"; "errors"; "hash/crc32"; "testing")
