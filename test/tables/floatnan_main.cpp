@@ -1,4 +1,4 @@
-// THE FINITE RULE'S PIN (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
+// THE FINITE RULE'S PIN (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables
 // go finite-only too, same rule as packets"): a NaN or an infinity, whatever
 // its sign or payload, is REFUSED by every writer and by every read, the
 // tolerant read included, and the read refuses it ON THE RAW BITS, before

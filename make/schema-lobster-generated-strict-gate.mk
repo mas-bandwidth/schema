@@ -29,7 +29,7 @@ SCHEMA_LOBSTER_STRICT_GATE_INCLUDED := 1
 # the target refuses is a refusal by name, recorded and counted, not a unit
 # this gate could compile. Nothing is pruned and no warning is filtered.
 #
-# Measured: the 36 units compile in about four seconds on the studio.
+# Measured: the 36 units compile in about four seconds on the bench-11.
 
 SCHEMA_LOBSTER_STRICT_DIR    := build/schema-lobster-strict
 SCHEMA_LOBSTER_STRICT_NC_DIR := build/schema-lobster-strict-negative

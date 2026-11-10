@@ -101,7 +101,7 @@ public final class Main {
             }
         }
 
-        // 2. Fixed & Message forms on FixedStamp (stella-e6c648b12aad: fixed layout entry is kind 5, variable/message is kind 36)
+        // 2. Fixed & Message forms on FixedStamp (finding-e6c648b12aad: fixed layout entry is kind 5, variable/message is kind 36)
         FixedStampFixed.Value fv = new FixedStampFixed.Value();
         fv.at = 1_000_000_000L;
         fv.tag = -2_000_000_000L;
@@ -264,7 +264,7 @@ public final class Main {
         check(OptMapsCook.cookFrom(loaded, c1, TableCookWrite.LITTLE) && OptMapsCook.cookFrom(freshAbsent, c2, TableCookWrite.LITTLE), "stale ?map cookFrom");
         check(Arrays.equals(c1, c2), "stale ?map cooked bytes");
 
-        // stella-78465217791c (SPEC-TABLES.md §4, §16.2): a null in map[K]?V is ABSENT and reads clean;
+        // finding-78465217791c (SPEC-TABLES.md §4, §16.2): a null in map[K]?V is ABSENT and reads clean;
         // a non-null wrong-shape value, or a repeated key, refuses the whole load: no value
         rep.reset();
         OptMapsVariable.Value nullOk = OptMapsVariable.fromJson(
@@ -326,7 +326,7 @@ public final class Main {
     }
 
     public static void main(String[] args) {
-        // 1. stella-48d4ab331f58: enum-keyed array with | required and all default slots still writes header on wire
+        // 1. finding-48d4ab331f58: enum-keyed array with | required and all default slots still writes header on wire
         KeyedReqVariable.Value kv = new KeyedReqVariable.Value();
         byte[] kWire = KeyedReqVariable.save(kv);
         check(kWire != null && kWire.length > 3, "KeyedReq.save writes required field at default");
@@ -371,16 +371,16 @@ public final class Main {
         GuardedReqVariable.Value gj3 = GuardedReqVariable.fromJson("{\"active\":true}".getBytes(StandardCharsets.UTF_8), rep);
         check(gj3 == null && rep.refused && rep.missingRequired == 1 && "missing_required: token, count".equals(rep.reason), "JSON active without token or count refuses: " + rep.reason);
 
-        // 3. stella-507f9ad0de25: required by-value nested table at default emits 0-field nested table header
+        // 3. finding-507f9ad0de25: required by-value nested table at default emits 0-field nested table header
         RequiredEmptyVariable.Value rev = new RequiredEmptyVariable.Value();
         byte[] reWire = RequiredEmptyVariable.save(rev);
-        check(reWire != null && reWire.length == 22 && reWire[0] == 1 && reWire[1] == 1 && reWire[2] == 13 && reWire[3] == 1 && reWire[4] == 0 && reWire[5] == 0, "stella-507f9ad0de25 save");
+        check(reWire != null && reWire.length == 22 && reWire[0] == 1 && reWire[1] == 1 && reWire[2] == 13 && reWire[3] == 1 && reWire[4] == 0 && reWire[5] == 0, "finding-507f9ad0de25 save");
         rep.reset();
         RequiredEmptyVariable.Value reLoaded = RequiredEmptyVariable.load(reWire, rep);
-        check(reLoaded != null && !rep.refused && rep.missingRequired == 0, "stella-507f9ad0de25 load");
+        check(reLoaded != null && !rep.refused && rep.missingRequired == 0, "finding-507f9ad0de25 load");
         rep.reset();
         byte[] reRetWire = RequiredEmptyRetain.saveRetain(rev, new TableRetain(1 << 16, 1 << 10), rep);
-        check(Arrays.equals(reWire, reRetWire), "stella-507f9ad0de25 saveRetain");
+        check(Arrays.equals(reWire, reRetWire), "finding-507f9ad0de25 saveRetain");
 
         System.out.println("REQUIRED OK");
     }

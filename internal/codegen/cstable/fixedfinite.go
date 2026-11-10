@@ -1,6 +1,6 @@
 package cstable
 
-// THE FIXED FORM'S FINITE PASS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// THE FIXED FORM'S FINITE PASS (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets").
 //
 // Every fixed read refuses a NaN or an infinity as non_finite_float, naming the

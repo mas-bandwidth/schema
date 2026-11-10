@@ -24,7 +24,7 @@ Identity is 2.2x the packet read and plan is 6.7x it. This agrees with attempt 5
 
 ## Declared conditions
 
-- **Host:** `b2` (fleet member amd-2), linux/amd64, AMD Ryzen 7 255, pinned to core 7.
+- **Host:** `b2` (fleet member bench-4), linux/amd64, AMD Ryzen 7 255, pinned to core 7.
 - **Revision:** `96ef7606a7d27454e0095adde34fef88cf1837af` on
   `sprint/dart-fixed-read-beats-its-packet-read.w7.g1.e21`, pushed to origin before either sitting.
   It is attempt 5's runnable support (0542b5b49) merged cleanly with sprint/schema-dart c5b83298a.
@@ -38,14 +38,14 @@ Identity is 2.2x the packet read and plan is 6.7x it. This agrees with attempt 5
 
 ## The window and its receipt
 
-The authority is Glenn Fiedler's live ruling to Rowan on 2026-10-16: "you can simply hold a fleet
+The authority is the owner's live ruling to a maintainer on 2026-10-16: "you can simply hold a fleet
 machine and work there. go."
 
 The coordinator set up the window:
-- held amd-2 (op hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1);
+- held bench-4 (op hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1);
 - quieted it until 23:46:33Z (op fleet-quiet-dm6lc6r3zqz4-24125-48e507d968a6c611~21-1), from 21:46:33Z;
 - stopped its four CI runner services after their last job drained, at 21:49:17Z
-  (nova-runner-1, nova-runner-nova-sprint-1, nova-runner-rocketnet-1, nova-runner-schema-1).
+  (runner-1, runner-sprint-1, runner-other-1, runner-schema-1).
 
 That record is the READY/START receipt. It was passed verbatim as `--receipt` and is archived as
 `receipt.txt` beside each sitting's `read.json` in `window-2026-10-16/sitting-N/`.

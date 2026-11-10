@@ -74,12 +74,12 @@ optimized); cargo/rustc 1.97.1 (`--release`, opt-level 3, no LTO); dotnet
 
 ## Host 2 — AMD EPYC 9124 (x86_64, core 0, NOISY)
 
-spacegame, Linux 6.8.0-90. **NOISY**: the game server owns isolated cores
+bench-12, Linux 6.8.0-90. **NOISY**: the game server owns isolated cores
 1–15 with one pinned thread each; the bench is `taskset -c 0` on the shared
 core (irqs, ssh, server aux threads) — treat spreads accordingly. g++ 13.3.0
 (same flags + `-Wno-class-memaccess -Wno-type-limits`); go1.26.5,
 cargo/rustc 1.97.1, dotnet 10.0.302 — user-local installs under
-`~/rowan-bench` (go tarball, rustup, dotnet-install), versions identical to
+`~/the bench directory` (go tarball, rustup, dotnet-install), versions identical to
 host 1. Tree rsynced without `.git` (preamble says commit unknown); content
 = this commit. C++ compiler for this table is g++; the morning clang-18 pair
 lives in `2026-08-06-x86_64-ryzen-clang.csv` (filename says ryzen, preamble

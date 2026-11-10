@@ -17,7 +17,7 @@ import (
 
 // TestCyclicWireIsDamageRust holds docs/SPEC-TABLES.md §3.1's ruling on the
 // Rust leg: a cyclic wire is damage, and every read refuses the whole load
-// (Glenn, 2026-10-31). The framing vectors node_cycle_self, node_cycle_to_root
+// (The owner, 2026-10-31). The framing vectors node_cycle_self, node_cycle_to_root
 // and node_cycle_mid, plus an unreached cycle, are read through graphdemo's
 // ListNode load and load_retain, and each must report malformed and hand back
 // None with both retention stores empty; an overwritten self-edge in the same

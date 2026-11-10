@@ -31,7 +31,7 @@ Best / median / worst ns/record and spread of rates (§2.3):
 
 ## Declared conditions
 
-- **Host:** `b2` (fleet member amd-2), linux/amd64, AMD Ryzen 7 255 w/ Radeon 780M Graphics, pinned to
+- **Host:** `b2` (fleet member bench-4), linux/amd64, AMD Ryzen 7 255 w/ Radeon 780M Graphics, pinned to
   core 7 (`taskset -c 7`, driver `-lane 7`).
 - **Revision:** `2bf6bcf46fe1f5087c1b69b333cf4d58779ce204` (sprint/schema-cs tip, on origin). The board
   marks it dirty with build-regenerated files only: `generated/bench/paired/cpp/BenchTable.h`,
@@ -48,15 +48,15 @@ Best / median / worst ns/record and spread of rates (§2.3):
 
 ## The window and its receipt
 
-Authority: Glenn Fiedler's live ruling to Rowan, 2026-10-16: "you can simply hold a fleet machine
+Authority: the owner's live ruling to a maintainer, 2026-10-16: "you can simply hold a fleet machine
 and work there. go." The quiet window is a fleet machine the coordinator held for the run; the
 coordinator's hold and quiet records are the operator READY/START receipt, passed verbatim as
 `--receipt` and recorded by the driver in each sitting's `read.json` and `READ.md` (see board.txt).
 
-- Sitting 1 (START 2026-10-16T20:38:34Z, END 20:44:18Z): window 1, amd-2 held (op
+- Sitting 1 (START 2026-10-16T20:38:34Z, END 20:44:18Z): window 1, bench-4 held (op
   hold-dm6jnle9y8i8-24125-9fe96d4c771df790~21-1) and quieted (op
   fleet-quiet-dm6jnlg2we48-24125-c946efc0a0e107bc~21-1) at 20:27:25Z. No CI job ran during it.
-- Sitting 2 (START 2026-10-16T22:01:12Z, END 22:06:57Z): window 2, amd-2 re-held (op
+- Sitting 2 (START 2026-10-16T22:01:12Z, END 22:06:57Z): window 2, bench-4 re-held (op
   hold-dm6lc6q26oio-24125-80d9f0f5aee3bfa9~21-1) and re-quieted (op
   fleet-quiet-dm6lc6r3zqz4-24125-48e507d968a6c611~21-1) at 21:46:33Z; the four CI runner services
   stopped after their last job drained at 21:49:17Z.

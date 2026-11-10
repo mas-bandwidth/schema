@@ -1,4 +1,4 @@
-# make/schema-luau-nightly-fuzz.mk — the LUAU port's NIGHTLY FUZZ (Glenn,
+# make/schema-luau-nightly-fuzz.mk — the LUAU port's NIGHTLY FUZZ (the owner,
 # 2026-10-18; docs/PORT-LUAU.md). Included by the Makefile's wildcard include,
 # so the Makefile is not edited.
 #
@@ -593,7 +593,7 @@ $(LUAU_SRC)/.stamp:
 	@tar -xzf build/luau-src.tar.gz -C $(LUAU_SRC) --strip-components=1 && rm -f build/luau-src.tar.gz
 	@touch $@
 
-# THE STRICT FLAGS (zero warnings, Glenn 2026-10-20: vendored code included).
+# THE STRICT FLAGS (zero warnings, the owner 2026-10-20: vendored code included).
 # Our own host compiles with them as errors. The vendored Luau source compiles
 # with them too, warnings shown and counted rather than silenced: 1425 distinct
 # warning sites at 0.741 (gcc 13, mostly -Wshadow, -Wpedantic and

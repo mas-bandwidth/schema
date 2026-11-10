@@ -77,7 +77,7 @@ tables-lua-wire-fuzz-differential:
 		'TestLuaWireFuzzAgreesWithTheGoEngine TestLuaWireFuzzNegativeControl' \
 		./internal/codegen/luatable -run '^TestLuaWireFuzz' -count=1 -timeout 600s
 
-# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27: "Tables go
 # finite-only too, same rule as packets"): every Lua read refuses a NaN or an
 # infinity on its raw bits as non_finite_float (variable, retained, message,
 # retaining message, fixed, cook check, uncook and block dump), every writer

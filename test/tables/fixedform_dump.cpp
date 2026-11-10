@@ -28,7 +28,7 @@
 #include "FU1Table.h"
 #include "FU2Table.h"
 
-// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// ---- cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S CORPUS (docs/FIXED-FORM-VERSIONING-TESTS.md): `old_<row>.bin`
 // and `new_<row>.bin` per row, the two read columns' shared corpus, so every leg
 // reads the SAME bytes the C++ reference wrote and the card on a port's job names
@@ -75,8 +75,8 @@
 #include "VNEW_lineage_mergeTable.h"
 #include "VOLD_unknown_censusTable.h"
 #include "VNEW_unknown_censusTable.h"
-// ---- rowan/cpp-versioning-numbers: END ------------------------------------
-// ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
+// ---- cpp-versioning-numbers: END ------------------------------------
+// ==== BEGIN cpp-versioning-lists: the LIST rows lineage pairs ====
 // docs/FIXED-FORM-VERSIONING-TESTS.md: two schemas per row, one table name,
 // one package each, so both generations of one lineage compile into this binary.
 #include"VOLD_field_appendTable.h"
@@ -101,7 +101,7 @@
 #include "VNEW_nested_appendTable.h"
 #include"VOLD_rename_without_wasTable.h"
 #include "VNEW_rename_without_wasTable.h"
-// ==== END rowan/cpp-versioning-lists ===================================
+// ==== END cpp-versioning-lists ===================================
 
 static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
@@ -113,7 +113,7 @@ static bool spill( const char * dir, const char * name, const std::vector<uint8_
     return std::fclose( f ) == 0 && ok;
 }
 
-// ---- rowan/corpus-manifest: BEGIN -----------------------------------------
+// ---- corpus-manifest: BEGIN -----------------------------------------
 // THE MANIFEST (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1, ruling #32).
 //
 // Four legs in a row had to OPEN THIS FILE to learn what the corpus rows carry
@@ -431,7 +431,7 @@ static bool man_write( const char * dir )
     const std::vector<uint8_t> bytes( text.begin(), text.end() );
     return spill( dir, "manifest.txt", bytes );
 }
-// ---- rowan/corpus-manifest: END -------------------------------------------
+// ---- corpus-manifest: END -------------------------------------------
 
 template <typename T, typename Measure, typename Save>
 static bool emit( const char * dir, const char * name, const std::vector<T> & values, Measure measure, Save save )
@@ -446,7 +446,7 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
         g_values.clear();
         return false;
     }
-    // ---- rowan/corpus-manifest ----
+    // ---- corpus-manifest ----
     // the row's own line, from the file name, the TYPE and the record count:
     // three things a hand-written manifest gets wrong and this one cannot
     man_finish( name, man_root_of( typeid( T ).name() ).c_str(), (long long) values.size() );
@@ -757,7 +757,7 @@ static bool fu2_file( const char * dir )
     return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
 }
 
-// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// ---- cpp-versioning-numbers: BEGIN ----------------------------------
 // ONE FILE PER SIDE PER ROW. `emit` above takes a vector and the unit's measure
 // and save, so every row below is one statement and its values are visible.
 #define VROW( NS, TBL, NAME, ... )                                                           \
@@ -1182,8 +1182,8 @@ static bool versioning_numbers_files( const char * dir )
     }
     return true;
 }
-// ---- rowan/cpp-versioning-numbers: END ------------------------------------
-// ==== BEGIN rowan/cpp-versioning-lists: THE LISTS ROWS' LINEAGE PAIRS ======
+// ---- cpp-versioning-numbers: END ------------------------------------
+// ==== BEGIN cpp-versioning-lists: THE LISTS ROWS' LINEAGE PAIRS ======
 //
 // docs/FIXED-FORM-VERSIONING-TESTS.md, the LIST rows. One pair of files per
 // row: `old_<row>.bin` written by the OLD schema's writer and `new_<row>.bin`
@@ -1395,7 +1395,7 @@ static bool vlists_files( const char * dir )
     return true;
 }
 
-// ==== END rowan/cpp-versioning-lists =======================================
+// ==== END cpp-versioning-lists =======================================
 
 int main( int argc, char ** argv )
 {
@@ -1404,13 +1404,13 @@ int main( int argc, char ** argv )
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) ||
          !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
-    // ---- rowan/cpp-versioning-numbers: BEGIN ----
+    // ---- cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
-    // ---- rowan/cpp-versioning-numbers: END ----
-    // ==== BEGIN rowan/cpp-versioning-lists ====
+    // ---- cpp-versioning-numbers: END ----
+    // ==== BEGIN cpp-versioning-lists ====
     if ( !vlists_files( dir ) ) { return 1; }
-    // ==== END rowan/cpp-versioning-lists =====
-    // ---- rowan/corpus-manifest ----
+    // ==== END cpp-versioning-lists =====
+    // ---- corpus-manifest ----
     // THE MANIFEST, beside the bytes it describes (§5.7 step 1, ruling #32)
     if ( !man_write( dir ) ) { return 1; }
     return 0;

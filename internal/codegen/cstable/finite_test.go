@@ -6,7 +6,7 @@ import (
 )
 
 // TestCsFiniteFloatRule pins the emitted shape of the finite rule
-// (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
+// (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go finite-only too,
 // same rule as packets") on this leg: the refusal reason, the field's name on
 // its descriptor, the bit-compare elision that lets a -0 ride under a +0
 // default, the typed writer's refusal, and the fixed form's finite pass on read

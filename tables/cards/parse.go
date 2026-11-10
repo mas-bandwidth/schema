@@ -35,7 +35,7 @@ var headerKeyRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*$`)
 var deadlineRE = regexp.MustCompile(`^finish within ([0-9]+) minutes\.$`)
 
 // strandedKeys is the customer's exact case-sensitive set refused once prose
-// has begun (nova-sprint pkg/swarm/lintheader.go cardHeaderKeys). Other
+// has begun (the sprint tool's pkg/swarm/lintheader.go cardHeaderKeys). Other
 // KEY-shaped body lines, such as NOTE:, are opaque and preserved.
 var strandedKeys = map[string]bool{
 	"KIND": true, "PATHS": true, "TEST": true, "LEGS": true, "SOURCE": true,

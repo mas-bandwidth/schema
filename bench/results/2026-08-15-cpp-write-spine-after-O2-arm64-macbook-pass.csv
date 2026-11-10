@@ -4,7 +4,7 @@
 # cpu: Apple M2
 # build: Release
 # cpp compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
-# cpp flags: -O2 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O2" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I/Users/glenn/rowan-working/serialize
+# cpp flags: -O2 -DNDEBUG -DSERIALIZE_RELEASE -DBENCH_OPT="O2" -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -Igenerated/cpp -Itest -I<work>/serialize
 # c compiler: Apple clang version 21.0.0 (clang-2100.1.1.101)
 # c flags: -O2 -DNDEBUG -DBENCH_OPT="O2" -std=c99 -Wall -Wextra -Werror -Igenerated/c -I../serialize.c (serialize.c compiled in, no LTO)
 # go: go version go1.26.5 darwin/arm64 (go run, default optimized build)

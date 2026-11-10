@@ -10,7 +10,7 @@ import (
 
 /* ---- the fixed form's finite pass ------------------------------------------
 
-A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 finite-only too, same rule as packets"). The fixed form has no walk to put a
 raw-bits test in: a record lands by a copy plan, so the test runs over STORAGE,
 straight-line, after the record lands and BEFORE the bounds pass, and ONE pass

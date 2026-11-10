@@ -765,7 +765,7 @@ test-elixir: tables-elixir-alloc-audit tables-elixir-alloc-negative-control tabl
 # is printed beside it as the weaker instrument and bounds retention. The pin comes first, as in the audit. THE LENGTH CHECK rides
 # every run: the soak must report exactly the passes and samples its count
 # names, so a soak that ignored its count is red, not silently green. The
-# default count is the release act, about an hour on vision (a pass over the
+# default count is the release act, about an hour on bench-7 (a pass over the
 # pinned corpus is about 0.4 s there); `test-elixir` runs the
 # short form, two samples.
 TABLES_ELIXIR_SOAK_ITERATIONS ?= 9000
@@ -1127,7 +1127,7 @@ tables-elixir-json-differential-negative-control:
 
 test-elixir: tables-elixir-json-differential tables-elixir-json-differential-negative-control
 
-# FINITE TABLE FLOATS on the Elixir leg (docs/SPEC-TABLES.md §3.3; Glenn,
+# FINITE TABLE FLOATS on the Elixir leg (docs/SPEC-TABLES.md §3.3; the owner,
 # 2026-10-27: "Tables go finite-only too, same rule as packets"): every read,
 # variable, retaining, message and fixed, refuses a NaN or an infinity on its
 # raw bits as non_finite_float, every writer refuses one, and -0 rides by its

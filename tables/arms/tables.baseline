@@ -80,7 +80,7 @@ union Slots
 ### 2026-09-05 (UTC) — the array-of-pointers arm shapes Rack and Tray join the union-arm corpus (schema#578)
 - no compatibility-affecting edits; the wire absorbs the rest
 
-### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, Glenn 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
+### 2026-10-21 (UTC) — schema#reserved-words: fields renamed off every supported language's reserved words (SPEC §4.6, the owner 2026-10-21) under was =, so the wire ids hold; the JSON keys follow the new names
 - Chain.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Gate.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]
 - Hand.past: renamed under was = "after", which keeps the wire id and NOT the text key — the JSON key is now "past"; pair json = "after" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]

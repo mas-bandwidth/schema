@@ -672,7 +672,7 @@ func cT08GuardChain(t *testing.T) {
 	// THE EDGE PROBE IS THE SLOW TIER. The chain above is built and checked in
 	// the IR on every run; compiling it is not cheap: the edge chain's
 	// generated header is about 17 MB, and the sanitized -O2 compile of it was
-	// 18.7 s of this row's 22 s on the studio (2026-10-22) and minutes on a
+	// 18.7 s of this row's 22 s on the bench-11 (2026-10-22) and minutes on a
 	// two-core runner. The three-union and 31-deep probes above stay in the
 	// default run; this one runs wherever SCHEMA_SLOW=1 (ci-full's go-test
 	// lanes, the nightly and the make leg gates), so no check is lost.

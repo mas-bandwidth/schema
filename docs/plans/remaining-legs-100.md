@@ -1,6 +1,6 @@
 # Every leg to 100%: the remaining cells of lua, luau, squirrel, moo and lobster
 
-Glenn, 2026-11-03: *"let's widen to push to 100% across all languages."*
+The owner, 2026-11-03: *"let's widen to push to 100% across all languages."*
 
 This page is the work list for the five newer legs whose columns in
 [ROADMAP.md](../../ROADMAP.md) are not yet 100%. It lists every cell that is
@@ -13,7 +13,7 @@ that the cut removes. The roadmap work-set for this page is
 
 ## The contract these items are built to
 
-Every item is built to the contract on `rowan/strict-only-spec` (spec PR
+Every item is built to the contract on `strict-only-spec` (spec PR
 #2790), never to the one it replaces:
 
 - **One read.** Every read of every form returns the whole value or refuses the
@@ -27,7 +27,7 @@ Every item is built to the contract on `rowan/strict-only-spec` (spec PR
   and counted `unknown` (or retained), absent fields take their defaults,
   widening is exact, and the fixed form selects its plan by hash.
 - **Writes are deterministic.** The binary and JSON write algorithms are
-  specified on `rowan/deterministic-write` and `rowan/deterministic-json`.
+  specified on `deterministic-write` and `deterministic-json`.
   Written-back bytes are compared against those algorithms.
 
 No item adds a tolerant path, a repair counter or a test that compares reason
@@ -51,7 +51,7 @@ evidence.
 **Most of these cells are built but not yet accepted.** The code is on `main`
 for every leg (`internal/codegen/<lang>` and `<lang>table`, the conformance
 drivers, the fuzz and hostile-corpus makefiles). What is missing is acceptance:
-each row's clauses named by a test in `:evidence`, the bar Glenn ruled on
+each row's clauses named by a test in `:evidence`, the bar the owner ruled on
 2026-09-19 (*"done means everything is tested and verified working. not done
 until tested."*). Several roadmap notes are out of date. The luau and squirrel
 packet and fixed notes still say "Not started: no generator, runtime or
@@ -159,7 +159,7 @@ tolerant twin is deleted.
 
 | id | item | status | cells | when | size |
 |---|---|---|---|---|---|
-| U0 | **Notes and the pin.** Rewrite the stale `port/luau/*` notes ("no generator, runtime or conformance leg exists" is false: `internal/codegen/luau`, `luautable` and the conformance driver are on main). Add a `sha256sum`/`shasum` fallback to `dist-luau`, as `dist-lua` has. Whether to add a macOS pin (the release `luau-macos.zip`) so luau stops depending on the Linux benches is listed under "Decisions for Glenn" | notes and pin only | (notes) | now | S |
+| U0 | **Notes and the pin.** Rewrite the stale `port/luau/*` notes ("no generator, runtime or conformance leg exists" is false: `internal/codegen/luau`, `luautable` and the conformance driver are on main). Add a `sha256sum`/`shasum` fallback to `dist-luau`, as `dist-lua` has. Whether to add a macOS pin (the release `luau-macos.zip`) so luau stops depending on the Linux benches is listed under "Decisions for the owner" | notes and pin only | (notes) | now | S |
 | U1 | **Packet acceptance.** The luau legs of packet-text, packet-wide, packet-defaults and packet-finite are on main: run them on the pin and record `port/luau/packet` with `luau/read_test.go`, `write_test.go`, the analyzer-strict gate and each gate's control | implemented, evidence owed | packet 28 | now (Linux) | S |
 | U2 | **Fixed proof suite** for `luautable`, 49 rows | fixed form implemented; proof suite absent, to build | fixed 49 | now (Linux) | M |
 | U3 | **Fixed rows the cut rewrites**, after `strict-only/leg-luau` (`F.loadTolerant`, the bounds and census at `schema_fixed.luau:416`, `:922-931`) | implemented, rework under the cut | fixed 8 | after the cut | S |
@@ -191,20 +191,20 @@ S6's size.
 | M2 | **Cards.** `tables/cards/moo` exists. Accept `cards-moo-conformance` on read-then-write and record it | implemented, evidence owed after the cut | vt 1 | after the cut | S |
 | M3 | **Re-acceptance after the cut.** The 8 rewritten fixed rows and the variable-table read cells, re-run on the one read once `strict-only/leg-moo` lands | implemented, rework under the cut | (reopened) | after the cut | M |
 
-## lobster (118 open; Stella's lane)
+## lobster (118 open; a reviewer's lane)
 
-Lobster is **Stella's lane** (Glenn, 2026-10-19: add Lobster as a language;
+Lobster is **A reviewer's lane** (the owner, 2026-10-19: add Lobster as a language;
 `port/lobster` in the roadmap). These items are planned here so the
 column has a complete list. They are hers to take, reorder or reject, and
 nothing here is assigned to anyone else.
 
 | id | item | status | cells | when | size |
 |---|---|---|---|---|---|
-| B1 | **Packet acceptance.** The packet wire is implemented, read and write. Stella's hosted baseline (run 41736071665 at 2dc319bb5) passed 36 test events with 0 failures and 682 packet text-fuzz cases with 0 divergences, covering the C++ golden read and write and the text, default, finite and void controls. The roadmap note that the reader is owed is stale. The one coverage gap, the full LudicrousState 128-bit, ranged and fixed fixtures, is her draft PR #2793. Then add the overlay for `port/lobster/packet`, and check whether a packet-wide leg is needed beyond the text-fuzz | implemented, evidence owed (#2793 + overlay) | packet 28 | now | S |
+| B1 | **Packet acceptance.** The packet wire is implemented, read and write. A reviewer's hosted baseline (run 41736071665 at 2dc319bb5) passed 36 test events with 0 failures and 682 packet text-fuzz cases with 0 divergences, covering the C++ golden read and write and the text, default, finite and void controls. The roadmap note that the reader is owed is stale. The one coverage gap, the full LudicrousState 128-bit, ranged and fixed fixtures, is her draft PR #2793. Then add the overlay for `port/lobster/packet`, and check whether a packet-wide leg is needed beyond the text-fuzz | implemented, evidence owed (#2793 + overlay) | packet 28 | now | S |
 | B2 | **Fixed proof suite.** The fixed form agrees with the byte oracle (`TestLobsterFixedFormAgreesWithTheByteOracle`) and its evolution is built. Accept the 49 rows per row | fixed form implemented; proof suite absent, to build | fixed 49 | now | M |
 | B3 | **Fixed rows the cut rewrites**, after `strict-only/leg-lobster` (`fixedevolve.go:1432`, the bool path at `runtime/fixedevolve.lobster:1220`) | implemented, rework under the cut | fixed 8 | after the cut | S |
-| B4 | **Accelerators and descriptors.** Block read and build, build version, cook open and cook write, reflection and doc-tags are implemented (`block_form.go`, `cook.go`, `descriptors.go`, with their tests, and the block, cook and forgery surfaces in `main.lobster`). The roadmap's "owed" notes for cook and cook write are stale. Stella is repairing the unit registry and UnitView row on `codex/schema-lobster-unit-view`. That work found two more real defects to fix there: a minimum int64 emitted as a decimal that overflows, and packet union descriptors that are missing | implemented, evidence owed (unit registry: in repair) | vt 8 | now | M |
-| B5 | **Read surfaces noted as owed, which are implemented.** The message form (`messageform.go`), the JSON text form (`json.go`, `text_form.go`), retain-unknown (`retain_unknown.go`) and the wire-fuzz differential (`wirefuzz.lobster`, `make/lobster-fuzz.mk`) are on main, and the driver lists their surfaces. They are rebuilt to the one read (`load_tolerant`, `load_messages_tolerant`, the tolerant `json_read`) by `strict-only/leg-lobster`, then accepted on read-then-write with the deterministic JSON writer. **MUST-FIX:** reading the `feature_full` instance from JSON and saving it writes 233 bytes where the reference writes 313. Lobster's JSON read loses values, and identical values is the one cross-language contract. The fixture is kept in Stella's Lobster work record, and the strict-only read-then-write gate catches it | implemented, rework under the cut | vt (part of 25) | after the cut | L |
+| B4 | **Accelerators and descriptors.** Block read and build, build version, cook open and cook write, reflection and doc-tags are implemented (`block_form.go`, `cook.go`, `descriptors.go`, with their tests, and the block, cook and forgery surfaces in `main.lobster`). The roadmap's "owed" notes for cook and cook write are stale. A reviewer is repairing the unit registry and UnitView row on `codex/schema-lobster-unit-view`. That work found two more real defects to fix there: a minimum int64 emitted as a decimal that overflows, and packet union descriptors that are missing | implemented, evidence owed (unit registry: in repair) | vt 8 | now | M |
+| B5 | **Read surfaces noted as owed, which are implemented.** The message form (`messageform.go`), the JSON text form (`json.go`, `text_form.go`), retain-unknown (`retain_unknown.go`) and the wire-fuzz differential (`wirefuzz.lobster`, `make/lobster-fuzz.mk`) are on main, and the driver lists their surfaces. They are rebuilt to the one read (`load_tolerant`, `load_messages_tolerant`, the tolerant `json_read`) by `strict-only/leg-lobster`, then accepted on read-then-write with the deterministic JSON writer. **MUST-FIX:** reading the `feature_full` instance from JSON and saving it writes 233 bytes where the reference writes 313. Lobster's JSON read loses values, and identical values is the one cross-language contract. The fixture is kept in a reviewer's Lobster work record, and the strict-only read-then-write gate catches it | implemented, rework under the cut | vt (part of 25) | after the cut | L |
 | B6 | **Built read cells, accepted.** Optionals, maps, blobs, wide kinds, the variable class and the rest of the 25, on read-then-write | implemented, rework under the cut | vt (rest of 25) | after the cut | L |
 
 ## Shared items
@@ -217,13 +217,13 @@ nothing here is assigned to anyone else.
 ## Order
 
 1. **Now, on any host:** X1, then L1, L2, L4, L6, S0, S1, S2, S4, S5, X2;
-   B1, B2 and B4 are Stella's to schedule.
+   B1, B2 and B4 are a reviewer's to schedule.
 2. **When the Linux benches return:** U0 to U2 and U4. M1 and M2 wait for the
    cut either way.
 3. **After the cut lands for the leg:** L3, L5, U3, U5, S3, S6, M1 to M3, B3,
    B5 and B6, in the cut's leg order.
 
-## Decisions for Glenn
+## Decisions for the owner
 
 1. **A macOS pin for luau.** Today luau only runs on the Linux benches.
    Options: (a) add the `luau-macos.zip` release of the same tag beside the

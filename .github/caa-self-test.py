@@ -7,12 +7,12 @@ the allowlist in .github/workflows/cla.yml. The action cannot run here.
 It queries a pull request and refuses anything else.
 
 Exits non-zero when the allowlist is not exactly the two logins
-(gafferongames, rowan-claude: no names, no wildcards; Glenn, 2026-10-22,
+(gafferongames, rowan-claude: no names, no wildcards; the owner, 2026-10-22,
 "allow-list logins only"), or when the main tip would be rejected.
 
 Only the tip is checked, so only commits made after the switch to
 logins-only are held to it: history from before carries unlinked house
-names (nova-sprint, worker, Worker N, ...) that the old name list covered
+names (the sprint tool, worker, Worker N, ...) that the old name list covered
 and that this list deliberately does not.
 """
 

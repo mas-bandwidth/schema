@@ -15,7 +15,7 @@ Raw: [pass CSV](2026-08-17-arm64-macbook-air-power-cfixes-mains-pair-O3-twin-pas
 [bespoke surfaces](2026-08-17-own-bench-serialize.c-interleaved.txt)
 ([serialize -O3](2026-08-17-own-bench-serialize-cpp-O3.txt)).
 
-**Convention: C = 100%** (Glenn, 2026-08-17: *"make C the reference. It is the 100%. C++ is
+**Convention: C = 100%** (the owner, 2026-08-17: *"make C the reference. It is the 100%. C++ is
 measured against C."*). Every percentage below is **C++'s time as a percentage of C's time**
 on the §2.2 headline (best rate): **higher = C++ slower, lower = C++ faster.** The `legacy`
 column gives the prior eras' convention (C's time as % of C++'s) for continuity with

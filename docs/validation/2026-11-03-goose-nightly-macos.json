@@ -1,13 +1,13 @@
 {
   "language": "goose",
   "tested_revision": "91d1f56632a3100fe723e11d4044f64f80e6e477",
-  "host": "studio",
+  "host": "bench-11",
   "platform": "macOS arm64",
   "goose_runtime": "dede1ff88606",
-  "command": "GOOSE=/Users/glenn/rowan-working/sdk/bin/goose DART=dart test/conformance/nightly-readiness goose",
+  "command": "GOOSE=<work>/sdk/bin/goose DART=dart test/conformance/nightly-readiness goose",
   "finished_utc": "2026-11-03T04:08:54.317010+00:00",
   "result": "NIGHTLY_READINESS_PASS language=goose phases=25",
-  "scope_note": "Frozen Studio acceptance only. Linux x64 five-byte featurewitnesses hang remains separately unresolved; this receipt does not close Goose variable-table completion, cook, JSON or cards.",
+  "scope_note": "Frozen bench-11 acceptance only. Linux x64 five-byte featurewitnesses hang remains separately unresolved; this receipt does not close Goose variable-table completion, cook, JSON or cards.",
   "native_events": {
     "lockfile": {
       "pass": 295,

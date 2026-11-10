@@ -12,9 +12,9 @@
 #       and a new test lands in the complement.
 #
 # MEASURED 2026-11-08 on the schema fleet runners, one package per job, runs
-# 42492071587 and 42493376287 (rowan/ci-measure-gotest, never merged). The
+# 42492071587 and 42493376287 (ci-measure-gotest, never merged). The
 # numbers include compiling the test binary on a warm build cache. Hosts
-# differ by up to 3x (vision runs slowest); the numbers are as measured,
+# differ by up to 3x (bench-7 runs slowest); the numbers are as measured,
 # whichever host took the job. A row that goes past the two-minute cap is
 # re-measured and re-split here: the weights only place packages, they never
 # decide whether one runs.

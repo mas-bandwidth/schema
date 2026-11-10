@@ -391,7 +391,7 @@ func TestRemovalOfTheLastFieldRefused(t *testing.T) {
 }
 
 // TestWidenTakenAsAChangeToRecord grows a capacity: under the monotone law
-// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, Glenn's ruling that the lock is
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, the owner's ruling that the lock is
 // the law's home) a widening is not a break — every value an older writer
 // could write still lands — so it is a change the RECORD must carry, which is
 // the one refusal that names `schema lock`, and that command writes it.

@@ -24,7 +24,7 @@ is stated.
 > with the rust read column's never-had-a-read-pass items.
 
 **The v3 scoreboard** (M2, time relative to C++ = 100%, medians across the
-11 corpus benches; batch separately; EPYC deferred on Glenn's word):
+11 corpus benches; batch separately; EPYC deferred on the owner's word):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
@@ -116,7 +116,7 @@ spread.
   POLICY.** PR #20: safe Rust cannot produce `&mut` from `&T` without a
   copy, and the forbid stands "in the runtime and in generated code"; PR #5
   states the write path's bounds-checked shape is "a deliberate boundary
-  this pass does not cross." The policy is Glenn's ruling to revisit, not a
+  this pass does not cross." The policy is the owner's ruling to revisit, not a
   compiler limit.
 - **apple-clang's whole-header constant folding on tiny messages —
   measured.** Post-#19/#5, probe_header write sits at 0.19x same-run C++
@@ -294,7 +294,7 @@ measurement of record.
   lever that could reopen #25's direct-call design (V1 lost to outlining,
   not to the constants). A serialize-repo decision.
 - **Chat-arm re-init: tail-only union-arm zeroing.** schema#4, OPEN,
-  Glenn's decision — priced at ~1–2% batch read for the measured mix
+  The owner's decision — priced at ~1–2% batch read for the measured mix
   (selection still zeroes `sizeof(arm)`: Chat 264 B for a ~13 B message);
   the proposal document is the pricing.
 - **g++ rigidbody_at_rest layout artifact** (const-emit md follow-up): a

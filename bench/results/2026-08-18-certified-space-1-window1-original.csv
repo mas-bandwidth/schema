@@ -1,7 +1,7 @@
 # era: certified-space-1 (WINDOW 1 DRIVER ORIGINAL — pre-fix tool output: twin-gate false SUSPECT via 2-decimal band, real_packet rows missing via order-list omission; preserved as the honest record, superseded by -window1.csv)
 # schema bench results
 # date: 2026-08-17T09:52:38Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -14,8 +14,8 @@
 # pinning: taskset -c 15
 # noise: QUIET: game server stopped for certified pass era certified-space-1 (stopped 09:49:01Z; no players before stop: journal 2h empty, no game UDP flows)
 # schema commit: 22a4604
-# serialize commit: dd24915 (main) [build-verified: /home/ubuntu/rowan-bench-quick/serialize]
-# serialize.c commit: dcbf47a (main) [build-verified: /home/ubuntu/rowan-bench-quick/serialize.c]
+# serialize commit: dd24915 (main) [build-verified: <bench>/serialize]
+# serialize.c commit: dcbf47a (main) [build-verified: <bench>/serialize.c]
 # serialize.go commit: unknown (unknown) [UNVERIFIED — leg not run this invocation; path recorded from the environment, not proven against a build]
 # serialize.rs commit: unknown (unknown) [UNVERIFIED — leg not run this invocation; path recorded from the environment, not proven against a build]
 # serialize.cs commit: unknown (unknown) [UNVERIFIED — leg not run this invocation; path recorded from the environment, not proven against a build]

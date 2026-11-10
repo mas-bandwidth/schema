@@ -228,7 +228,7 @@ meaning too (fix 13).
 
 **The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
 and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
-and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
+and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (the owner,
 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its
 set, and a `string` whose used bytes are not UTF-8 or hold a NUL. The check is over the LIVE extent only (a counted array's `count` elements, an
@@ -419,12 +419,12 @@ rest (§5.8 row 4).
   (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it
   refuses on either plan. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
-  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
+  compiler refuses a headroom enum the moment a table reaches it (the owner, 2026-09-10: dead text, not a rule).
 
 ## 5. Evolution: the fixed table reads backward, never forward
 
 The bill is `docs/FIXED-FORM-BILL-READS-BACKWARD.md`; the spec is SPEC-TABLES §21. This section is the
-algorithm. Glenn, 2026-09-10: "Newer versions of the fixed table should be able to read OLD versions. But
+algorithm. The owner, 2026-09-10: "Newer versions of the fixed table should be able to read OLD versions. But
 old versions CANNOT read new versions, and complain loudly and refuse." The order of work: basic versioning
 on the fixed table first (this section), then the bitpacked fixed form; the variable table is HELD.
 
@@ -1180,7 +1180,7 @@ deliberately unlawful lineage entry handed in by a test, not a schema pair.
 known hash, says "Today every one of them comes back with its §1.1 name instead". That is the reader §5.3
 retired: a §1.1 malformation under a KNOWN hash is ONE name, `layout_malformed`, and the block's own
 assertions now check exactly that (`r.reason == layout_malformed`, line 1046). The cases are right; the
-comment describes a reader that no longer exists. **Noted for Johnny**, with the C++ green phase.
+comment describes a reader that no longer exists. **Noted for a reviewer**, with the C++ green phase.
 
 **The C leg's port list, from the twin.** `tools/fixedtwin` holds the C and C++ fixed-form runtimes to one
 canonical text and fails on ANY difference, so a row C++ has and C does not would break the gate. Those rows
@@ -1252,9 +1252,9 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
 | 4 | the VARIANT and ARM counts are the READER's, and the bounds pass CLAMPS to them and to the writer's ranges | the bounds are the WRITER's, per plan (bill §12.5), and the pass REFUSES `out_of_range` past them (§4.6). **The `count` op's bound LANDED** — `e.size = their_n`, the writer's, at `cpptable/fixedruntime.go` — and the writer's RANGES are carried per lineage entry (`TableFixedKnownRange`). What still owes, on the reference and on every port: the refusal in place of the clamp, and the variant and arm counts |
-| 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
+| 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
 | 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. The follow-on has LANDED too: THE GUARD CHAIN of §4.1 (R28) — offset+count into a pool of `(guard, arg, argw)` links, outermost first, the layout's 64 the only bound — so a third nested union is carried, not refused; a leg whose compiled plan cannot lay the chain FAILS AT GENERATE TIME (§4.1) and never meets the case at read | an arm inside an arm answers to the OUTER tag too, and to every tag outside it: the guard chain (§4.1) |
-| 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
+| 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and sets a flag | a content violation REFUSES BY NAME, `text_ill_formed` (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
 | 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
@@ -1262,7 +1262,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `REFUSE out_of_range` on both, in the bounds pass (§4.6) |
 | 16 | a `bool` or a present byte lands by a one-byte copy, and a ranged value, a tag and an ordinal past the writer's are clamped and counted | `wire_damaged` for the byte and `out_of_range` for the rest, refused (§4.5, §4.6; 2026-11-03) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
-| 14 | ~~the enum remap table is CAPPED AT 255 entries~~ **LANDED** (rowan/twin-full-width-lanes): `n := te.children` on both twins, laid in the plan's own pool; past the `uint16_t` length word the plan refuses by name rather than answering a wrong value | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
+| 14 | ~~the enum remap table is CAPPED AT 255 entries~~ **LANDED** (twin-full-width-lanes): `n := te.children` on both twins, laid in the plan's own pool; past the `uint16_t` length word the plan refuses by name rather than answering a wrong value | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
 | 15 | there is no GENERATOR-SIDE COMPILE: every leg that cannot run a plan compiler at build carries the walk as emitted runtime text in its own language, so the plan is built from the lock's bytes once per process instead of being laid down as source | the plan is laid down AS DATA by the TOOLCHAIN, one shared COMPILE in the generator's language feeding every leg's emitter (§5.9 #20). **This row is the TOOLCHAIN's debt and not the C++ runtime's**, and it is the follow-on the C leg's shape names: until it exists, a leg with neither a package initializer nor a constant initializer owes the TIMING and the thread safety of its one build flag in its PR, and that is conforming |
 
 **What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is
@@ -1883,7 +1883,7 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 | 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED, `8c15973d` |
 | 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | LANDED, `db52975f` |
 | 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant REFUSE `out_of_range` (2026-11-03), on the identity path as well as the compiled one | pending, every leg — §4.5, §4.6 |
-| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | in flight (C #838, Rust #837) |
+| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. The owner's ruling: prefill the bytes the plan does not write; identity's list is empty | in flight (C #838, Rust #837) |
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
 width as `1, 2 or 4`, where the compiler and the reader both admit `8`, derived from the enum's top wire value.

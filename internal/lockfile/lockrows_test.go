@@ -2,7 +2,7 @@
 // LOCK-REFUSES and LOCK-ALLOWS columns, one pair per row of
 // docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and §6.
 //
-// Glenn's ruling (§6): "lock." The lock is the law's home, so every narrowing
+// The owner's ruling (§6): "lock." The lock is the law's home, so every narrowing
 // the bill forbids is refused HERE, by name, with the table, the definition,
 // the rule and BOTH VALUES in the sentence — and every widening the bill
 // allows is accepted by `schema lock`, which is the edit that moves the file.

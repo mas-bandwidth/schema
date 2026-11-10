@@ -1,4 +1,4 @@
-// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 // finite-only too, same rule as packets"): the patterns no table form carries,
 // shared by the two binaries that use them.
 //

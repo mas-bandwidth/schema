@@ -3,9 +3,9 @@
 Lobster (github.com/aardappel/lobster, Wouter van Oortmerssen) is a
 game-oriented, statically typed language with Python-like syntax: flow typing,
 compile-time reference counting, a JIT through TinyCC by default and an
-ahead-of-time `--cpp` path that writes C++. Glenn Fiedler, 2026-10-19: "Please
+ahead-of-time `--cpp` path that writes C++. The owner, 2026-10-19: "Please
 add 'Lobster' as a language as well. For fun." It is held to every surface the
-other legs carry (Glenn, 2026-10-18: "We do all features across all
+other legs carry (the owner, 2026-10-18: "We do all features across all
 languages"); the oracle is the Go reference (`sprint/schema-go`), and
 docs/SPEC.md and docs/SPEC-TABLES.md are the standard as written. The layers
 copy the Luau port's (docs/PORT-LUAU.md on `sprint/schema-luau`): a type
@@ -156,7 +156,7 @@ The package-wide `test-lobster` gate includes this test as well.
 
 ## THE NUMBER MODEL
 
-Measured on the pin (hetzner2 and hulk, 2026-10-19): Lobster has ONE integer
+Measured on the pin (bench-2 and bench-6, 2026-10-19): Lobster has ONE integer
 type, `int`, signed 64-bit; NO unsigned type and NO logical shift — `>>` is
 arithmetic (`0x8000000000000000 >> 63` is `-1`) and the shift count is taken
 to 6 bits (`1 << 64` is `1`); hex literals are bit patterns
@@ -483,7 +483,7 @@ as lines (lowercase hex for bytes).**
   only with the engine's full build (SDL, FreeType, OpenGL) from a checkout at
   the pin — a heavy build and a fleet job. Both legs print the card on stderr
   and no `--cpp` number until it lands. No timed number is taken on the
-  studio; the first sitting is a fleet pass.
+  bench-11; the first sitting is a fleet pass.
 - **The bench found a type-wire gap, now closed.** serialize.lobster's fixed
   operations take a SIGNED Q format and refuse a declaration whose bounds the
   signed storage cannot hold, so the generated code passing a `ufixed(8, 8)`

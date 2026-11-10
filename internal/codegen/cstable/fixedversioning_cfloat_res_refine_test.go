@@ -24,7 +24,7 @@ func TestFixedVersioningCfloatResRefine(t *testing.T) {
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 
-	// THE BITS, AND FROM THE MANIFEST (schema#1164, Glenn 2026-09-19: "do
+	// THE BITS, AND FROM THE MANIFEST (schema#1164, the owner 2026-09-19: "do
 	// whatever is needed to make sure that a new reader can read an old
 	// writer"). It was `back[0].Aim != 0.3f` — a float comparison against a
 	// HARDCODED literal, an oracle written by the same hand as the code under

@@ -1,7 +1,7 @@
 # The schema tutorial
 
 You are going to build the network protocol and the data files for a small
-space game, starting from an empty directory. By the end you will have packets
+a game project, starting from an empty directory. By the end you will have packets
 that cross the network in a handful of bytes, save games a build from next year
 can still read, config files your designers edit as JSON, and cooked assets
 your game opens without parsing a byte.

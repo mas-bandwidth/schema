@@ -1,7 +1,7 @@
 {
   "language": "cpp",
   "tested_revision": "b998963b125e6ba2e943c6e38dde661eef886a21",
-  "host": "studio",
+  "host": "bench-11",
   "command": "python3 test/conformance/nightly-readiness cpp",
   "finished_utc": "2026-11-03T07:52:52Z",
   "result": "NIGHTLY_READINESS_PASS language=cpp phases=37",

@@ -7,7 +7,7 @@
 // cargo, dart, node, elixir — or that reads the C++ reference's corpus out of
 // build/fixedform-corpus does not cost milliseconds. It costs one to thirty
 // SECONDS of somebody else's compiler, every run, and a package full of them
-// costs minutes. `go test ./compiler/` was 185-262 s on the Studio and
+// costs minutes. `go test ./compiler/` was 185-262 s on the bench-11 and
 // `go test ./internal/codegen/...` several minutes more; at that price a child
 // stops running the tests, which is the only failure mode that matters.
 //

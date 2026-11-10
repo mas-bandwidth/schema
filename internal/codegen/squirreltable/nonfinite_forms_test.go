@@ -1,7 +1,7 @@
 package squirreltable_test
 
 // A TABLE FLOAT IS FINITE in the MESSAGE and FIXED forms too
-// (docs/SPEC-TABLES.md §3.3, §3.4; Glenn, 2026-10-27, "same rule as
+// (docs/SPEC-TABLES.md §3.3, §3.4; the owner, 2026-10-27, "same rule as
 // packets"); nonfinite_test.go holds the variable form.
 //
 //   - MESSAGE (form 2): the writer refuses a NaN or an infinity before the

@@ -23,7 +23,7 @@ import (
 
 // TestLuauPlainFloatSpecialValues pins docs/SPEC-TABLES.md §3.3, "A PLAIN
 // FLOAT'S SPECIAL VALUES TAKE ONE RULE", for the plain float32 and float64
-// fields of a variable table, under the finite rule of 2026-10-27 (Glenn:
+// fields of a variable table, under the finite rule of 2026-10-27 (the owner:
 // "tables go finite-only too, same rule as packets"): -0 rides (elision
 // compares BIT PATTERNS), +0 elides, a subnormal rides as its bits, and a NaN
 // (quiet, signalling, with a payload) or an infinity is refused by the save

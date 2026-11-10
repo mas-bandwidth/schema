@@ -1,4 +1,4 @@
-# 2026-09-23, spacegame.losangeles — schema-gate-packet-read-go-identity
+# 2026-09-23, bench-12 — schema-gate-packet-read-go-identity
 
 The probe for gates/packet-read/go/identity — "go: identity fixed read versus
 its own packet read" — on the swarm bench at `ead80409`, in one sitting. The
@@ -31,7 +31,7 @@ $ bin/schema-paired -mode gate -langs go
 + build/paired/schema generate --lang go --out generated/bench/paired/go bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 + build/paired/schema generate --lang go --out generated/bench/go bench/corpus/Bench.schema
 + build/paired/schema generate --lang cpp --out generated/bench/paired/cpp bench/corpus/Bench.schema bench/corpus/FixedTable.schema
-+ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT="O3" -Igenerated/bench/paired/cpp -I/home/ubuntu/rowan-working/tmp/99770727-80ae-4954-ac40-c6afade2a49b-card-schema-gate-packet-read-go-identity/jobs/card-schema-gate-packet-read-go-identity/serialize test/bench/paired_main.cpp -o build/paired/corpus
++ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT="O3" -Igenerated/bench/paired/cpp -I<work>/tmp/99770727-80ae-4954-ac40-c6afade2a49b-card-schema-gate-packet-read-go-identity/jobs/card-schema-gate-packet-read-go-identity/serialize test/bench/paired_main.cpp -o build/paired/corpus
 In file included from test/bench/paired_main.cpp:9:
 generated/bench/paired/cpp/BenchWire.h:12:10: fatal error: serialize.h: No such file or directory
    12 | #include "serialize.h"
@@ -55,7 +55,7 @@ fixing by network ("No network beyond the clone you were given").
 | | |
 |---|---|
 | date | 2026-09-23T00:07:07Z |
-| machine | `spacegame.losangeles`, swarm bench |
+| machine | `bench-12`, swarm bench |
 | up at start | 6 days, 27 min, 0 users |
 | load at start | 124.02 / 110.51 / 89.09 (1-min, 5-min, 15-min) |
 | load at end | 50.20 / 80.44 / 82.13 |

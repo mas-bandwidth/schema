@@ -1,7 +1,7 @@
 {
   "language": "java",
   "tested_revision": "68d1eaf82e176197e0b97570b595360903ba1a09",
-  "host": "studio",
+  "host": "bench-11",
   "command": "JAVA=java JAVAC=javac python3 test/conformance/nightly-readiness java",
   "finished_utc": "2026-11-03T00:44:58Z",
   "result": "NIGHTLY_READINESS_PASS language=java phases=23",

@@ -104,7 +104,7 @@ func tableKindWidth(kind int) int { return ir.TableKindWidth(kind) }
 // intBytes is THE ONE GATE every integer width this emitter prints passes
 // through: it returns bytes unchanged and, for anything but 1, 2, 4 or 8, records
 // a refusal naming the table, the field and the width. No zero-width integer is
-// ever valid (Glenn, 2026-10-16), so `uint0_t` cannot reach a header.
+// ever valid (the owner, 2026-10-16), so `uint0_t` cannot reach a header.
 func (g *tableGen) intBytes(table, field string, bytes int64) int64 {
 	if err := ir.PrintedIntegerWidthRefusal(table, field, bytes); err != nil && g.widthErr == nil {
 		g.widthErr = err

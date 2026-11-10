@@ -1,6 +1,6 @@
 # Tail-only union-arm zeroing — SPEC proposal
 
-**STATUS: PROPOSAL — DO NOT MERGE. The decision is Glenn's.** No code changes ride this
+**STATUS: PROPOSAL — DO NOT MERGE. The decision is the owner's.** No code changes ride this
 branch; this document is the exact wording change, the safety argument, the honestly
 bounded win, and the open questions. It assumes PR #3 (`optimize-read-zeroing`) merges
 first — everything below builds on its rule that an arm's storage is zero-established at
@@ -148,11 +148,11 @@ outside it on the M2. A mix heavy in total-coverage arms or near-full Blocks doe
 a mix of short chats in big buffers does not.
 
 If that number is the whole story, the honest conclusion may be "not worth the emitter
-complexity" — that conclusion is Glenn's to draw, which is why this is a proposal and not
+complexity" — that conclusion is the owner's to draw, which is why this is a proposal and not
 a PR with code. Any implementation would repeat PR #3's methodology: predictions banked,
 paired before/after, both hosts, stale-leak pins green.
 
-## 6. Open questions for Glenn
+## 6. Open questions for the owner
 
 1. **Padding bytes.** Whole-arm zeroing zeroes struct padding (Chat has 3 pad bytes);
    field-wise tail-only leaves padding unspecified after an arm assignment. Nothing
@@ -177,6 +177,6 @@ paired before/after, both hosts, stale-leak pins green.
    baselines and need no change for field-level parity — confirm that field-level parity
    is the bar (§4.8).
 
-— Rowan, 2026-08-06. Companion evidence: PR #3 body and its run CSVs; bench-harness
+— a maintainer, 2026-08-06. Companion evidence: PR #3 body and its run CSVs; bench-harness
 baseline doc `bench/results/2026-08-06-baseline.md` (hotspot 1); the EPYC perf residual
 quoted from PR #3's "Perf confirmation" section.

@@ -1,6 +1,6 @@
 # schema bench results — const-emit triple (main vs template-forms vs generation-time fold)
 # date: 2026-08-07T01:15:33Z
-# host: spacegame  arch: x86_64  os: Linux (Ubuntu 24.04)
+# host: bench-12  arch: x86_64  os: Linux (Ubuntu 24.04)
 # cpu: AMD EPYC (game server pinned to isolated cores 1-15 at ~372% CPU throughout)
 # build: Release
 # cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

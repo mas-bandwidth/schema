@@ -978,7 +978,7 @@ func t18RequireJava(t *testing.T) {
 	if e1 == nil && e2 == nil && ok(jc, j) {
 		return
 	}
-	if home := "/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"; ok(home+"/bin/javac", home+"/bin/java") {
+	if home := os.ExpandEnv("$HOME/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home"); ok(home+"/bin/javac", home+"/bin/java") {
 		return
 	}
 	t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no working javac and java are on PATH or named by JAVAC and JAVA")

@@ -1,5 +1,5 @@
 // The CLI's §4.6 target-name safety: every command checks every supported
-// language's reserved words, whatever target is generated (Glenn,
+// language's reserved words, whatever target is generated (the owner,
 // 2026-10-21), so generate --lang go refuses `self` (a Rust, Elixir and Goose
 // word) exactly as schema check does.
 package main

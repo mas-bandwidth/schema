@@ -23,7 +23,7 @@
 # SCHEMA_SLOW=1).
 #
 # One analyzer process over every module: about 3 s for 147 units on the
-# studio. The tests live in internal/codegen/moo (strictgate_test.go) so that
+# bench-11. The tests live in internal/codegen/moo (strictgate_test.go) so that
 # ci-full's emitter row, which installs the moo pin, runs them too.
 
 .PHONY: schema-moo-generated-analyze-strict-gate

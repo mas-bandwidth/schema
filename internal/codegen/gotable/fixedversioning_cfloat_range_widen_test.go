@@ -17,7 +17,7 @@ import (
 // is the read that proves there is a pass at all.
 //
 // TWO OF THE THREE EXPECTED VALUES COME FROM THE CORPUS MANIFEST AND THE THIRD
-// CANNOT (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure
+// CANNOT (schema#1164, the owner 2026-09-19: "do whatever is needed to make sure
 // that a new reader can read an old writer"). `old_`'s 0.5 is the manifest's
 // `values=r0.aim`; `hostile_`'s 1.5 is the manifest's own `forged=r0.aim@104`,
 // which is the value the reference WROTE INTO those bytes. `past_`'s landing is

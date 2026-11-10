@@ -106,7 +106,7 @@ public final class Main {
         }
 
         // 2. Fixed table with integrity = "crc32c":
-        // (a) Variable form 1 (stella-b78d32f07f14): FixedLedgerVariable and FixedLedgerRetain also carry the 4-byte CRC-32C trailer!
+        // (a) Variable form 1 (finding-b78d32f07f14): FixedLedgerVariable and FixedLedgerRetain also carry the 4-byte CRC-32C trailer!
         FixedLedgerVariable.Value flv = new FixedLedgerVariable.Value();
         flv.n = 1000;
         flv.count = 7;

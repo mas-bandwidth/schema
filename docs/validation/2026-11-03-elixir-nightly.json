@@ -1,7 +1,7 @@
 {
   "language": "elixir",
   "tested_revision": "d2d77495d63df61bc3097cedf8f049bae97dc1ce",
-  "host": "studio",
+  "host": "bench-11",
   "command": "python3 test/conformance/nightly-readiness elixir",
   "finished_utc": "2026-11-03T07:13:02Z",
   "result": "NIGHTLY_READINESS_PASS language=elixir phases=21",

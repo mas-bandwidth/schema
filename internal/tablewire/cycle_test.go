@@ -1,4 +1,4 @@
-// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4). Glenn's ruling,
+// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4). The owner's ruling,
 // 2026-10-31: "Why the fuck would I want to read a cycle" and "It's perhaps
 // the MOST OBVIOUS attack somebody would do on this protocol!"
 //

@@ -99,7 +99,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c )
 
 func TestOwedCLegClosed(t *testing.T) {
 	// THE OWED LIST IS CLOSED (docs/FIXED-FORM-ALGORITHM.md §5.7's C-owed table,
-	// rowan/c-reads-backward). The fifth and last row — `struct
+	// c-reads-backward). The fifth and last row — `struct
 	// TableFixedKnownLayout`, the known-layout table §5.2 lays down and §5.3
 	// selects on — is in the C runtime now, spelled member for member, so the map
 	// strips NOTHING and the gate holds the two legs to it: a C leg that loses

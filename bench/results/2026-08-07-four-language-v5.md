@@ -20,7 +20,7 @@ All five pins were verified against the GitHub mains by API at pull time, and
 the sibling checkouts the Makefile and runners build against
 (`../serialize-cs-port/*`) were verified at exactly these SHAs before the run.
 
-**Host coverage: M2 only — EPYC still deferred on Glenn's word** ("stick with
+**Host coverage: M2 only — EPYC still deferred on the owner's word** ("stick with
 m2 for now"); the v2 EPYC tables remain the latest x86 data, and every x86
 claim in the lane docs keeps its own pairing as the measurement of record.
 
@@ -169,7 +169,7 @@ statically aligned `[N]uint8` (testdata read +70–80%); schema #8 made the
 generator the constexpr evaluator, folding bit counts at generation time
 (+14.7% probebits write) after measuring and disqualifying the ratified
 direct-template design; serialize #27 packed WriteBytes head/tail bytes;
-and serialize #30 — Glenn's own instinct — restrict-qualified the writer's
+and serialize #30 — the owner's own instinct — restrict-qualified the writer's
 `this`, the single biggest C++ write lever (+38%…+158% composed, v4). The
 raised ceiling is what every other column is measured against.
 
@@ -181,7 +181,7 @@ single rust move); serialize.rs #20 + schema #6 killed the 256 B–2 KB
 per-message array copy (chat write +74–78%); schema #14 (this pass) adopted
 the two C++-proven emitter levers — folded bit counts and bulk-bytes —
 closing testdata read +49%. Floors on record: the bounds-checked store
-behind `unsafe_code = "forbid"` (policy, Glenn's to revisit) and
+behind `unsafe_code = "forbid"` (policy, the owner's to revisit) and
 apple-clang's whole-header folding on tiny messages (probe_header write
 0.19x same-run C++).
 
@@ -261,5 +261,5 @@ shared tiny-message floor (one fused call per field vs C++'s whole-header
 folding), the C# batch-scope widening experiment (one Begin/End per packet),
 the rust read column beyond testdata (204% median, never had a read-shaped
 pass), C++'s two unattributed layout suspicions (batch read +17% at v4, rust
-batch write ±12% band), schema #4 (tail-only union-arm zeroing, Glenn's
+batch write ±12% band), schema #4 (tail-only union-arm zeroing, the owner's
 decision), and the EPYC composition pass when the box returns.

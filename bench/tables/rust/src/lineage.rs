@@ -49,7 +49,7 @@
 // image that starts zeroed and scatters the whole image into the destination,
 // and the defaults this corpus's filled slots declare are all zero — so with
 // the prefill's copy deleted from the generated reader (a negative control
-// run on hetzner2 for the card that wrote this) every gate above still
+// run on bench-2 for the card that wrote this) every gate above still
 // passes. That the prefill is ON the clock is a property of the generated
 // code — the hole copy sits inside LOAD's per-record loop in
 // fixedtable_fixed.rs, the same loop the identity lane runs with an empty

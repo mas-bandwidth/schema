@@ -2,7 +2,7 @@
   "start": "2026-09-08T22:42:11.001730+00:00",
   "before_revision": "46052fc9d6b7ba8fcc2abf4279c54414667f7e4a",
   "candidate_revision": "eb3a9f7be2989ebb1fe05ee17bc975e7342a0c5d",
-  "host": "studio.local",
+  "host": "bench-11",
   "arch": "arm64",
   "os": "25.6.0",
   "affinity": "none",

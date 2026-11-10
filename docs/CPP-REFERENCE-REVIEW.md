@@ -1,6 +1,6 @@
 # C++ reference consolidation review
 
-This is the review issue #431 asked for (Glenn, 2026-09-04; `docs/roadmap.sexp` `issue/431`): three independent readers of the C++ reference, followed by a fix round. It reads the specs against `internal/codegen/cpp` (the packet reference), `internal/codegen/cpptable` (the table reference), the C++ they emit, and the schema tool. C, C# and Go carry the variable class now, so a finding about a shared rule applies to them as well.
+This is the review issue #431 asked for (the owner, 2026-09-04; `docs/roadmap.sexp` `issue/431`): three independent readers of the C++ reference, followed by a fix round. It reads the specs against `internal/codegen/cpp` (the packet reference), `internal/codegen/cpptable` (the table reference), the C++ they emit, and the schema tool. C, C# and Go carry the variable class now, so a finding about a shared rule applies to them as well.
 
 The base is `sprint/schema-cpp` at `f28b1a58`. Every line number below is at that base unless a FIXED HERE commit moved it. Generated table code that is not committed is cited as `tables/<corpus> → <File>:<line>`, meaning the output of `schema generate --lang cpp tables/<corpus>` at base.
 
@@ -12,7 +12,7 @@ Every finding is in one of three classes:
 
 - **FIXED HERE**: the fix is in this branch, in its own commit with its test.
 - **CARD**: a proposed sprint card, with a one-sentence task and the paths.
-- **SPEC**: the spec is what has to change, often on a ruling Glenn has to make.
+- **SPEC**: the spec is what has to change, often on a ruling the owner has to make.
 
 | part | findings | FIXED HERE | CARD | SPEC |
 |---|---|---|---|---|
@@ -67,7 +67,7 @@ SPEC-TABLES.md 1-3570 (~190), 3570-7200 (~280; the §3.3 arithmetic tables at
 
 ### SPEC.md
 
-- **P1-01** SPEC. `docs/SPEC.md:1152` "An enum exports no `Count`" CONTRADICTS `internal/codegen/cpp/cpp.go:395`; wrong: SPEC. Every C++ enum gets `E::Count`, and so does every union tag enum (`cpp.go:284`), against §4.2/§4.8 (1152-1160, 1644-1645). The code matches `docs/SPEC-TABLES.md:11723`, which says a packet tag enum carries `Count`, so the two specs disagree. Glenn's call: keep `Count` or drop it.
+- **P1-01** SPEC. `docs/SPEC.md:1152` "An enum exports no `Count`" CONTRADICTS `internal/codegen/cpp/cpp.go:395`; wrong: SPEC. Every C++ enum gets `E::Count`, and so does every union tag enum (`cpp.go:284`), against §4.2/§4.8 (1152-1160, 1644-1645). The code matches `docs/SPEC-TABLES.md:11723`, which says a packet tag enum carries `Count`, so the two specs disagree. The owner's call: keep `Count` or drop it.
 - **P1-02** SPEC. `docs/SPEC.md:772` "An enum has no `.Count`" CONTRADICTS `internal/check/check.go:829`; wrong: SPEC. `declaredCount` accepts `E.Count`. The checker refuses a variant named `Count` (`check.go:903`) and an arm exporting `Count` (`check.go:1127`), against "`Count` is not a reserved variant name" (1159). Same decision as P1-01.
 - **P1-03** CARD. `docs/SPEC.md:1412` "An enum with no variants is legal … costs zero bits" CONTRADICTS `internal/codegen/cpp/functions.go:769`; wrong: IMPL. A field of an empty enum reads through `read_int( stream, enum_value, 0, 0 )` (golden `generated/cpp/TypesWire.h:392`), but §4.6 (1403) says a degenerate range gets no wire call. Card: when `ref.Max == 0`, emit `value.f = E::None;` with no wire call (`internal/codegen/cpp/functions.go`, re-pin `generated/cpp`). Check first what the serialize runtime's `read_int` does over `[0, 0]`; the runtime was not checked out for this review.
 - **P1-04** CARD. `docs/SPEC.md:1082` "every field of a mapped type in every generated struct" CONTRADICTS `internal/codegen/cpp/cpp.go:350`; wrong: IMPL. Union arm storage prints `v.Type` directly rather than going through `cppFieldType`. An arm of a `cpp_native` type declared in another file therefore stores the basis type, not `::Native`, and never pulls in `cpp_include`. Card: route arm storage, and its placement construction in `functions.go:114`, through the native mapping, with a two-file test (`internal/codegen/cpp/cpp.go`, `functions.go`). It is not fixed here because the sibling card `cpp-native-mapping-rides-in-the-generated-cpp` is working the same code in `cpp.go`.
@@ -83,7 +83,7 @@ SPEC-TABLES.md 1-3570 (~190), 3570-7200 (~280; the §3.3 arithmetic tables at
 ### SPEC-TABLES.md 1-3570 (preamble, §1, §2)
 
 - **P1-13** SPEC. `docs/SPEC-TABLES.md:10` "The compiler DERIVES two classes of table … nobody declares which" CONTRADICTS `ir/table.go:155`; wrong: SPEC. The class is declared: `VariableTables` is the complement of `FixedDeclared`, and a pointer-free plain `table` is still variable, as §2.2 (902) says.
-- **P1-14** SPEC. `docs/SPEC-TABLES.md:103` "A declared `fixed table` encodes as form `3`, ALWAYS" CONTRADICTS `ir/fixedform.go:1469`; wrong: SPEC. A declared fixed table over the 65536-byte record ceiling, or past the depth bound (`ir/fixedform.go:1674`), gets no form 3. It gets a warning and keeps form 1 (`internal/codegen/cpptable/fixedform.go:247`). Every fixed table also still emits a form-1 `<Name>Save`/`<Name>Load` (`codecs.go:1262`). "Form 1 … SCHEDULED FOR REMOVAL" (87) would strand those tables. Glenn's call: what does a fixed table past the ceiling ride on?
+- **P1-14** SPEC. `docs/SPEC-TABLES.md:103` "A declared `fixed table` encodes as form `3`, ALWAYS" CONTRADICTS `ir/fixedform.go:1469`; wrong: SPEC. A declared fixed table over the 65536-byte record ceiling, or past the depth bound (`ir/fixedform.go:1674`), gets no form 3. It gets a warning and keeps form 1 (`internal/codegen/cpptable/fixedform.go:247`). Every fixed table also still emits a form-1 `<Name>Save`/`<Name>Load` (`codecs.go:1262`). "Form 1 … SCHEDULED FOR REMOVAL" (87) would strand those tables. The owner's call: what does a fixed table past the ceiling ride on?
 - **P1-15** CARD. `docs/SPEC-TABLES.md:98` "a fixed table's and nobody else's — … plain `table` is REFUSED" BEYOND `internal/codegen/cpptable/pointers.go:1077`; wrong: IMPL. The tool refuses form 2 for a variable table (`compiler/fixedmessageform_test.go`), but C++ gives every variable root a form-2 surface: variable `table Patrol` gets `PatrolSaveMessages`/`PatrolLoadMessages` (`examples/Guarded`, GuardedTable.h:7934 as generated). Card: retire `emitVariableMessageSurface` and the retain message load by a named retirement (`internal/codegen/cpptable/pointers.go`, `messagevariable.go`, `retain.go:1872`, plus the corpus and tests that use them). P1-27 is the same question from §3.
 - **P1-16** SPEC. `docs/SPEC-TABLES.md:699` "No backend emits a view file" CONTRADICTS `internal/codegen/cpptable/view.go:55`; wrong: SPEC. C++ emits `<Package>View.h/.cpp` with `UnitView()` for every unit that declares a table (`cpptable.go:1808`; committed `generated/bench/tables/cpp/BenchtableView.h`).
 - **P1-17** SPEC. `docs/SPEC-TABLES.md:947` "Every FIXED table has one and a variable-length table has none" CONTRADICTS `ir/blocklayout.go:209`; wrong: SPEC. `blockFormable` skips a fixed table whose closure reaches a union. Lines 818, 947 and 1763 need "every fixed table whose closure carries no union" (and see P1-73).
@@ -108,7 +108,7 @@ SPEC-TABLES.md 1-3570 (~190), 3570-7200 (~280; the §3.3 arithmetic tables at
 - **P1-33** SPEC. `docs/SPEC-TABLES.md:4202` "one each for form `0`, form `3` and form `0xFF`" CONTRADICTS `testdata/conformance/tables/reports.txt:27`; wrong: SPEC. The negative control moved to form 6 (`form_six`; §3.4 at 7106), and form 3 is now the fixed form.
 - **P1-34** SPEC. `docs/SPEC-TABLES.md:4324` "those are the pointer spellings the language has" CONTRADICTS `internal/check/check.go:1487`; wrong: SPEC. `*wstring` is refused, and `ir.FieldType.Blob()` excludes it (`ir/ir.go:511`).
 - **P1-35** SPEC. `docs/SPEC-TABLES.md:3940` "a length-shaped arm whose payload is damaged inside its `L`" (reads `None`) CONTRADICTS `internal/codegen/cpptable/arms.go:357,369-371`; wrong: SPEC. Resolved by the ruling of 2026-10-31: damage anywhere, element-level or in the count, discards the whole load as `malformed` (SPEC-TABLES.md §4), so no arm value after damage is defined.
-- **P1-36** SPEC. `docs/SPEC-TABLES.md:6860` "reads form `1` and form `3`, by the form byte" CONTRADICTS `internal/codegen/cpptable/fixedform.go:675-680`; wrong: SPEC. No generated reader dispatches on the form byte: `<T>FixedLoad` refuses 1 as `previous_form` (as 6498 and 7145 require), and `<T>Load` refuses 3 as `newer_form` (`codecs.go:1800`). The section contradicts itself, so Glenn decides between two readers that refuse each other's form by name and one that dispatches.
+- **P1-36** SPEC. `docs/SPEC-TABLES.md:6860` "reads form `1` and form `3`, by the form byte" CONTRADICTS `internal/codegen/cpptable/fixedform.go:675-680`; wrong: SPEC. No generated reader dispatches on the form byte: `<T>FixedLoad` refuses 1 as `previous_form` (as 6498 and 7145 require), and `<T>Load` refuses 3 as `newer_form` (`codecs.go:1800`). The section contradicts itself, so the owner decides between two readers that refuse each other's form by name and one that dispatches.
 - **P1-37** SPEC. `docs/SPEC-TABLES.md:3737` "`1` bool | 1 byte, `0` or `1`" BEYOND `internal/codegen/cpptable/codecs.go:2203`; wrong: SPEC. A bool byte of 2..255 reads as true with no event, as in the Go oracle (`internal/tablewire/decode.go:1364`). The spec never says whether that is malformed or accepted.
 
 ### SPEC-TABLES.md 7200-9118 (§4 versioning, §5 identity, §6 the two lives)
@@ -169,7 +169,7 @@ The 11483-14322 reader also checked §15: none of its named follow-ons is alread
 
 ## Part 2: dead code and scaffolding
 
-This part covers `internal/codegen/cpp/`, `internal/codegen/cpptable/`, and the C++ runtime they emit. Evidence came from four runs on hetzner2 at base:
+This part covers `internal/codegen/cpp/`, `internal/codegen/cpptable/`, and the C++ runtime they emit. Evidence came from four runs on bench-2 at base:
 
 - `deadcode ./...` and `deadcode -test ./...` (golang.org/x/tools/cmd/deadcode).
 - A merged coverage profile, with `-coverpkg` set to the two emitter packages, over `go test ./internal/codegen/cpp ./internal/codegen/cpptable ./internal/ci ./internal/goldens ./internal/fuzz` and the compiler tests matching `ValueDefaults|Issue710|Issue715|Cpp|CPP`. Statement coverage of the two packages comes out at 97.4%, leaving 206 blocks at count 0.

@@ -824,7 +824,7 @@ tables-rust-message-batch:
 
 test-rust: tables-rust-message-batch
 
-# THE FINITE FLOAT RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# THE FINITE FLOAT RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; the owner,
 # 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
 # refuses a NaN or an infinity on its raw bits as non_finite_float, the
 # tolerant read included, every writer refuses one, and -0 and the subnormals

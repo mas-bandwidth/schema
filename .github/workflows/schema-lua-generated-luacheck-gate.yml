@@ -49,7 +49,7 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The checker is fleet software, installed through rowan-tools/fleet from
+      # The checker is fleet software, installed through the fleet tooling from
       # its official source and pinned by the make file at 1.2.0. A host that
       # does not carry it says so by name; it never reports a green it did not
       # run.
@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v luacheck >/dev/null 2>&1; then
-            echo "::error::tool missing: luacheck 1.2.0 — install it fleet-wide from its official source (rowan-tools/fleet)"
+            echo "::error::tool missing: luacheck 1.2.0 — install it fleet-wide from its official source (the fleet tooling)"
             exit 1
           fi
           luacheck --version

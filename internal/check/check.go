@@ -3525,7 +3525,7 @@ func describeTableJsonField(f *ir.Field) string {
 // predeclared names a generated declaration would shadow (Go's universe block,
 // Dart's dart:core types and Object members, Elixir's arity-0 Kernel imports).
 // It is THE one list: the checker refuses a schema name in any of them,
-// whatever target is generated (Glenn, 2026-10-21: "generated output never
+// whatever target is generated (the owner, 2026-10-21: "generated output never
 // puts out keywords in Y"), and an emitter that tests its own mapped spellings
 // reads its language's words from here (ReservedIn), never from a copy. A
 // port is added by adding its row; one cannot register without it

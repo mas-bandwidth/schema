@@ -17,7 +17,7 @@ import (
 
 // SPEC-TABLES §3 carries every FINITE IEEE-754 pattern bit for bit — -0 and
 // the subnormals included — and §3.3 refuses a NaN or an infinity in every
-// form (Glenn, 2026-10-27, "tables go finite-only too, same rule as packets"):
+// form (the owner, 2026-10-27, "tables go finite-only too, same rule as packets"):
 // the block accessor never returns one and latches non_finite_float naming
 // the field (ruling 2), the message read refuses one on its raw bits, and the
 // message write refuses one before the quantizer or the bits. -0 under a +0

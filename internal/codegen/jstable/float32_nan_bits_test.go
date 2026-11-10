@@ -13,7 +13,7 @@ import (
 )
 
 // TestJsFloat32CellsAreBitTransparent holds the JavaScript leg to the FINITE
-// rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3; Glenn: "Tables go finite-only
+// rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3; the owner: "Tables go finite-only
 // too, same rule as packets. NaN/inf refused on write and read, -0 and
 // subnormals kept"). A finite float rides every form as its bits, -0 and the
 // subnormals included, and a -0 under a +0 default rides (elision compares

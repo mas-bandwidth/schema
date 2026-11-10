@@ -1361,7 +1361,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 	case ir.TFloat32, ir.TFloat64:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
 		// become a value and before the field is written (docs/SPEC-TABLES.md
-		// §3.3; Glenn, 2026-10-27, "same rule as packets"), and before any
+		// §3.3; the owner, 2026-10-27, "same rule as packets"), and before any
 		// bounds: the read refuses by name as nonFiniteFloat and lands nothing
 		// past it. A compiled plan's float rung (widenf) is the ordinary
 		// conversion, which keeps a NaN a NaN, so this test is also where a
@@ -1647,7 +1647,7 @@ func fixedCarriesFloat(fields []*ir.Field, seen map[string]bool) bool {
 }
 
 // emitFinite is the WRITER'S FINITE PASS for one type (docs/SPEC-TABLES.md
-// §3.3; Glenn, 2026-10-27, "same rule as packets"): true when every float the
+// §3.3; the owner, 2026-10-27, "same rule as packets"): true when every float the
 // value would store is finite. It is real code and not an assert, unlike
 // checkWrite: a NaN or an infinity is refused by every build, and save answers
 // -1 for it. A type with no float in its closure has no pass.

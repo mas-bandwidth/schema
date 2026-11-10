@@ -89,11 +89,11 @@ serialize 19d332e. Raw CSV: `2026-08-06-four-language-v2-arm64-m2.csv`.
 
 ## Host 2 — AMD EPYC 9124 (x86_64, core 0, NOISY)
 
-spacegame, Linux 6.8.0-90. Same shared-core discipline as v1: the game
+bench-12, Linux 6.8.0-90. Same shared-core discipline as v1: the game
 server owns isolated cores 1-15 with one pinned thread each; the bench is
 `taskset -c 0` on the shared core — treat spreads accordingly. g++ 13.3.0
 (same flags + `-Wno-class-memaccess -Wno-type-limits`); go1.26.5,
-cargo/rustc 1.97.1, dotnet 10.0.302 — the user-local `~/rowan-bench`
+cargo/rustc 1.97.1, dotnet 10.0.302 — the user-local `~/the bench directory`
 installs, versions identical to v1 and to host 1. Tree rsynced without
 `.git` (preamble says commit unknown); content = this commit, serialize
 content = 19d332e. Several concurrent sessions were pinning benchmarks to

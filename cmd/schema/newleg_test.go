@@ -136,7 +136,7 @@ func TestHelpListsNewLeg(t *testing.T) {
 	}
 }
 
-// THE SCAFFOLDING VERB'S WRITE DISCIPLINE (nova-tools#2498 S5, schema#1859).
+// THE SCAFFOLDING VERB'S WRITE DISCIPLINE (tools issue 2498 S5, schema#1859).
 //
 // `schema new-leg <lang>` lays down a leg that already builds and already
 // tests, so a porter spends tokens on the emitter rather than on finding the

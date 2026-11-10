@@ -17,7 +17,7 @@ import (
 // RELEASE (docs/PORT-LOBSTER.md, THE LOAD): Lobster frees by reference
 // counting, so a cycle of Records outlives the caller, and the VM reports such
 // records at exit ("LEAKS FOUND"). A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md
-// §3.1, §4; Glenn, 2026-10-31): the load refuses it as malformed and answers
+// §3.1, §4; the owner, 2026-10-31): the load refuses it as malformed and answers
 // nil, and the refusal itself must leak nothing. These tests load a cyclic
 // ListNode wire of tables/pointers, hold the refusal and an empty exit report,
 // and carry a reversed witness for the cycle check and for each of the two

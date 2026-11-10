@@ -6,7 +6,7 @@ import "testing"
 // docs/FIXED-FORM-ALGORITHM.md §5.3 steps 4 and 5 — the header's hash NAMES the
 // layout and is taken as given, and "a known hash over different bytes is
 // `layout_malformed`". The card closes go/F12 with the refusal that already
-// exists (Glenn, 2026-10-13: "ok then do layout_malformed"); no new error name
+// exists (the owner, 2026-10-13: "ok then do layout_malformed"); no new error name
 // is added in code, spec or roadmap. This is the port of c's cT01SecondLayout
 // (internal/codegen/ctable/fixedroadmap_t01_test.go:175), the c leg's F12.
 //

@@ -9,7 +9,7 @@ package elixirtable
 // that requantized would move the counter, which a `>= 1` would pass.
 //
 // `aim` IS COMPARED BY ITS float32 BITS, AGAINST THE CORPUS MANIFEST
-// (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure that a
+// (schema#1164, the owner 2026-09-19: "do whatever is needed to make sure that a
 // new reader can read an old writer"). It was `v.aim == 0.30000001192092896` —
 // exact, because the BEAM has one float type and that literal IS the f32 0.3
 // widened, but exact BY ACCIDENT of a number transcribed by hand, with nothing

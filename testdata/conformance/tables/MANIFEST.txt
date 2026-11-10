@@ -1231,11 +1231,11 @@ framing frame_kind_unknown_37_named             tblr1 Cfg testdata/wire/tables/f
 framing frame_kind_reserved_34_named            tblr1 Cfg testdata/wire/tables/framing/frame_kind_reserved_34_named.bin     refused -
 framing frame_kind_zero_named                   tblr1 Cfg testdata/wire/tables/framing/frame_kind_zero_named.bin            refused -
 framing node_table_twice                        graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin                 refused -
-# Finding N1, ruled (Glenn, 2026-10-31): damage discards the whole load, so
+# Finding N1, ruled (the owner, 2026-10-31): damage discards the whole load, so
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin        refused -
 framing nested_damage_midway                    tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin             refused -
-# T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
+# T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; the owner,
 # 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
 # that a reader must load in linear time, are legal.
 framing node_cycle_self                         graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin                  refused -

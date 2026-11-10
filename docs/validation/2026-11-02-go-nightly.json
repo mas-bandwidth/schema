@@ -1,7 +1,7 @@
 {
   "language": "go",
   "tested_revision": "3bab349e71d7c526a6f016f3ba601235d5d000d1",
-  "host": "vision",
+  "host": "bench-7",
   "command": "PYTHONUNBUFFERED=1 test/conformance/nightly-readiness go",
   "finished_utc": "2026-11-03T01:30:49Z",
   "result": "NIGHTLY_READINESS_PASS language=go phases=25",

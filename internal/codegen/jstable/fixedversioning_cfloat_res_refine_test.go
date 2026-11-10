@@ -18,7 +18,7 @@ import (
 	"testing"
 )
 
-// `aim` IS COMPARED BY BITS, AGAINST THE MANIFEST (schema#1164, Glenn
+// `aim` IS COMPARED BY BITS, AGAINST THE MANIFEST (schema#1164, the owner
 // 2026-09-19: "do whatever is needed to make sure that a new reader can read an
 // old writer"). It was `back[0].Aim !== Math.fround(0.3)` — a value comparison
 // against a HARDCODED literal. JS has ONE numeric type, so the only way to

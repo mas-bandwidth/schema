@@ -17,12 +17,12 @@
 # pinning: none
 # noise: unlabelled
 # schema commit: b5efb03
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ecfb3c9 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ecfb3c9 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 go,rigidbody_moving,write,24000000,105,7,17760060,17692951,17823500,1778.42,0.74,bc776c004485e408,gen,pkg,always,default,unknown
 go,rigidbody_moving,read,24000000,105,7,19437408,19223967,19457699,1946.38,1.20,bc776c004485e408,gen,pkg,always,default,unknown
 go,rigidbody_at_rest,write,32000000,57,7,31384260,31248872,31538707,1706.03,0.92,bc776c004485e408,gen,pkg,always,default,unknown

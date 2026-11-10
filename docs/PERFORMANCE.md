@@ -11,15 +11,15 @@
 [2026-09-03 pairing check](../bench/tables/results/2026-09-03-rust-inline-arm64-macbook.md)
 on the TOLERANT wire, a form-1 codec that the Rust backend no longer emits for a fixed table.
 Today's Rust surface is the fixed form (form 3), through `bench/tables/rust` and
-`bench/paired`'s build. On it, two interleaved sittings on amd-2 put **Rust's derived read at
+`bench/paired`'s build. On it, two interleaved sittings on bench-4 put **Rust's derived read at
 1.364x the clang build and 1.764x the g++ build, then 1.394x and 1.767x**. Per-round ranges
 are [1.347, 1.460] / [1.719, 1.794] and [1.306, 1.437] / [1.704, 1.789]. The round trip is
-1.50–1.53x and 2.19x. amd-2 is a Ryzen 7 255, pinned to core 7, with 11 rounds per sitting
+1.50–1.53x and 2.19x. bench-4 is a Ryzen 7 255, pinned to core 7, with 11 rounds per sitting
 and 4,000,000 records per sample. Both windows are certified **OK** by BENCH-STANDARD §2.6's
 start and end C++ control legs: the deltas are 0.03% and 0.14%, the four controls sit within
 0.4% of each other, load1 stayed under 1.3 including the pinned leg, and no build or bench
-process ran ([raw rows, controls and verdicts](../bench/results/2026-10-16-rust-tables-read-amd-2/)).
-Earlier sittings on a shared hetzner2 (1.43x and 1.70x) carry no window verdict and are kept
+process ran ([raw rows, controls and verdicts](../bench/results/2026-10-16-rust-tables-read-bench-4/)).
+Earlier sittings on a shared bench-2 (1.43x and 1.70x) carry no window verdict and are kept
 only as a diagnostic. The line-level profile is in
 [docs/notes/rust-tables-read-profile.md](notes/rust-tables-read-profile.md). The difference
 is the read-side range clamp pass. In C++ it is a scalar loop that keeps its `int32_t &`
@@ -39,10 +39,10 @@ body out of line once per element. Each type now also gets `<T>FixedInRange`: ev
 clamp's count expression or'd together, with no store. The root runs the clamp body
 only on a record that check fails. A clean record is left as it was and counts nothing,
 exactly as before, and a dirty one clamps through the unchanged body.
-`bench/paired/nine.sh --read-arm`, two sittings per compiler on hetzner1 (AMD Ryzen 7
+`bench/paired/nine.sh --read-arm`, two sittings per compiler on bench-1 (AMD Ryzen 7
 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK, corpus
 `12224b99745dc057`, at `bdb901be5`
-([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-check/README.md)):
+([result](../bench/results/2026-10-16-x86_64-bench-1-cpp-clamp-check/README.md)):
 
 | C++, best of 7 | identity read | packet read | beats the packet read? |
 |---|---:|---:|---|
@@ -54,14 +54,14 @@ PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK, corpus
 g++ keeps the plain counter reference and clang `__restrict` (`TABLE_CLAMP_RESTRICT`,
 as measured before), and the qualifier now only shapes the slow path. MSVC keeps the
 portable form and gets the same check. It is not measured, because there is no MSVC
-bench. On ARM (mini-m5-1, Apple clang 21, exploration only, no board) the identity read
+bench. On ARM (bench-10-1, Apple clang 21, exploration only, no board) the identity read
 goes from 88.6 to 72.7 ns/record, against a packet read of 89.1. Checks differ and are
 labelled: the table read keeps its contract validation, while the packet read is the
 packet leg's `checks=removed` build. The plan lane has no lineage corpus on this tree and
 is not measured; the §3.4 anchor (`test/bench/fixedform_measure.cpp`, outside `PATHS`) does
 not compile at this revision and measures 1.86x (86.4 vs 46.5 ns/record) against the 1.5x
 bound in the scratch diagnostic with the proposed two-line fix
-([initial read-arm & anchor diagnostic](../bench/results/2026-10-16-x86_64-hetzner1-cpp-read-arm/README.md)).
+([initial read-arm & anchor diagnostic](../bench/results/2026-10-16-x86_64-bench-1-cpp-read-arm/README.md)).
 
 ## 2026-10-16: the C++ read clamp's counters, `__restrict` per compiler: neither identity read beats its packet read
 
@@ -69,9 +69,9 @@ The read-side clamp pass (`*FixedClampBody`) takes its two counters as
 `int32_t & TABLE_CLAMP_RESTRICT`. Each compiler gets its measured best of four forms:
 the plain reference, `__restrict`, a local counter stored once at the end, and both.
 The numbers come from `bench/paired/nine.sh --read-arm`, two sittings per compiler on
-hetzner1 (AMD Ryzen 7 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK,
+bench-1 (AMD Ryzen 7 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four windows OK,
 7 rounds each, 4,000,000 records per sample, corpus `12224b99745dc057`, at
-`8649a725d` ([result](../bench/results/2026-10-16-x86_64-hetzner1-cpp-clamp-restrict/README.md)):
+`8649a725d` ([result](../bench/results/2026-10-16-x86_64-bench-1-cpp-clamp-restrict/README.md)):
 
 | C++, best of 7 | form | identity read | packet read | beats the packet read? |
 |---|---|---:|---:|---|
@@ -83,23 +83,23 @@ hetzner1 (AMD Ryzen 7 PRO 8700GE, `-O3`, pinned `taskset -c 6`), all four window
 `__restrict` makes clang's identity read 1.24x faster (185.8 → 148.5 ns/record in the
 pinned four-form exploration). On g++ every alternative is slower than the plain
 reference: `__restrict` 247.9, the local counter 307.7, both 309.1, against 215.8. So g++
-and MSVC keep the portable form. On ARM (mini-m5-1, Apple clang 21, exploration only, no
+and MSVC keep the portable form. On ARM (bench-10-1, Apple clang 21, exploration only, no
 board), `__restrict` goes from 134.8 to 89.1 ns/record and ties the packet read's
 88.7–91.8, but does not beat it. Checks differ and are labelled: the table read keeps
 its contract validation, while the packet read is the packet leg's `checks=removed` build.
 The next step is a cycle profile of the clamp bodies per compiler, which needs a bench
 where `perf` is permitted. The result page names the command.
 
-## 2026-09-07: the Studio's nine-language table, and what moved since the Air's
+## 2026-09-07: the bench-11's nine-language table, and what moved since the Air's
 
-The first table of the day on the new node pin was a sitting on the Apple M3 Ultra Studio
-taken on node 26.7.0 ([CSV](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv),
+The first table of the day on the new node pin was a sitting on the Apple M3 Ultra bench-11
+taken on node 26.7.0 ([CSV](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting-node26.csv),
 15:45:27Z; the README's table until the day's last sitting, below), every leg gated on the wire goldens, seven measured runs per leg, rendered by the
 README's own instrument (`bench/render.awk`: round-trip best rate, C++ = 100%). Its preamble
 records schema commit 3d01b479 and serialize.c at v1.9.2; main moved past both later the same
 day (the emitter changes of #695 onward, the pin of #701), which is why the day ends with
 another sitting. Five legs ran on the toolchains the repository pins:
-node 26.7.0 (the pin was 20.20.2 until 2026-09-07; the two older Studio sittings below ran on
+node 26.7.0 (the pin was 20.20.2 until 2026-09-07; the two older bench-11 sittings below ran on
 it, the Air's already on 26.7.0), OpenJDK 21.0.12.1 (the Temurin build `make/java.mk` names),
 Dart 3.13.2, Erlang/OTP 29.0.5 with Elixir 1.20.4, and .NET SDK 10.0.400 for the `10.0` in
 `.github/dotnet-version`. The other four ran on the machine's compilers, which the repository
@@ -107,9 +107,9 @@ does not pin: Apple clang 21.0.0, go 1.27.1 (CI runs 1.26) and cargo 1.98.0 (CI 
 at run time); the runtimes were at the tags CI checked out that afternoon. It is C++ = 100% like the tables
 below it because the C = 100% form the standard prefers is not producible for these rows: the
 `rel` tool refuses rows without an inline verdict, and none of these carry one. The two node-20
-Studio sittings it replaces, and the Air's table before them, stand beside it:
+bench-11 sittings it replaces, and the Air's table before them, stand beside it:
 
-| language | [Studio, node 26.7.0](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv) | [Studio, sitting 2](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-2.csv), node 20.20.2 | [Studio, sitting 1](../bench/results/2026-09-07-arm64-studio-ninelang-sitting.csv), node 20.20.2 | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv), node 26.7.0 |
+| language | [bench-11, node 26.7.0](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting-node26.csv) | [bench-11, sitting 2](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting-2.csv), node 20.20.2 | [bench-11, sitting 1](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting.csv), node 20.20.2 | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv), node 26.7.0 |
 |---|---:|---:|---:|---:|
 | C++ | 100% | 100% | 100% | 100% |
 | C | 107% | 107% | 109% | 100%, a §2.8 tie (measured 98%) |
@@ -118,13 +118,13 @@ Studio sittings it replaces, and the Air's table before them, stand beside it:
 | Go | 231% | 230% | 238% | 210% |
 | C# | 253% | 253% | 260% | 225% |
 | Dart | 267% | 256% | 264% | 227% |
-| JavaScript | 292% | 387% | 392% ([its own file](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-js.csv), computed by hand across the two files) | 264% |
+| JavaScript | 292% | 387% | 392% ([its own file](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting-js.csv), computed by hand across the two files) | 264% |
 | Elixir | 1451% | 1427% | 1489% | 1283% |
 
 Against sitting 2, one leg moved with the runtime: JavaScript, 387% to 292%. Of the rest,
 Dart's 256% to 267% is the largest move in proportion (its absolute rate fell 3.6% against a
 denominator up 0.6%) and Elixir's 1427% to 1451% the next (down 1.0%); both are
-sitting-to-sitting variance, not measured to anything. The two node-20 Studio sittings differ
+sitting-to-sitting variance, not measured to anything. The two node-20 bench-11 sittings differ
 by 1.1 to 4.2% on every row but C++'s, the denominator, and most of that spread is the
 denominator itself (4,801,451 then 4,637,510 messages a second); sitting 1's JavaScript leg
 ran in its own file because the runner finds node on the PATH and the pinned node was not on
@@ -137,10 +137,10 @@ two-by-two of the Air sitting's schema commit and runtime commits against today'
 
 | schema | runtimes | C++ round-trip, best | Rust | Go | CSV |
 |---|---|---:|---:|---:|---|
-| 7eba63f | the sitting's | 4,394,048 | 163% | 216% | [pass D](../bench/results/2026-09-07-arm64-studio-four-legs-twins-schema7eba63f-oldruntimes-pass.csv) |
-| 7eba63f | today's tags | 4,538,961 | 167% | 222% | [pass B](../bench/results/2026-09-07-arm64-studio-four-legs-twins-schema7eba63f-pass.csv) |
-| a7b80a42 (today's) | the sitting's | 4,504,872 | 169% | 223% | [pass C](../bench/results/2026-09-07-arm64-studio-four-legs-twins-oldruntimes-pass.csv) |
-| b414f078, dirty (today's; the note says how) | today's tags | 4,733,118 | 174% | 233% | [pass A](../bench/results/2026-09-07-arm64-studio-four-legs-twins-pass.csv) |
+| 7eba63f | the sitting's | 4,394,048 | 163% | 216% | [pass D](../bench/results/2026-09-07-arm64-bench-11-four-legs-twins-schema7eba63f-oldruntimes-pass.csv) |
+| 7eba63f | today's tags | 4,538,961 | 167% | 222% | [pass B](../bench/results/2026-09-07-arm64-bench-11-four-legs-twins-schema7eba63f-pass.csv) |
+| a7b80a42 (today's) | the sitting's | 4,504,872 | 169% | 223% | [pass C](../bench/results/2026-09-07-arm64-bench-11-four-legs-twins-oldruntimes-pass.csv) |
+| b414f078, dirty (today's; the note says how) | today's tags | 4,733,118 | 174% | 233% | [pass A](../bench/results/2026-09-07-arm64-bench-11-four-legs-twins-pass.csv) |
 
 Rust's best round-trip rate stays between 2.67 and 2.76 million messages a second across every
 cell and all three sittings (3.2% from lowest to highest), Go's between 2.01 and 2.04 million
@@ -158,37 +158,37 @@ runtimes renders Rust 163% and Go 216% on this machine against 154% and 210% on 
 
 **JavaScript, and the node version.** JavaScript was the one row these passes left with an
 unmeasured term: the Air's 264% ran node 26.7.0 where the pin was then 20.20.2, and the
-Studio's absolute JavaScript rate was *below* the Air's while every other leg was 14 to 29%
+bench-11's absolute JavaScript rate was *below* the Air's while every other leg was 14 to 29%
 above it. Two runs of the JavaScript leg alone, on this one machine 101 seconds apart, settle
 the version term. Seven measured runs each, best round-trip rate:
 
 | node | best round-trip, msgs/sec | spread | CSV |
 |---|---:|---:|---|
-| 20.20.2, 15:42:19Z | 1,222,630 | 2.08% | [js node 20](../bench/results/2026-09-07-arm64-studio-js-node20.csv) |
-| 26.7.0, 15:44:00Z | 1,595,367 | 1.46% | [js node 26](../bench/results/2026-09-07-arm64-studio-js-node26.csv) |
+| 20.20.2, 15:42:19Z | 1,222,630 | 2.08% | [js node 20](../bench/results/2026-09-07-arm64-bench-11-js-node20.csv) |
+| 26.7.0, 15:44:00Z | 1,595,367 | 1.46% | [js node 26](../bench/results/2026-09-07-arm64-bench-11-js-node26.csv) |
 
 That is +30.5%, one machine, back to back, each spread an order below the step. On node 26 the
-Studio's JavaScript leg runs 17.4% above the Air's, inside the 10.1 to 29.8% range the other
+bench-11's JavaScript leg runs 17.4% above the Air's, inside the 10.1 to 29.8% range the other
 eight legs occupy in the same sitting — the row no longer stands apart. The Air's own variance
 on this leg remains true and is now a secondary term: its three sittings of 2026-09-01
 rendered JavaScript 461%, 318% and 264% on that one node, and the README's Air number was the
-fast end of that range, so Air-to-Studio comparisons of this row still carry it.
+fast end of that range, so Air-to-bench-11 comparisons of this row still carry it.
 
 These are the first passes the driver has aggregated since 2026-08-31: its `aggregate` had
 refused every pass since then, failing closed, because a parameter shadowed the path-column
 list (#689), and these passes were the ones that found it. The passes' own caveats and the
-rates are in [the note beside the CSVs](../bench/results/2026-09-07-arm64-studio-four-leg-passes.md).
+rates are in [the note beside the CSVs](../bench/results/2026-09-07-arm64-bench-11-four-leg-passes.md).
 
 **The table at the end of the day.** One more nine-language `bench/run.sh` sitting on the
-same Studio after everything of 2026-09-07 had landed
-([CSV](../bench/results/2026-09-07-arm64-studio-ninelang-final-sitting.csv), 19:07:43Z; schema
+same bench-11 after everything of 2026-09-07 had landed
+([CSV](../bench/results/2026-09-07-arm64-bench-11-ninelang-final-sitting.csv), 19:07:43Z; schema
 commit `eb3fe549`, the runtimes at CI's tags — serialize v1.16.2 `93b8ea2`, serialize.c
 v1.10.0 `a742a3d`, serialize.go v1.15.1 `963f6df`, serialize.rs v2.4.0 `5e26a78`,
 serialize.cs v1.9.1 `1bf2b19`, serialize.js v1.4.2 `de0591c`), all nine legs, none skipped,
 every leg gated on the wire goldens, seven measured runs each, rendered by `bench/render.awk`.
 It is the README's table now. Beside it, the node-26 sitting it replaces and the Air's:
 
-| language | [Studio, final sitting](../bench/results/2026-09-07-arm64-studio-ninelang-final-sitting.csv) (the README's) | [Studio, node 26.7.0](../bench/results/2026-09-07-arm64-studio-ninelang-sitting-node26.csv) | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv) |
+| language | [bench-11, final sitting](../bench/results/2026-09-07-arm64-bench-11-ninelang-final-sitting.csv) (the README's) | [bench-11, node 26.7.0](../bench/results/2026-09-07-arm64-bench-11-ninelang-sitting-node26.csv) | [Air (Apple M2), 2026-09-01](../bench/results/2026-09-02-sitting4-arm64-macbook.csv) |
 |---|---:|---:|---:|
 | C++ | 100% | 100% | 100% |
 | C | 100%, a §2.8 tie (measured 99.4%) | 107% | 100%, a §2.8 tie (measured 98%) |
@@ -217,13 +217,13 @@ largest of the rest and is sitting-to-sitting variance, unexplained: its absolut
 the same variance. C++, the denominator, fell 1.4% (4,665,785 to 4,602,160) inside its own
 spreads of 3.16 and 2.67, so a point or so of Rust's and C#'s improvement is the denominator
 and not them. `go run ./bench/tools ledger --check` is green on this sitting: the newest cpp
-round-trip point on the (arm64 studio, `6b213fbfa1a03a99`) axis is 217.29 ns/msg against the
+round-trip point on the (arm64 bench-11, `6b213fbfa1a03a99`) axis is 217.29 ns/msg against the
 previous point's 218.15 (the read-guard pass), an improvement, so nothing approaches the gate.
 
 Generated-code performance as time relative to C++ (100%; higher is slower), medians across
 the corpus on an **Apple M3 Ultra**, the 2026-08-15 five-language pass **at `-O3`**
-([raw CSV](../bench/results/2026-08-15-arm64-studio-postlane-O3-pass.csv),
-[inline verdicts](../bench/results/2026-08-15-arm64-studio-postlane-O3-pass.inline)):
+([raw CSV](../bench/results/2026-08-15-arm64-bench-11-postlane-O3-pass.csv),
+[inline verdicts](../bench/results/2026-08-15-arm64-bench-11-postlane-O3-pass.inline)):
 
 | backend | write | read | batch write | batch read |
 |---|---:|---:|---:|---:|
@@ -244,8 +244,8 @@ refuses to print a ratio it cannot justify.
 [BENCH-STANDARD §3.3](../bench/BENCH-STANDARD.md): if the ranking of any two languages differs
 between optimization levels, both tables publish — a single ranking would publish a coin
 flip. The `-O2` companion pass
-([raw CSV](../bench/results/2026-08-15-arm64-studio-postlane-O2-pass.csv),
-[inline verdicts](../bench/results/2026-08-15-arm64-studio-postlane-O2-pass.inline)) fired
+([raw CSV](../bench/results/2026-08-15-arm64-bench-11-postlane-O2-pass.csv),
+[inline verdicts](../bench/results/2026-08-15-arm64-bench-11-postlane-O2-pass.inline)) fired
 exactly that rule: **on the bitpacker write bench, C leads C++ at `-O2` and C++ leads by
 2.6x at `-O3`.** The mechanism is known and named in the inline verdicts: at `-O3` clang
 fully unrolls the 16-width group and folds widths to immediates; at `-O2` it stays rolled
@@ -300,7 +300,7 @@ different promise.
 
 **Measured the same day, the C change bought nothing the instrument can see.** A twins pass on
 the C and C++ legs with the asserts in place
-([CSV](../bench/results/2026-09-07-arm64-studio-c-asserts-twins-pass.csv), seven interleaved
+([CSV](../bench/results/2026-09-07-arm64-bench-11-c-asserts-twins-pass.csv), seven interleaved
 rounds, window OK, control delta 1.6%) renders C at 105.2% of C++, inside the §2.8 tie band
 (the pair's combined round-trip spread, 4.2 + 4.4 = 8.6 points) and so reported as a tie: write 8,858,514 against 8,863,042 messages a second,
 round trip 4,408,928 against 4,636,506. Two passes over identical code earlier the same day
@@ -311,7 +311,7 @@ the C runtime's read path, not the generated code's checks. serialize.c v1.10.0 
 later the same day: latching a failed read in the cursor, the way C++'s `ReadStream` does, lets the
 per-read past-end test fold into the caller's remaining-bits guard, and the raw bit read went from
 76,492 to 122,221 messages a second — 61.9% of C++ to 99.2%
-([CSV](../bench/results/2026-09-07-arm64-studio-serialize-c-1-10-0-pass.csv), seven interleaved
+([CSV](../bench/results/2026-09-07-arm64-bench-11-serialize-c-1-10-0-pass.csv), seven interleaved
 rounds, window OK, control delta 2.2%). The round trip is where it was: 4,226,614 messages a second
 against 4,279,494 on the pass before it, 93.1% of C++ against 94.3%, both moves inside the rows'
 spread — the fix bought the raw-read row and left the packet path alone. So the remaining
@@ -325,7 +325,7 @@ one `serialize_read_bits_remaining` guard at the top of a read function whose st
 wire width — every per-field test folds into it, the refusal is unchanged because every field is
 always read — taking the round trip from 93.1% to 101.9% of C++ best, 4,226,614 to 4,669,166
 messages a second, which is inside the §2.8 band (6.5 points) and so a tie again
-([CSV](../bench/results/2026-09-07-arm64-studio-c-read-guard-pass.csv), seven interleaved rounds,
+([CSV](../bench/results/2026-09-07-arm64-bench-11-c-read-guard-pass.csv), seven interleaved rounds,
 window OK, control delta 0.5%, twin gate OK).
 
 **The two dated `<!-- CAPTION -->` lines above this section are the provenance the

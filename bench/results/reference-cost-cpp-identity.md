@@ -14,7 +14,7 @@ go build -o bin/schema-paired ./bench/paired && bin/schema-paired -mode gate -la
 
 ## Host and revision
 
-- host: `hulk`
+- host: `bench-6`
 - load (start): 9.38 10.50 15.90
 - revision: `ead804093232b3593facd987ebe2f726a10dd63d`
 - branch: `fixed-table-form`
@@ -45,7 +45,7 @@ Per `bench/BENCH-STANDARD.md` §2.1 / §1.9, the fixed-form table leg would use
 ## Build failure
 
 ```
-+ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT="O3" -Igenerated/bench/paired/cpp -I/home/gaffer/rowan-working/tmp/2be4c180-7b8d-4805-a71d-c451c1634cfa-card-schema-gate-reference-cost/jobs/card-schema-gate-reference-cost/serialize test/bench/paired_main.cpp -o build/paired/corpus
++ c++ -std=c++17 -Wall -Wextra -Werror -ffp-contract=off -fno-rtti -O3 -DNDEBUG -DBENCH_OPT="O3" -Igenerated/bench/paired/cpp -I<work>/tmp/2be4c180-7b8d-4805-a71d-c451c1634cfa-card-schema-gate-reference-cost/jobs/card-schema-gate-reference-cost/serialize test/bench/paired_main.cpp -o build/paired/corpus
 In file included from test/bench/paired_main.cpp:9:
 generated/bench/paired/cpp/BenchWire.h:12:10: fatal error: serialize.h: No such file or directory
    12 | #include "serialize.h"

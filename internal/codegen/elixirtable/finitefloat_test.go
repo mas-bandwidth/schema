@@ -1,7 +1,7 @@
 package elixirtable
 
 // THE FINITE FLOAT RULE on the Elixir table leg (docs/SPEC-TABLES.md §3.3;
-// Glenn, 2026-10-27: "Tables go finite-only too, same rule as packets. NaN/inf
+// The owner, 2026-10-27: "Tables go finite-only too, same rule as packets. NaN/inf
 // refused on write and read, -0 and subnormals kept"). The Go leg's gate is
 // internal/codegen/gotable/floatspecial_test.go
 // (TestGoPlainFloatSpecialValuesAgreeAcrossForms); this is the same rule held

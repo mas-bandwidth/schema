@@ -17,12 +17,12 @@
 # pinning: none
 # noise: NOISY: shared fanless M2 Air, other Claude sessions live; load avg ~3.1 at the sitting's start (uptime pasted in the PR). --quick is the iteration instrument, never certification (§2.8). AFTER half of a paired same-sitting go-emitter A/B: this branch's Go emitter output in generated/bench/go, everything else identical to the BEFORE half. Every other leg is the in-sitting control.
 # schema commit: 0a0b86c
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ae730d5 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ae730d5 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_mixed,write,4000000,438,3,7321149,7320140,7331581,3058.11,0.16,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
 cpp,bench_mixed,round_trip,4000000,438,3,3435848,3407780,3496880,1435.19,2.59,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown

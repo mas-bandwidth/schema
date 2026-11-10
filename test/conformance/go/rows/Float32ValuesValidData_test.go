@@ -16,7 +16,7 @@ import (
 // §3.3), so a same-schema write/read round trip lands every valid value
 // BIT-EXACT — an ordinary fraction, a negative, the range boundaries,
 // negative zero and the subnormals alike. A NaN or an infinity is not valid
-// data (Glenn, 2026-10-27): TestRowFloat32ValuesNonFiniteRefused holds the
+// data (the owner, 2026-10-27): TestRowFloat32ValuesNonFiniteRefused holds the
 // writer's and the reader's refusal. The bench gate (bench/tables/go/table_main.go:403,413)
 // proves external corpus byte fidelity; this row asserts the decoded values
 // directly, per the roadmap's remaining note.

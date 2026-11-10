@@ -22,7 +22,7 @@
 
 Card `dart-fixed-read-beats-its-packet-read` (roadmap tasks `gates/packet-read/dart/identity` and
 `gates/packet-read/dart/plan`). Both GATE verdicts are **FAIL** (fast diagnostic, uncertified; see the status note above), in two back-to-back sittings with
-an `OK` window on `b1` (`amd-1`), so the roadmap tasks stay `:unknown` and are not flipped.
+an `OK` window on `b1` (`bench-3`), so the roadmap tasks stay `:unknown` and are not flipped.
 
 ## The Dart line of the board
 
@@ -67,7 +67,7 @@ Cross-sitting agreement on best `ns/record`: `0.02%` on `bench_fixed_read` (`544
 
 ## Declared
 
-- **Host:** `b1` (`amd-1`), an AMD Ryzen 7 255 w/ Radeon 780M Graphics, `linux/amd64`.
+- **Host:** `b1` (`bench-3`), an AMD Ryzen 7 255 w/ Radeon 780M Graphics, `linux/amd64`.
 - **Pinning:** `taskset -c 6`, recorded as `lane 6` on the board (`bench/paired/nine.sh --read-arm --leg dart --pin 6`).
 - **Window:** `OK` in both sittings. The quiet window was enforced by the driver (`beginWindow` in
   `bench/paired/window.go`), sampling `ps -A` every 2 seconds and refusing any competing build or
@@ -234,7 +234,7 @@ dart run --observe=0 --profile-vm=true --pause-isolates-on-exit \
 
 ## Gate
 
-Run on `vision` (`go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`):
+Run on `bench-7` (`go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`):
 
 - `ok  github.com/mas-bandwidth/schema/v2/bench/paired`
 - `ok  github.com/mas-bandwidth/schema/v2/internal/ci`

@@ -361,7 +361,7 @@ tables-dart-alloc-runtime-negative-control: build/dart_gcgate build/fixedform-co
 # scavenge count at sixteen evenly spaced samples after the warmup and fails if
 # it moves, reporting the worker's RSS drift beside it as the weaker instrument.
 DART_SOAK_GC_FLAGS = --verbose_gc --new_gen_semi_initial_size=1 --new_gen_semi_max_size=1
-# The release act is about an hour on the studio (a pass is ~0.16 ms there);
+# The release act is about an hour on the bench-11 (a pass is ~0.16 ms there);
 # `test-dart` runs the short form below with an explicit count.
 TABLES_DART_SOAK_ITERATIONS ?= 22500000
 
@@ -394,7 +394,7 @@ tables-dart-soak-negative-control: build/dart_tables_soak
 
 # THE SHORT SOAK, REACHED FROM test-dart: the release act is about an hour
 # (the default TABLES_DART_SOAK_ITERATIONS); the leg's own gate runs 65536 passes
-# (about ten seconds on the studio) so CI stays quick.
+# (about ten seconds on the bench-11) so CI stays quick.
 .PHONY: tables-dart-soak-short tables-dart-soak-length
 tables-dart-soak-short:
 	$(MAKE) tables-dart-soak TABLES_DART_SOAK_ITERATIONS=65536
@@ -964,7 +964,7 @@ test-dart: tables-dart-variable-class
 # red unless each is refused before anything is measured.
 #
 # A zero is only read off a window in which the JIT did not tier. MEASURED
-# CAUSE of the stray inlined-window scavenge (2026-10-16, hetzner2, 3.13.2):
+# CAUSE of the stray inlined-window scavenge (2026-10-16, bench-2, 3.13.2):
 # with the VM's background compiler, the optimizing compile of the pass is
 # queued during warm-up and can be installed after the steady call has
 # already entered the unoptimized pass, which boxes every double until
@@ -1190,7 +1190,7 @@ tables-dart-variable-fixed-class:
 
 test-dart: tables-dart-variable-fixed-class
 
-# FINITE TABLE FLOATS ON THE DART LEG (docs/SPEC-TABLES.md §3.3; Glenn,
+# FINITE TABLE FLOATS ON THE DART LEG (docs/SPEC-TABLES.md §3.3; the owner,
 # 2026-10-27: "Tables go finite-only too, same rule as packets"): every read
 # refuses a NaN or an infinity on its raw bits as non_finite_float, naming the
 # field — the variable form (scalars, list and [N] elements, union arms and a
@@ -1238,7 +1238,7 @@ tables-dart-identity-negative-control:
 
 test-dart: tables-dart-identity tables-dart-identity-negative-control
 
-# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1; Glenn, 2026-10-31): the
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1; the owner, 2026-10-31): the
 # framing vectors node_cycle_self, node_cycle_to_root and node_cycle_mid are
 # refused whole through WireLoad and WireLoadRetain, and a chain and the
 # 2^40-path diamond chain load clean inside a linear deadline. The control

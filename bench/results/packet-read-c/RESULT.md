@@ -24,14 +24,14 @@ best round, each lane against C's own packet read). This file only copies them.
 
 ## Declared
 
-- **Host:** amd-3 (its hostname is `b3`), an AMD Ryzen 7 255, linux/amd64. At the start it was
-  the quietest of amd-2, amd-3 and hulk: load1 was 0.13. hulk was given up after 28 attempts,
+- **Host:** bench-5 (its hostname is `b3`), an AMD Ryzen 7 255, linux/amd64. At the start it was
+  the quietest of bench-4, bench-5 and bench-6: load1 was 0.13. bench-6 was given up after 28 attempts,
   because another worker's dotnet/C++ build-and-bench loop held it.
 - **Pinning:** `taskset -c 5`, recorded as lane 5 on the board. The governor was `powersave`
   (amd-pstate), declared and not changed.
 - **Window:** OK in both sittings. The quiet window was enforced by the driver, with a
   competing-process refusal at each sample. The window refused one attempt (`make` during
-  round 6, kept as `refused-1-1`) and an earlier hulk sitting (`go`, then `dotnet`). Neither is
+  round 6, kept as `refused-1-1`) and an earlier bench-6 sitting (`go`, then `dotnet`). Neither is
   used here.
 - **Load1:** 2.95–7.55 in sitting 1 and 1.56–2.95 in sitting 2. The load is declared. No
   competing build or bench process was running by name.
@@ -66,7 +66,7 @@ best round, each lane against C's own packet read). This file only copies them.
 
 ## The cause, and the profile that would confirm it
 
-The following are diagnostics, not certified. They were taken on amd-3 core 5, 3 rounds each,
+The following are diagnostics, not certified. They were taken on bench-5 core 5, 3 rounds each,
 outside the window, with the build edited in `tmp/` only and nothing committed.
 
 - **The clamp pass is most of the identity read.** The straight-line read-side bounds pass,
@@ -90,7 +90,7 @@ outside the window, with the build edited in `tmp/` only and nothing committed.
 - **The profile that would confirm both** is
   `perf record -e cycles:pp` + `perf annotate fixed_table_fixed_load` on build/paired/plan-c,
   pinned. A cheaper complement is `llvm-mca` over the inlined clamp body. perf is blocked for
-  this worker on amd-3 (`perf_event_paranoid = 4`), and changing that is the owner's call.
+  this worker on bench-5 (`perf_event_paranoid = 4`), and changing that is the owner's call.
 
 ## What the card built
 
@@ -114,7 +114,7 @@ outside the window, with the build edited in `tmp/` only and nothing committed.
 
 ## Gate
 
-The gate is `go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`, run on amd-2 at
+The gate is `go test -count=1 -timeout 600s ./bench/paired/ ./internal/ci/`, run on bench-4 at
 b339d6545:
 
 - `ok  github.com/mas-bandwidth/schema/v2/bench/paired 2.213s`

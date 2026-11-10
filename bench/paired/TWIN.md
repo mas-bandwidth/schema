@@ -9,7 +9,7 @@ AHEAD of the reference (§5.8 row 3). Neither list is a fourth named
 remaining.
 
 The C runtime is the twin of the C++ runtime: same wire, same ops, same
-partition, same refusals, same counters. Glenn: the two should agree on
+partition, same refusals, same counters. The owner: the two should agree on
 100%. The map is the spelling. The three named differences are the C form
 of one C++ mechanism each, not a second algorithm.
 

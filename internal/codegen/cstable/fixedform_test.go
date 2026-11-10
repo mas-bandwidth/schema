@@ -74,7 +74,7 @@ fixed table Root { pick Pick }
 	}
 }
 
-// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: identity prefills
+// TestFixedFormLoadPrefillsThePlanHoles holds the owner's ruling: identity prefills
 // nothing; the plan compiler prefills exactly the ranges the plan does not land.
 // Empty fill is the skip. There is no identity flag in the record loop.
 func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {

@@ -118,7 +118,7 @@ func TestNoPerHarnessFileStandsBesideAgents(t *testing.T) {
 		}
 		if d.Name() == "CLAUDE.md" {
 			rel, _ := filepath.Rel(root, path)
-			t.Errorf("%s stands beside AGENTS.md; Glenn, 2026-09-18: AGENTS.md alone — no CLAUDE.md, no pointer file, no symlink", filepath.ToSlash(rel))
+			t.Errorf("%s stands beside AGENTS.md; the owner, 2026-09-18: AGENTS.md alone — no CLAUDE.md, no pointer file, no symlink", filepath.ToSlash(rel))
 		}
 		return nil
 	})

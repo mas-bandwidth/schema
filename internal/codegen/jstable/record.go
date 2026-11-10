@@ -47,7 +47,7 @@ var jsFloatReaders = []string{jsF32Reader, jsF64Reader}
 
 // jsF32ReaderSource is the readers' text, emitted ONCE per unit.
 //
-// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27,
+// A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27,
 // "tables go finite-only too, same rule as packets"). A block or cook open is
 // O(1) and walks no field (§7, §13.4), so it is THE ACCESSOR that meets a
 // non-finite float, and it refuses one: the raw bits are tested before they
@@ -64,7 +64,7 @@ var jsFloatReaders = []string{jsF32Reader, jsF64Reader}
 // gate I9 holds it to (`make tables-js-alloc`). As module-level functions they
 // allocate nothing. The double comes back out of the call, which is the
 // per-language allowance JavaScript takes here for performance (docs/PORTING.md
-// M3; Glenn, 2026-10-15), and the allocation gate proves the cost.
+// M3; the owner, 2026-10-15), and the allocation gate proves the cost.
 func jsF32ReaderSource() string {
 	return `// THE FLOAT READS for every float accessor of the unit (docs/SPEC-TABLES.md
 // §3.3; docs/PORTING.md M1, M3): the raw bits are tested in place, a NaN or an

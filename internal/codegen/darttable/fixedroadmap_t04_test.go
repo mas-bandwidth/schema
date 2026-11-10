@@ -477,7 +477,7 @@ func t04R20(t *testing.T) {
 // ---- dart/R21 -----------------------------------------------------------------
 
 // t04R21 holds dart/R21 to §4's float rung and §5.2's table, under the finite
-// rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only
+// rule (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go finite-only
 // too, same rule as packets"): widenf is the f32 at src as an f64 at dst, and
 // for a FINITE float32 the ordinary conversion is exact by construction, -0
 // and the subnormals included. A NaN or an infinity is no value a table

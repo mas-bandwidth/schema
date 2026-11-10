@@ -1,6 +1,6 @@
 name: Promotion tag
 
-# EVERY PROMOTION TO MAIN IS TAGGED main-<shorthash> (Glenn, 2026-10-15): the
+# EVERY PROMOTION TO MAIN IS TAGGED main-<shorthash> (the owner, 2026-10-15): the
 # merge commit that lands the development line on main gets a tag named by its
 # own hash, 12 hex, so an adopter pins a tag rather than a pseudo-version
 # between releases. A commit that already carries a main- tag is skipped, not

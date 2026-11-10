@@ -11,7 +11,7 @@
     bytes per pass, so the number of passes is what matters, and a count runs
     the same loop on every machine. It reads no clock (`make shape-gate`
     refuses a timing primitive outside the sanctioned bench). The default is
-    the release act, about an hour on the studio; `make test` runs the short
+    the release act, about an hour on the bench-11; `make test` runs the short
     form.
 
     THE GATE IS ON THE ALLOCATION COUNT PER ITERATION. A Java load builds a
@@ -37,7 +37,7 @@ import java.nio.file.Paths;
 public final class Soak {
     private Soak() {}
 
-    // the release act: about an hour of passes on the studio (~41,000 per second)
+    // the release act: about an hour of passes on the bench-11 (~41,000 per second)
     private static final long DEFAULT_ITERATIONS = 1L << 27;
 
     private static void fail(String what) {

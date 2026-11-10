@@ -1,6 +1,6 @@
 # The versioning tests: every row of the law, four ways
 
-Glenn, 2026-09-11 02:25Z: "make sure you design a set of tests that exercise the various compiler errors
+The owner, 2026-09-11 02:25Z: "make sure you design a set of tests that exercise the various compiler errors
 that we expect, and the various read refusals that we expect when old reads new." This is that design.
 The bill is `FIXED-FORM-BILL-READS-BACKWARD.md`; the law is its §2 and §6; the procedures are
 `FIXED-FORM-ALGORITHM.md` §5. Every row below is one definition change, and every row gets FOUR tests:
@@ -191,7 +191,7 @@ the lock, this row needs the explicit test-only entry**, and a leg says which of
 
 ## A union's UNSELECTED ARMS after a read that returns: RULED LAWFUL AS IS (schema#1157)
 
-**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, in Glenn's own word: "as designed it is 'undefined'".**
+**RULED 2026-09-19 (schema#1157), LAWFUL AS IS, in the owner's own word: "as designed it is 'undefined'".**
 After a read that RETURNS, an arm the landed tag did not select is **UNDEFINED** — one word, for every
 target, with no second word for overlaid storage. A union read DEFINES the tag and the SELECTED arm and
 nothing else; an unselected arm is undefined, and a consumer that reads one has a bug whatever those bytes
@@ -239,7 +239,7 @@ ruling is one word for all nine: undefined.
 and §5 repeats it as a carve-out from "read success fully initializes it". **`SPEC-TABLES.md` carries no
 "fully initializes" sentence of its own** — the phrase does not occur in it — so the fixed form neither
 inherits that promise nor overrides the carve-out. §3.4's own prefill line is still a bare `Reset( value )`,
-under which Java WOULD restore every arm; Glenn's fix 15 ("prefill the bytes the plan does not write;
+under which Java WOULD restore every arm; the owner's fix 15 ("prefill the bytes the plan does not write;
 identity's list is empty") is what opened the gap, and its cost to unions was never priced.
 
 **This page has never claimed it.** Every sibling row that owes a default says so in its own cell —
@@ -270,7 +270,7 @@ have guessed:
 |---|---|---|---|
 | `union_unselected_arm` | after a read that RETURNS, an arm the landed tag did not select is **UNDEFINED**, one word for every target (schema#1157, the maintainer: "as designed it is 'undefined'"); a union read defines the tag and the selected arm and nothing else. A consumer reads the selected arm only | `VOLD_/VNEW_union_append` as they stand, destination POISONED with `0x5A` on BOTH columns: `pick.type` and `pick.alpha` land the writer's, `seq` stands — and the probe **does not compare** `pick.beta` or `pick.gamma`, which is the row's whole content | every leg; no leg is red today, and the row exists to stop one being written |
 
-**IF GLENN REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
+**IF THE OWNER REVERSES THIS**, the other expectation is written out so the reversal is one edit and not a
 re-derivation: *after a read that returns, every arm holds either the writer's value (selected) or the arm's
 own declared defaults (unselected)*, delivered in the scatter because the flat image provably cannot carry
 two arms' defaults at one byte (§5.9 #38). That is a scatter shape change in four legs, a per-record

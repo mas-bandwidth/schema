@@ -15,7 +15,7 @@
 //                     `layout_newer` BEFORE ANY RECORD: nothing decoded, no
 //                     counter moved, and the reason is this refusal's own.
 //
-// Glenn, 2026-09-10: "Newer versions of the fixed table should be able to read
+// The owner, 2026-09-10: "Newer versions of the fixed table should be able to read
 // OLD versions. But old versions CANNOT read new versions, and complain loudly
 // and refuse. Nothing else makes sense."
 //

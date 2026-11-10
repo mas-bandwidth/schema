@@ -2,7 +2,7 @@
 
 These are the C/C++ reproduction rows required by `bench/LOCK`: `bench_mixed` write and round_trip, plus the raw bitpacker write/read control. Both ordinary Release runs passed their wire oracle with corpus id `6b213fbfa1a03a99`. Each uses seven measured runs; neither uses `--quick`.
 
-The sitting was the shared LA laptop (Apple M2, Apple clang 21, no pinning). One-minute load was 2.51 before C++ and 2.49 before C, with zero swap. Stella ran no other compiler jobs during these runs; Rowan could be working. The CSVs record runtime commits, compiler flags, rates and spread. This is a diagnostic reproduction, not a quiet-box certification or a before/after performance comparison.
+The sitting was the shared LA laptop (Apple M2, Apple clang 21, no pinning). One-minute load was 2.51 before C++ and 2.49 before C, with zero swap. A reviewer ran no other compiler jobs during these runs; a maintainer could be working. The CSVs record runtime commits, compiler flags, rates and spread. This is a diagnostic reproduction, not a quiet-box certification or a before/after performance comparison.
 
 Commands, with single-worker runtime environment settings and the sitting description in `BENCH_NOISE`:
 

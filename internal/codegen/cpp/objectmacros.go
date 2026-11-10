@@ -28,7 +28,7 @@ func (g *gen) fileNestsTypes() bool {
 // spelled with. A generated body has ONE spelling for every stream
 // operation: the serialize read_*/write_* family (read_bits, read_int,
 // write_double, ...), whose refusal returns false from the enclosing
-// function — Glenn's serialize idiom, the companions serialize.h provides
+// function — the owner's serialize idiom, the companions serialize.h provides
 // for exactly this split read/write shape. serialize's own read_object and
 // write_object call a Serialize MEMBER; generated types carry free
 // Write<T>/Read<T> functions instead, so these take the function as an

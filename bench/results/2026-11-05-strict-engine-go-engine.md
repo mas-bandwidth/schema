@@ -3,7 +3,7 @@
 **Date:** 2026-11-05
 **Before:** `3604de0ff8d73b85d6906455dab716f455862495` (the staged `sprint/schema-100` tip attempt 4 measured against), and the attempt-4 strict carry for STEP 5's prepass
 **After:** this branch, with the wire-alone check folded into the body read's one walk
-**Host:** `hetzner2`, a fleet bench (`Linux/amd64`, AMD Ryzen 9 7950X3D), never the studio; the runs below were made on that host, in one job, with no other bench started by this card
+**Host:** `bench-2`, a fleet bench (`Linux/amd64`, AMD Ryzen 9 7950X3D), never the bench-11; the runs below were made on that host, in one job, with no other bench started by this card
 **Runs:** the paired drivers below, `-benchtime=500ms`, `-count=8` for the tolerant base versus this branch and `-count=6` for the strict prepass versus this branch; the statistic is the median of the printed rows
 
 ## Reachability
@@ -15,7 +15,7 @@ so neither release driver can start here. The table numbers below therefore
 come from the committed generated `benchtable` package (the same
 `generated/bench/tables/go` the release driver builds) in a scratch module
 whose only stand-in is a two-method `serialize` stub: the table codec itself
-names no packet symbol. This is a fleet bench (`hetzner2`), not the studio,
+names no packet symbol. This is a fleet bench (`bench-2`), not the bench-11,
 and the table surface measured is the release surface.
 
 ## Commands
@@ -41,7 +41,7 @@ nice -n 19 go test -count=1 -timeout 600s -run '^$' \
 
 ## The engine wire (`internal/tablewire`)
 
-STEP 5 changes no engine source. The after numbers on `hetzner2` are:
+STEP 5 changes no engine source. The after numbers on `bench-2` are:
 
 | row | after ns/op (median of 5) |
 |---|---:|
@@ -94,7 +94,7 @@ The paired table rows above are the node-free fold's run (`82db1e045`).
 ## The node-table fold on the fleet (`8e60ed6e`, strict-engine.w4)
 
 An earlier attempt reached no fleet bench; this attempt could. On
-`hetzner2` (fleet, `Linux/amd64`, go1.26.6), the fold's parent
+`bench-2` (fleet, `Linux/amd64`, go1.26.6), the fold's parent
 `46d0ccbae` (before) and this head `2f59c539b` (after) were measured with
 the repository's own tooling — `bench/tables/run.sh --only go` for the
 generated table, and the engine harness above (`BenchmarkEngine`,

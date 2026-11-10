@@ -1,6 +1,6 @@
 package main
 
-// THE PROOF TABLE: the 3.0.0 gate. Glenn, 2026-10-31: "We need to prove this
+// THE PROOF TABLE: the 3.0.0 gate. The owner, 2026-10-31: "We need to prove this
 // before v3.0.0 not just hope that it's correct and complete." The bar: "we
 // won't make 3.0.0 until it is correct and at parity."
 //
@@ -15,7 +15,7 @@ package main
 //     and the gate's negative control (make/negative-controls.json, or a
 //     named negative-control test the register cites).
 //   - N/A BY DESIGN: every case it would hold is answered absent under a
-//     ruling in docs/rulings.json, an entry that quotes Glenn verbatim with a
+//     ruling in docs/rulings.json, an entry that quotes the owner verbatim with a
 //     date; or a register cell marked `—` that a ruling names, or that CITES
 //     the clause exempting it: `"<quote>" (docs/PORTING.md ...)` or
 //     `"<quote>" (docs/SPEC-TABLES.md §N)`, where the quote is found in that
@@ -180,7 +180,7 @@ func LoadResults(p string) (Results, error) {
 	return out, nil
 }
 
-// Ruling is one entry of docs/rulings.json: Glenn's words verbatim, the date,
+// Ruling is one entry of docs/rulings.json: the owner's words verbatim, the date,
 // and the cells it makes not applicable.
 type Ruling struct {
 	ID      string     `json:"id"`
@@ -236,7 +236,7 @@ func LoadRulings(root string) (Rulings, error) {
 		case !date.MatchString(x.Date):
 			return Rulings{}, fmt.Errorf("%s: ruling %s has no date (YYYY-MM-DD)", rulingsPath, x.ID)
 		case len(x.Quotes) == 0:
-			return Rulings{}, fmt.Errorf("%s: ruling %s quotes nothing; a ruling is Glenn's words verbatim", rulingsPath, x.ID)
+			return Rulings{}, fmt.Errorf("%s: ruling %s quotes nothing; a ruling is the owner's words verbatim", rulingsPath, x.ID)
 		case x.Source == "":
 			return Rulings{}, fmt.Errorf("%s: ruling %s names no source", rulingsPath, x.ID)
 		}

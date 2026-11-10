@@ -1793,7 +1793,7 @@ defmodule WireFuzz do
 
     if measure < 0 do
       # LoadMeasure refused the framing: no root and nothing saved, and the
-      # refusal is DAMAGE, which discards the whole load (Glenn, 2026-10-31):
+      # refusal is DAMAGE, which discards the whole load (the owner, 2026-10-31):
       # the report says malformed, or names the form a newer writer used
       stdout_write(
         header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>
@@ -1824,7 +1824,7 @@ defmodule WireFuzz do
           )
 
         {:error, _reason, report} ->
-          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (the owner, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
           # is the answer the oracle compares
           stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
@@ -1872,7 +1872,7 @@ defmodule WireFuzz do
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
         {:error, _reason, report, _retain} ->
-          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (the owner, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
           # is the answer the oracle compares
           stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)

@@ -25,7 +25,7 @@ func pinnedWire(t *testing.T, name string) []byte {
 	return data
 }
 
-// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3, §3.3, §7.2; Glenn,
+// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3, §3.3, §7.2; the owner,
 // 2026-10-27: "Tables go finite-only too, same rule as packets").
 //
 // The cook is the wire's own bytes laid out for a mapped read, so what §3 says

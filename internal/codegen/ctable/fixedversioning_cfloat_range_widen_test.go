@@ -18,7 +18,7 @@ import (
 // only the past_ read goes red.
 //
 // `aim` IS COMPARED BY BITS, AND TWO OF THE THREE COME FROM THE CORPUS MANIFEST
-// (schema#1164, Glenn 2026-09-19: "do whatever is needed to make sure that a new
+// (schema#1164, the owner 2026-09-19: "do whatever is needed to make sure that a new
 // reader can read an old writer"). These were `back[0].aim != 0.5f` and friends —
 // float comparisons against HARDCODED literals, an oracle written by the same
 // hand as the code under test. `old_`'s value is the manifest's `values=r0.aim`,

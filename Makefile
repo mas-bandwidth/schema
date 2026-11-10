@@ -124,7 +124,7 @@ SCHEMAS_TABLES_VOCAB9 := $(wildcard tables/vocab9/*.schema)
 # because a pass is what the allocation count is read across, because a count
 # runs the same loop on every machine, and because `make shape-gate` refuses a
 # timing primitive outside the sanctioned bench. Each default is the release
-# act, about an hour on the studio; `make test` runs the short forms with an
+# act, about an hour on the bench-11; `make test` runs the short forms with an
 # explicit value. (Java's and Dart's sit in make/java.mk and make/dart.mk
 # beside their targets.)
 TABLES_C_SOAK_ITERATIONS ?= 800000
@@ -213,7 +213,7 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # and output root, because the big-endian negative control below regenerates
 # the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
 # be a second corpus, and the gate would stop covering what the leg covers.
-# ---- rowan/cpp-versioning-numbers: BEGIN --------------------------------
+# ---- cpp-versioning-numbers: BEGIN --------------------------------
 # THE VERSIONING LAW'S SCHEMAS (docs/FIXED-FORM-VERSIONING-TESTS.md). One PAIR
 # per row of the law, differing by EXACTLY that row, same table name in two
 # packages so both generations compile into one binary. Every one of them goes
@@ -263,7 +263,7 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VNEW_lineage_merge.schema \
 	test/tables/VOLD_unknown_census.schema \
 	test/tables/VNEW_unknown_census.schema
-# ---- rowan/cpp-versioning-numbers: END ----------------------------------
+# ---- cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate
 	$(1) generate --lang cpp --out $(2)/examples tables/examples
@@ -317,7 +317,7 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
-	# ==== BEGIN rowan/cpp-versioning-lists ====
+	# ==== BEGIN cpp-versioning-lists ====
 	# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
 	# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
 	# the SAME table name on both sides (one lineage) and a package each, so
@@ -345,7 +345,7 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/vnew_nested_append test/tables/VNEW_nested_append.schema
 	$(1) generate --lang cpp --out $(2)/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
 	$(1) generate --lang cpp --out $(2)/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
-	# ==== END rowan/cpp-versioning-lists ====
+	# ==== END cpp-versioning-lists ====
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -360,11 +360,11 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/rt2 test/tables/RT2.schema
 	$(1) generate --lang cpp --out $(2)/rt3 test/tables/RT3.schema
 	$(1) generate --lang cpp --out $(2)/features testdata/conformance/feature-witnesses/full/Features.schema
-	# ---- rowan/cpp-versioning-numbers: BEGIN ----
+	# ---- cpp-versioning-numbers: BEGIN ----
 	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
 	$(foreach sc,$(SCHEMAS_VERSIONING),$(1) generate --lang cpp --out $(2)/vnum $(sc)
 	)
-	# ---- rowan/cpp-versioning-numbers: END ----
+	# ---- cpp-versioning-numbers: END ----
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
@@ -4096,7 +4096,7 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@grep -q "FIXED-class root" build/retain-fixed-class-message.log || { echo "RETAIN GATE FAILED: the fixed-class refusal of the message form was not by name"; cat build/retain-fixed-class-message.log; exit 1; }
 	@echo "the fixed-class root refuses the message form's retention BY NAME (docs/SPEC-TABLES.md §6.6, §3.3)"
 
-# ---- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables
+# ---- A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables
 # ---- go finite-only too, same rule as packets") -----------------------------
 #
 # The pin is testdata/wire/tables/floats_nan.bin — a signalling NaN, a NaN with
@@ -4807,7 +4807,7 @@ bench:
 # band between the legs, and each leg's own curve against the BEST of the
 # previous three points on the SAME machine (absolute rates do not compare
 # across machines, §2), so run it on the box those points came from: the
-# Studio. Only files carrying BOTH legs are points on that axis.
+# bench-11. Only files carrying BOTH legs are points on that axis.
 #
 # `--twins` is not optional here. The lock is a claim about two binaries
 # measured in one window, and §2.6.1's A/A legs are what rules out
@@ -4816,7 +4816,7 @@ bench:
 # WHAT THE LOCK COVERS: bench_mixed / family gen / round_trip / best rate —
 # the headline statistic §2.8 rules on, and the whole of the lock. The
 # bitpacker rows and the write path are OUTSIDE it. Not an oversight: in
-# bench/results/2026-09-07-arm64-studio-bitpacker-checked-read-pass.csv, a
+# bench/results/2026-09-07-arm64-bench-11-bitpacker-checked-read-pass.csv, a
 # `window: OK` pass this lock calls green at 106.1%, bitpacker/read has c at
 # 161.4% of cpp. A band over that row is a ruling about a different statistic
 # and is not invented here — it would need its own §2.8-style paragraph in
@@ -5531,7 +5531,7 @@ tables-cpp-region-discard-negative-control:
 	@grep -m1 "variable: the report does not say malformed" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
-# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; the owner's ruling,
 # 2026-10-31). The C++ check is Kahn's algorithm over the load's directory
 # (TableCycleAcyclic, internal/codegen/cpptable/arena.go). The first control
 # drops its verdict in a COPY of arena.go, so a cyclic graph loads, and
@@ -6539,7 +6539,7 @@ toolchain-negative-control:
 # pointers read null, and the home vessel holds its declared default. The
 # positive half runs first, against the shipped W2, so the two answers are
 # read side by side.
-# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# ---- cpp-versioning-numbers: BEGIN ----
 # THE FLOOR'S TEST-ONLY SETTER, and nothing else, lives behind this define. It
 # is NOT `SCHEMA_HAS_FLOOR`: that one says a build HAS a floor, and a shipped
 # build that has one must not compile a way to lower it. Only the two fixedform
@@ -6547,7 +6547,7 @@ toolchain-negative-control:
 # `T##FixedSetFloorForTest` under this define alone (test/tables/versioning_numbers.cpp,
 # `floor_raise_live`; bill §6b, §9).
 FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
-# ---- rowan/cpp-versioning-numbers: END ----
+# ---- cpp-versioning-numbers: END ----
 
 .PHONY: tables-was-negative-control
 # THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4). One
@@ -6558,11 +6558,11 @@ FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
 # and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
 # carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
 # a reader holds an untrusted peer's layout to.
-# ==== BEGIN rowan/cpp-versioning-lists ====
+# ==== BEGIN cpp-versioning-lists ====
 # THE LIST ROWS' GENERATED PAIRS, as one variable so the three recipes that
 # need them keep one line each (docs/FIXED-FORM-VERSIONING-TESTS.md).
 VLISTS_INCLUDES = -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was
-# ==== END rowan/cpp-versioning-lists ====
+# ==== END cpp-versioning-lists ====
 
 build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
                                test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
@@ -6717,7 +6717,7 @@ tables-fixedform-run-copy-negative-control:
 # THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 #
 # The C++ backend is the REFERENCE for this form, so the reference is what
-# writes the bytes and every port matches them — Glenn's rule for this class,
+# writes the bytes and every port matches them — the owner's rule for this class,
 # and the same shape the paired bench already pins. This target writes one
 # form-3 FILE per root into build/fixedform-corpus, with values set by hand so
 # nothing passes by accident, and a port's leg proves itself against them two
@@ -6750,7 +6750,7 @@ build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 	@rm -rf build/fixedform-corpus.next
 	@mkdir -p build/fixedform-corpus.next
 	./build/schema_test_fixedform_dump build/fixedform-corpus.next
-# ---- rowan/corpus-manifest ----
+# ---- corpus-manifest ----
 # THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
 # §5.7 step 1, ruling #32): the dump writes it from the same values it writes
 # into the bytes, and a corpus without it is a corpus a port has to read the
@@ -7082,7 +7082,7 @@ include make/checks/reference-review.mk
 # no line any more fails too — a stale excuse is how the next bare `go test`
 # slips in behind a line nobody reads.
 # TAGS, made by tooling and never by hand (docs/VERSIONING.md, "The compiler's
-# own version"; Glenn, 2026-10-15). promotion-tag tags HEAD main-<shorthash>
+# own version"; the owner, 2026-10-15). promotion-tag tags HEAD main-<shorthash>
 # and skips a commit already carrying one; .github/workflows/promotion-tag.yml
 # runs it on every push to main. release tags one commit on main vX.Y.Z and
 # refuses a version that does not parse, is not greater than the newest v tag,
@@ -7100,7 +7100,7 @@ RELEASE_MAIN ?= origin/main
 promotion-tag:
 	go run ./tools/releasetag promotion-tag -commit $(RELEASE_COMMIT) $(if $(PUSH),-push)
 
-# THE RELEASE LOCK (Glenn, 2026-10-31: "We need to prove this before v3.0.0
+# THE RELEASE LOCK (the owner, 2026-10-31: "We need to prove this before v3.0.0
 # not just hope that it's correct and complete"). release refuses, before any
 # tag is made, unless PROOF names the proof report the ci-full `proof` job
 # wrote AT THE COMMIT BEING RELEASED and that report is green: no red cell and
@@ -7894,7 +7894,7 @@ tables-big-endian-control-full:
 # conformance-big-endian is the nightly row: on run 42581682964 its make
 # step was 96 s inside a 127 s job. These two units still put a uint32 and a
 # uint16 on the wire, and the host bytes must match qemu-s390x.
-# The target measured 8.7 s on amd-2 with bin/schema warm (2026-11-09).
+# The target measured 8.7 s on bench-4 with bin/schema warm (2026-11-09).
 .PHONY: conformance-big-endian-smoke
 conformance-big-endian-smoke: bin/schema
 	rm -rf build/be-go-smoke

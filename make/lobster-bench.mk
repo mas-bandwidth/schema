@@ -19,6 +19,6 @@ bench-lobster-gate: toolchain-lobster generated/bench/lobster/.stamp generated/b
 # The control plants a flipped golden under each leg, a compiler warning under
 # the packet runner, and a seconds_elapsed() clock and a corpus name in .lobster
 # files under a copy of bench/, and requires each refused by name beside clean
-# baselines (bench/lobster/negative-control.sh). About 3 s on the studio.
+# baselines (bench/lobster/negative-control.sh). About 3 s on the bench-11.
 bench-lobster-gate-negative-control: toolchain-lobster generated/bench/lobster/.stamp generated/bench/tables/lobster/.stamp
 	bench/lobster/negative-control.sh

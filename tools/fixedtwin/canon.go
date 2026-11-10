@@ -121,7 +121,7 @@ var (
 	// C++ first; strip them so the gate stays green, and close them the way the
 	// first list was closed.
 	//
-	// CLOSED BY rowan/c-union-tag-counts-on-both-plans (schema#1254): THE
+	// CLOSED BY c-union-tag-counts-on-both-plans (schema#1254): THE
 	// WRITER'S ARM COUNT ON THE None CONST AND THE CONST CLAMP ARE PAID. The C
 	// runtime now sets `none.dstsize = (uint8_t) te.children` on the unguarded
 	// None const and counts a clamp for a raw tag past that set, spelled exactly
@@ -129,7 +129,7 @@ var (
 	// and strips neither. A debt is closed by DELETING its rule, never by
 	// widening it.
 	//
-	// CLOSED BY rowan/twin-full-width-lanes (§5.8 rows 5, 6, 7, 14): the
+	// CLOSED BY twin-full-width-lanes (§5.8 rows 5, 6, 7, 14): the
 	// full-width arg lane, the second guard lane an arm inside an arm answers
 	// to, the ordinal's 64-bit temporary and the writer-length remap are in BOTH
 	// runtimes, spelled the same, so the gate holds the two legs to all four and
@@ -242,7 +242,7 @@ func stripNamed(s string) string {
 }
 
 func stripOwedC(s string) string {
-	// THE OWED LIST IS CLOSED on rowan/c-reads-backward. The present op
+	// THE OWED LIST IS CLOSED on c-reads-backward. The present op
 	// ENUMERATOR, its Apply case and its compile of `T` into `?T`; the fixed(I,F)
 	// and ufixed(I,F) ladder rungs and the signed fixed-point's sign; the grown
 	// ordinal width emitted as an unsigned widen; and now `struct

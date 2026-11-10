@@ -3,7 +3,7 @@
 Goose (github.com/aardappel/goose, Apache-2.0, Wouter van Oortmerssen) is a
 memory-safe systems language with no heap: compiler-managed data stacks,
 narrow relative references, built-in verified serialization, share-nothing
-threads, the whole program compiled to one C file. Glenn Fiedler,
+threads, the whole program compiled to one C file. The owner,
 2026-10-19: "I'd like to front load the serialize and schema port to goose
 because it has interesting properties for gamedev and is supposedly faster
 than C++ and Rust. Let's put it to the test." The port is held to every
@@ -42,7 +42,7 @@ the struct declaration (`Retries: i32 = -1`), so the struct literal
 where one is declared, the type's own default otherwise — zero, a nested
 type at ITS defaults (every element of a fixed array of them too), an
 empty slice, null. `New<Name>()` returns that literal. Measured on the pin
-(hulk, 2026-10-19): `struct Q { ps: P[2], p: P }` with `P { a: i32 = -1 }`
+(bench-6, 2026-10-19): `struct Q { ps: P[2], p: P }` with `P { a: i32 = -1 }`
 constructs both `ps` elements and `p` at `a = -1`.
 
 Every module of a unit declares into ONE namespace, the unit's package —
@@ -166,7 +166,7 @@ count is guarded for 0 and 64, because Goose MASKS the count; float32 and
 float64 reach their bit patterns by the one route serialize-goose's
 DESIGN.md fixes (FLOAT32), never by arithmetic.**
 
-Measured on the pin (hetzner2 and hulk, 2026-10-19):
+Measured on the pin (bench-2 and bench-6, 2026-10-19):
 
 - Arithmetic is at the operands' own width with no promotion: `u32 + i32`,
   and `u64` with any signed operand, is a compile error asking for a cast.
@@ -382,7 +382,7 @@ lowercase hex lines.**
   `<repo root>/dist/goose-v2026.2-linux-x64/goose` — with `dir` as the
   working directory, and returns stdout. `goose run` compiles into the
   compiler's own process with the bundled TinyCC at -O1 (measured: a
-  four-module program compiles and runs in about 70 ms on hulk).
+  four-module program compiles and runs in about 70 ms on bench-6).
   `gooserun.RunDebug` is `goose run --debug`, for the overflow and range
   checks. A compiler that does not resolve FAILS the test naming `make dist-goose` — it never skips. `gooserun.HexProbe` is the Goose `hex(b)`
   that prints bytes as one hex line, and `gooserun.HexLines` reads the lines
@@ -476,7 +476,7 @@ the mask and the shifts, and the 8-byte word moves through a slice window
 that carries no per-byte bounds check. Everything else moves through the
 runtime's own entries (`serialize_bytes`, the fixed, int128, float and
 compressed-float entries, a 64-bit write and a read past 56 bits). On the
-packet-wire bench (`bench/run.sh --only goose`, intel, Core Ultra 9 285H,
+packet-wire bench (`bench/run.sh --only goose`, bench-8, Core Ultra 9 285H,
 pinned, four interleaved sittings, 2026-10-29) the inline moves took
 bench_mixed from 0.89 to 1.84 M msg/s on write and from 0.34 to 0.94 M msg/s
 on round trip, the wire byte-identical.

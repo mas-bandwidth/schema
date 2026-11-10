@@ -71,9 +71,9 @@ name: CI fast
 # THE LEG MATRIX STAYS ON OUR OWN HARDWARE. `leg-gate` is the nine-way fan-out:
 # every row pays its own SDK and a sibling clone, and the warm pool is what
 # makes it a two-minute lane at all. Its runners are the fleet's repository
-# runners (rowan-tools fleet/runners.tsv, the `schema` set:
+# runners (the fleet tooling fleet/runners.tsv, the `schema` set:
 # `make -C fleet runners-repo REPO=schema`), where the toolchains are already
-# on the host: the nova-tools `toolchains` role keeps jdk 21, elixir 1.20.4 on
+# on the host: the the fleet tools `toolchains` role keeps jdk 21, elixir 1.20.4 on
 # OTP 29, dart, node, dotnet 10.0.401 and rust under ~/sdk, go is the fleet's
 # pinned one, and gcc, g++, make and cmake are the bench's OS packages. The
 # runner puts all of them on PATH through its own `.path` and `.env`, and its
@@ -122,10 +122,10 @@ name: CI fast
 # its old `space-x64` registration is gone with it. No job here names it.
 #
 # TO TAKE THE POOL DOWN for a benchmark window — never measure against a runner
-# doing a build — on each host that carries a schema runner (hetzner2, amd-1,
-# amd-2, amd-3):
-#   systemctl --user stop 'nova-runner-schema-*'
-# and `systemctl --user start 'nova-runner-schema-*'` to bring it back.
+# doing a build — on each host that carries a schema runner (bench-2, bench-3,
+# bench-4, bench-5):
+#   systemctl --user stop 'runner-schema-*'
+# and `systemctl --user start 'runner-schema-*'` to bring it back.
 
 on:
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
@@ -822,7 +822,7 @@ jobs:
           esac
 
   # THE LOBSTER LEG'S test-lobster, IN ROWS. As one leg-gate row the Lobster
-  # leg ran 128-913 s (40 runs, 2026-11-08; 462 s on amd-2, where the four
+  # leg ran 128-913 s (40 runs, 2026-11-08; 462 s on bench-4, where the four
   # conformance controls were 131 s, the wire-fuzz trio 100 s, the forgery
   # fuzz 133 s, its control 145 s and the two packages' suites 152 s), and
   # the fleet kills a per-commit job at two minutes. So test-lobster's work

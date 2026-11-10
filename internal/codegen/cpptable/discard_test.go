@@ -460,7 +460,7 @@ func cycleProbe(name string, wire []byte, load bool, onFail string, after ...str
 `, cppBytes(wire), want, onFail, onFail, onFail, strings.Join(after, "\n"))
 }
 
-// TestCyclicWireIsRefusedCPP is the C++ reference's gate for Glenn's ruling
+// TestCyclicWireIsRefusedCPP is the C++ reference's gate for the owner's ruling
 // (2026-10-31, docs/SPEC-TABLES.md §3.1, §4): a cyclic wire is damage, on the
 // region load, the retaining load and the builder load. A back edge to a mid
 // ancestor, a cycle the root never reaches, and a cycle through a slot the

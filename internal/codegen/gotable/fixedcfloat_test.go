@@ -3,7 +3,7 @@ package gotable
 // THE RED TEAM AGAINST THE COMPRESSED FLOAT UNDER WIDENING (§3.4's row).
 //
 // docs/SPEC-TABLES.md §3.4 says a compressed float in the FIXED form "rides as
-// the float, not as a quantized index". The rule under test is Rowan's: because
+// the float, not as a quantized index". The rule under test is a maintainer's: because
 // `min`, `max` and `res` are DEFINITIONS in the digest and not bytes in the
 // record, the RANGE may widen and the RESOLUTION may refine and an old file
 // reads EXACTLY under the new definition.
@@ -95,7 +95,7 @@ fixed table Reading
 }
 `
 
-// THE RANGE WIDENS AND THE MIN MOVES BY A NON-MULTIPLE OF res. Under Rowan's
+// THE RANGE WIDENS AND THE MIN MOVES BY A NON-MULTIPLE OF res. Under a maintainer's
 // rule this is lawful and 0.3 must come back as 0.3; under a reader that
 // re-quantizes onto its OWN grid, 0.3 lands on -0.05 + k*0.105 and is wrong.
 const cfWideMin = `package cfold

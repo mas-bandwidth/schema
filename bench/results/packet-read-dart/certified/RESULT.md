@@ -41,7 +41,7 @@ Identity is 2.21x the packet read and plan is 6.83x it; the two sittings agree w
   `generated/bench/paired/dart/{BenchFixed,FixedTableFixed,BenchWire}.dart`. The runner the
   binaries were compiled from is this revision's `bench/tables/dart/table_main.dart` (landed in
   `85d9825fd`); `sitting-N/build.json` records each binary's and module's hash.
-- **Host:** `b1` (`amd-1`), linux/amd64, AMD Ryzen 7 255 w/ Radeon 780M Graphics; every runner pinned
+- **Host:** `b1` (`bench-3`), linux/amd64, AMD Ryzen 7 255 w/ Radeon 780M Graphics; every runner pinned
   to CPU 5 (`taskset -c 5`); sittings back to back, windows 18:56:41–18:59:05Z and 18:59:30–19:01:55Z, 2026-10-16.
 - **Toolchain:** Dart SDK 3.13.2 (stable), `dart compile exe` (AOT, product mode, asserts off); the
   plan binary compiled against the paired unit generated beside `bench/tables/dart/lineage/schema.lock`.

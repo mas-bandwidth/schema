@@ -425,7 +425,7 @@ func readCoverage(dir string) ([]coverageRow, map[string]string, error) {
 //	12/16 !2           answered 12, said ABSENT for 2 it CLAIMS (red)
 //	absent             the leg does not run the surface
 //
-// A failure count rides as `x<N>`. Glenn, 2026-10-25: a case a port does not
+// A failure count rides as `x<N>`. The owner, 2026-10-25: a case a port does not
 // carry yet does not fail the night, and this table is how the gap stays seen.
 func coverageMarkdown(w io.Writer, rows []coverageRow, fixed map[string]string) error {
 	b := &strings.Builder{}

@@ -1,6 +1,6 @@
 # make/schema-dart-generated-strict-analyze-gate.mk — the strict Dart
 # analyzer lens over the generated Dart (ideas roadmap group
-# schema-per-language-lenses; Glenn, 2026-10-18). This is a card-scoped gate,
+# schema-per-language-lenses; the owner, 2026-10-18). This is a card-scoped gate,
 # not a language port: its stem has a dash, so the canonical port list
 # (SCHEMA_PORTS, schema-go-make-port-list-defined-once) never probes it, and
 # the current root Makefile's `schema-*` skip covers it until that lands.

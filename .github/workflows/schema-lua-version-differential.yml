@@ -1,6 +1,6 @@
 name: Schema Lua version differential
 
-# THE LUA VERSION DIFFERENTIAL (Glenn, 2026-10-18; make/schema-lua-version-
+# THE LUA VERSION DIFFERENTIAL (the owner, 2026-10-18; make/schema-lua-version-
 # differential.mk). The Lua port emits one algorithm for Lua 5.1, 5.3, 5.4 and
 # LuaJIT; this workflow runs the shared conformance corpus under all four and
 # requires 5.3 and 5.4 to agree while 5.1 and LuaJIT refuse by name.

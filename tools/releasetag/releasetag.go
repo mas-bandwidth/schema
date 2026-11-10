@@ -1,6 +1,6 @@
 // Command releasetag makes the two kinds of tag docs/VERSIONING.md defines,
 // and is the only thing that makes them: nobody tags this repository by hand
-// (Glenn, 2026-10-15).
+// (The owner, 2026-10-15).
 //
 //	releasetag promotion-tag [-commit REV] [-push]
 //	    tags a commit on main main-<first 12 hex of its hash>; a commit that

@@ -1342,7 +1342,7 @@ func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
 
 /* ---- the read-side finite pass ---------------------------------------------
 
-A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 finite-only too, same rule as packets"): every fixed read refuses a NaN or an
 infinity as non_finite_float, strict and strict alike, and the test runs
 FIRST, before the bounds pass, so a compressed float's clamp never sees one.

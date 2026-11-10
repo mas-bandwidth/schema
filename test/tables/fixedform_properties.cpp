@@ -1,6 +1,6 @@
 // THE FIXED FORM'S THREE PROPERTIES (docs/SPEC-TABLES.md §3.4).
 //
-// Glenn asked whether nine ports could have found tonight's bugs cheaper.
+// The owner asked whether nine ports could have found tonight's bugs cheaper.
 // This binary is the answer: the same three questions, over every fixture,
 // and a KNOWN-RED list printed by name.
 //

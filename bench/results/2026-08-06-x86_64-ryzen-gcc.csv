@@ -1,6 +1,6 @@
 # schema bench results
 # date: 2026-08-06T19:28:44Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Release
 # cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
@@ -37,7 +37,7 @@ cpp,message_batch,read,3276800,25,7,20265541,19325309,20597669,483.17,6.28
 
 # schema bench results
 # date: 2026-08-06T19:29:01Z
-# host: spacegame  arch: x86_64  os: Linux 6.8.0-90-generic
+# host: bench-12  arch: x86_64  os: Linux 6.8.0-90-generic
 # cpu: AMD EPYC 9124 16-Core Processor
 # build: Debug
 # cpp compiler: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0

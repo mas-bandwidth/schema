@@ -16,7 +16,7 @@ import (
 // exists to catch.
 //
 // THE BITS COME FROM THE CORPUS MANIFEST AND NOT FROM A LITERAL (schema#1164,
-// Glenn 2026-09-19: "do whatever is needed to make sure that a new reader can
+// The owner 2026-09-19: "do whatever is needed to make sure that a new reader can
 // read an old writer"). The manifest carries `r0.aim=0.300000012|0x3E99999A`,
 // and until now every leg's compressed-float row hardcoded that number instead
 // — an oracle written by the same hand as the assertion. `manifestFloatBits`

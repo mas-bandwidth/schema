@@ -527,7 +527,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 	case tkF32, tkF64:
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
 		// become a value and before the field is written (docs/SPEC-TABLES.md
-		// §3.3; Glenn, 2026-10-27, "tables go finite-only too, same rule as
+		// §3.3; the owner, 2026-10-27, "tables go finite-only too, same rule as
 		// packets"): the read names the field and the load refuses as
 		// non_finite_float. A compressed float takes
 		// the test before its bounds. Every finite float32 widens exactly, so

@@ -222,7 +222,7 @@ jobs:
 	}
 }
 
-// Adversarial Controls 5A-5D: The five false-credit cases identified by Stella (stella-f42ad3d7317f).
+// Adversarial Controls 5A-5D: The five false-credit cases identified by a reviewer (finding-f42ad3d7317f).
 // Root compiler.TestRequiredGate must NOT be credited in any of these scenarios.
 
 func TestAdversarialSchemaSlowTrueDoesNotCredit(t *testing.T) {

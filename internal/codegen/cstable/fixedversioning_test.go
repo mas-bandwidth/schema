@@ -895,7 +895,7 @@ file=fx1.bin row=fx1 side=none root=FxRoot records=2 values=r0.keep=4242,r0.x=-0
 // `r0.aim=0.300000012|0x3E99999A` was unreadable by the bracket path BY
 // CONSTRUCTION — and this leg's compressed-float rows asserted HARDCODED
 // numbers instead of the reference's answer (schema#1164, measured 2026-09-19
-// on all nine legs; Glenn: "do whatever is needed to make sure that a new
+// on all nine legs; the owner: "do whatever is needed to make sure that a new
 // reader can read an old writer").
 //
 // It returns the BITS. `res_refine` compared `back[0].Aim != 0.3f`, and a float

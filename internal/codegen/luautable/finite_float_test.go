@@ -29,7 +29,7 @@ import (
 )
 
 // THE FINITE-FLOAT GATE OF THE LUAU TABLE FORMS (docs/SPEC-TABLES.md §3.3;
-// Glenn, 2026-10-27: "Tables go finite-only too, same rule as packets. NaN/inf
+// The owner, 2026-10-27: "Tables go finite-only too, same rule as packets. NaN/inf
 // refused on write and read, -0 and subnormals kept"). One probe answers one
 // row per rule and form, and every answer is held to schema-go's engine where
 // the engine has the form (internal/tablewire, internal/tablecook): the

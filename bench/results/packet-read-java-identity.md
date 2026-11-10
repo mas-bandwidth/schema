@@ -13,7 +13,7 @@ of the same 64 logical records (BenchMixed). Both measurements from one sitting.
 
 ## Measurement
 
-- **Host:** spacegame.losangeles
+- **Host:** bench-12
 - **CPU:** AMD EPYC 9124 16-Core Processor (x86_64)
 - **Revision:** ead804093232b3593facd987ebe2f726a10dd63d
 - **Load before:** 99.20, 116.99, 84.90

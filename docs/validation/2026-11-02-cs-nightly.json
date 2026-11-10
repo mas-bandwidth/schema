@@ -26,8 +26,8 @@
     },
     "committed_file_verification": "All 11 frozen file digests independently match git show at tested_revision."
   },
-  "host": "hulk",
-  "command": "GOMAXPROCS=2 GOFLAGS=-p=2 DOTNET=/home/gaffer/sdk/bin/dotnet test/conformance/nightly-readiness cs",
+  "host": "bench-6",
+  "command": "GOMAXPROCS=2 GOFLAGS=-p=2 DOTNET=$HOME/sdk/bin/dotnet test/conformance/nightly-readiness cs",
   "toolchains": {
     "go": "go1.26.10 linux/amd64",
     "dotnet": "10.0.401"

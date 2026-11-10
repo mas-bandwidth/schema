@@ -1,6 +1,6 @@
 package rusttable
 
-// THE FINITE RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27:
+// THE FINITE RULE ON THE RUST LEG (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27:
 // "Tables go finite-only too, same rule as packets. NaN/inf refused on write
 // and read, -0 and subnormals kept"). The Go leg's twin is
 // gotable/floatspecial_test.go (TestGoPlainFloatSpecialValuesAgreeAcrossForms).

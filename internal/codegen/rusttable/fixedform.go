@@ -103,7 +103,7 @@ func fixedCounted(e ir.TableFixedLayoutEntry) bool { return e.Dst.Counted != 0 }
 // prefills WITH. C++ calls the type's own Reset. Named string(N)/bytes(N)
 // defaults also live in constructed `<Name>Row::default()` (matching C++
 // `char label[8 + 1] = "fx"`). The load copies THIS image into the holes the
-// plan does not write (Glenn: prefill the bytes the plan does not write).
+// plan does not write (the owner: prefill the bytes the plan does not write).
 // Identity's hole list is empty because its plan is one Copy of the whole
 // body — empty fill is the skip, not a second path.
 // ---------------------------------------------------------------------------
@@ -1993,7 +1993,7 @@ func fixedFloatLit(v float64) string {
 
 /* ---- the read-side finite pass ---------------------------------------------
 
-A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go
+A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27, "tables go
 finite-only too, same rule as packets"): every fixed read refuses a NaN or an
 infinity as non_finite_float, naming the field, and the test runs FIRST, before
 the bounds pass, so a compressed float's clamp never sees one. Like the bounds

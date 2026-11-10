@@ -50,10 +50,10 @@ unknown enum slot, illegal root label, duplicate map key and forward label.
 No refusal yields a partially populated table or rewritable document.
 
 Survey evidence: repository docs/roadmap.sexp lines 1–21 has semicolon headers,
-keyword records, blank/comment lines and multiline values. nova-sprint's
+keyword records, blank/comment lines and multiline values. the sprint tool's
 internal/workfile/decode.go and encode.go additionally have tagged/positional
 records and deterministic sorted output; those require explicit table migration,
-not an implicit permissive reader. cmd/nova-sprint/landsexp.go merges whole lines
+not an implicit permissive reader. the sprint tool's landsexp.go merges whole lines
 and entries, motivating unchanged-byte and local-edit requirements. This corpus
 captures their layout shapes, not a claim to parse their undeclared legacy data.
 

@@ -1,7 +1,7 @@
-# Lobster table bench — fixed-root routing before/after (fleet, amd-2/b2)
+# Lobster table bench — fixed-root routing before/after (fleet, bench-4/b2)
 
 Date: 2026-11-07 (UTC, `date -u` on b2: Sat Nov 7 10:04:12 AM UTC 2026)
-Host: b2 (fleet host amd-2), x86_64, AMD Ryzen 7 255 w/ Radeon 780M Graphics, 16 cores
+Host: b2 (fleet host bench-4), x86_64, AMD Ryzen 7 255 w/ Radeon 780M Graphics, 16 cores
 Bench: `bench/tables/lobster/leg` — TableMixed (fixed table) load/save through the
 Lobster runtime walk (`load_tolerant` / `save`), 64-record variant corpus,
 corpus_id b51387f36d9b59c4, 2147 bytes/op, JIT, checks=contract.
@@ -66,12 +66,12 @@ refused as previous_form"), and it means the committed form-1 bench corpus
 cannot produce a head number. A form-3 variant corpus for TableMixed — or a
 bench root declared variable — is owed before any after-number exists; none is
 estimated here. Fleet numbers for the head side therefore remain owed, not
-because no fleet host answered (amd-1/amd-2/amd-3/hetzner1/hetzner2 all
-answered SSH from the studio on 2026-11-07, contrary to the earlier refusal
+because no fleet host answered (bench-3/bench-4/bench-5/bench-1/bench-2 all
+answered SSH from the bench-11 on 2026-11-07, contrary to the earlier refusal
 note), but because the measured bench and the new routing disagree about the
 wire form.
 
-## DONE-WHEN (studio, head 318ccc0cf)
+## DONE-WHEN (bench-11, head 318ccc0cf)
 
     make dist-lobster
     SCHEMA_SLOW=1 go test -count=1 -timeout 600s ./internal/codegen/lobstertable/

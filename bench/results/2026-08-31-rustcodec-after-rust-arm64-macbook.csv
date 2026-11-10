@@ -17,12 +17,12 @@
 # pinning: none
 # noise: unlabelled
 # schema commit: 75cfe97
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ecfb3c9 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ecfb3c9 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 rust,rigidbody_moving,write,24000000,105,7,50810198,49606293,50907659,5087.92,2.56,bc776c004485e408,gen,crate,always,O3,unknown
 rust,rigidbody_moving,read,24000000,105,7,44483069,43667132,44986898,4454.35,2.97,bc776c004485e408,gen,crate,always,O3,unknown
 rust,rigidbody_at_rest,write,32000000,57,7,81738702,81483345,82149273,4443.27,0.81,bc776c004485e408,gen,crate,always,O3,unknown

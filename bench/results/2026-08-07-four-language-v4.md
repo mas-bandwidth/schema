@@ -24,7 +24,7 @@ had not landed at pull time and is out of v4 — go chat read still carries the
 out. The sibling checkouts (`../serialize-cs-port/*`) were verified at
 exactly these SHAs, clean, before the run.
 
-**Host coverage: M2 only — EPYC still deferred on Glenn's word** ("stick
+**Host coverage: M2 only — EPYC still deferred on the owner's word** ("stick
 with m2 for now"); the v2 EPYC tables remain the latest x86 data.
 
 Same methodology as v1–v3 (`bench/README.md`), same harness: golden +

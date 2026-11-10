@@ -13,9 +13,9 @@
 # Accepted deliberately (issue #25): the gate also fires on compiler-version
 # changes, and telling a regression from a new compiler apart is manual.
 #
-# Seeded 2026-08-15 from the current-era, zero-unknown studio passes:
-#   O3 + default rows: results/2026-08-15-arm64-studio-postlane-O3-pass.csv (schema 695fde3)
-#   O2 rows:           results/2026-08-15-arm64-studio-O2-pass.csv          (schema c19cdb3)
+# Seeded 2026-08-15 from the current-era, zero-unknown bench-11 passes:
+#   O3 + default rows: results/2026-08-15-arm64-bench-11-postlane-O3-pass.csv (schema 695fde3)
+#   O2 rows:           results/2026-08-15-arm64-bench-11-O2-pass.csv          (schema c19cdb3)
 # Both post-7db74ef (verdicts trustworthy) — never seed budgets from a
 # pre-7db74ef artifact; see the era headers issue #20 stamped.
 #

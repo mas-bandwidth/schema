@@ -15,9 +15,9 @@
 # schema commit: c821740
 # serialize commit: 7fb154e (HEAD) [build-verified: /private/tmp/candidate-worktrees/serialize]
 # serialize.c commit: 4871f4c (HEAD) [build-verified: /private/tmp/candidate-worktrees/serialize.c]
-# serialize.go commit: 99ddc82 (degenerate-range-compat-and-docs) [build-verified: /Users/glenn/rowan-working/serialize.go]
+# serialize.go commit: 99ddc82 (degenerate-range-compat-and-docs) [build-verified: <work>/serialize.go]
 # serialize.rs commit: ee5bd52 (HEAD) [build-verified: /private/tmp/candidate-worktrees/serialize.rs]
-# serialize.cs commit: d3d34c9 (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
+# serialize.cs commit: d3d34c9 (main) [build-verified: <work>/serialize.cs]
 # rounds: 7   interleaved: yes
 # langs: cpp c go rust cs
 # load_start: 4.72 3.66 3.18

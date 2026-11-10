@@ -29,7 +29,7 @@ Root [AGENTS.md](../AGENTS.md) is a generated map of the tree, not the home of
 these rules. OpenCode and Codex read AGENTS.md natively; Claude Code **2.1.277
 and later** reads it when the folder has no `CLAUDE.md`. On an older Claude
 Code nothing loads it, so open the session with `read AGENTS.md first`.
-**There is no `CLAUDE.md`, no pointer file and no symlink** — Glenn's ruling
+**There is no `CLAUDE.md`, no pointer file and no symlink** — the owner's ruling
 of 2026-09-18 is AGENTS.md alone. The maintainer context behind these rules is
 [MAINTAINERS.md](MAINTAINERS.md).
 
@@ -93,7 +93,7 @@ the paired before/after, and its refutations reported plainly; a wrong-magnitude
 prediction is a refutation, not a rounding error. Suspected vulnerabilities
 follow [SECURITY.md](SECURITY.md).
 
-**Everything lands on `main` by pull request** (Glenn, 2026-10-30: "Start
+**Everything lands on `main` by pull request** (the owner, 2026-10-30: "Start
 landing languages in main please"). A fix is one pull request into `main` per
 independent cause. A language's work is squash-merged into its branch
 `lang/<lang>` (or `lang/<lang>-300`), and that branch reaches `main` once, by
@@ -240,7 +240,7 @@ A gate that quietly stops running is worse than a slow one. `slowtest.Gate`
 therefore never reads whether a toolchain is present; absence still fails
 wherever `SCHEMA_REQUIRE_CORPUS` says it must.
 
-The per-leg make gates, measured on an M-series Studio:
+The per-leg make gates, measured on an M-series bench (bench-11):
 
 | gate | time |
 | --- | --- |

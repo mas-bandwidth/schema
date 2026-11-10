@@ -334,7 +334,7 @@ tables-js-alloc-negative-control: build/tables-generated-js/.stamp build/js-fuzz
 # COUNT (never a clock), the bytes per iteration re-measured and gated at every
 # one of sixteen samples, and the live heap's drift after a collection beside it
 # as the weaker instrument that sees retention. The default count is the release
-# act, 2^35 passes, about forty minutes on mini-m5; `make test` runs the short form.
+# act, 2^35 passes, about forty minutes on bench-10; `make test` runs the short form.
 TABLES_JS_SOAK_ITERATIONS ?= 34359738368
 .PHONY: tables-js-soak tables-js-soak-short tables-js-soak-negative-control
 tables-js-soak: build/tables-generated-js/.stamp build/js-fuzz-scene.cook
@@ -730,7 +730,7 @@ tables-js-text-differential-negative-control:
 
 test-js: tables-js-text-differential
 
-# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
+# FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; the owner, 2026-10-27: "Tables go
 # finite-only too, same rule as packets"): every JavaScript read refuses a NaN
 # or an infinity on its raw bits as non_finite_float (variable, retained,
 # message, fixed, and the block and record accessors latched on the view),

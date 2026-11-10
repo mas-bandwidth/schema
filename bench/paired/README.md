@@ -35,7 +35,7 @@ bin/schema-paired -mode run -reuse-build \
 
 ```sh
 bench/paired/nine.sh              # this host
-bench/paired/nine.sh --lane 7     # Space, on that line's isolated core
+bench/paired/nine.sh --lane 7     # bench-12, on that line's isolated core
 ```
 
 It asks the TREE which `bench/tables/<lang>/` runners this checkout carries
@@ -77,7 +77,7 @@ inherits the pin.
 
 The reading rule lives in `bench/README.md` under the same heading. The short
 version: never mix hosts or modes in one row, a loaded host's table says so,
-and the certified sitting is still `-mode run` on Space inside the quiet
+and the certified sitting is still `-mode run` on bench-12 inside the quiet
 window.
 
 Fast mode never builds or generates. It requires a clean checkpoint with an
@@ -126,7 +126,7 @@ language order and alternating each language's wire order.
 
 The target is about one minute, with a five-minute deadline including gates.
 The initial duration model halves a previously observed approximately 104-second
-all-eight Space round, then removes Packet bitpacker work; fixed startup/JIT and
+all-eight bench-12 round, then removes Packet bitpacker work; fixed startup/JIT and
 gate costs do not halve. This is an estimate, not a measured guarantee for a new
 machine or revision. `-fast-timeout` can shorten the deadline but cannot exceed
 five minutes. Timeout kills only the current owned runner and retains incomplete
@@ -436,7 +436,7 @@ leg      identity read    plan read    packet read    GATE identity  GATE plan  
          ns/record        ns/record    ns/record      vs packet      vs packet    x (reported)
 ```
 
-**The gate is the packet wire, not a ratio.** Glenn's ruling, 2026-09-11,
+**The gate is the packet wire, not a ratio.** The owner's ruling, 2026-09-11,
 verbatim: "We can find the bound only after we know how it should perform. I
 think if we find that we are slower than the equivalent packet wire (we should
 be faster) for the same lang, then we know we are a fail. The rest is by hand."
@@ -472,7 +472,7 @@ coexist. It is ratified in docs/SPEC-TABLES.md §3.4 — the reference's own, ol
 rule — and C++'s alone: arm B of `fixedform_measure.cpp` is hand-written, and
 nine hand-maintained layouts would be nine chances for the comparand to be wrong
 in a leg-specific way, so the anchor line is where that ratio lives and no leg
-owes a hand-written arm. Glenn's ruling neither relaxes nor restates it; nothing
+owes a hand-written arm. The owner's ruling neither relaxes nor restates it; nothing
 multiplies the two together any more.
 
 A leg with no runner is NAMED with its reason in `nine.sh`'s own vocabulary and

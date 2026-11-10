@@ -1,6 +1,6 @@
 // The §4.6 target-name safety rule, proven against EVERY supported language:
 // a schema name is legal in every language the compiler supports, whatever
-// target is generated (Glenn, 2026-10-21: "generated output never puts out
+// target is generated (the owner, 2026-10-21: "generated output never puts out
 // keywords in Y"). One diagnostic per name lists every language it collides
 // with, and the only exemption is the Go escape (a Go word carried by Go as a
 // field, arm, variant or table name).

@@ -1027,7 +1027,7 @@ func manifestRow(line, file string) (map[string]uint64, bool) {
 // The manifest spells a float as `<decimal>|0x<raw bits>`, and it is the BITS
 // this returns: a decimal comparison cannot tell 0.3 from the float32 next to
 // it, which is exactly what a reader that requantized onto its own grid would
-// produce. Glenn's rule for this family is "do whatever is needed to make sure
+// produce. The owner's rule for this family is "do whatever is needed to make sure
 // that a new reader can read an old writer", and bit-exact against an
 // INDEPENDENT oracle is what proving it takes.
 //

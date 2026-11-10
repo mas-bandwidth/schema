@@ -1,6 +1,6 @@
 // WHAT THE LOCK SAYS TODAY ABOUT A COMPRESSED FLOAT'S RANGE AND RESOLUTION.
 //
-// The rule under red team is Rowan's: under a FIXED table a compressed float
+// The rule under red team is a maintainer's: under a FIXED table a compressed float
 // rides as the float32 itself (docs/SPEC-TABLES.md §3.4's row), so `min`, `max`
 // and `res` are DEFINITIONS and not bytes, the RANGE may widen, the RESOLUTION
 // may refine, and an old file reads exactly under the new definition.

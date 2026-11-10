@@ -109,7 +109,7 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 			}
 		}
 		// A forged pointer cycle is damage and the whole load is refused
-		// (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31). The ordinary
+		// (docs/SPEC-TABLES.md §3.1, §4; the owner, 2026-10-31). The ordinary
 		// corpus contains only acyclic writers, so exercise the pinned
 		// hostile vector explicitly: the Rust leg must answer the oracle's
 		// refusal.

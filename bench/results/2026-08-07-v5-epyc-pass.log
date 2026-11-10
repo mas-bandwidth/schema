@@ -1,4 +1,4 @@
-===== v5 EPYC pass START 2026-08-07T15:55:32Z host=spacegame =====
+===== v5 EPYC pass START 2026-08-07T15:55:32Z host=bench-12 =====
 toolchains: g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0 | Ubuntu clang version 18.1.3 (1ubuntu1) | go version go1.26.5 linux/amd64 | cargo 1.97.1 (c980f4866 2026-06-30) / rustc 1.97.1 (8bab26f4f 2026-07-14) | dotnet 10.0.302
 isolated cpus: 1-15
 --- pscheck [before-cpp-gcc-start] 2026-08-07T15:55:32Z load=6.35 5.90 5.58
@@ -34,7 +34,7 @@ testdata           read       25.42 M msg/s     2230.4 MB/s   (min 23.69, max 25
 message_batch      write      61.41 M msg/s     1464.2 MB/s   (min 50.97, max 61.76, spread 17.6%)
 message_batch      read       41.96 M msg/s     1000.5 MB/s   (min 41.61, max 43.58, spread 4.7%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-start.csv
+results: <bench>/v5-epyc/results/cpp-gcc-start.csv
 === leg cpp-gcc-start OK 2026-08-07T15:55:53Z
 --- pscheck [before-go] 2026-08-07T15:55:56Z load=5.97 5.87 5.58
   clean: none of ours running
@@ -80,7 +80,7 @@ message_batch      write      31.31 M msg/s      746.5 MB/s   (min 28.38, max 31
 message_batch      read       38.68 M msg/s      922.2 MB/s   (min 37.39, max 38.85, spread 3.8%)
 alloc note: message_batch one pass (4096 msgs): write 0 allocs, read 0 allocs
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/go.csv
+results: <bench>/v5-epyc/results/go.csv
 === leg go OK 2026-08-07T15:56:37Z
 --- pscheck [before-rust] 2026-08-07T15:56:40Z load=6.10 5.91 5.61
   clean: none of ours running
@@ -114,7 +114,7 @@ testdata           read        9.70 M msg/s      851.0 MB/s   (min 8.54, max 9.7
 message_batch      write      59.36 M msg/s     1415.3 MB/s   (min 52.87, max 59.70, spread 11.5%)
 message_batch      read       33.59 M msg/s      800.9 MB/s   (min 33.33, max 34.50, spread 3.5%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/rust.csv
+results: <bench>/v5-epyc/results/rust.csv
 === leg rust OK 2026-08-07T15:57:09Z
 --- pscheck [before-cs] 2026-08-07T15:57:12Z load=8.21 6.44 5.79
   clean: none of ours running
@@ -160,7 +160,7 @@ message_batch      write      24.75 M msg/s      590.1 MB/s   (min 13.08, max 56
 message_batch      read       20.67 M msg/s      492.7 MB/s   (min 19.35, max 21.10, spread 8.5%)
 alloc note: message_batch one pass (4096 msgs): write 0 bytes (0 gen0), read 0 bytes (0 gen0)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cs.csv
+results: <bench>/v5-epyc/results/cs.csv
 === leg cs OK 2026-08-07T15:58:02Z
 Shutting down MSBuild server...
 Shutting down VB/C# compiler server...
@@ -199,7 +199,7 @@ testdata           read       21.24 M msg/s     1863.4 MB/s   (min 20.05, max 22
 message_batch      write      60.37 M msg/s     1439.2 MB/s   (min 56.08, max 60.58, spread 7.5%)
 message_batch      read       51.64 M msg/s     1231.2 MB/s   (min 46.03, max 54.69, spread 16.8%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-clang.csv
+results: <bench>/v5-epyc/results/cpp-clang.csv
 === leg cpp-clang OK 2026-08-07T15:58:22Z
 --- pscheck [before-cpp-gcc-prerestrict] 2026-08-07T15:58:25Z load=7.00 6.20 5.74
   clean: none of ours running
@@ -234,7 +234,7 @@ testdata           read       22.99 M msg/s     2017.2 MB/s   (min 22.81, max 24
 message_batch      write      61.06 M msg/s     1455.8 MB/s   (min 58.03, max 61.29, spread 5.3%)
 message_batch      read       42.20 M msg/s     1006.1 MB/s   (min 41.88, max 43.78, spread 4.5%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-prerestrict.csv
+results: <bench>/v5-epyc/results/cpp-gcc-prerestrict.csv
 === leg cpp-gcc-prerestrict OK 2026-08-07T15:58:46Z
 --- pscheck [before-cpp-clang-prerestrict] 2026-08-07T15:58:49Z load=6.52 6.15 5.74
   clean: none of ours running
@@ -269,7 +269,7 @@ testdata           read       21.23 M msg/s     1862.7 MB/s   (min 21.10, max 22
 message_batch      write      60.58 M msg/s     1444.5 MB/s   (min 57.13, max 60.77, spread 6.0%)
 message_batch      read       53.42 M msg/s     1273.5 MB/s   (min 47.16, max 56.21, spread 17.0%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-clang-prerestrict.csv
+results: <bench>/v5-epyc/results/cpp-clang-prerestrict.csv
 === leg cpp-clang-prerestrict OK 2026-08-07T15:59:06Z
 --- pscheck [before-cpp-gcc-end] 2026-08-07T15:59:09Z load=5.24 5.88 5.66
   clean: none of ours running
@@ -304,7 +304,7 @@ testdata           read       25.46 M msg/s     2233.8 MB/s   (min 23.80, max 25
 message_batch      write      61.06 M msg/s     1455.8 MB/s   (min 57.90, max 61.27, spread 5.5%)
 message_batch      read       41.98 M msg/s     1001.0 MB/s   (min 36.78, max 43.70, spread 16.5%)
 OK
-results: /home/ubuntu/rowan-bench/v5-epyc/results/cpp-gcc-end.csv
+results: <bench>/v5-epyc/results/cpp-gcc-end.csv
 === leg cpp-gcc-end OK 2026-08-07T15:59:30Z
 --- pscheck [after-all] 2026-08-07T15:59:33Z load=5.22 5.85 5.65
   clean: none of ours running

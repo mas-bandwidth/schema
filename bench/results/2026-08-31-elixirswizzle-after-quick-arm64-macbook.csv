@@ -17,12 +17,12 @@
 # pinning: none
 # noise: AFTER half: elixir-swizzle at fef86ed, the last CODE commit on the branch — commits after it add this data and prose only, so the stamp resolves on origin and reconstructs the measured tree. --quick is the iteration instrument, never certification (§2.8). Paired same-sitting A/B of the Elixir emitter, run three minutes apart on a fanless M2 Air, both halves --quick with corpus_id 6b213fbfa1a03a99 on every row; every non-elixir leg is the in-sitting control. 
 # schema commit: fef86ed
-# serialize commit: cebaed2 (main) [build-verified: /Users/glenn/rowan-working/serialize]
-# serialize.c commit: 37db942 (main) [build-verified: /Users/glenn/rowan-working/serialize.c]
-# serialize.go commit: ae730d5 (main) [build-verified: /Users/glenn/rowan-working/serialize.go]
-# serialize.rs commit: 6b52aa6 (main) [build-verified: /Users/glenn/rowan-working/serialize.rs]
-# serialize.cs commit: f08327e (main) [build-verified: /Users/glenn/rowan-working/serialize.cs]
-# serialize.js commit: e391f1e (main) [build-verified: /Users/glenn/rowan-working/serialize.js]
+# serialize commit: cebaed2 (main) [build-verified: <work>/serialize]
+# serialize.c commit: 37db942 (main) [build-verified: <work>/serialize.c]
+# serialize.go commit: ae730d5 (main) [build-verified: <work>/serialize.go]
+# serialize.rs commit: 6b52aa6 (main) [build-verified: <work>/serialize.rs]
+# serialize.cs commit: f08327e (main) [build-verified: <work>/serialize.cs]
+# serialize.js commit: e391f1e (main) [build-verified: <work>/serialize.js]
 lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline
 cpp,bench_mixed,write,4000000,438,3,7290105,7268655,7298855,3045.14,0.41,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
 cpp,bench_mixed,round_trip,4000000,438,3,3463710,3456677,3496211,1446.82,1.14,6b213fbfa1a03a99,gen,hdr,removed,O3,unknown
