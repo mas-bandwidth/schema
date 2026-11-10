@@ -112,7 +112,7 @@ func TestCppRangeAssertWideStorage(t *testing.T) {
 	// the defaults stub reads ints into int32_t storage only; these fields are 64-bit
 	stub := packetDefaultsSerialize
 	for from, to := range map[string]string{
-		"bool ReadInt( int32_t & value,":              "template <typename T>\n    bool ReadInt( T & value,",
+		"bool ReadInt( int32_t & value,":                "template <typename T>\n    bool ReadInt( T & value,",
 		"value = int32_t( uint64_t( minimum ) + raw );": "value = T( int32_t( uint64_t( minimum ) + raw ) );",
 	} {
 		if strings.Count(stub, from) != 1 {

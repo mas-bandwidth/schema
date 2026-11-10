@@ -36,6 +36,7 @@ type parser struct {
 	errs       []error
 	blockDepth int
 	exprDepth  int
+	mapDepth   int
 }
 
 func (p *parser) tok() scanner.Token { return p.toks[p.i] }
@@ -735,6 +736,14 @@ func (p *parser) parseFieldLine(t scanner.Token) ast.Item {
 // prefix, or another map — so `map[string(16)]map[uint8]Item` and
 // `map[uint32]?[..4]Slot` are one production.
 func (p *parser) parseMapType() *ast.MapType {
+	if p.mapDepth >= maxNestingDepth {
+		m := &ast.MapType{Pos: p.tok().Pos}
+		p.errf(p.tok().Pos, "map nesting exceeds the %d-level limit", maxNestingDepth)
+		p.skipExpr()
+		return m
+	}
+	p.mapDepth++
+	defer func() { p.mapDepth-- }()
 	kw := p.expect(scanner.KwMap, "map")
 	m := &ast.MapType{Pos: kw.Pos}
 	p.expect(scanner.LBrack, "[ after map")

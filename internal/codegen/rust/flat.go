@@ -387,22 +387,12 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 		if f.HasFloatRange {
 			return flatPiece{}, false // the quantization lives in the runtime
 		}
-		return flatPiece{
-			item: item, bits: 32, guard: noGuard,
-			value: fmt.Sprintf("u64::from(%s.to_bits())", name),
-			read: func(ind, src string) {
-				g.pf("%s%s = f32::from_bits(%s as u32);\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(item, name, 32, fmt.Sprintf("u64::from(%s.to_bits())", name), "0x7f800000",
+			fmt.Sprintf("%s = f32::from_bits(%%s as u32);", name)), true
 
 	case ir.TFloat64:
-		return flatPiece{
-			item: item, bits: 64, guard: noGuard,
-			value: fmt.Sprintf("%s.to_bits()", name),
-			read: func(ind, src string) {
-				g.pf("%s%s = f64::from_bits(%s);\n", ind, name, src)
-			},
-		}, true
+		return g.flatFloatPiece(item, name, 64, fmt.Sprintf("%s.to_bits()", name), "0x7ff0000000000000",
+			fmt.Sprintf("%s = f64::from_bits(%%s);", name)), true
 
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -463,6 +453,30 @@ func (g *gen) flatFieldPiece(item ir.Item, f *ir.Field) (flatPiece, bool) {
 		return g.flatIntPiece(item, f)
 	}
 	return flatPiece{}, false
+}
+
+// flatFloatPiece is a bare f32 or f64: its IEEE-754 bit pattern rides as is,
+// so the flat form places the bits itself and never reaches the runtime's
+// serialize_f32/f64. It therefore owns the finite rule those carry under
+// serialize format 2.0 (SPEC §4.3): a NaN or an infinity, whose exponent field
+// is all ones, is a debug assertion on write, as the runtime's is, and is
+// refused with NonFiniteFloat on read, tested on the raw bits; negative zero
+// and the subnormals ride bit exact. exponent is the mask of the exponent
+// field, and store the field store with a %s for the extracted bits.
+func (g *gen) flatFloatPiece(item ir.Item, name string, bits int64, value, exponent, store string) flatPiece {
+	return flatPiece{
+		item: item, bits: bits,
+		guard: func(ind string) {
+			g.writeAssert(ind, name+".is_finite()", fmt.Sprintf("%s is not finite", assertLabel(name)))
+		},
+		value: value,
+		read: func(ind, src string) {
+			g.pf("%sif %s & %s == %s {\n", ind, src, exponent, exponent)
+			g.pf("%s    // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)\n", ind)
+			g.pf("%s    return Err(Error::Stream(serialize::Error::NonFiniteFloat));\n%s}\n", ind, ind)
+			g.pf("%s"+store+"\n", ind, src)
+		},
+	}
 }
 
 // enumMaxCond is the write-side contract for an enum tag with storage

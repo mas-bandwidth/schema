@@ -4609,6 +4609,9 @@ var tableGeneratedVerbs = []string{
 	// per-value pass and its exact twin, each a package-level function Go emits
 	// for every fixed table, claimed on this list's own rule.
 	"FixedCheckBody", "FixedCheckBodyExact",
+	// and the batch save's refusal path, which the JavaScript backend emits as
+	// a module-scope function for every fixed table, claimed on the same rule.
+	"FixedRefuseBatch",
 	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.

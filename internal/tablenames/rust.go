@@ -34,6 +34,7 @@ func init() {
 		Name{Name: "TableCookSpan", What: "a cooked map's or list's sixteen-byte self-relative reference and count slot (§2.8, §2.9, §6.3)"},
 		Name{Name: "TableRegionLayout", What: "the cook write's layout pass: every node of the numbering at its own alignment, the region rounded to the greatest (§7, §7.6)", Scoped: true},
 		Name{Name: "TableRegionUp", What: "the cook write's align-up (§7)", Scoped: true},
+		Name{Name: "TableReportWireFuzz", What: "the read report's wire-fuzz counters, zero on this leg, reached through TableReport"},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a

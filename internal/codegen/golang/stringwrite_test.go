@@ -20,7 +20,7 @@ func TestGoStringWriteRefusesInteriorNULAndInvalidUTF8(t *testing.T) {
 	files := generateGo(t, "Note", "package note\n\ntype Note {\n    text string(8)\n}\n")
 	body := generatedFunc(t, files, "func WriteNote(")
 	nul := strings.Index(body, "unit == 0")
-	utf := strings.Index(body, "!utf8.ValidString(")
+	utf := strings.Index(body, "!utf8.Valid(")
 	payload := strings.Index(body, "stream.SerializeBytes(")
 	if nul < 0 || utf < 0 || payload < 0 || nul > payload || utf > payload {
 		t.Fatalf("WriteNote does not refuse an interior NUL and invalid UTF-8 before the string bytes:\n%s", body)
@@ -31,7 +31,7 @@ func TestGoStringWriteRefusesInteriorNULAndInvalidUTF8(t *testing.T) {
 
 	blobs := generateGo(t, "Blob", "package blob\n\ntype Blob {\n    data bytes(8)\n}\n")
 	blob := generatedFunc(t, blobs, "func WriteBlob(")
-	if strings.Contains(blob, "utf8.ValidString") || strings.Contains(blob, "unit == 0") {
+	if strings.Contains(blob, "utf8.Valid") || strings.Contains(blob, "unit == 0") {
 		t.Fatalf("bytes(N) write refused string content:\n%s", blob)
 	}
 

@@ -1013,6 +1013,7 @@ pub fn write_test_data(stream: &mut WriteStream<'_>, value: &TestData) -> Result
         let mut compressed_value = value.compressed_float_value;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 1000, 10, 10.0_f32, 0.0_f32)?; // compressed float [0.0, 10.0] @ 0.01, constants folded at generation
     }
+    debug_assert!(value.double_value.is_finite(), "double_value is not finite");
     let f0: u64 = value.double_value.to_bits();
     let f1: u64 = u64::from(value.int8_value as u8);
     let f2: u64 = u64::from(value.int16_value as u16);
@@ -1117,6 +1118,10 @@ pub fn read_test_data(stream: &mut ReadStream<'_>, value: &mut TestData) -> Resu
     stream.serialize_bits(&mut c, 16)?;
     let c6 = u64::from(c);
     let v0: u64 = c0 | (c1 << 32);
+    if v0 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.double_value = f64::from_bits(v0);
     let v1: u64 = c2 & 0xff;
     value.int8_value = v1 as u8 as i8;

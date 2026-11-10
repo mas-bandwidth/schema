@@ -13654,7 +13654,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedSaveReason  FixedLoad  FixedWriteBody  FixedLeaves  FixedDefaultBody
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
-  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody
+  FixedBounds  FixedBoundsBody  FixedCheckBody  FixedCheckBodyExact  FixedFiniteBody  FixedRefuseBatch
   FixedResetImage  FixedHoles  FixedLineageHoles  FixedPlanMax  GenPastBound
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   FixedDstCopy  FixedIdentityCopy  FixedLayoutCopy  FixedPrefillCopy
@@ -13715,7 +13715,9 @@ in build version (§20.5).
   ordinary edit, and the name has to already be taken when it does.
   `FixedFiniteBody` is the read's FINITE PASS (§3.3), which refuses a NaN or an
   infinity before the bounds pass runs; it is claimed on the same rule, because
-  a type gains a float as an ordinary edit.
+  a type gains a float as an ordinary edit. `FixedRefuseBatch` is the batch
+  save's refusal path, which the JavaScript leg emits at module scope for every
+  fixed table; it is claimed on the same rule.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was

@@ -58,6 +58,9 @@ pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> 
     debug_assert!(value.bits7 < 1 << 7, "bits7 above the bits(7) wire width");
     debug_assert!(value.bits13 < 1 << 13, "bits13 above the bits(13) wire width");
     debug_assert!(value.bits23 < 1 << 23, "bits23 above the bits(23) wire width");
+    debug_assert!(value.x.is_finite(), "x is not finite");
+    debug_assert!(value.y.is_finite(), "y is not finite");
+    debug_assert!(value.z.is_finite(), "z is not finite");
     let f0: u64 = u64::from((value.a as u32).wrapping_sub((-100_i32) as u32));
     let f1: u64 = u64::from(value.b as u32);
     let f2: u64 = u64::from((value.c as u32).wrapping_sub((-1000000_i32) as u32));
@@ -138,10 +141,22 @@ pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -
     let v6: u64 = (c2 >> 24) & 0x1;
     value.flag = v6 != 0;
     let v7: u64 = ((c2 >> 25) | (c3 << 7)) & 0xffffffff;
+    if v7 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.x = f32::from_bits(v7 as u32);
     let v8: u64 = ((c3 >> 25) | (c4 << 7)) & 0xffffffff;
+    if v8 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.y = f32::from_bits(v8 as u32);
     let v9: u64 = ((c4 >> 25) | (c5 << 7)) & 0xffffffff;
+    if v9 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.z = f32::from_bits(v9 as u32);
     let v10: u64 = (c5 >> 25) | (c6 << 7) | (c7 << 39);
     value.big = v10;
@@ -1074,6 +1089,8 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
         let mut compressed_value = value.aim_z;
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
+    debug_assert!(value.recoil.is_finite(), "recoil is not finite");
+    debug_assert!(value.drift.is_finite(), "drift is not finite");
     let f0: u64 = u64::from(value.recoil.to_bits());
     let f1: u64 = value.drift.to_bits();
     // word 0, 32 bits: recoil[0..32]
@@ -1219,8 +1236,16 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     stream.serialize_bits(&mut c, 32)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
+    if v0 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.recoil = f32::from_bits(v0 as u32);
     let v1: u64 = c1 | (c2 << 32);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.drift = f64::from_bits(v1);
     stream.serialize_u128(&mut value.wide_key)?;
     stream.serialize_int128(&mut value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;

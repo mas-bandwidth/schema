@@ -863,7 +863,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.needsUTF8 = true
 			g.pf("%sfor _, unit := range %s[:%sLength] {\n", ind, name, name)
 			g.pf("%s\tif unit == 0 {\n%s\t\treturn serialize.ErrValueOutOfRange\n%s\t}\n%s}\n", ind, ind, ind, ind)
-			g.pf("%sif !utf8.ValidString(string(%s[:%sLength])) {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, name, name, ind, ind)
+			g.pf("%sif !utf8.Valid(%s[:%sLength]) {\n%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, name, name, ind, ind)
 		}
 		g.pf("%sstream.SerializeBytes(%s[:%sLength])\n", ind, name, name)
 	case ir.TNamed:

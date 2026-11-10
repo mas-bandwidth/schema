@@ -807,8 +807,19 @@ func (g *gen) emitWriteItems(items []ir.Item, ind string) {
 		case *ir.FieldItem:
 			g.emitWriteField(n.F, ind)
 		case *ir.ConstItem:
+			if n.Bits > 32 {
+				// the >32 split emitWriteBits uses: the low 32 bits, then the rest
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( %sULL & 0xFFFFFFFFu ), 32 ) /* const(%s, %d) — SPEC §4.3 */", n.Value.String(), n.Value.String(), n.Bits))
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) ( %sULL >> 32 ), %d )", n.Value.String(), n.Bits-32))
+				continue
+			}
 			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, (serialize_uint32_t) %sULL, %d ) /* const(%s, %d) — SPEC §4.3 */", n.Value.String(), n.Bits, n.Value.String(), n.Bits))
 		case *ir.ReservedItem:
+			if n.Bits > 32 {
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, 0, 32 ) /* reserved(%d) — zeros on the wire */", n.Bits))
+				g.call(ind, fmt.Sprintf("serialize_write_bits( stream, 0, %d )", n.Bits-32))
+				continue
+			}
 			g.call(ind, fmt.Sprintf("serialize_write_bits( stream, 0, %d ) /* reserved(%d) — zeros on the wire */", n.Bits, n.Bits))
 		case *ir.AlignItem:
 			g.call(ind, "serialize_write_align( stream )")
@@ -837,11 +848,26 @@ func (g *gen) emitReadItems(items []ir.Item, ind string) {
 		case *ir.ConstItem:
 			// the constant must be exactly what the writer sent; a mismatch is
 			// a desynchronized stream, refused rather than ignored
+			if n.Bits > 32 {
+				g.pf("%s{\n%s    serialize_uint32_t lo = 0;\n%s    serialize_uint32_t hi = 0;\n", ind, ind, ind)
+				g.call(ind+"    ", "serialize_read_bits( stream, &lo, 32 )")
+				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", n.Bits-32))
+				g.pf("%s    if ( ( (serialize_uint64_t) lo | ( ( (serialize_uint64_t) hi ) << 32 ) ) != %sULL )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n",
+					ind, n.Value.String(), ind, ind, ind, ind)
+				continue
+			}
 			g.pf("%s{\n%s    serialize_uint32_t const_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &const_value, %d )", n.Bits))
 			g.pf("%s    if ( const_value != (serialize_uint32_t) %sULL )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n",
 				ind, n.Value.String(), ind, ind, ind, ind)
 		case *ir.ReservedItem:
+			if n.Bits > 32 {
+				g.pf("%s{\n%s    serialize_uint32_t lo = 0;\n%s    serialize_uint32_t hi = 0;\n", ind, ind, ind)
+				g.call(ind+"    ", "serialize_read_bits( stream, &lo, 32 )")
+				g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &hi, %d )", n.Bits-32))
+				g.pf("%s    if ( lo != 0 || hi != 0 )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)
+				continue
+			}
 			g.pf("%s{\n%s    serialize_uint32_t reserved_value = 0;\n", ind, ind)
 			g.call(ind+"    ", fmt.Sprintf("serialize_read_bits( stream, &reserved_value, %d )", n.Bits))
 			g.pf("%s    if ( reserved_value != 0 )\n%s    {\n%s        return serialize_read_fail( stream, SERIALIZE_REFUSAL_VALUE_OUT_OF_RANGE );\n%s    }\n%s}\n", ind, ind, ind, ind, ind)

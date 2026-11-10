@@ -278,6 +278,7 @@ pub const REAL_PACKET_MAX_BYTES: usize = 232;
 #[inline(always)]
 pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Result {
     debug_assert!(value.f001_int >= -805495 && value.f001_int <= 805495, "f001_int out of range [-805495, 805495]");
+    debug_assert!(value.f002_f64.is_finite(), "f002_f64 is not finite");
     debug_assert!(value.f003_int >= -835897 && value.f003_int <= 835897, "f003_int out of range [-835897, 835897]");
     let f0: u64 = u64::from((value.f001_int as u32).wrapping_sub((-805495_i32) as u32));
     let f1: u64 = value.f002_f64.to_bits();
@@ -296,7 +297,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     debug_assert!(value.f005_uint <= 7316, "f005_uint out of range [0, 7316]");
     debug_assert!(value.f006_int >= -1513 && value.f006_int <= 1513, "f006_int out of range [-1513, 1513]");
+    debug_assert!(value.f007_f32.is_finite(), "f007_f32 is not finite");
     debug_assert!(value.f009_int >= -22 && value.f009_int <= 22, "f009_int out of range [-22, 22]");
+    debug_assert!(value.f010_f32.is_finite(), "f010_f32 is not finite");
     debug_assert!(value.f011_bits < 1 << 10, "f011_bits above the bits(10) wire width");
     let f0: u64 = u64::from(value.f005_uint as u32);
     let f1: u64 = u64::from((value.f006_int as u32).wrapping_sub((-1513_i32) as u32));
@@ -319,6 +322,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     // word 5, 10 bits: f011_bits[1..10], f012_bool[0..1]
     stream.serialize_bits(&mut (((f6 >> 1) | (f7 << 9)) as u32), 10)?;
     if value.f012_bool {
+        debug_assert!(value.f013_f32.is_finite(), "f013_f32 is not finite");
         debug_assert!(value.f014_uint <= 775, "f014_uint out of range [0, 775]");
         debug_assert!(value.f015_int >= -21 && value.f015_int <= 21, "f015_int out of range [-21, 21]");
         let f0: u64 = u64::from(value.f013_f32.to_bits());
@@ -340,6 +344,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         }
     }
     debug_assert!(value.f018_int >= -834 && value.f018_int <= 834, "f018_int out of range [-834, 834]");
+    debug_assert!(value.f019_f64.is_finite(), "f019_f64 is not finite");
+    debug_assert!(value.f020_f32.is_finite(), "f020_f32 is not finite");
     let f0: u64 = u64::from((value.f018_int as u32).wrapping_sub((-834_i32) as u32));
     let f1: u64 = value.f019_f64.to_bits();
     let f2: u64 = u64::from(value.f020_f32.to_bits());
@@ -356,7 +362,9 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         let mut fixed_value = value.f021_ufixed;
         stream.serialize_fixed(&mut fixed_value, 20, 12, 0, 25141)?;
     }
+    debug_assert!(value.f022_f32.is_finite(), "f022_f32 is not finite");
     debug_assert!(value.f023_bits < 1 << 25, "f023_bits above the bits(25) wire width");
+    debug_assert!(value.f024_f32.is_finite(), "f024_f32 is not finite");
     let f0: u64 = u64::from(value.f022_f32.to_bits());
     let f1: u64 = u64::from(value.f023_bits);
     let f2: u64 = u64::from(value.f024_f32.to_bits());
@@ -381,6 +389,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
         stream.serialize_compressed_float_precomputed(&mut compressed_value, 16, 5, 4.0_f32, -2.0_f32)?; // compressed float [-2.0, 2.0] @ 0.25, constants folded at generation
     }
     debug_assert!(value.f028_bits < 1 << 4, "f028_bits above the bits(4) wire width");
+    debug_assert!(value.f030_f32.is_finite(), "f030_f32 is not finite");
     debug_assert!(value.f031_bits < 1 << 1, "f031_bits above the bits(1) wire width");
     debug_assert!(value.f032_int >= -3 && value.f032_int <= 3, "f032_int out of range [-3, 3]");
     debug_assert!(value.f033_uint <= 142780, "f033_uint out of range [0, 142780]");
@@ -427,6 +436,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     // word 1, 6 bits: f042_bits[25..30], f043_bool[0..1]
     stream.serialize_bits(&mut (((f1 >> 25) | (f2 << 5)) as u32), 6)?;
     if value.f043_bool {
+        debug_assert!(value.f044_f32.is_finite(), "f044_f32 is not finite");
         debug_assert!(value.f045_bits < 1 << 12, "f045_bits above the bits(12) wire width");
         debug_assert!(value.f046_uint <= 76063, "f046_uint out of range [0, 76063]");
         debug_assert!(value.f047_int >= -430976 && value.f047_int <= 430976, "f047_int out of range [-430976, 430976]");
@@ -456,6 +466,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     if value.f050_bool {
         debug_assert!(value.f052_int >= -57 && value.f052_int <= 57, "f052_int out of range [-57, 57]");
+        debug_assert!(value.f053_f32.is_finite(), "f053_f32 is not finite");
         debug_assert!(value.f054_int >= -35 && value.f054_int <= 35, "f054_int out of range [-35, 35]");
         let f0: u64 = u64::from(value.f051_bool);
         let f1: u64 = u64::from((value.f052_int as u32).wrapping_sub((-57_i32) as u32));
@@ -468,6 +479,8 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     debug_assert!(value.f056_int >= -13 && value.f056_int <= 13, "f056_int out of range [-13, 13]");
     debug_assert!(value.f057_int >= -15 && value.f057_int <= 15, "f057_int out of range [-15, 15]");
+    debug_assert!(value.f058_f32.is_finite(), "f058_f32 is not finite");
+    debug_assert!(value.f059_f64.is_finite(), "f059_f64 is not finite");
     debug_assert!(value.f060_bits < 1 << 8, "f060_bits above the bits(8) wire width");
     let f0: u64 = u64::from(value.f055_bool);
     let f1: u64 = u64::from((value.f056_int as u32).wrapping_sub((-13_i32) as u32));
@@ -571,6 +584,7 @@ pub fn write_real_packet(stream: &mut WriteStream<'_>, value: &RealPacket) -> Re
     }
     debug_assert!(value.f085_bits < 1 << 21, "f085_bits above the bits(21) wire width");
     debug_assert!(value.f086_uint <= 399, "f086_uint out of range [0, 399]");
+    debug_assert!(value.f087_f64.is_finite(), "f087_f64 is not finite");
     debug_assert!(value.f088_int >= -694 && value.f088_int <= 694, "f088_int out of range [-694, 694]");
     debug_assert!(value.f089_bits < 1 << 48, "f089_bits above the bits(48) wire width");
     debug_assert!(value.f090_uint <= 214, "f090_uint out of range [0, 214]");
@@ -636,6 +650,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f001_int = (v0 as u32).wrapping_add((-805495_i32) as u32) as i32;
     let v1: u64 = (c0 >> 21) | (c1 << 11) | (c2 << 43);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f002_f64 = f64::from_bits(v1);
     let v2: u64 = ((c2 >> 21) | (c3 << 11)) & 0x1fffff;
     if v2 > 1671794 {
@@ -673,6 +691,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f006_int = ((v1 as u32).wrapping_add((-1513_i32) as u32) as i32) as i16;
     let v2: u64 = ((c0 >> 25) | (c1 << 7)) & 0xffffffff;
+    if v2 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f007_f32 = f32::from_bits(v2 as u32);
     let v3: u64 = (c1 >> 25) | (c2 << 7) | (c3 << 39);
     value.f008_u64 = v3;
@@ -682,6 +704,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f009_int = ((v4 as u32).wrapping_add((-22_i32) as u32) as i32) as i8;
     let v5: u64 = ((c3 >> 31) | (c4 << 1)) & 0xffffffff;
+    if v5 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f010_f32 = f32::from_bits(v5 as u32);
     let v6: u64 = ((c4 >> 31) | (c5 << 1)) & 0x3ff;
     value.f011_bits = v6 as u32;
@@ -696,6 +722,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         stream.serialize_bits(&mut c, 16)?;
         let c1 = u64::from(c);
         let v0: u64 = c0 & 0xffffffff;
+        if v0 & 0x7f800000 == 0x7f800000 {
+            // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+            return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+        }
         value.f013_f32 = f32::from_bits(v0 as u32);
         let v1: u64 = c1 & 0x3ff;
         if v1 > 775 {
@@ -739,8 +769,16 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f018_int = ((v0 as u32).wrapping_add((-834_i32) as u32) as i32) as i16;
     let v1: u64 = (c0 >> 11) | (c1 << 21) | (c2 << 53);
+    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f019_f64 = f64::from_bits(v1);
     let v2: u64 = ((c2 >> 11) | (c3 << 21)) & 0xffffffff;
+    if v2 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f020_f32 = f32::from_bits(v2 as u32);
     stream.serialize_fixed(&mut value.f021_ufixed, 20, 12, 0, 25141)?;
     let mut c: u32 = 0;
@@ -754,10 +792,18 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     stream.serialize_bits(&mut c, 25)?;
     let c2 = u64::from(c);
     let v0: u64 = c0 & 0xffffffff;
+    if v0 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f022_f32 = f32::from_bits(v0 as u32);
     let v1: u64 = c1 & 0x1ffffff;
     value.f023_bits = v1 as u32;
     let v2: u64 = ((c1 >> 25) | (c2 << 7)) & 0xffffffff;
+    if v2 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f024_f32 = f32::from_bits(v2 as u32);
     stream.serialize_fixed(&mut value.f025_fixed, 8, 8, -119, 119)?;
     stream.serialize_bits(&mut value.f026_bits, 9)?;
@@ -786,6 +832,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     let v1: u64 = (c0 >> 4) | (c1 << 28) | (c2 << 60);
     value.f029_i64 = v1 as i64;
     let v2: u64 = ((c2 >> 4) | (c3 << 28)) & 0xffffffff;
+    if v2 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f030_f32 = f32::from_bits(v2 as u32);
     let v3: u64 = (c3 >> 4) & 0x1;
     value.f031_bits = v3 as u32;
@@ -846,6 +896,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         stream.serialize_bits(&mut c, 17)?;
         let c2 = u64::from(c);
         let v0: u64 = c0 & 0xffffffff;
+        if v0 & 0x7f800000 == 0x7f800000 {
+            // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+            return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+        }
         value.f044_f32 = f32::from_bits(v0 as u32);
         let v1: u64 = c1 & 0xfff;
         value.f045_bits = v1 as u32;
@@ -884,6 +938,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
         }
         value.f052_int = ((v1 as u32).wrapping_add((-57_i32) as u32) as i32) as i8;
         let v2: u64 = ((c0 >> 8) | (c1 << 24)) & 0xffffffff;
+        if v2 & 0x7f800000 == 0x7f800000 {
+            // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+            return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+        }
         value.f053_f32 = f32::from_bits(v2 as u32);
         let v3: u64 = (c1 >> 8) & 0x7f;
         if v3 > 70 {
@@ -922,8 +980,16 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f057_int = ((v2 as u32).wrapping_add((-15_i32) as u32) as i32) as i8;
     let v3: u64 = ((c0 >> 11) | (c1 << 21)) & 0xffffffff;
+    if v3 & 0x7f800000 == 0x7f800000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f058_f32 = f32::from_bits(v3 as u32);
     let v4: u64 = (c1 >> 11) | (c2 << 21) | (c3 << 53);
+    if v4 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f059_f64 = f64::from_bits(v4);
     let v5: u64 = (c3 >> 11) & 0xff;
     value.f060_bits = v5 as u32;
@@ -1070,6 +1136,10 @@ pub fn read_real_packet(stream: &mut ReadStream<'_>, value: &mut RealPacket) -> 
     }
     value.f086_uint = (v1 as i32) as u16;
     let v2: u64 = (c0 >> 30) | (c1 << 2) | (c2 << 34);
+    if v2 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+        // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
+        return Err(Error::Stream(serialize::Error::NonFiniteFloat));
+    }
     value.f087_f64 = f64::from_bits(v2);
     let v3: u64 = ((c2 >> 30) | (c3 << 2)) & 0x7ff;
     if v3 > 1388 {
