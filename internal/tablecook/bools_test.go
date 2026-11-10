@@ -1,7 +1,6 @@
 package tablecook_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
