@@ -58,13 +58,15 @@ conformance-negative-control-squirrel-framing: build/conformance-harness build/c
 test-squirrel: conformance-negative-control-squirrel-framing
 
 # A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the load forgets its
-# cycle check, so the framing rows node_cycle_self, node_cycle_to_root and
-# node_cycle_mid read where they owe the refusal and the framing surface goes
-# red, while wire and report, which hold no cycle, stay green.
+# two cycle verdicts (the wire graph walk and the resolved graph check), so the
+# framing rows node_cycle_self, node_cycle_to_root and node_cycle_mid read
+# where they owe the refusal and framing goes red, while wire and report, which
+# hold no cycle, stay green.
 .PHONY: conformance-negative-control-squirrel-cycle
 conformance-negative-control-squirrel-cycle: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+# Keep the DFS terminating while bypassing the back-edge and resolved checks.
 	@sh test/conformance/squirrel/negative-control cycle load.nut \
-		's/if (_require("schema_table_save").cyclic/if (false \&\& _require("schema_table_save").cyclic/' \
+		's/if (mark\[t\] == 1) return wcDamage(c);/if (mark[t] == 1) continue;/;s/if (_require("schema_table_save").cyclic(T, rootName, v, verts)) report.bodyDamaged = true;/if (false) report.bodyDamaged = true;/' \
 		framing wire report
 
 test-squirrel: conformance-negative-control-squirrel-cycle
