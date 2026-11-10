@@ -85,6 +85,46 @@ func TestRulingCitationsUseRegistryKeys(t *testing.T) {
 	}
 }
 
+// TestRulingCitationGateNegativeControls proves each detector can report: an
+// author-name citation and a key the registry does not hold are caught, while
+// the date-and-key form is accepted.
+func TestRulingCitationGateNegativeControls(t *testing.T) {
+	keys := map[string]bool{"finite-float-packet": true}
+	owner := "Glenn"
+	registry := "docs/rulings.json"
+	missing := "not-a-ruling"
+	for _, tc := range []struct {
+		name, text string
+		named      bool
+		key        string
+		known      bool
+	}{
+		{"author name", owner + ", 2026-10-22: the rule", true, "", false},
+		{"author name without a comma", owner + " 2026-10-22: the rule", true, "", false},
+		{"unknown key", "2026-10-22, " + registry + " `" + missing + "`", false, missing, false},
+		{"registry form", "2026-10-22, " + registry + " `finite-float-packet`", false, "finite-float-packet", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := namedRulingCitation.MatchString(tc.text); got != tc.named {
+				t.Errorf("namedRulingCitation on %q = %v, want %v", tc.text, got, tc.named)
+			}
+			if tc.key == "" {
+				return
+			}
+			m := rulingKeyCitation.FindStringSubmatch(tc.text)
+			if m == nil {
+				t.Fatalf("rulingKeyCitation found no key in %q", tc.text)
+			}
+			if m[1] != tc.key {
+				t.Errorf("rulingKeyCitation key = %q, want %q", m[1], tc.key)
+			}
+			if got := keys[tc.key]; got != tc.known {
+				t.Errorf("registry lookup for %q = %v, want %v", tc.key, got, tc.known)
+			}
+		})
+	}
+}
+
 func lineOf(text string, at int) string {
 	return strconv.Itoa(strings.Count(text[:at], "\n") + 1)
 }
