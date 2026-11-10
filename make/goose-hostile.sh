@@ -32,6 +32,49 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 	# lock holds the unit, never one file of it
 	[ -f "$s" ] && [ -f "$(dirname "$s")/schema.lock" ] && src=$(dirname "$s")
 	u=$work/$slug
+	# A SCHEMA OF PACKET TYPES (every row of it carried as `packet`) has no
+	# table unit: its rows go through the generated Read<Root>/Write<Root>,
+	# glued here as conformance_packet, under test/goose-hostile/packet_runner.goose.
+	# It answers 0 for a read (the written-back bytes appended), 1 for a
+	# refused read, 2 for a writer that refuses the decoded value, 3 for a
+	# root the unit has no packet type for.
+	if [ "$(awk -F'\t' -v s="$s" '!/^#/ && NF >= 9 && $3 == s { print $2 }' "$manifest" | LC_ALL=C sort -u)" = packet ]; then
+		if ! "$schema" generate --lang goose --out "$u" "$src" >"$work/$slug.gen.log" 2>&1; then
+			cat "$work/$slug.gen.log"
+			echo "goose hostile corpus: the packet schema $s did not generate"
+			exit 1
+		fi
+		ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$u"/*.goose | head -1)
+		{
+			for f in "$u"/*.goose; do echo "import .$(basename "$f" .goose);"; done
+			echo "fn conformance_packet(root: const u8[:], data: const u8[:], saved: u8[>..]&) -> i64 {"
+			for r in $(sed -n 's/^fn Read\([A-Za-z0-9_]*\)(s: ReadStream&.*/\1/p' "$u"/*.goose); do
+				echo "    if root == \"$r\" {"
+				echo "        var padded: u8[>..] = [];"
+				echo "        padded.resize(data.len + 8, 0);"
+				echo "        var rs = serialize_read_stream_init_padded(padded[0..padded.len], data);"
+				echo "        var v = $ns::New$r();"
+				echo "        if !$ns::Read$r(rs, v) { return 1; }"
+				echo "        var buffer: u8[>..] = [];"
+				echo "        buffer.resize((data.len * 2 + 4096 + 7) / 8 * 8, 0);"
+				echo "        var ws = serialize_write_stream_init(buffer[0..buffer.len]);"
+				echo "        if $ns::Write$r(ws, v) != SERIALIZE_ERROR_NONE { return 2; }"
+				echo "        serialize_flush(ws);"
+				echo "        saved.append(buffer[0..serialize_bytes_processed(ws)]);"
+				echo "        return 0;"
+				echo "    }"
+			done
+			echo "    return 3;"
+			echo "}"
+		} >"$u/packet_unit.goose"
+		cp test/goose-hostile/packet_runner.goose "$u/packet_runner.goose"
+		"$goose" run "$u/packet_runner.goose" -- "$abs_corpus" "$s" >>"$work/lines" 2>"$work/$slug.err" || {
+			cat "$work/$slug.err"
+			echo "goose hostile corpus: the packet runner failed on $s"
+			exit 1
+		}
+		continue
+	fi
 	if ! "$schema" generate --lang goose --out "$u" "$src" >"$work/$slug.gen.log" 2>&1 || ! ls "$u"/*Table.goose >/dev/null 2>&1; then
 		awk -F'\t' -v s="$s" '!/^#/ && $3 == s { print $1 " absent target-refuses-schema" }' "$manifest" >>"$work/lines"
 		continue
@@ -99,6 +142,10 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 		ok=0 why="the port says $got_verdict${got:+ $got}, the engine says $verdict${reason:+ $reason}"
 	elif [ "$verdict" = refuse ] && [ "$got" != "$reason" ]; then
 		ok=0 why="the port names $got, the engine names $reason"
+	elif [ "$verdict" = accept ] && [ "$carrier" = packet ]; then
+		# a packet accept is held by the sha256 of the bytes the port writes back
+		[ "$(printf %s "$got" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" = "$digest" ] ||
+			{ ok=0 why="the port writes back a different packet than the engine"; }
 	elif [ "$verdict" = accept ] && [ "$got" != "$(od -An -v -tx1 "$corpus/$input" | tr -d ' \n')" ]; then
 		if [ "$text" = - ] || [ "$(printf %s "$text" | perl -ne 'print pack("H*", $_)' | sha256sum | cut -d' ' -f1)" != "$digest" ]; then
 			ok=0 why="the port re-saves a different value than the engine's own encode"

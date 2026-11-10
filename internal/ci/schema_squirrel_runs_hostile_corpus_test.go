@@ -239,8 +239,12 @@ func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 		}
 		// The corpus digest is SHA-256 of tabletext.Model.Write, the VALUE
 		// text; the generated backend's ToJson adds the file form's one
-		// trailing newline, which is not part of the value.
+		// trailing newline, which is not part of the value. A packet's digest
+		// is of the bytes the port's own writer wrote back, whole.
 		sum := sha256.Sum256([]byte(strings.TrimSuffix(string(got.text), "\n")))
+		if c.carrier == "packet" {
+			sum = sha256.Sum256(got.text)
+		}
 		if hex.EncodeToString(sum[:]) != c.digest {
 			return []string{fmt.Sprintf("%s: decoded value digest %s, manifest %s", c.name, hex.EncodeToString(sum[:]), c.digest)}
 		}
@@ -328,6 +332,13 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		units[c.schema] = generated{dir: key, module: squirreltable.ModuleName(u)}
 	}
 
+	// the packet carrier's streams come from the vendored serialize port
+	for name, data := range squirrel.Serialize() {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	inputs := map[string][]byte{}
 	var script strings.Builder
 	script.WriteString(squirrelHostilePrelude)
@@ -335,6 +346,11 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 		g, ok := units[c.schema]
 		if !ok {
 			continue
+		}
+		module := g.module
+		if c.carrier == "packet" {
+			// a packet type lives in its file's module, not the table module
+			module = strings.TrimSuffix(filepath.Base(c.schema), ".schema")
 		}
 		data, err := os.ReadFile(filepath.Join(squirrelHostileCorpusDir(t), filepath.FromSlash(c.input)))
 		if err != nil {
@@ -350,7 +366,7 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 			inputs[ann] = announceFor(u)
 		}
 		fmt.Fprintf(&script, "run(%q, %q, %q, %q, %q, %q);\n",
-			c.name, c.carrier, g.dir, g.module, c.table, ann)
+			c.name, c.carrier, g.dir, module, c.table, ann)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(script.String()), 0o644); err != nil {
 		t.Fatal(err)
@@ -530,6 +546,22 @@ local verdictOf = function(why) {
 };
 local run = function(name, carrier, dir, mod, root, annkey) {
   local schema = dofile(dir + "/schema_module.nut", true);
+  if (carrier == "packet") {
+    // read from bit 0 of the input, then the port's own writer; the answer
+    // is the written bytes
+    local S = dofile("serialize.nut", true);
+    local P = schema.require(mod);
+    local value = P[root]();
+    if (P["Read" + root](S.ReadStream(inputs[name]), value) != true) {
+      emit(name, "refuse", "packet_refused", null);
+      return;
+    }
+    local ws = S.WriteStream(blob(inputs[name].len() * 2 + 4096));
+    if (P["Write" + root](ws, value) != true) { emit(name, "error", "the port's writer refused the decoded value", null); return; }
+    ws.flush();
+    emit(name, "accept", "-", ws.data());
+    return;
+  }
   local T = schema.require(mod);
   local J = schema.require("schema_table_json");
   local v = null;

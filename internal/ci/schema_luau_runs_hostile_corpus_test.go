@@ -143,6 +143,75 @@ func generateLuauUnit(t *testing.T, root, schema string) (string, []string, map[
 	return dir, mods, flagsMeta(u)
 }
 
+// generateLuauPacketUnit generates a schema the manifest carries as `packet`:
+// its type-wire modules and the vendored serialize port they read through, no
+// table modules.
+func generateLuauPacketUnit(t *testing.T, root, schema string) string {
+	t.Helper()
+	paths, err := compiler.GatherPaths([]string{filepath.Join(root, filepath.FromSlash(schema))})
+	if err != nil {
+		t.Fatalf("schema %s: %v", schema, err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatalf("schema %s does not load: %v", schema, err)
+	}
+	files, err := luau.Generate(u)
+	if err != nil {
+		t.Fatalf("schema %s: luau: %v", schema, err)
+	}
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// hostilePacketProbe is the Luau program for packet cases: Read<Type> from
+// bit 0 of the input, then the port's own Write<Type>; an accept's digest
+// column is the hex of the written bytes.
+func hostilePacketProbe(cases []hostileCase, module string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, `local inputs = require("./inputs")
+local S = require("./serialize")
+local P = require("./%s")
+local function hexstr(buf: buffer): string
+	local parts = table.create(buffer.len(buf))
+	for i = 0, buffer.len(buf) - 1 do
+		parts[i + 1] = string.format("%%02x", buffer.readu8(buf, i))
+	end
+	return table.concat(parts)
+end
+local CASES = {
+`, module)
+	for _, c := range cases {
+		fmt.Fprintf(&b, "\t{ name = %q, root = %q },\n", c.name, c.table)
+	}
+	b.WriteString(`}
+for _, c in CASES do
+	local b = inputs[c.name]
+	local function one(): (string, string, string)
+		local value = P["New" .. c.root]()
+		if not P["Read" .. c.root](S.ReadStream.new(b), value) then
+			return "refuse", "packet_refused", "-"
+		end
+		local w = S.WriteStream.new(buffer.create(((buffer.len(b) * 2 + 4096 + 7) // 8) * 8))
+		if not P["Write" .. c.root](w, value) then error("the port's writer refused the decoded value: " .. c.name) end
+		w:flush()
+		return "accept", "-", hexstr(w:data())
+	end
+	local ok, verdict, reason, dig = pcall(one)
+	if not ok then
+		verdict, reason, dig = "error", tostring(verdict), "-"
+	end
+	print(c.name .. "\t" .. verdict .. "\t" .. reason .. "\t" .. dig)
+end
+`)
+	return b.String()
+}
+
 // flagsMeta names every field, map entry field and union arm whose type is a
 // `flags` declaration, keyed "<Descriptor>.<field or arm>", with the flags'
 // variant names (docs/SPEC-TABLES.md §16.2: flags are an array of variant
@@ -420,15 +489,27 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 	var findings []string
 	for _, schema := range schemas {
 		group := bySchema[schema]
-		dir, mods, flags := generateLuauUnit(t, root, schema)
+		packet := group[0].carrier == "packet"
+		for _, c := range group {
+			if (c.carrier == "packet") != packet {
+				t.Fatalf("schema %s is carried both as packet and as a table unit (%s)", schema, c.name)
+			}
+		}
+		var dir, main string
+		if packet {
+			dir = generateLuauPacketUnit(t, root, schema)
+			main = hostilePacketProbe(group, strings.TrimSuffix(filepath.Base(schema), ".schema"))
+		} else {
+			d, mods, flags := generateLuauUnit(t, root, schema)
+			dir, main = d, hostileProbe(group, mods, flags)
+		}
 		inputs := map[string][]byte{}
 		for _, c := range group {
 			inputs[c.name] = hostilePayload(t, corpusDir, c.input)
 		}
-		if plant {
+		if plant && !packet {
 			plantHostileTextReader(t, dir)
 		}
-		main := hostileProbe(group, mods, flags)
 		if err := os.WriteFile(filepath.Join(dir, "main.luau"), []byte(main), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -464,7 +545,10 @@ func runHostileCorpus(t *testing.T, root, corpusDir string, plant bool) []string
 					// The Luau text writer ends an object root's text with a
 					// newline (schema_json.luau core_to); the engine canonical text does
 					// not, so drop that one line ending before hashing.
-					canonical = bytes.TrimSuffix(canonical, []byte("\n"))
+					// A packet's digest is of the written bytes, whole.
+					if c.carrier != "packet" {
+						canonical = bytes.TrimSuffix(canonical, []byte("\n"))
+					}
 					sum := sha256.Sum256(canonical)
 					digest = hex.EncodeToString(sum[:])
 				}

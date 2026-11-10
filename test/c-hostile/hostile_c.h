@@ -19,8 +19,9 @@
    anything else is accepted. The strict read returns the whole value or
    refuses the whole load, so a landed read is accepted and every refusal
    or damage lands as no value at all. Sequenced as a function, not a comma
-   expression, so the trace's void answer is never an unused operand. */
-static int hc_verdict_refused_( int refused, int reason, int refuse_reason, int landed )
+   expression, so the trace's void answer is never an unused operand; inline,
+   so a unit of packet types only, which reads no table, does not warn. */
+static inline int hc_verdict_refused_( int refused, int reason, int refuse_reason, int landed )
 {
     hc_trace( refused, refuse_reason, reason, landed );
     if ( landed && !refused ) { return 0; }

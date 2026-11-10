@@ -135,3 +135,10 @@ func jsonDigest(measure func() int64, write func([]byte) int64) string {
 	sum := sha256.Sum256(bytes.TrimRight(out, "\n"))
 	return fmt.Sprintf("accept %x", sum)
 }
+
+// packetDigest answers an accepted packet with the digest of the bytes the
+// port's own writer wrote back.
+func packetDigest(written []byte) string {
+	sum := sha256.Sum256(written)
+	return fmt.Sprintf("accept %x", sum)
+}
