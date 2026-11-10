@@ -1,0 +1,16 @@
+// The packet carrier's first seed (test/conformance/packet): a union field
+// ahead of a fixed byte array. The union's width depends on the arm it
+// carries, so the array does not start on a statically known byte boundary.
+
+package seed
+
+type Small { v uint8 | min = 0, max = 127 }
+
+union U { a Small }
+
+type T
+{
+    align
+    u U
+    data [4]uint8
+}
