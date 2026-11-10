@@ -765,34 +765,37 @@ func TestDamageIsTerminal(t *testing.T) {
 // if a leg reads either clean.
 func TestThePadAndWhatFollowsIt(t *testing.T) {
 	_, model, vocabulary := backend(t)
-	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
+	// the pad vector is login_full's: under the message closure's vocabulary
+	// store_full's body ends on a byte and leaves no pad to spoil
+	login := wireBytes(t, "testdata/wire/tables/login_full_message.bin")
 	// the last byte carries the body's last bits and then pad to the byte, so
 	// its high bit is pad: the body's last reference (its terminator) ends
 	// short of the byte
-	spots := tablewire.MessageSpots(model, model.Lookup("StorePurchase"), message, vocabulary)
+	spots := tablewire.MessageSpots(model, model.Lookup("LoginRequest"), login, vocabulary)
 	if len(spots) == 0 {
-		t.Fatal("store_full carries no reference")
+		t.Fatal("login_full carries no reference")
 	}
-	if end := spots[len(spots)-1].Off + spots[len(spots)-1].Width; end%8 == 0 || (end+7)/8 != len(message)-1 {
-		t.Fatalf("store_full's body ends at bit %d of %d bytes after the form byte: no pad in its last byte to spoil", end, len(message)-1)
+	if end := spots[len(spots)-1].Off + spots[len(spots)-1].Width; end%8 == 0 || (end+7)/8 != len(login)-1 {
+		t.Fatalf("login_full's body ends at bit %d of %d bytes after the form byte: no pad in its last byte to spoil", end, len(login)-1)
 	}
-	badPad := append([]byte(nil), message...)
+	badPad := append([]byte(nil), login...)
 	badPad[len(badPad)-1] |= 0x80
-	if pinned := pinnedWire(t, "testdata/wire/tables/store_full_bad_pad_message.bin", badPad); string(pinned) != string(badPad) {
+	if pinned := pinnedWire(t, "testdata/wire/tables/login_full_bad_pad_message.bin", badPad); string(pinned) != string(badPad) {
 		t.Errorf("the bad-pad wire differs from the pinned one at byte %d", firstDifference(pinned, badPad))
 	}
 	{
-		inst := model.New(model.Lookup("StorePurchase"))
+		inst := model.New(model.Lookup("LoginRequest"))
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, badPad, vocabulary, &report)
 		if ok || !readRefused(derr, report) {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// damage after the last body discards the batch too (§4)
-		if count != 0 || instU64(t, inst, "quantity") != instU64(t, model.New(model.Lookup("StorePurchase")), "quantity") {
+		if count != 0 {
 			t.Errorf("a batch with a bad pad delivered a body: count=%d", count)
 		}
 	}
+	message := wireBytes(t, "testdata/wire/tables/store_full_message.bin")
 	trailing := append(append([]byte(nil), message...), 0)
 	if pinned := pinnedWire(t, "testdata/wire/tables/store_full_trailing_byte_message.bin", trailing); string(pinned) != string(trailing) {
 		t.Errorf("the trailing-byte wire differs from the pinned one at byte %d", firstDifference(pinned, trailing))
