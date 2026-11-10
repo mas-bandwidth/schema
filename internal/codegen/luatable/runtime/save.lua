@@ -208,7 +208,6 @@ local function at_default(fd, v)
     end
     return n == 0
   end
-  if s == "wstring" then return x == nil or #x == 0 end
   if s == "wide" then
     -- int128/uint128 at zero are their two zero halves (docs/PORT-LUA.md,
     -- 64-BIT AND 128-BIT INTEGERS): the declared default is a { lo, hi }.
@@ -260,11 +259,6 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
     w_raw(w, val)
-  elseif s == "wstring" then
-    if val == nil or #val == 0 then return true, false end
-    for i = 1, #val do
-      w_raw(w, string.pack("<I2", val[i]))
-    end
   elseif s == "enum" then
     if val == nil or val == false then return true, false end
     local vref = 0
@@ -342,17 +336,6 @@ write_field = function(T, ids, nodes, fd, v, w)
       w_u8(w, 12)
       w_leb(w, #x)
       w_raw(w, x)
-    end
-  elseif s == "wstring" then
-    -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
-    -- little-endian, L their byte count; it rides when it holds a unit
-    if (fd.optional or fd.required) or not at_default(fd, v) then
-      w_leb(w, id_ref(ids, fd.id))
-      w_u8(w, fd.kind)
-      w_leb(w, #x * 2)
-      for i = 1, #x do
-        w_raw(w, string.pack("<I2", x[i]))
-      end
     end
   elseif s == "bytes" then
     if (fd.optional or fd.required) or not at_default(fd, v) then
@@ -574,14 +557,6 @@ write_element = function(T, ids, nodes, e, val, body)
     val = val or ""
     w_leb(body, #val)
     w_raw(body, val)
-  elseif s == "wstring" then
-    val = val or {}
-    local parts = {}
-    for i = 1, #val do
-      parts[#parts + 1] = string.pack("<I2", val[i])
-    end
-    w_leb(body, #table.concat(parts))
-    w_raw(body, table.concat(parts))
   elseif s == "bytes" then
     val = val or ""
     w_leb(body, #val)
@@ -654,10 +629,6 @@ write_union_at = function(T, ids, nodes, f, val, body)
     if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then
     w_raw(body, val)
-  elseif s == "wstring" then
-    for i = 1, #val do
-      w_raw(body, string.pack("<I2", val[i]))
-    end
   elseif s == "bytes" then
     w_u8(body, 6)
     w_leb(body, #val)

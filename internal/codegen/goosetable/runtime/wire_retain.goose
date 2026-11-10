@@ -92,7 +92,7 @@ fn cap_copy(c: LoadCtx&, k: Cap&, kind: u8) {
     if w > 0 && kind != KindPointer {
         if !has(r, w) { k.bad = true; return; }
         r.off += w;
-    } else if kind == KindString || kind == 31 || kind == KindNoPayload || kind == 33 {
+    } else if kind == KindString || kind == 31 || kind == KindNoPayload {
         let n, ok = leb(c, r);
         if !ok || !fits(r, n) { k.bad = true; return; }
         r.off += n as! i64;

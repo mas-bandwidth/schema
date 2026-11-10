@@ -213,7 +213,7 @@ const tableWireCheckSource = `
                     if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
                     return true;
                 case 15: return Union(buf, ref off);
-                case 12: case 33: case 31: case 32: case 13: case 14: case 16:
+                case 12: case 31: case 32: case 13: case 14: case 16:
                     if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                     off += (int)n;
                     return Content(buf.Slice(off - (int)n, (int)n), kind);
@@ -229,7 +229,6 @@ const tableWireCheckSource = `
             switch (kind)
             {
                 case 12: return TextValid(b) || Damage();
-                case 33: return WideValid(b) || Damage();
                 case 31: return true;
                 case 32: return b.Length == 0 || Damage();
                 case 13: case 14: case 16:
@@ -259,23 +258,6 @@ const tableWireCheckSource = `
             {
                 ulong raw = kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
                 if (NonFiniteBits(kind, raw)) { NonFinite = true; }
-            }
-            return true;
-        }
-        static bool WideValid(ReadOnlySpan<byte> b)
-        {
-            if ((b.Length & 1) != 0) { return false; }
-            for (int i = 0; i < b.Length; i += 2)
-            {
-                int u = b[i] | b[i + 1] << 8;
-                if (u == 0 || (u >= 0xDC00 && u <= 0xDFFF)) { return false; }
-                if (u >= 0xD800 && u <= 0xDBFF)
-                {
-                    if (i + 3 >= b.Length) { return false; }
-                    int low = b[i + 2] | b[i + 3] << 8;
-                    if (low < 0xDC00 || low > 0xDFFF) { return false; }
-                    i += 2;
-                }
             }
             return true;
         }

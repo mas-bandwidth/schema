@@ -242,8 +242,6 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	switch {
 	case f.Type.TextUnbounded():
 		g.pf("    TableRef %s;\n", f.Name)
-	case f.Type.Kind == ir.TWString:
-		g.pf("    uint16_t %s[%d + 1];\n    int32_t %s_length;\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    char %s[%d + 1]; /* string(%d): N + 1 for the terminator the wire does not carry */\n", f.Name, f.Type.Size, f.Type.Size)
 		g.pf("    int32_t %s_length;\n", f.Name)
@@ -329,7 +327,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	switch {
 	case f.Type.TextUnbounded():
 		g.pf("    value->%s.value = 0;\n", f.Name)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value->%s, 0, sizeof( value->%s ) );\n", f.Name, f.Name)
 		if f.HasDefault && len(f.DefBytes) != 0 {
 			g.pf("    { static const uint8_t initial[] = { %s }; memcpy( value->%s, initial, sizeof( initial ) ); }\n", byteLiterals(f.DefBytes), f.Name)
@@ -764,7 +762,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if f.Type.Pointer && !g.fileWire() {
 		kind = tkTable
 	}
-	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString)
+	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString)
 
 	// the count column, spelled the way the storage spells its own extent: a
 	// keyed array DERIVES it from the key enum, so nothing outside the array
@@ -775,7 +773,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		bound = "(int32_t) " + enumMaxConst(f.KeyEnum)
 	case f.Array != ir.ArrayNone:
 		bound = strconv.FormatInt(f.ArrayBound, 10)
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
@@ -790,7 +788,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	countOffset := "0xffffffffu"
 	if counted {
 		companion := member + "_count"
-		if f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) {
+		if f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString) {
 			companion = member + "_length"
 		}
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)

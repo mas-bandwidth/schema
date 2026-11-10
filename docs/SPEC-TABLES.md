@@ -911,8 +911,7 @@ reserved-word check still refuses any name a target cannot spell by name.
 - **A table may hold a BYTE BUFFER at its used size** (§2.5). `data *bytes`
   and `caption *string` point at a blob node of exactly the bytes it holds —
   an image inside a table at its own size, null when absent — and, like every
-  pointer, they make their holder variable-length. `label *wstring` is the
-  third spelling and does the same in UTF-16 code units.
+  pointer, they make their holder variable-length.
 - **`was` — the rename attribute** (§5).
 
 And one addition that is not a field spelling at all: **every fixed table has
@@ -960,7 +959,7 @@ The spelling is C's, deliberately: it reads as what it is. The rules,
 each refused by name (§11):
 
 - **A pointer targets a `table`, or a BYTE BUFFER, and nothing else.** `*Node`
-  names a declared table; `*bytes`, `*string` and `*wstring` name a blob node
+  names a declared table; `*bytes` and `*string` name a blob node
   at its used size (§2.5). Everything else is refused — `*SomeType`, `*SomeEnum`,
   `*SomeUnion` — because value-semantics data has no independent identity to
   point at. Nest it by value instead.
@@ -1020,7 +1019,7 @@ That is the owner's ruling, and both halves of it are the point:
 naming the field and the fixed table it breaks (§11):
 
 - a **pointer** (§2.1) — an arena allocation and a node record,
-- a **byte buffer at its used size** (§2.5) — `*bytes`, `*string`, `*wstring`,
+- a **byte buffer at its used size** (§2.5) — `*bytes`, `*string`,
 - a **map** (§2.8) and an **unbounded array** (§2.9) — a count the data
   decides, not the declaration,
 - a **guarded (`if`) field** (SPEC §4.5) — *"the intent of the lookback
@@ -1682,19 +1681,9 @@ a blob node of exactly the bytes it was given, allocated in the builder's
 arena, packed at its used size in a region, framed at its length on the wire,
 and pointed at inside a mapped cook with no copy and no parse. `*string` is the
 same node with one difference in storage: the bytes are followed by a zero
-byte, so a region hands back a C string. **`*wstring` is that same node in
-UTF-16 code units** (SPEC.md §4.12), its length a BYTE length like the other
-two, always even, its units followed by a zero UNIT so a region hands back a
-terminated `char16_t` string for the same reason. None of the three carries a
+byte, so a region hands back a C string. Neither of the two carries a
 declared bound, and none interprets its contents — a format tag beside the blob
 is the user's field, as `kind` is above.
-
-**`*wstring` is the unbounded spelling of wide text, and `wstring(N)` the
-inline one**, exactly as `*string` and `string(N)` divide the narrow case. A
-`*wstring` slot carries no capacity, so no length bound applies: the node
-holds the units it was given. The two are different kinds on the wire, `17` against
-`33`, so respelling a field between them is §4's kind mismatch in both
-directions and never a length read as a delta.
 
 **It is a pointer, and every pointer rule holds** (§2.1): it is declared in a
 table body and nowhere else; it takes no specified default, because a fresh
@@ -1738,15 +1727,9 @@ Their port is parked by the owner, and this ruling does not edit them.
 **The read is a pointer and a length, and it allocates nothing.** In C++,
 `TableBytesAt( ctx, node->data )` answers a `TableBytesView` — `data` and
 `length`, NULL and zero for a null slot — `TableStringAt` answers a
-`TableStringView` whose `data` is zero-terminated, and **`TableWStringAt`
-answers a `TableWStringView` whose `data` is a `const char16_t *` ZERO-
-TERMINATED IN UNITS and whose `length` is a COUNT OF UNITS**, not of bytes, so
-a caller reaches a `char16_t` string with no copy the way the narrow twin
-reaches a C string. The unit count is the only place the three views differ,
-and it differs because a length in bytes at a wide view would be the one number
-every caller divides by two at the call site. The Dart spellings are
-`tableBytesAt`, `tableStringAt` and `tableWStringAt` over the same three view
-classes, which is that backend's own case convention and nothing more. Off a region or an opened
+`TableStringView` whose `data` is zero-terminated, so a caller reaches a C
+string with no copy. The Dart spellings are `tableBytesAt` and
+`tableStringAt` over the same two view classes, which is that backend's own case convention and nothing more. Off a region or an opened
 cook the view points INTO the region: one add, no base pointer, no copy
 (§6.3). A wire load COPIES the blob into the region it is decoding
 into, as it copies every node — a gigabyte on the wire path is a gigabyte read
@@ -1771,7 +1754,7 @@ from two slots by name, `blob_shared`, and the strict read refuses it too
 are a named follow-on (§15). The corpus holds the construct in `tables/blobs`: a small
 blob beside a caption, a blob past 64 KiB, a shared blob, and a present blob
 and string of length zero beside null slots, each crossing the wire and the
-cook in the harness, and the text where the form can carry it. The `*wstring` blob is specified (§3, §3.1) ahead of its implementation and no backend emits it yet.
+cook in the harness, and the text where the form can carry it.
 
 ### 2.6 Union arms are field lines
 
@@ -1896,7 +1879,7 @@ arm, with nothing to say" would be one value on the wire.
 **The storage is the FIELD's storage, overlaid.** A scalar, enum, `flags`,
 pointer, fixed array, nested union, `type` or `table` arm is ONE member and
 sits in the overlay as itself. An arm whose field storage needs a COMPANION
-— a `string(N)`, `wstring(N)` or `bytes(N)` and its length, a counted array
+— a `string(N)` or `bytes(N)` and its length, a counted array
 and its count
 — rides as one member of an unnamed struct type, `value` beside
 `value_length` or `value_count`, because the pair must occupy ONE slot of
@@ -2094,20 +2077,6 @@ the order below at ANY length, so it is never clamped and never dropped for its
 length. Every other key is refused by name, each with its reason in the
 diagnostic:
 
-- **A `wstring(N)` key** (SPEC.md §4.12), because a map's entries ride in
-  ASCENDING KEY ORDER and wide text has no byte order worth standardizing on.
-  The order above is `memcmp`, and a wstring's units are LITTLE-ENDIAN on the
-  wire and in a region, so a `memcmp` over them orders by each unit's LOW byte
-  first, which is not code unit order and not any order a language's own
-  string compare produces. Ordering by code unit instead would cost every port
-  a hand-written comparator, and it would still put the surrogate block at
-  `0xD800` through `0xDFFF` BELOW `0xE000`, so an astral character sorts under
-  characters that follow it in Unicode. `string(N)` carries the same text with
-  none of that: `memcmp` over UTF-8 is already a stable, portable order, which
-  is why the key rule reads the way it does. The diagnostic names `string(N)`
-  as the key and leaves `wstring(N)` for the VALUE, where it is an ordinary
-  field. Kind `33` is a value kind and never a key kind (§3).
-
 - **An enum key**, because that is `[E]T`'s job and `[E]T` does it better
   (§2.4): one slot per named variant, complete by construction, positional
   storage of `E.Max × sizeof( T )`, one subtract to reach a slot, no count,
@@ -2192,7 +2161,7 @@ that does not carry the optional map refuses a unit that declares one, by
 name (§15); Go carries it first.
 
 **A VALUE is anything a table field can hold**: a scalar, an enum, a `flags`
-mask, `string(N)`, `wstring(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`, `*wstring`,
+mask, `string(N)`, `bytes(N)`, a declared `type`, a table by value, `*T`,
 `*bytes`, `*string` (§2.5), `?T`, `?[N]T`, `?[..N]T` (§2.3), a union, `[N]T`,
 `[..N]T`, `[E]T`, a map, and an unbounded `[]T` (§2.9). So
 `map[string(16)]map[uint8]Item` is one
@@ -2211,7 +2180,7 @@ about a value's storage is the map's:
 
 - a scalar, an enum, a `flags` mask, a declared `type` and a table by value
   store the type itself, ONE member;
-- `string(N)`, `wstring(N)` and `bytes(N)` store the buffer beside the `int32`
+- `string(N)` and `bytes(N)` store the buffer beside the `int32`
   used length every text field carries, TWO members;
 - `[N]T` stores `T value[N]`, one member, complete by construction;
 - `[..N]T` stores `T value[N]` beside its `int32` used count, two members;
@@ -3915,8 +3884,8 @@ name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
 
 **THE FIXED FORM DOES NOT TELL THE TWO APART, AND SAYS SO.** Kind `36` is a
 WIRE kind of the variable form. The fixed form's layout names its kinds from
-the closed set of FIXED-FORM-ALGORITHM.md §1 (§3's kinds `1`–`30`, `32`, `33`
-and the layout's own `35`), and this card adds no member to it: a timestamp's
+the closed set of FIXED-FORM-ALGORITHM.md §1 (§3's kinds `1`–`30`, `32` and
+the layout's own `35`), and this card adds no member to it: a timestamp's
 layout entry names kind `5`, eight bytes, so a fixed table's record, its
 layout bytes and its layout hash for a `timestamp` field are exactly an
 `int64` field's. A respelling between the two in a FIXED table is therefore
@@ -4068,7 +4037,7 @@ spelling as the route where one exists:
 - any valued attribute other than `was`, `json` and `total`: the element's bound
   is its `string(M)` and the count's is the array's, so no other attribute
   applies;
-- arrays of `wstring(N)`, `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
+- arrays of `bytes(N)`, `bits(N)`, `*string` and `*bytes`: named
   follow-ons (§15). Only `string(M)` is a text-list element today;
 - `| total = N` (below) on any field that is not a text list, and `N` below 1
   or not an integer. A text list in a `fixed table`, a `type` body, a packet,
@@ -4241,8 +4210,8 @@ the leading `?`, or write it after the bound); a `type` body or a packet
 (SPEC.md §4.6: the type wire carries no unbounded text); a union arm (§2.6); a
 map VALUE (`map[K]string`: hold `string(N)` or `*string`, or wrap the text in
 a table); `map[?string]V` (a key is an identity and has no absence); and a
-`fixed table` (§2.2), naming the variable-table spelling. Unbounded `wstring`,
-`bytes` and `bits` elements, and arrays of `*string` or `*bytes`, stay named
+`fixed table` (§2.2), naming the variable-table spelling. Unbounded `bytes`
+and `bits` elements, and arrays of `*string` or `*bytes`, stay named
 follow-ons (§15).
 
 **THE WIRE MOVES NO BYTE AND SPENDS NO KIND.** An unbounded element rides
@@ -4783,7 +4752,13 @@ i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
 fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `33` wstring, `36` timestamp.
+`32` no payload, `36` timestamp.
+
+**`33` IS RETIRED: wide text is not part of schema; text is UTF-8 `string`**
+(SPEC.md §4.12). The number is HELD BY NAME AND NEVER REUSED, no writer emits
+it, and no reader has a rule for it, so a reader of this major meets `33` only
+as DAMAGE, on the terms `34` takes below. Holding it here, beside `34`, keeps
+the never-reuse rule for the kind space in one place.
 
 **`34` IS RESERVED BY NAME FOR `float16`, AND THE RESERVATION IS OF THE NAME
 AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
@@ -4821,7 +4796,6 @@ one document rather than two.
   | `30` enum | the VARIANT ID reference, `0` for `None` |
   | `31` escape | `L`, then `L` bytes, opaque |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `33` wstring | `L`, then `L` bytes, which are `L / 2` UTF-16 code units, each two bytes little-endian, SURROGATES PAIRED and no zero unit among them. An ODD `L` is malformed, and so is ill-formed content (below). No terminator |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
@@ -4865,32 +4839,17 @@ one document rather than two.
   invisible on the wire like a compressed float's resolution, and the
   baseline is what guards a change to it (§4.1, §18).
 
-  **KIND `33` IS WIDE TEXT, and it is the table half of `wstring(N)`**
-  (SPEC.md §4.12). Its `L` is a byte length, as every `L` on this wire is, so
-  the value is `L / 2` UTF-16 code units and an ODD `L` is damage:
-  the whole load refuses `wire_damaged` and nothing is kept (§4). Each unit is two bytes
-  little-endian, which is this wire's order for every fixed-width number, and
-  no unit can exceed `0xFFFF` because two bytes cannot spell one. The kind is
-  distinct from `12` for the reason every pair on this wire is distinct: a
-  field respelled between `string(N)` and `wstring(N)` moves between two kinds
-  and is an ordinary kind mismatch, refused in both directions, rather than
-  UTF-8 bytes read as code units. **A payload longer than the reader's bound
-  refuses `length_over_bound`** (§4), on both text kinds: `N` bytes for kind
-  `12` and `N` code units for kind `33`. Nothing is cut, so no cut can split a
-  code point or a surrogate pair.
-
-  **ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE ON BOTH TEXT KINDS, and this is
-  the one content rule the wire has.** A kind `12` payload whose bytes are not
-  well-formed UTF-8, or which carries a zero byte among its `L` bytes, and a
-  kind `33` payload carrying an unpaired surrogate or a zero code unit among
-  its units, are each DAMAGE and not data: **the whole load refuses `wire_damaged` and
-  nothing is kept** (§4), whether the payload is a field's, a union arm's or
-  an array element's. The check
+  **ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE, and this is the one content
+  rule the wire has.** A kind `12` payload whose bytes are not well-formed
+  UTF-8, or which carries a zero byte among its `L` bytes, is DAMAGE and not
+  data: **the whole load refuses `wire_damaged` and nothing is kept** (§4),
+  whether the payload is a field's, a union arm's or an array element's. The
+  check
   runs on the payload AS IT ARRIVES, before the reader's own bound is applied,
   because a payload that is not text is not text at whatever length the reader
   would have kept.
 
-  **The rule is the SAME rule SPEC.md §4.7 and §4.12 state, in this wire's
+  **The rule is the SAME rule SPEC.md §4.7 states, in this wire's
   idiom, and stating it once here is what makes every generated reader one
   reader.** Both readers refuse TERMINALLY, the packet reader because a bit stream that
   met ill-formed text has no defined position to continue from, and the table
@@ -5001,7 +4960,6 @@ one document rather than two.
   | an `enum` | `30` | the reference's own length | the variant id reference |
   | a `flags` mask | `9` | `8` | the u64 mask |
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are damage, the whole load discarded (§4) |
-  | a `wstring(N)` | `33` | the byte length, which is twice the code unit count | the code units, two bytes each little-endian, a kind `33` payload without its own `L`. An odd `L`, an unpaired surrogate and a zero unit are each damage, the whole load discarded (§4) |
   | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
   | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
@@ -5074,8 +5032,8 @@ one document rather than two.
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
-  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`,
-  `32` and `33` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
+  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`
+  and `32` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
   and stops there if it is `0`, else reads the kind byte, then `L`, and skips
   `L` bytes.
   **A kind a reader does not know at all is not skippable** and is framing
@@ -5438,7 +5396,7 @@ is not skippable is what makes spending a kind expensive AFTER readers
 exist; the set is closed before any of them ship.
 
 **What a pointer edge is, and what it is not.** A `*T` naming a declared
-TABLE takes a node index, and so does a `*bytes`, `*string` or `*wstring`
+TABLE takes a node index, and so does a `*bytes` or `*string`
 naming a BLOB
 (§2.5, below); those are the pointer spellings the language has (§2.1). A
 table-typed UNION ARM is a by-value nesting and rides inline as §2.6 frames
@@ -5584,12 +5542,11 @@ the payload opens with the count and then carries the records:
 
 **A BLOB record** (§2.5) is a node record whose body is the bytes themselves.
 
-- Its **type id** is one of three RESERVED ids: `fnv1a64( "bytes" )` for a
-  `*bytes` blob, `fnv1a64( "string" )` for a `*string` blob and
-  `fnv1a64( "wstring" )` for a `*wstring` blob, the same hash
+- Its **type id** is one of two RESERVED ids: `fnv1a64( "bytes" )` for a
+  `*bytes` blob and `fnv1a64( "string" )` for a `*string` blob, the same hash
   every table's id takes. They ride as references like every other id.
-  `bytes`, `string` and `wstring` are keywords no
-  table can be named, so the three ids sit in the closure's population beside
+  `bytes` and `string` are keywords no
+  table can be named, so the two ids sit in the closure's population beside
   every table's and collide with a declared name only by hash accident, which
   is the compile error §11 already names.
 - Its **length** is the blob's length, and its **body** is the blob's bytes
@@ -5601,10 +5558,9 @@ the payload opens with the count and then carries the records:
   reason path, and the load refuses the same reason and returns nothing for
   the wire: the cap belongs to the record, so no slot has a value to null and
   no prefix is salvaged. **A TEXT blob's CONTENT is refused on
-  the same terms**, which is kinds `12` and `33`'s content rule met at a node
+  the same terms**, which is kind `12`'s content rule met at a node
   (§3): a `*string` blob whose bytes are not well-formed UTF-8 or which
-  carries a zero byte, and a `*wstring` blob with an odd length, an unpaired
-  surrogate or a zero unit, is `wire_damaged`, which discards the whole load
+  carries a zero byte, is `wire_damaged`, which discards the whole load
   (§4). A `*bytes` blob has no such rule, because it is bytes and never text.
   A record and a blob are one rule here,
   and it is the only place a length the framing accepts is still refused.
@@ -5625,14 +5581,8 @@ the payload opens with the count and then carries the records:
   rides in refuses the whole wire `wire_damaged`, as it refuses any record
   that does; nothing reads a blob's bytes from outside its record. A blob record under a `*T` slot, or a table record under a `*bytes`
   slot, is the type-id check below: damage, `wire_damaged` (a wrong-type pointer target, §6.5). A
-  `*bytes` slot, a `*string` slot and a `*wstring` slot are three ids for the
-  same reason `string(N)`, `bytes(N)` and `wstring(N)` are three kinds on this
-  wire. **A `*wstring` blob's length is a BYTE length like every other blob's,
-  and an ODD one is damage**, on the terms kind `33` states: the units are
-  the length halved, and a length with no last code unit describes no value.
-  **The `*wstring` blob is PLANNED, on §2.5's terms**: its record is specified
-  here so the standard states the value, but no backend emits it yet, and the
-  checker refuses `*wstring` by name.
+  `*bytes` slot and a `*string` slot are two ids for the same reason
+  `string(N)` and `bytes(N)` are two kinds on this wire.
 - The blob rides ONLY as a record. A `*bytes` field's own payload is the
   node index under kind `17`, so an edit between `*bytes` and
   `bytes(N)` — kind `17` against kind `14` — is §4's kind mismatch in both
@@ -6180,7 +6130,6 @@ buys something this wire needs and none of them is derivable:
 | a RANGED integer, a fixed-point value, a compressed float | the packet wire's own: `value - min` at `bits_required(min, max)`, the quantized index at its step count, the fixed-point raw offset at its own width |
 | a `flags` mask | **its declared W bits**, W being the writer's own variant count, and NOT the variable form's raw `uint64`. This is a DEPARTURE and it is the packet wire's rule (SPEC.md §4.2, §4.3) reached for the packet wire's reason, bandwidth: a three-variant mask costs three bits here and sixty-four in a file, and a mask is the one payload where the variable form's width is set by its STORAGE rather than by anything declared |
 | a `string(N)` payload, and an ARRAY whose element kind is `6` (which is every `bytes(N)`) | the length or count, then **ALIGN to the next byte boundary**, then the bytes. The align costs at most seven bits and buys a `memcpy` on the largest payload on the wire |
-| a `wstring(N)` payload | the length, NO align, then **SIXTEEN BITS A CODE UNIT**. This is a DEPARTURE from SPEC.md §4.12, which spends a 32-BIT GROUP a code unit, and the reason is bandwidth: the group is the packet wire's word-oriented codec showing through, a code unit holds sixteen bits, and a bit stream has no word to fill. A `wstring(8)` of eight units costs 128 bits here and 256 there |
 | an ENUM value | **a REFERENCE naming the VARIANT's name**, `0` for `None`, and NOT the packet wire's declaration ordinal |
 | a UNION | **a REFERENCE naming the ARM's name**, `0` for the empty arm, then the arm's payload under that arm entry's own kind and shape, and NOT the packet wire's positional tag |
 | a nested `table` or `type` | its fields in place, ending at its own zero reference |
@@ -6335,7 +6284,7 @@ and that is its integer.
   | `11` f64 | nothing | sixty-four bits |
   | `36` timestamp | nothing | sixty-four bits, the `int64` count §2.11 stores |
   | `20`–`29` fixed/ufixed | `packing (u8)`, then its facts | `0` RAW, the storage width. `1` RANGED, then `bits`, then `base` (sixteen bytes little-endian, the raw scaled `A << F`) |
-  | `12` string, `33` wstring | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes and kind `33` does not, and kind `33` spends SIXTEEN bits a code unit rather than SPEC.md §4.12's 32-bit group |
+  | `12` string | `max` | the declared capacity, which sizes the length at `bits_required(0, max)`. Kind `12` aligns before its bytes |
   | `13` table | nothing | a nested body, ending at its own zero reference |
   | `14` array | `min`, `max`, `element kind (u8)`, the element's own shape | the count is `bits_required(min, max)` bits and NO count rides when `min` equals `max`. An element kind of `6` aligns before the elements, which is what `bytes(N)` is. An UNBOUNDED array and a MAP carry `min` `0` and `max` `2^32 - 1`, which is a thirty-two bit count, and a map's element kind is `13` |
   | `15` union | nothing | the arm reference names an entry carrying that arm's own kind and shape |
@@ -6460,7 +6409,7 @@ field name three records share at one kind and shape takes the slot its first
 appearance gave it, and the same name at a SECOND kind or shape takes a second
 slot. Two entries that agree on all three parts are malformed, and both engines
 enforce that at `AnnounceRead` rather than leaving it to a writer's good
-behavior. **An element kind of `12` or `33` in an announced array or keyed
+behavior. **An element kind of `12` in an announced array or keyed
 shape is a shape like any other**, and its own shape is the `max` the kind
 names. A text list (§2.13) is a kind `14` array of element kind `12`, so a unit
 that declares one announces one, and an announcement that carried the shape
@@ -6519,7 +6468,7 @@ well as about work, and this is where that memory lives.
   the announced bits, the range base, the array's own bounds, and the
   quantized facts SPEC.md §4.3's rule leaves behind rather than the two it
   consumes. It is **96 bytes** in the C++ reference, so the `backenddemo`
-  unit's 33 entries are **3,168 bytes** and the 4096-entry default is 393 KiB
+  unit's 32 entries are **3,072 bytes** and the 4096-entry default is 393 KiB
   for a receiver that asks for it.
 - **PER FIELD ON THE READ PATH THAT IS ONE ARRAY INDEX**: no parse, no LEB128,
   and no branch on the announcement's format. A reference resolves to an entry
@@ -6625,8 +6574,7 @@ The five ways a batch is damaged, at bit granularity:
 
 **ILL-FORMED TEXT IS DAMAGE HERE TOO, and it discards the batch like the rest.** §3's
 one content rule holds unchanged in what it rejects, a kind `12` payload that is
-not well-formed UTF-8 or that carries a zero byte, and a kind `33` payload with
-an unpaired surrogate or a zero code unit, and it discards the batch.
+not well-formed UTF-8 or that carries a zero byte, and it discards the batch.
 **No reader ACCEPTS it**, which is the
 property every wire shares.
 
@@ -7037,7 +6985,7 @@ caller's array of values is the whole of its storage.
   A width a reader accepted is a width bounded by the kind it came under, so no
   field on any body can ask a reader to move more bits than a `u128` holds.
   **"What the kind can hold" is TWO CEILINGS and both are named**: a `string`
-  and a `wstring` are bounded by the int32 storage cap the checker applies to
+  is bounded by the int32 storage cap the checker applies to
   every `N` (SPEC §4.3, §6.1), and an array and a keyed entry, on `min` as well
   as on `max`, by the 32-bit count an unbounded array announces (§2.9), which
   is the widest count this form spells. A bound above either is a shape no
@@ -7359,11 +7307,11 @@ embedded message, one byte under 128 and two above: 49, 189 and 40 become 51,
   the sign flips: `MatchResult` is 11 bytes against the packet wire's 115,
   because elision beats a positional wire outright whenever a message is sparse.
 
-**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 33 entries and
-318 bytes of entry records: 138 bytes for the thirteen field names with their
+**THE ANNOUNCEMENT'S OWN COST.** The `backenddemo` vocabulary is 32 entries and
+309 bytes of entry records: 138 bytes for the thirteen field names with their
 kinds and shapes, 99 for the eight variant names at kind `0` and the three arm
-names at kind `13`, and 81 for the tail's nine. The announcement file is **361
-bytes**: one form byte, a body of 336 bytes carrying the build version and the
+names at kind `13`, and 72 for the tail's eight. The announcement file is **352
+bytes**: one form byte, a body of 327 bytes carrying the build version and the
 vocabulary array, and a trailer of two entries and its count. **An entry
 averages ten bytes rather than the eight a bare id would cost**, and those two
 bytes are what pay for there being no kind byte and no length on any body.
@@ -7465,9 +7413,6 @@ entries announces about 5 KB once.
   message, which must drop it. Red if a leg writes sixty-four bits on a message,
   or keeps the appended bit through the message round trip and so contradicts the
   row §4 states as moved.
-- **The wide string's width.** A `wstring(8)` of eight code units, 128 bits on
-  this wire against SPEC.md §4.12's 256. Red if a leg spends a 32-bit group a
-  unit, or aligns before the units.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each refuses, writes nothing. Red if a leg reads either.
   Beside them the same two on the SKIP path: a body naming an enum entry the
@@ -7497,7 +7442,7 @@ entries announces about 5 KB once.
   is not finite in float32, a `string` bound above the int32 storage cap, an
   array `min` and an array `max` above the 32-bit count an unbounded array
   announces, two entries that agree on all three parts, an array over element
-  kind `12` and a keyed entry over element kind `33`, and a shape
+  kind `12` and a keyed entry over element kind `12`, and a shape
   running past the vocabulary field's `L`. Each a refusal by name, and red if a
   leg allocates or reads a body after one. Beside them each ceiling's own
   value, which must be ACCEPTED: an unbounded array announces the array one.
@@ -7609,7 +7554,7 @@ fixed table Envelope
 
 - **The unit is `backenddemo`, at `tables/backend`**, and the connection is
   `backend_conn`, whose announcement is `testdata/wire/tables/backend_conn.bin`,
-  **33 entries and 361 bytes**. The three messages are the measurement's,
+  **32 entries and 352 bytes**. The three messages are the measurement's,
   field for field, and `Payload` and `Envelope` are the unit's own addition
   beyond it, the one root the batch vector rides under.
 - **Six FILE-form vectors**, `login_full`, `login_default`, `match_full`,
@@ -7988,7 +7933,6 @@ VALUE.**
   | `[N]T` | `N * C(T)`; no count rides, because `min` equals `max` |
   | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, UNSPECIFIED on read, never a refusal |
   | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
-  | `wstring(N)` | 4 (the length in CODE UNITS, `int32` LE) + `2N` bytes — the length is in UTF-16 CODE UNITS and the payload is two bytes each; ZERO on write past the used units, UNSPECIFIED on read, never a refusal |
   | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, UNSPECIFIED on read, never a refusal |
   | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm, IGNORED on read, never a refusal |
   | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, IGNORED on read, never a refusal |
@@ -8014,7 +7958,7 @@ so the used extent is always stated before the bytes are reached.
   exists to avoid, and it would refuse records that are perfectly readable.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
-  `N`; a `wstring(N)`'s code units over its stated length, not over `2N`. A
+  `N`. A
   count or length past the field's own bound is a different thing entirely: it
   is a NAMED REFUSAL — `count_over_bound` for a count, `length_over_bound` for
   a length — checked before any destination byte is written, because that is
@@ -8045,7 +7989,7 @@ ONE CONSTANT SIZE PER TYPE is exactly what refusing them buys:
 
 - a **POINTER** (§2.1), a **MAP** (§2.8) and an **UNBOUNDED `[]T`** (§2.9) — a
   count the DATA decides, with no bound to be constant at,
-- a **BYTE BUFFER AT ITS USED SIZE** (§2.5) — `*bytes`, `*string`, `*wstring`,
+- a **BYTE BUFFER AT ITS USED SIZE** (§2.5) — `*bytes`, `*string`,
   the same thing spelled as a length rather than as a count,
 - a **NESTED VARIABLE table HELD BY VALUE** — the variable wire has no size a
   fixed body could hold. Nest a `fixed table`, or a `type`,
@@ -8237,7 +8181,7 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 a record's hash equals the reader's own, the plan is the one the compiler
 already wrote. **IT CARRIES FOUR OPS AND NOT ONE**: a `copy` for every field
 whose wire image is its storage image, a `count` for a `[Min..Max]T`, a `text`
-for a `string(N)`, a `wstring(N)` or a `bytes(N)`, and a `bool` for a bool or a
+for a `string(N)` or a `bytes(N)`, and a `bool` for a bool or a
 presence byte — because a count, a length and a bool are numbers the reader
 HOLDS TO ITS BOUND before it moves the units behind them, and
 a copy holds nothing. The other five ops are a lineage plan's alone.
@@ -8673,9 +8617,8 @@ diagnostic name, which is not normative and is never compared:
   one keyed body, bytes after a nested union inside its arm's `L`, an arm
   whose `L` does not frame its kind, a bool byte other than `0` or `1`,
   ILL-FORMED TEXT (a kind `12` payload that is not well-formed UTF-8 or that
-  carries a zero byte; a kind `33` payload with an odd `L`, an unpaired
-  surrogate or a zero unit — the same refusal SPEC.md §4.7 and §4.12 put on
-  the packet wire), a node table that cannot be read whole, a cycle (a loaded
+  carries a zero byte — the same refusal SPEC.md §4.7 puts on the packet
+  wire), a node table that cannot be read whole, a cycle (a loaded
   graph in which a pointer names a node whose descent is still open, which no
   writer produces, §3.1), a node record no pointer reaches, kind `32` with a
   nonzero `L` at any position, a reserved id out of place, and every case
@@ -9044,15 +8987,11 @@ has:
   it at fields would leave three of the four sites unexercised. Going up the
   ladder must count `widened` with the value exact, and coming back down or
   across the two ladders must refuse `kind_mismatch`;
-- **an ODD `L` at every kind `33` position** — field, arm, array element and
-  the payload under a map key — and at every
-  `*wstring` blob record, which is damage (§3);
-- **ILL-FORMED TEXT at every kind `12` and kind `33` position**, the same four
+- **ILL-FORMED TEXT at every kind `12` position**, the same four
   sites and the blob records beside them: a truncated UTF-8 sequence, an
   overlong encoding, a lone continuation byte, a surrogate encoded in UTF-8,
-  and a zero byte at the front, the middle and the end of a kind `12` payload;
-  a lone high surrogate, a lone low surrogate, a reversed pair and a zero unit
-  at the same three positions of a kind `33` payload. Each must refuse the
+  and a zero byte at the front, the middle and the end of a kind `12` payload.
+  Each must refuse the
   whole load `wire_damaged` (§3, §4); a leg that reads any of them clean fails
   the reason requirement below, which is what makes this a gate and not a
   wish. The
@@ -9099,7 +9038,7 @@ unbounded `[]T`, and that element kind is `17` where the element is a pointer,
 so a `[N]*T`, a `[..N]*T` and a `[]*T` are the array strategies over node
 indices; a kind `17` NODE INDEX where the value is `*T`, `*string` or
 `*bytes`, and the blob record it names is a record of the node table like any
-other; and the kind `12` and kind `33` payloads the text strategies above name.
+other; and the kind `12` payloads the text strategies above name.
 The strategies are enumerated over field positions, so each lands inside an
 entry as it lands in any body. What stays the MAP'S rather than the value's is
 the KEY: its kind, its widening, its length and its order, each with the map's
@@ -9496,18 +9435,11 @@ const Scene * scene = builder.AsConst();       // CONST: one packed region
 
 - **Builder** — a growable arena. `Alloc<T>()` hands back a node that is
   usable both as the pointer to write fields through and as the reference
-  to store in a pointer field. `AllocBytes( n )`, `AllocString( n )` and
-  `AllocWString( n )` — the wide member, which §2.5 specifies ahead of its
-  implementation and the checker refuses by name — hand
-  back a BLOB node the same way (§2.5), the first two of exactly `n` BYTES and
-  **`AllocWString( n )` of exactly `n` CODE UNITS**, which is `2 * n` bytes in
-  the node plus its terminating zero unit — the argument is a unit count
-  because `wstring`'s every other number on this page is a unit count, and an
-  allocator that took bytes here would be the one call in the family a caller
-  has to double at the call site. The Dart spellings are `allocBytes`,
-  `allocString` and `allocWString`. Each hands back `data` to write
+  to store in a pointer field. `AllocBytes( n )` and `AllocString( n )` hand
+  back a BLOB node the same way (§2.5), each of exactly `n` BYTES. The Dart
+  spellings are `allocBytes` and `allocString`. Each hands back `data` to write
   through, `length` in that call's own unit, and the reference to store in a
-  `*bytes`, `*string` or `*wstring`
+  `*bytes` or `*string`
   slot; a blob larger than a slab takes a span of the arena's address space
   of its own rather than being refused. Growth never invalidates anything
   already allocated (§6.4).
@@ -9692,15 +9624,7 @@ as zero, then `length` bytes of data at offset eight, so the data itself is
 eight-aligned and the header expresses every length the wire can carry (§3).
 A reader does not inspect the four pad bytes. A `*string` blob carries one more
 zero byte after its data, which is the terminator `string(N)`'s storage
-carries and the reason a region hands back a C string with no copy. **A
-`*wstring` blob is that same header and two more zero bytes**: its `length` is
-the byte length, always EVEN, its data is `length / 2` code units two bytes
-each, and the terminating ZERO UNIT is what `wstring(N)`'s `char16_t[N + 1]`
-storage carries for the same reason (§7.2). **The blob is specified ahead of
-its implementation (§2.5), and the checker refuses `*wstring` by name.** The
-units begin at offset eight,
-so they are two-aligned by construction and a region hands back a terminated
-`char16_t` string with no copy. Its
+carries and the reason a region hands back a C string with no copy. Its
 alignment is the unit's and its extent runs to the next entry as every node's
 does; its directory entry carries the reserved type id of §3.1. A `*bytes`
 slot is the same eight-byte self-relative delta every pointer slot is, and it
@@ -9900,8 +9824,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   §3.1's node table that measure is ONE SCAN — a record's type id gives
   its storage size, its length gives the next record, and a BLOB record's
   storage is its own framed length plus the eight-byte header and the
-  terminator its reserved type id names, which is nothing for `bytes`, one
-  byte for `string` and two for `wstring` (§6.3) — and it reports the
+  terminator its reserved type id names, which is nothing for `bytes` and one
+  byte for `string` (§6.3) — and it reports the
   DATA bytes and the ATTRIBUTION bytes separately (§6.3), because the
   caller may place them apart and may release the attribution once `Load`
   returns. **Go's `LoadMeasure` answers the data and attribution as one
@@ -10446,8 +10370,7 @@ where the element kind is `13`, `15` or `30`. And **kind `16` at EVERY element
 kind**, because an enum-keyed array's body carries a KEY REFERENCE per slot
 whatever the elements are (§3.2), so its keys resolve even when the elements
 carry no reference of their own. Every other payload is copied verbatim, which
-is every scalar, every fixed-point and 128-bit kind, and kinds `12`, `31` and
-`33`.
+is every scalar, every fixed-point and 128-bit kind, and kinds `12` and `31`.
 **Kind `17` is what the walk is LOOKING FOR as much as a reference is**: the
 outer-kind exclusion above catches a `17` field and an array of `17` before
 the walk begins, and the walk catches every other one, a `17` field or an
@@ -11497,7 +11420,6 @@ fields would get wrong:
 | a scalar, an enum, a `flags` | the value at its storage width |
 | a 128-bit scalar (`int128`, `uint128`, a `fixed` or `ufixed` of 128 bits) | SIXTEEN BYTES AT SIXTEEN — the C ABI's natural alignment for a 128-bit integer, and the one a table's C++ storage spells out (`alignas( 16 )`) on every such member, so serialize's emulated pair — not naturally sixteen-aligned — lays out exactly as native `__int128` does, and every compiler lays the record out the same way (§19.3). The slot holds the value in the cook's byte order: the low 64-bit half first in a little-endian cook, the high half first — each half big-endian — in a big-endian one, exactly as a `u64` is one eight-byte lane. A narrower `fixed` is its raw integer at its storage width, like any scalar |
 | `string(N)` | `char[N + 1]`, then `int32` used length |
-| `wstring(N)` | `char16_t[N + 1]`, then `int32` used length, the used length in CODE UNITS (SPEC.md §4.12). A code unit is a two-byte SCALAR, so EACH UNIT is written at its own two-byte width in the cook's byte order, never as a run of bytes. The terminating zero unit at index `length` is a unit like any other, and reads zero in either order |
 | `bytes(N)` | `uint8[N]`, then `int32` used length |
 | `[N]T` | `N` elements at the element's `sizeof` |
 | `[..N]T` | `N` elements, then `int32` used count |
@@ -11505,7 +11427,7 @@ fields would get wrong:
 | `*T` | `int64` self-relative delta, eight bytes at eight |
 | `[N]*T` | `N` `int64` self-relative deltas, each eight bytes at eight, null zero |
 | `[..N]*T` | the same `N` slots, then `int32` used count; a slot past the live count is zero (a counted array writes all `N` slots, below) |
-| `*bytes`, `*string`, `*wstring` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
+| `*bytes`, `*string` | `int64` self-relative delta, eight bytes at eight, to a BLOB NODE (below) |
 | `?T` | the value's own pieces, then `bool` present |
 | `map[K]V` | `int64` self-relative delta to the entry array, then `int32` count; the entries follow the record inside the node's extent (§2.8); `?map[K]V` adds the `bool` present after the slot, as every `?T` does |
 | `[]T`, `[]*T` | `int64` self-relative delta to the element array, then `int32` count; the elements follow the record inside the node's extent (§2.9), a `[]*T`'s elements being `int64` deltas of their own |
@@ -11536,18 +11458,13 @@ fields would get wrong:
   a cook has no reach to refuse.
 - **A BLOB NODE is `length (u32)` in the cook's byte order, then four zero
   bytes, then `length` bytes**, and
-  a `*string` blob's one more zero byte or a `*wstring` blob's two (§6.3, its
-  terminating zero UNIT) — a node whose extent is `8 + length`, `9 + length`
-  or `10 + length`, at alignment eight, laid out in the numbering like every
+  a `*string` blob's one more zero byte (§6.3) — a node whose extent is
+  `8 + length` or `9 + length`, at alignment eight, laid out in the numbering like every
   node and named in the directory under its reserved type id (§3.1). The four
   pad bytes are written as zero and a reader does not inspect them. Every
   byte of it is written, so a blob costs its bytes and eight,
   and a mapped cook's `TableBytesAt` is a pointer into the data part at the
-  header plus eight. **A `*wstring` blob's `length` is EVEN**, on kind `33`'s
-  terms (§3), so its units are two-aligned at the header plus eight and the
-  terminator is the two bytes after them. **The `*wstring` blob node is
-  specified ahead of its implementation, as §2.5 says**: the checker refuses
-  `*wstring`, and no backend emits it yet.
+  header plus eight.
 - **A MAP's ENTRIES are BY-VALUE RECORDS INSIDE THE HOLDER'S NODE EXTENT**
   (§2.8): after the record's own storage, `count × sizeof( Entry )` at the
   entry's alignment, in ASCENDING KEY ORDER, one array per map the record
@@ -11693,17 +11610,11 @@ no reference:
    refuses too, because an extent is never negative and a walker handed one
    indexes backwards out of the region. The companions of fixed-size tables
    and plain types NESTED BY VALUE are in scope, because they bound a walker
-   just as a table's do. A `wstring(N)`'s used length is in CODE UNITS and is
-   bounded against `N` the same way, the storage being `char16_t[N + 1]`
-   (§7.2). **A BLOB NODE's `length` is such a companion** (§6.3):
-   the header plus `length` bytes — plus the `*string` terminator, or the
-   `*wstring` terminator's two — must fit
+   just as a table's do. **A BLOB NODE's `length` is such a companion** (§6.3):
+   the header plus `length` bytes — plus the `*string` terminator — must fit
    inside the node's own extent, which is the next entry's offset or
    `data_length`, because a walker handed a length past the extent reads the
-   node after it as this node's bytes. **A `*wstring` blob's `length` must
-   also be EVEN**, because an odd one has no last code unit and a walker
-   reading `length / 2` units from it would stop one byte short of the
-   terminator it was promised.
+   node after it as this node's bytes.
 3. **Every UNION TAG.** It is the one field VALUE the scan reads, and it is
    read because it is a DISCRIMINANT rather than a payload: a scan that
    skipped it would either check no arm — leaving every reference and every
@@ -12962,8 +12873,7 @@ their meanings; any other value is refused by name, and the refusal names
 shared as the default.
 
 **One source.** A declaration is SHARED when the emitter writes it
-byte-identically for every unit shape (fixed-only, variable, wide text, every
-float kind, keyed arrays, unions) and nothing it names, or is named by, is
+byte-identically for every unit shape (fixed-only, variable, every float kind, keyed arrays, unions) and nothing it names, or is named by, is
 unit-shaped. The shared package is generated from that same emitter text, not
 written beside it, and a test fails when the checked-in package and the
 emitter disagree: the two cannot drift. Everything unit-shaped (the id
@@ -13511,9 +13421,7 @@ in build version (§20.5).
   array (§2.4).
 - **Maps** (§2.8): a map in a `type` body; a key that is an enum (the
   diagnostic names `[E]T`), a `bool`, a float, a `flags`, a `bits(N)`, a
-  `bytes(N)`, a `wstring(N)` (the diagnostic names `string(N)`, because
-  `memcmp` over UTF-8 is the portable order and a little-endian code unit's
-  bytes are not), an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
+  `bytes(N)`, an `int128` or `uint128`, a `fixed`/`ufixed`, a `type`, a
   `table`, a pointer, an optional or a union; an
   attribute on the key (`| min`, `| max`, a default); `?map` in a `fixed table` or a `type` (packet) body, as any map there, `?map ... | required` (§2.3: required forbids the absence that makes a field optional)
   and `?map` as a map's VALUE (a named follow-on);
@@ -13576,7 +13484,7 @@ in build version (§20.5).
   and `[]?string(M)` in a `fixed table`, a `type` body, a packet, a union arm
   or a map value, each naming a variable table field as the route;
   `[N]string(M)` and `[E]string(M)`, naming `[..N]string(M)`; `?[..N]string(M)`
-  and `?[]string(M)`; an array of `wstring(N)`, `bytes(N)`, `bits(N)`,
+  and `?[]string(M)`; an array of `bytes(N)`, `bits(N)`,
   `*string` or `*bytes`, each a named follow-on (§15); `[..N]?T` and `[]?T`
   for any `T` but `string(M)`; a declaration under any name the construct
   claims; and the construct under every target but Go, centrally. Its
@@ -13603,10 +13511,6 @@ in build version (§20.5).
   `*string`; Dart and Java carry `*string` only**, and a unit that
   declares a spelling its target does not carry is refused by name, because
   the rest are a named follow-on (§15).
-  **`*wstring` is the third spelling and is refused by name under every
-  backend**, its bound `*wstring(N)` refused with the other two, because a
-  buffer at its used size has no bound to declare whatever units it holds
-  (§2.5).
 - **This section is not exhaustive**: the refusals of a `forms` or
   `integrity` declaration's own spelling (§2.12, §2.14), of `| required` on a
   `type` field, with `?`, or on a fixed field (§2.3), of an `if` naming a
@@ -14035,12 +13939,9 @@ in build version (§20.5).
     refusal vocabulary both accelerators and `LoadMeasure`'s `-1` name, §6.5,
     §7, §19.2, spelled `TableRefuseReason` in Dart too with that backend's own
     lowerCamelCase values), the BLOB surface — `TableBytesView`,
-    `TableStringView` and `TableWStringView` with `TableBytesAt`,
-    `TableStringAt` and `TableWStringAt` over them (§2.5), and `AllocBytes`,
-    `AllocString` and `AllocWString` on the builder (§6.2), the wide member of
-    each trio claimed on the same terms as the two beside it and spelled
-    `tableWStringAt` and `allocWString` in Dart, whose case convention is its
-    own (above) — `TableWriter`, `TableReader`, `TableEnumId`,
+    `TableStringView` with `TableBytesAt` and `TableStringAt` over them
+    (§2.5), and `AllocBytes` and `AllocString` on the builder (§6.2) —
+    `TableWriter`, `TableReader`, `TableEnumId`,
     `TableEnumValue`, the COOKED form's read runtime (`TableCookOpen`,
     `TableCookMagic`, `TableCookByteOrder`, `TableCookMaxAlign`,
     `table_cook_read64` — §7 — its WRITE runtime beside it (`TableByteOrder`,
@@ -15280,12 +15181,11 @@ inspects everything in the schema built:
   What it needs is a resumable per-type field cursor, because the ORDER is
   first-visit depth-first pre-order and a breadth-first walk would number a
   different graph.
-- **`?string(N)`, `?bytes(N)` and `?wstring(N)`** (§2.3): the length rides
+- **`?string(N)` and `?bytes(N)`** (§2.3): the length rides
   inside the string/array framing, which never elides a present field, so the
   presence bit buys nothing a wrapper table does not already give. Wrap the
   field in a table and make that optional today; `?[..N]T` and `?[N]T` landed
-  and are not part of this entry, and `?wstring(N)` is refused under this same
-  follow-on.
+  and are not part of this entry.
 - **An OPTIONAL ARRAY of POINTERS or of UNIONS** (§2.3): `?[N]*T`, `?[N]Body`
   and `?[..N]T`. A field the writer does not write is not an edge (§3.1),
   and the numbering, the pack measure and the pack gate on the presence
@@ -15319,7 +15219,7 @@ inspects everything in the schema built:
   form wants its empty-end rule stated before it is wire. `[..N]*T` and
   `[N]*T` serve today, as does a keyed array of tables by value.
 - **A BYTE BUFFER BY RELATIVE FILE in the pack tree** (§2.5, §17): the JSON
-  field of a `*bytes`, `*string` or `*wstring` holds a path relative to the
+  field of a `*bytes` or `*string` holds a path relative to the
   file it sits in, `pack` reads that file's bytes into the blob, and `unpack` writes the
   sidecar back out beside the JSON — so a texture lives in the tree as a
   `.png` and not as base64. Inline base64 stays the JSON form (§16.2) and the
@@ -15843,7 +15743,6 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units refuses `length_over_bound`. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, and a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape names no scalar value and refuses the read `malformed`, never decoded to `U+FFFD` (§16.3, §16.12). So an unpaired surrogate in storage was built in code, and the writer refuses it `invalid_value` (§16.3) |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N bytes refuses `length_over_bound`. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) refuses `kind_mismatch`. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false and its one reason is `timestamp_not_rfc3339: <field>`. A NUMBER token is the wrong JSON type and refuses `kind_mismatch`, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted `unknown`. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -15857,7 +15756,6 @@ Per kind:
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes, with NO length bound; `""` is a present blob of length zero and `null` is a null reference (§2.5). A body that is not base64 refuses `kind_mismatch` |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
-| `*wstring` | string, or `null` | the blob's code units as a string, transcoded as `wstring(N)`'s row is, with no length bound, and the same two values at the empty end |
 | `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` refuses `length_over_bound`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` refuses the read `malformed`, one with a fractional value refuses `kind_mismatch` and one out of the key kind's range refuses `out_of_range`; written in ASCENDING key order; a repeated key refuses `malformed`; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, refuses `kind_mismatch`; an element longer than `M` refuses `length_over_bound`, and a count past a `[..N]` bound refuses `count_over_bound` |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is refused for its length; a `[..N]` count past `N` refuses `count_over_bound` (§2.13.1) |
@@ -16059,8 +15957,8 @@ written as something else.
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
-- **Storage that is not text** — `invalid_value`: a narrow string holding
-  ill-formed UTF-8, a wide string holding an unpaired surrogate (below).
+- **Storage that is not text** — `invalid_value`: a string holding
+  ill-formed UTF-8 (below).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -16084,7 +15982,7 @@ the point the defect ENTERS. RFC 8259 requires a JSON text to be valid UTF-8,
 so a string whose bytes are not a well-formed UTF-8 sequence, or whose `\u`
 escapes name a LONE or OUT-OF-ORDER surrogate, does not spell a code point,
 and **the READ REFUSES IT BY NAME at every string site** — a field's value, a
-key, a value the walk skips, a `wstring` — rather than replacing it: the read
+key, a value the walk skips — rather than replacing it: the read
 refuses `malformed`, and its reason text is
 `string_not_utf8: <key>` or `string_lone_surrogate: <key>`, `<key>` being the
 key whose name or value held it and `<root>` at the top. **A silent
@@ -16110,14 +16008,13 @@ str-illformed-at-bound`).
 **THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
 one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
 a perfectly good code point that JSON has an escape for, so it is written
-`\u0000`, and a WIDE field's zero unit the same — only ever for storage a
-program built, because no read puts one there (below). A narrow field's
-ill-formed UTF-8 sequence and a wide field's UNPAIRED SURROGATE are not code
-points at all, and the writer REFUSES them: `ToJsonMeasure` and `ToJson` return
-`-1` with the reason `invalid_value`, naming the field, and nothing is replaced.
-The binary writers hold the same rule (§3, SPEC.md §4.12): `Measure` and `Save`
-refuse ill-formed text and an unpaired surrogate by the same name. So no writer
-turns storage that is not text into text that reads back as something else.
+`\u0000` — only ever for storage a program built, because no read puts one
+there (below). A field's ill-formed UTF-8 sequence is not a code point at
+all, and the writer REFUSES it: `ToJsonMeasure` and `ToJson` return `-1` with
+the reason `invalid_value`, naming the field, and nothing is replaced. The
+binary writers hold the same rule (§3): `Measure` and `Save` refuse ill-formed
+text by the same name. So no writer turns storage that is not text into text
+that reads back as something else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
@@ -16130,11 +16027,10 @@ writers, `ToJson` and `schema unpack` alike (§16.12).
 **A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
 2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
 carries it: a zero byte in a kind `12` payload, a `*string` blob, a text-list
-element or a text map key, and a zero unit in a kind `33` payload or a
-`*wstring` blob, is damage on the table wire, `wire_damaged` (§2.13, §3, §4.2), and the
-packet wire refuses it terminally (SPEC.md §4.7, §4.12). So a JSON string the
-read would PLACE in text storage — a `string(N)`, `*string`, `wstring(N)` or
-`*wstring` value, a text-list element, bounded or not, and a map key, whose
+element or a text map key is damage on the table wire, `wire_damaged`
+(§2.13, §3, §4.2), and the packet wire refuses it terminally (SPEC.md §4.7).
+So a JSON string the read would PLACE in text storage — a `string(N)` or
+`*string` value, a text-list element, bounded or not, and a map key, whose
 key is a JSON string whatever its kind (§16.2) — and that decodes to `U+0000` (it can only arrive as the `\u0000` escape, a raw
 control byte being no string body at all) **refuses the read**: `FromJson`
 returns false with the one reason `text_holds_zero: <Table>.<field>` for the
@@ -16160,7 +16056,7 @@ and the text it writes is one this read refuses, which is the honest answer
 for a value no wire can carry. Held first in Go, in both of its text readers:
 the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
-`scanStored` and `scanWString`), which refuses with the same reason, so a pack
+`scanStored`), which refuses with the same reason, so a pack
 never encodes a wire its own decode refuses. Every reader of this form owes the
 same refusal.
 
@@ -16206,16 +16102,6 @@ without touching a stored file.
   one gate and it is the stronger one: `ToJson` of every instance in the
   corpus contains no `/` outside a string, so a comment can never be emitted
   by accident.
-- **THE WIDE TEXT ROWS**: a `wstring(N)` at empty, at one basic-plane
-  character, at an astral pair, at exactly `N` code units and at one past it,
-  which refuses `length_over_bound`, one past it whose last unit is the high
-  half of a pair, which refuses the same, storage BUILT IN CODE holding an unpaired surrogate,
-  which the writer refuses `invalid_value`, and storage built in code holding a zero unit, which
-  writes `\u0000` (§16.3), and the same
-  values through a `*wstring` blob, where no length bound applies. The two storage rows
-  are built in code deliberately: no wire can deliver either (§3), and a row
-  that reached them through a load would be pinning a case the reader now
-  refuses.
 - **The ARM rows of that battery** (§16.2), each red for one reason, an
   answer or a union state that is not the one the row pins:
   `{ "count": "7" }` and `{ "count": null }` at a scalar arm refuse
@@ -16451,8 +16337,7 @@ reader is exactly the unknown key §4 exists to survive.
 
 **A BYTE BUFFER is a string in the text, and it takes no label** (§2.5,
 §16.2). A `*bytes` slot writes its blob as base64 in place, and a `*string`
-slot writes its bytes and a `*wstring` slot its transcoded units as a JSON
-string, `null` for a null reference, and the
+slot writes its bytes as a JSON string, `null` for a null reference, and the
 reader allocates a blob of exactly the decoded length in the builder's arena;
 a `*bytes` body that is not base64 refuses `kind_mismatch`, as a `bytes(N)`
 body does. A blob is
@@ -16698,7 +16583,7 @@ The rules below replace §16.2's evolution skipping for this form only (§6.5).
 | `float32`, `float64`, compressed floats | A finite number, converted by §16.2's numeric mapping, within the storage and declared bounds; overflow is `text_bound`. No NaN/Infinity tokens. The original spelling, including negative zero, remains in the document even when the field's numeric representation normalizes it. |
 | `fixed(I,F)`, `ufixed(I,F)` | Exact decimal number in whole units, scaled without an intermediate float. A fraction not representable on the Q grid is `text_kind_mismatch`; range overflow is `text_bound`. |
 | `bool` | `true` or `false` only. |
-| `string(N)`, `wstring(N)` | String; respectively at most N UTF-8 bytes or N UTF-16 code units after unescaping, with no partial code point. Over bound is `text_bound`. |
+| `string(N)` | String; at most N UTF-8 bytes after unescaping, with no partial code point. Over bound is `text_bound`. |
 | `[]string`, `[]?string`, `[..N]string`, `[..N]?string` elements and a `map[string]V` key (§2.13.1) | A string without a schema length bound; a `?` element is `null` or a string; a `[..N]` count over N is `text_bound`; resource limits (§16.9.4) still apply. |
 | `bytes(N)` | String of standard-alphabet padded base64 (empty is `""`); invalid encoding or nonzero unused pad bits is `text_encoding`, decoded length over N is `text_bound`. |
 | `timestamp` | Quoted RFC 3339 timestamp within the UTC nanosecond domain of §16.2; invalid spelling/domain is `text_timestamp`. Preserve the original offset spelling. |
@@ -16712,7 +16597,7 @@ The rules below replace §16.2's evolution skipping for this form only (§6.5).
 | `?T`, including optional arrays and optional maps | Omitted field or `null` is absent; any valid T value is present. `()` at an array or a map site is present-and-empty. |
 | Union | Record with exactly one arm key and its arm-kind value; `()` is None. Example `(:amount 7)` or `(:ping null)` for a payload-free arm. Unknown arm is `text_unknown_key`, duplicate arm is `text_duplicate_key`, multiple different arms are `text_kind_mismatch`. |
 | `*T` | `null` or the pointee record, with sharing as below. |
-| `*bytes`, `*string`, `*wstring` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
+| `*bytes`, `*string` | `null` or the corresponding string representation above, without a schema length bound; empty string is a present empty blob. |
 | `map[K]V` | Sequence of exactly two-element pairs, e.g. `(("east" 1) ("west" 2))`. K uses its scalar rule (integer keys are numbers, string keys are strings), V uses its own rule; optional values use `null` for absent. Duplicate keys after decoding are `text_duplicate_key`. Preserve source entry order, even though the semantic map has no order. |
 
 Sharing uses §16.7's construct as the QUOTED key `"&node"`: a definition is
@@ -16980,8 +16865,7 @@ is one bounded field one past one bound:
 - a declared integer RANGE, fixed point included on its raw scale (§4, §4.3):
   `<field>:below` carries `min − 1` and `<field>:above` carries `max + 1`;
 - a `bits(N)`: `<field>:above` carries `2^N`;
-- a `string(N)` or `wstring(N)`: `<field>:above` carries `N + 1` ASCII bytes
-  or code units; a `bytes(N)` carries `N + 1` bytes;
+- a `string(N)`: `<field>:above` carries `N + 1` ASCII bytes; a `bytes(N)` carries `N + 1` bytes;
 - a counted array `[..N]T`, a text list included, or a fixed `[N]T`:
   `<field>:count` carries `N + 1` elements, each a FILLER (below).
 
@@ -17405,12 +17289,12 @@ disagreement is a defect in one of them and is fixed, not tolerated.
 before a byte is handed back — §16.3's list, a deprecated enum variant
 (§2.15), a `required` value outside its declared range (§2.3), a text list
 past its declared total (§2.13), a table value past the depth cap (W2), and
-STORAGE THAT IS NOT TEXT, `invalid_value`: a narrow string holding ill-formed
-UTF-8 or a wide string holding an unpaired surrogate (W8), which is refused
+STORAGE THAT IS NOT TEXT, `invalid_value`: a string holding ill-formed
+UTF-8 (W8), which is refused
 and never replaced: the write returns `-1`, measure returns
-`-1`, and no prefix of a text is ever a result. A ZERO BYTE OR UNIT IS NOT
+`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS NOT
 ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
-The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte or unit
+The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte
 is `invalid_value` (a reader of those forms refuses it as `text_ill_formed`).
 Measure returns exactly the length write produces.
 
@@ -17498,7 +17382,7 @@ per entry: the entry's key as the member's key, and the entry's value as
   though UTF-16 orders them the other way (`FF61` against `D83D`).
 
 An integer key is written as its decimal spelling (W10) inside quotes; a
-string key is written by W8. Enum, `bool`, `wstring`, float and compound keys
+string key is written by W8. Enum, `bool`, float and compound keys
 are refused at declaration (§2.8), so no other order exists to choose. **No
 map holds a key twice**: the text read refuses a repeated key and the wire read refuses
 an entry out of ascending order (§2.8), so no read produces two equal keys,
@@ -17510,8 +17394,7 @@ name (W8), `: `, the arm's value at depth `d + 1` by the arm's own row (§16.2)
 — `null` for a payload-free arm — then `NL(d)`, `}`.
 
 **W8. A string** is `"`, then the text, then `"`. The text is walked byte by
-byte for a narrow string (`string(N)`, `*string`, a key) and code point by
-code point for a wide one (`wstring(N)`, after joining each surrogate pair). Each unit is written as:
+byte for a string (`string(N)`, `*string`, a key). Each byte is written as:
 
 | unit | written |
 |---|---|
@@ -17521,8 +17404,7 @@ code point for a wide one (`wstring(N)`, after joining each surrogate pair). Eac
 | any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
 | `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
 | a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
-| an ill-formed narrow sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
-| an unpaired surrogate in a wide string | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
+| an ill-formed UTF-8 sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
 
 No `\u` escape names anything at or above `0x20`, so none names a surrogate,
 no escape other than these seven short forms and `\u00XX` is ever written, and
@@ -19955,7 +19837,7 @@ widening.
 | an enum | a variant ADDED AT THE END; a variant deprecated in place (§2.15) | a variant removed, reordered, inserted mid-list, renamed without `was`, or undeprecated (§2.15) |
 | a union | an arm ADDED AT THE END; an arm renamed under `was` (the wire name is the old name, so the file does not move) | an arm removed, reordered, renamed without `was`, or its payload changed |
 | `flags` | a flag ADDED | a flag removed or moved |
-| an array `[N]`, `[..N]`, a `string(N)`, `wstring(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
+| an array `[N]`, `[..N]`, a `string(N)`, `bytes(N)`, and any constant behind them | a LARGER N | a smaller N; a shape change (`[N]` to `[..N]`, a key enum swapped); a text kind change |
 | an element type | the widening ladder, as a field | narrowed |
 | an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
 | a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
@@ -20119,10 +20001,9 @@ fixed form is the other way, and §22.6 says so.
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
 | a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
 | `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
-| `wstring(N)` | it is empty (it takes no default, SPEC.md §4.12) | `L` = twice the unit count, then the units |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |
-| `*T`, `*bytes`, `*string`, `*wstring` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
+| `*T`, `*bytes`, `*string` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
 | `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
 | `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
 | `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
@@ -20232,7 +20113,7 @@ THE ROOT** (§3.1), and the walk is pinned to the step:
    SET arm, and every entry of a map in ASCENDING KEY ORDER (§22.2.1). A
    by-value edge declared before a pointer field reaches its nodes first
    (`stream_arm_first`, §3.1).
-6. A BLOB (`*bytes`, `*string`, `*wstring`) is numbered as a node with no
+6. A BLOB (`*bytes`, `*string`) is numbered as a node with no
    descent.
 7. **A CYCLE CANNOT BE WRITTEN**: a pointer to a node still OPEN on the walk's
    path is refused at save by name (`data_cycle`, §3.1), and a blob named from
@@ -20242,7 +20123,7 @@ THE ROOT** (§3.1), and the walk is pinned to the step:
 
 **THE NODE-TABLE FIELD'S PAYLOAD** is the node count, then one record per
 index from `2` upward: the record's type id REFERENCE (the target table's
-name, or `bytes`, `string`, `wstring` for a blob, §3.1), the body's `L`, then
+name, or `bytes`, `string` for a blob, §3.1), the body's `L`, then
 the body, written by §22.2 exactly as any body (a blob's body is its bytes).
 
 Go numbers in `Number` (`internal/tablewire/nodes.go`) and the C++ writer in

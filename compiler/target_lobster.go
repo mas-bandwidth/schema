@@ -96,11 +96,9 @@ func init() {
 	registerListCarrier("lobster")
 	registerMapCarrier("lobster")
 	registerOptionalArrayCarrier("lobster")
-	// the packet wire carries a string, bytes or flags default and
-	// wstring(N) (internal/codegen/lobster: packet_defaults_test.go,
-	// packet_wide_test.go)
+	// the packet wire carries a string, bytes or flags default
+	// (internal/codegen/lobster: packet_defaults_test.go)
 	registerPacketValueDefaultCarrier("lobster")
-	registerWideTextCarrier("lobster")
 	// tables, arms, unionArrays and blobs: the variable form carries a union
 	// whose arms are field lines of any type, payload-free arms among them,
 	// an array of unions and the *string / *bytes blobs (docs/SPEC-TABLES.md

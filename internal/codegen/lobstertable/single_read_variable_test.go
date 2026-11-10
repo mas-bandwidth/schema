@@ -123,7 +123,7 @@ table Probe {
  name string(4)
  values [2]int16
  child *Child
- wide wstring(2)
+ wide string(2)
  rows map[string(4)]int32
  texts [..2]string(4) | total=5
  keyed [Key]int16
@@ -155,7 +155,7 @@ original.fields[3].elems[1].i = 4
 let child = schema_rt.new_record(schema_rt.table_of("Child"))
 child.fields[0].cell.i = 9
 original.fields[4].cell.node = child
-original.fields[5].cell.units = [97, 98]
+original.fields[5].cell.s = "ab"
 original.fields[5].count = 2
 let entry = schema_rt.new_record(schema_rt.table_of("ProbeRowsEntry"))
 entry.fields[0].cell.s = "key"
@@ -181,7 +181,7 @@ assert loaded.fields[2].cell.s == "four"
 assert loaded.fields[3].elems[0].i == 3 and loaded.fields[3].elems[1].i == 4
 let loaded_child = loaded.fields[4].cell.node
 assert loaded_child and loaded_child.fields[0].cell.i == 9
-assert length(loaded.fields[5].cell.units) == 2 and loaded.fields[5].cell.units[0] == 97 and loaded.fields[5].cell.units[1] == 98
+assert loaded.fields[5].cell.s == "ab" and loaded.fields[5].count == 2
 assert length(loaded.fields[6].entries) == 1
 let loaded_entry = loaded.fields[6].entries[0].tab
 assert loaded_entry and loaded_entry.fields[0].cell.s == "key" and loaded_entry.fields[1].cell.i == 8

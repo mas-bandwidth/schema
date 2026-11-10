@@ -115,7 +115,7 @@ func (p *fixedRecordProjection) field(f *ir.Field, typed, sl, ind string) {
 		return
 	}
 	p.element(f, typed, sl+".cell", ind)
-	if !p.toTyped && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
+	if !p.toTyped && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 		p.g.Pf("%s%s.count = %s\n", ind, sl, slotExpr(typed, f, "Length"))
 	}
 }
@@ -151,29 +151,14 @@ func (p *fixedRecordProjection) element(f *ir.Field, typed, cell, ind string) {
 		p.assign(typed, cell+".b", ind)
 	case ir.TFloat32, ir.TFloat64:
 		p.assign(typed, cell+".f", ind)
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		length := slotExpr(typed, f, "Length")
 		value := cell + ".s"
-		if t.Kind == ir.TWString {
-			value = cell + ".units"
-		}
-		switch {
-		case p.toTyped:
+		if p.toTyped {
 			p.g.Pf("%s%s = length(%s)\n", ind, length, value)
 			p.check(fmt.Sprintf("%s > %d", length, t.Size), ind)
-			if t.Kind == ir.TWString {
-				i := p.local()
-				p.g.Pf("%sfor(%s) %s:\n", ind, length, i)
-				p.check(fmt.Sprintf("%s[%s] < 0 or %s[%s] > 65535", value, i, value, i), ind+"    ")
-				p.g.Pf("%s    %s = write_int16_le(%s, %s * 2, %s[%s])\n", ind, typed, typed, i, value, i)
-			} else {
-				p.g.Pf("%s%s = write_substring(%s, 0, %s, false)\n", ind, typed, typed, value)
-			}
-		case t.Kind == ir.TWString:
-			i := p.local()
-			p.g.Pf("%s%s = []\n", ind, value)
-			p.g.Pf("%sfor(%s) %s: push(%s, read_uint16_le(%s, %s * 2))\n", ind, length, i, value, typed, i)
-		default:
+			p.g.Pf("%s%s = write_substring(%s, 0, %s, false)\n", ind, typed, typed, value)
+		} else {
 			p.g.Pf("%s%s = substring(%s, 0, %s)\n", ind, value, typed, length)
 		}
 	case ir.TInt, ir.TFixed, ir.TBits:

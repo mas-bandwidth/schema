@@ -49,7 +49,7 @@ func TestTableOpenIdValidationWorkIsBounded(t *testing.T) {
 	t.Parallel()
 
 	u := &ir.Unit{Package: "bench"}
-	src := tablePrimitives("bench", false, false, false, false, false, widenCensus{}, 64, u)
+	src := tablePrimitives("bench", false, false, false, false, widenCensus{}, 64, u)
 
 	for _, want := range []string{
 		"static const int32_t kTableProbeBound = 4096;",

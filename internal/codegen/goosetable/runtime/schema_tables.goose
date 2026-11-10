@@ -15,7 +15,7 @@ import .schema_rt;
 let ShapeBool: u8 = 1;   // bool
 let ShapeInt: u8 = 2;    // an integer at its kind's width; bits(N) and fixed too
 let ShapeFloat: u8 = 3;  // float32, float64
-let ShapeStr: u8 = 4;    // string(N), wstring(N)
+let ShapeStr: u8 = 4;    // string(N)
 let ShapeText: u8 = 5;   // an unbounded string element or map key
 let ShapeBytes: u8 = 6;  // bytes(N)
 let ShapeEnum: u8 = 7;   // kind 30, the variant name's id
@@ -69,7 +69,6 @@ struct FieldDesc {
     flo: f64,
     fhi: f64,
     fres: f64,
-    wide: bool,               // wstring
     optional: bool,           // ?T, its presence in <slot>Present
     required: bool,
     deprecated: bool,
@@ -125,10 +124,10 @@ struct UnionDesc {
 
 // LoadReg is one row of THE LOAD DISPATCH TABLE (registry/tablewire.goosereg,
 // assembled onto this file as `load_registry`): the descriptor facts it
-// matches — the shape, the array kind (0: any) and wstring — and the Loader
+// matches — the shape and the array kind (0: any) — and the Loader
 // it selects. The first row that matches wins. It lives here, beside the
 // array it types, so this module checks on its own.
-struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
+struct LoadReg { shape: u8, array: u8, loader: Loader }
 
 // Crc32cTable is §2.14's CRC-32C (Castagnoli, reflected polynomial
 // 0x82F63B78) as a byte table: entry i is the CRC register after the eight

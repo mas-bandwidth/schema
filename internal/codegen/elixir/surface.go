@@ -52,7 +52,7 @@ func (g *gen) scalarSpec(f *ir.Field) string {
 		return "float()"
 	case ir.TString:
 		return "String.t()"
-	case ir.TBytes, ir.TWString:
+	case ir.TBytes:
 		return "binary()"
 	case ir.TFixed:
 		if f.IntMin != nil && f.IntMax != nil {

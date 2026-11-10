@@ -43,10 +43,6 @@ func (cTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (ma
 // tests read, so a test of WHAT is emitted does not also restate HOW the
 // namespace spells it.
 func emitC(u *ir.Unit, lineage *FixedLineage) (map[string][]byte, error) {
-	// C carries packet and table wide text.
-	if err := refuseWideText(u, "c"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "c"); err != nil {
 		return nil, err
 	}
@@ -108,7 +104,6 @@ func cTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]ctable.FixedL
 }
 
 func init() {
-	registerWideTextCarrier("c")
 	registerBuiltin(cTarget{}, true, true, true, true)
 	registerOptionalArrayCarrier("c")
 	registerListCarrier("c")

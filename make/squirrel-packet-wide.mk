@@ -1,7 +1,7 @@
-# make/squirrel-packet-wide.mk — the SQUIRREL legs of the packet text,
-# wide-text and value-defaults checks (test/packet-text/README.md,
-# test/packet-wide/README.md, test/packet-defaults/README.md; SPEC §4.2,
-# §4.7, §4.8, §4.12). The Makefile's wildcard include pulls this in.
+# make/squirrel-packet-wide.mk — the SQUIRREL legs of the packet text
+# and value-defaults checks (test/packet-text/README.md,
+# test/packet-defaults/README.md; SPEC §4.2, §4.7, §4.8). The Makefile's
+# wildcard include pulls this in.
 
 build/packet-text/squirrel/.stamp: bin/schema test/packet-text/Narrow.schema make/squirrel-packet-wide.mk
 	@rm -rf build/packet-text/squirrel
@@ -23,33 +23,6 @@ packet-utf8-squirrel-negative-control: packet-utf8-squirrel
 	@if ./build/packet-text/harness -oracle build/packet-text/cpp/driver -mutations-only "$(SQ)" test/packet-text/squirrel/main.nut "$(CURDIR)/build/packet-text/squirrel-negative/gen" > build/packet-text/squirrel-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked UTF-8 read passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/squirrel-negative/log || { cat build/packet-text/squirrel-negative/log; exit 1; }
 	@echo 'packet UTF-8 Squirrel negative control: unchecked read fails bit-flip agreement'
-
-build/packet-wide/squirrel/.stamp: bin/schema build/packet-wide/source/WideText.schema test/packet-wide/Shapes.schema make/squirrel-packet-wide.mk
-	@rm -rf build/packet-wide/squirrel
-	./bin/schema generate --lang squirrel --out build/packet-wide/squirrel build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang squirrel --out build/packet-wide/squirrel/shapes test/packet-wide/Shapes.schema
-	@touch $@
-
-.PHONY: packet-wide-squirrel packet-wide-squirrel-negative-control
-packet-wide-squirrel: build/packet-wide/squirrel/.stamp build/packet-wide/cpp/driver build/packet-text/harness toolchain-squirrel
-	@mkdir -p build/packet-wide/squirrel-contracts
-	@# sq exits 0 on a runtime error, so a contract that throws is caught by its stderr
-	"$(SQ)" test/packet-wide/squirrel/main.nut contracts 2> build/packet-wide/squirrel-contracts/stderr
-	@if [ -s build/packet-wide/squirrel-contracts/stderr ]; then cat build/packet-wide/squirrel-contracts/stderr >&2; exit 1; fi
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver "$(SQ)" test/packet-wide/squirrel/main.nut corpus
-
-# THE PAIRING CONTROL: the generated reader stops refusing a low surrogate
-# that does not follow a high one (and a high one followed by anything else),
-# so the mutated corpus must disagree with the C++ oracle.
-packet-wide-squirrel-negative-control: packet-wide-squirrel
-	@rm -rf build/packet-wide/squirrel-negative
-	@mkdir -p build/packet-wide/squirrel-negative
-	go run ./tools/sabotage -name packet-wide-squirrel-pairing -out build/packet-wide/squirrel-negative/read.gotext internal/codegen/squirrel/read.go
-	@printf '{"Replace":{"%s/internal/codegen/squirrel/read.go":"%s/build/packet-wide/squirrel-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/squirrel-negative/overlay.json
-	go run -overlay=build/packet-wide/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-wide/squirrel-negative/gen build/packet-wide/source/WideText.schema
-	@if ./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver -mutations-only "$(SQ)" test/packet-wide/squirrel/main.nut corpus "$(CURDIR)/build/packet-wide/squirrel-negative/gen" > build/packet-wide/squirrel-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Squirrel wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/squirrel-negative/log || { cat build/packet-wide/squirrel-negative/log; exit 1; }
-	@echo 'packet wide Squirrel negative control: removed pairing fails bit-flip agreement'
 
 build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/squirrel-packet-wide.mk
 	@rm -rf build/packet-defaults/squirrel
@@ -78,4 +51,4 @@ packet-defaults-squirrel-negative-control: packet-defaults-squirrel
 	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log
 	@echo 'packet defaults Squirrel negative control: missing constructor bytes fail the runtime check'
 
-test-squirrel: packet-utf8-squirrel packet-utf8-squirrel-negative-control packet-wide-squirrel packet-wide-squirrel-negative-control packet-defaults-squirrel packet-defaults-squirrel-negative-control
+test-squirrel: packet-utf8-squirrel packet-utf8-squirrel-negative-control packet-defaults-squirrel packet-defaults-squirrel-negative-control

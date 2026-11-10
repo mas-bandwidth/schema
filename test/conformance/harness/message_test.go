@@ -204,10 +204,9 @@ func TestTheVocabularyIsTheMessageClosure(t *testing.T) {
 			}
 		}
 		untouched := map[uint64]string{
-			ir.TableNodeWireId:   "the node-table id",
-			ir.BytesWireTypeId:   "the bytes type id",
-			ir.StringWireTypeId:  "the string type id",
-			ir.WstringWireTypeId: "the wstring type id",
+			ir.TableNodeWireId:  "the node-table id",
+			ir.BytesWireTypeId:  "the bytes type id",
+			ir.StringWireTypeId: "the string type id",
 		}
 		for name, st := range unit.Tables {
 			if st.MapEntryOf == "" {

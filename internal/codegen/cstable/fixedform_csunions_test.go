@@ -114,7 +114,6 @@ func TestFixedArmLayoutMatchesReference(t *testing.T) {
 		{"test/tables/CsUnions.schema", []string{"Root", "LeafHolder"}},     // payload-free, array, counted, union and enum arms
 		{"tables/messages/Messages.schema", []string{"InsertText", "Edit"}}, // string and bytes arms
 		{"test/tables/A2.schema", []string{"Root"}},
-		{"examples-wide/Caption.schema", []string{"Caption"}},
 	}
 	for _, c := range cases {
 		u, out := generateRepoSchema(t, c.schema)

@@ -170,45 +170,6 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 	return string(header), files
 }
 
-func TestCTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCHeader(t, deadCWideSrc)
-	for _, sym := range deadCWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
-	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// them, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "!table_wire_utf16( sub.buffer, sub.size/2 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16")
-	}
-	if !strings.Contains(with, "table_wire_utf16_clamp( sub.buffer, sub.size/2, 4 )") {
-		t.Error("the wide-text field's codec must call table_wire_utf16_clamp at its declared bound")
-	}
-	deadCCompile(t, files)
-
-	without, files := deadCHeader(t, deadCNarrowSrc)
-	for _, sym := range deadCWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// KIND 12's runtime is every unit's: it rides in the file wire's
-	// primitives, which the generic walk and the cooked form both read
-	for _, sym := range []string{"table_wire_utf8(", "table_wire_utf8_clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
-	deadCCompile(t, files)
-}
-
-// TestCTableFloatRungIsTheFiniteTestAndTheConversion holds the float rung,
-// kind 10 into a declared kind 11, to the finite rule (docs/SPEC-TABLES.md
-// §3.3, §4). There was a census-gated table_wire_widen_f32 here, which carried
-// a NaN's payload across by hand; a NaN or an infinity is now refused on its
-// raw bits before the rung, and every finite float32 is exactly a float64, so
-// the rung is the ordinary conversion and no unit carries a helper for it.
 func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 	with, files := deadCHeader(t, deadCF64Src)
 	if strings.Contains(with, "table_wire_widen_f32") {

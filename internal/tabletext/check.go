@@ -189,21 +189,6 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 			return bad("length %d past its bound %d", len(cell.Str), f.Type.Size)
 		}
 		return nil
-	case ir.TWString:
-		if !wellFormedUTF16(cell.Units) {
-			return bad("ill-formed UTF-16 text (a lone surrogate)")
-		}
-		if seen.binaryText {
-			for _, u := range cell.Units {
-				if u == 0 {
-					return bad("ill-formed UTF-16 text (a zero unit)")
-				}
-			}
-		}
-		if f.Type.Size > 0 && int64(len(cell.Units)) > f.Type.Size {
-			return bad("length %d past its bound %d", len(cell.Units), f.Type.Size)
-		}
-		return nil
 	case ir.TBytes:
 		if f.Type.Size > 0 && int64(len(cell.Str)) > f.Type.Size {
 			return bad("length %d past its bound %d", len(cell.Str), f.Type.Size)
@@ -277,22 +262,4 @@ func fitsBits(v *big.Int, bits int, signed bool) bool {
 		return v.Cmp(lo) >= 0 && v.Cmp(hi) <= 0
 	}
 	return v.Sign() >= 0 && v.BitLen() <= bits
-}
-
-// wellFormedUTF16 is whether units pair every surrogate: a lead followed by a
-// trail, and no trail on its own.
-func wellFormedUTF16(units []uint16) bool {
-	for i := 0; i < len(units); i++ {
-		u := units[i]
-		switch {
-		case u >= 0xD800 && u <= 0xDBFF:
-			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
-				return false
-			}
-			i++
-		case u >= 0xDC00 && u <= 0xDFFF:
-			return false
-		}
-	}
-	return true
 }

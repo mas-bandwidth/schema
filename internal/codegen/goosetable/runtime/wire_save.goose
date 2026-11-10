@@ -30,7 +30,6 @@ import .wire_retain;
 
 let KindUnion: u8 = 15;
 let KindKeyed: u8 = 16;
-let KindWstring: u8 = 33;
 let KindEnum: u8 = 30;
 let KindU8: u8 = 6;
 
@@ -230,7 +229,6 @@ fn is_default(c: SaveCtx&, s: i64, d: FieldDesc) -> bool {
     let v = c.vals[s];
     if d.shape == ShapeBool { return (v.bits.lo != 0) == (d.has_def && d.def_b); }
     if d.shape == ShapeFloat { return float_is_default(v.bits.lo, d); }
-    if d.shape == ShapeStr && d.wide { return v.len == 0; }
     if d.shape == ShapeStr || d.shape == ShapeText || d.shape == ShapeBytes {
         return view_equals(c, v.off, v.len, if d.has_def { d.def_s } else { "" });
     }
@@ -434,14 +432,6 @@ fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
         return;
     }
     if d.shape == ShapeArr && d.array == ArrayKeyed { field_keyed(c, s, d, owner, ordinal); return; }
-    if d.shape == ShapeStr && d.wide {
-        // WIDE TEXT TAKES NO SPECIFIED DEFAULT: the empty value elides
-        if state_of(c, s) == ValAbsent || c.vals[s].len == 0 { return; }
-        header(c, d.id, KindWstring);
-        put_leb(c, c.vals[s].len as! u64);
-        put_view(c, c.vals[s].off, c.vals[s].len);
-        return;
-    }
     if d.shape == ShapeStr || d.shape == ShapeText {
         if is_default(c, s, d) { return; }
         header(c, d.id, KindString);
@@ -539,20 +529,15 @@ fn field_simple(c: SaveCtx&, s: i64, d: FieldDesc) {
         if s >= 0 { put_view(c, c.vals[s].off, c.vals[s].len); }
         return;
     }
-    if d.shape == ShapeStr && d.wide {
-        header(c, d.id, KindWstring);
-        put_text(c, s, d);
-        return;
-    }
     let kind = d.kind;
     header(c, d.id, kind);
     put_value(c, s, d, kind);
 }
 
-// put_text: a text value's L, then its bytes (kind 12, kind 33).
+// put_text: a text value's L, then its bytes (kind 12).
 fn put_text(c: SaveCtx&, s: i64, d: const FieldDesc&) {
     if state_of(c, s) == ValAbsent {
-        let def = if d.has_def && !d.wide { d.def_s } else { "" };
+        let def = if d.has_def { d.def_s } else { "" };
         put_leb(c, def.len as! u64);
         for b in def { put(c, b); }
         return;
@@ -596,7 +581,7 @@ fn scalar_bits(c: SaveCtx&, s: i64, d: const FieldDesc&) -> Int128 {
 // put_value: one element at its kind's own framing (tablewire.encodeElement).
 recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
     if d.shape == ShapeEnum { put_enum(c, s, d); return; }
-    if kind == KindString || kind == KindWstring { put_text(c, s, d); return; }
+    if kind == KindString { put_text(c, s, d); return; }
     if kind == KindTable {
         let t = save_table_index(c, d.ref);
         let start = c.out.len;
@@ -759,7 +744,7 @@ fn arm_payload(c: SaveCtx&, p: i64, a: FieldDesc) {
     if a.shape == ShapePtr || a.shape == ShapeSBlob || a.shape == ShapeBBlob { put_leb(c, node_ref(c, p)); return; }
     if a.shape == ShapeStr || a.shape == ShapeText {
         if state_of(c, p) == ValAbsent {
-            let def = if a.has_def && !a.wide { a.def_s } else { "" };
+            let def = if a.has_def { a.def_s } else { "" };
             for b in def { put(c, b); }
             return;
         }

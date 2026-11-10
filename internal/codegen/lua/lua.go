@@ -25,8 +25,7 @@
 // table { lo = <low 64 bits>, hi = <high 64 bits> }, each half an integer.
 // Floats are Lua floats (IEEE-754 doubles); a float32 field holds the double
 // that is exactly its float32 value. string(N) and bytes(N) are Lua strings
-// (immutable byte strings: the length IS the used length). wstring(N) is a
-// sequence of UTF-16 code units. Arrays are 1-based sequences pre-filled to
+// (immutable byte strings: the length IS the used length). Arrays are 1-based sequences pre-filled to
 // their bound (the storage principle, SPEC §6.1), and a counted array carries
 // <Name>Count beside its storage, as the JavaScript target does.
 package lua
@@ -428,8 +427,6 @@ func ZeroValue(m *Module, t ir.FieldType) string {
 		return "0.0"
 	case ir.TString, ir.TBytes:
 		return `""`
-	case ir.TWString:
-		return "{}"
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Struct, *ir.Union:
@@ -456,8 +453,6 @@ func DefaultValue(m *Module, f *ir.Field) string {
 		return FloatLiteral(f.DefFloat)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		return ByteString(f.DefBytes)
-	case f.Type.Kind == ir.TWString:
-		return "{}"
 	case isWide(f.Type):
 		return Int128Literal(f.DefInt)
 	case f.DefInt != nil:
@@ -476,7 +471,7 @@ func fieldComment(f *ir.Field) string {
 			FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)))
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		parts = append(parts, fmt.Sprintf("at most %d", f.Type.Size))
 	}
 	if len(parts) == 0 {

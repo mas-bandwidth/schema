@@ -398,7 +398,7 @@ func TestLockConstantGrowAllows(t *testing.T) {
 		rowWith("const N = 8", "    slots [..N]int32"), "Row")
 }
 
-// ---- string_grow / wstring_grow / bytes_grow ----
+// ---- string_grow / bytes_grow ----
 
 func TestLockStringGrowRefuses(t *testing.T) {
 	rowRefuses(t, rowTable("    name string(8)"), rowTable("    name string(4)"),
@@ -407,15 +407,6 @@ func TestLockStringGrowRefuses(t *testing.T) {
 
 func TestLockStringGrowAllows(t *testing.T) {
 	rowAllows(t, rowTable("    name string(8)"), rowTable("    name string(16)"), "Row")
-}
-
-func TestLockWstringGrowRefuses(t *testing.T) {
-	rowRefuses(t, rowTable("    name wstring(8)"), rowTable("    name wstring(4)"),
-		"fixed table Row", "field name", "capacity narrowed (8 -> 4)")
-}
-
-func TestLockWstringGrowAllows(t *testing.T) {
-	rowAllows(t, rowTable("    name wstring(8)"), rowTable("    name wstring(16)"), "Row")
 }
 
 func TestLockBytesGrowRefuses(t *testing.T) {
@@ -431,10 +422,6 @@ func TestLockBytesGrowAllows(t *testing.T) {
 
 func TestLockTextKindRefuses(t *testing.T) {
 	before := rowTable("    name string(8)")
-	t.Run("string to wstring", func(t *testing.T) {
-		rowRefuses(t, before, rowTable("    name wstring(8)"),
-			"fixed table Row", "field name", "kind changed")
-	})
 	t.Run("string to bytes", func(t *testing.T) {
 		rowRefuses(t, before, rowTable("    name bytes(8)"),
 			"fixed table Row", "field name", "kind changed")

@@ -43,7 +43,7 @@ fixed table Root
     kid    Child
     arm    Arm
     name   string(6)
-    wtext  wstring(4)
+    wtext  string(16)
 }
 `
 
@@ -91,7 +91,6 @@ func TestWritersRefuseValuesOutsideTheirDeclaration(t *testing.T) {
 		{"arm tag 3", func(i *tabletext.Instance) { cell(i, "arm").Cell.U = 3 }},
 		{"name length 7", func(i *tabletext.Instance) { cell(i, "name").Cell.Str = []byte("abcdefg") }},
 		{"name ill-formed text", func(i *tabletext.Instance) { cell(i, "name").Cell.Str = []byte{'a', 0xff} }},
-		{"wtext unpaired surrogate", func(i *tabletext.Instance) { cell(i, "wtext").Cell.Units = []uint16{'a', 0xd800} }},
 	}
 	writers := []struct {
 		name  string

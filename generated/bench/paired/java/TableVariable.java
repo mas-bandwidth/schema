@@ -358,7 +358,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb();
                         if (!fail && has((int) n)) {
@@ -1122,7 +1121,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb(off, end);
                         return at < 0 || n > end - at ? -1 : at + (int) n;
@@ -1187,7 +1185,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb(off, end);
                         if (at < 0 || n > end - at) {
@@ -1217,8 +1214,6 @@ public final class TableVariable {
             switch (kind) {
                 case 12:
                     return textValid(buf, off, end - off) || damage();
-                case 33:
-                    return wideBytesValid(off, end) || damage();
                 case 31:
                     return true; // opaque: the one kind whose meaning a reader may not know (§3)
                 case 32:
@@ -1281,29 +1276,6 @@ public final class TableVariable {
                     | (buf[off + 1] & 0xff) << 8
                     | (buf[off + 2] & 0xff) << 16
                     | (buf[off + 3] & 0xff) << 24;
-        }
-
-        boolean wideBytesValid(int off, int end) {
-            if (((end - off) & 1) != 0) {
-                return false;
-            }
-            for (int i = off; i < end; i += 2) {
-                int u = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
-                if (u == 0 || u >= 0xdc00 && u <= 0xdfff) {
-                    return false;
-                }
-                if (u >= 0xd800 && u <= 0xdbff) {
-                    i += 2;
-                    if (i >= end) {
-                        return false;
-                    }
-                    int v = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
-                    if (v < 0xdc00 || v > 0xdfff) {
-                        return false;
-                    }
-                }
-            }
-            return true;
         }
 
         // header reads an array, keyed or map header: THE HEADER LIES INSIDE
@@ -1656,7 +1628,6 @@ public final class TableVariable {
             case 16:
             case 31:
             case 32:
-            case 33:
                 {
                     int e = lebEnd(buf, off, limit);
                     if (e < 0) {
@@ -2274,10 +2245,10 @@ public final class TableVariable {
         return rec.bytes;
     }
 
-    // Wide values use UTF-16 code units in the public value API. Wire bytes
-    // are always little endian, independent of the cooked region's order.
+    // Wire bytes are always little endian, independent of the cooked region's
+    // order.
     static Reader fieldPayload(Reader raw, int kind) {
-        if (kind != 12 && kind != 13 && kind != 14 && kind != 16 && kind != 33) return raw;
+        if (kind != 12 && kind != 13 && kind != 14 && kind != 16) return raw;
         int size = raw.limit - raw.off;
         Writer framed = new Writer(new byte[size + 10], new Ids(1));
         framed.putLeb(size);
@@ -2301,26 +2272,6 @@ public final class TableVariable {
         while (list.size() < at) list.add(value);
         if (at < list.size()) list.set(at, value);
         else list.add(value);
-    }
-
-    static boolean wideValid(char[] text) {
-        if (text == null) return false;
-        for (int i = 0; i < text.length; i++) {
-            char c = text[i];
-            if (c == 0 || Character.isLowSurrogate(c)) return false;
-            if (Character.isHighSurrogate(c)) {
-                if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
-            }
-        }
-        return true;
-    }
-
-    static char[] wideClamp(char[] text, int bound, Report report) {
-        if (text.length <= bound) return text;
-        int keep = bound;
-        if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
-        report.refuse("out_of_range");
-        return java.util.Arrays.copyOf(text, keep);
     }
 
     // NodeTable is a load-side holder: the root body's node records, filled

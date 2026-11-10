@@ -126,7 +126,7 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		g.emitFixedClampElement(f, expr+"["+i+"]", indent+8)
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.leaveLoop()
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString:
 		// THE CONTENT RULE IS NOT THIS LEG'S YET. §5.8 row 8's ruling — a
 		// content violation REFUSES BY NAME — is owed by the reference first;
 		// the bounds pass holds the bounds a declaration states and nothing

@@ -125,7 +125,7 @@ func layoutKindKnown(kind int) bool {
 	if kind >= 1 && kind <= 30 {
 		return true
 	}
-	return kind == 32 || kind == 33 || kind == 35
+	return kind == 32 || kind == 35
 }
 
 func checkLayoutEntry(all []rawEntry, i, depth int) (int, int64) {
@@ -682,7 +682,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		n := min(me.size, te.size)
 		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
-	case 12, 33: // string / wstring: length and bytes, slack left at default
+	case 12: // string: length and bytes, slack left at default
 		n := min(me.size, te.size)
 		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}

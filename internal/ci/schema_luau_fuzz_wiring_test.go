@@ -72,16 +72,21 @@ func TestSchemaLuauHostileCorpusAndWireFuzzWiring(t *testing.T) {
 	}
 
 	controls := read("make/negative-controls.json")
-	at := strings.Index(controls, `"name": "luau"`)
-	if at < 0 {
-		t.Fatal("make/negative-controls.json has no luau group")
+	for _, want := range []struct {
+		group   string
+		targets []string
+	}{
+		{"luau-conformance", []string{"schema-luau-runs-hostile-corpus-negative-control"}},
+		{"luau-fuzz", []string{"tables-luau-wire-fuzz-negative-control", "luau-nightly-fuzz-negative-control"}},
+	} {
+		at := strings.Index(controls, `"name": "`+want.group+`"`)
+		if at < 0 {
+			t.Fatalf("make/negative-controls.json has no %s group", want.group)
+		}
+		group, _, _ := strings.Cut(controls[at:], "}")
+		carries("make/negative-controls.json (the "+want.group+" group)", group,
+			append([]string{`"when": "pull-request"`}, want.targets...)...)
 	}
-	group, _, _ := strings.Cut(controls[at:], "}")
-	carries("make/negative-controls.json (the luau group)", group,
-		`"when": "pull-request"`,
-		`"schema-luau-runs-hostile-corpus-negative-control"`,
-		`"tables-luau-wire-fuzz-negative-control"`,
-		`"luau-nightly-fuzz-negative-control"`)
 
 	workflow := read(".github/workflows/schema-luau-runs-hostile-corpus.yml")
 	carries("schema-luau-runs-hostile-corpus.yml", workflow,

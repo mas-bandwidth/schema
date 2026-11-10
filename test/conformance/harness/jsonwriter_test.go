@@ -116,9 +116,6 @@ func checkCanonicalJSONWriterCodegenStrict(rustSrc, jsSrc, elixirSrc string) err
 	if strings.Contains(rustSrc, "from_utf16_lossy") {
 		return fmt.Errorf("rusttable still replaces unpaired surrogates via from_utf16_lossy instead of refusing (§16.14 W0)")
 	}
-	if !strings.Contains(rustSrc, "fn json_escape_wide(") || !strings.Contains(rustSrc, "if !json_escape_wide(") {
-		return fmt.Errorf("rusttable is missing json_escape_wide unpaired-surrogate refusal (§16.14 W0)")
-	}
 	if !strings.Contains(rustSrc, "text.parse::<f32>().map(|back| back as f64 == v).unwrap_or(false)") {
 		return fmt.Errorf("rusttable is missing single-rounded float32 read-back in json_float (§16.14 W12)")
 	}
@@ -164,11 +161,7 @@ func generateCanonicalJSONCodegenSources(t *testing.T) (rustSrc, jsSrc, elixirSr
 	if err != nil {
 		t.Fatal(err)
 	}
-	wideUnit, err := u.get("widedemo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	rustFiles, err := rusttable.Generate(wideUnit)
+	rustFiles, err := rusttable.Generate(tableUnit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +252,7 @@ func TestCanonicalJSONWriterCodegenStrictNegativeControl(t *testing.T) {
 	rustSrc, jsSrc, elixirSrc, _, _ := generateCanonicalJSONCodegenSources(t)
 
 	if err := checkCanonicalJSONWriterCodegenStrict(
-		strings.Replace(rustSrc, "if !json_escape_wide(", "let _ = String::from_utf16_lossy; if !(", 1),
+		rustSrc+"// from_utf16_lossy",
 		jsSrc,
 		elixirSrc,
 	); err == nil {

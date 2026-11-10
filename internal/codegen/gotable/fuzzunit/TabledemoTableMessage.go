@@ -370,7 +370,7 @@ func tableMessageShapeRead(r *TableReader, k uint8) (s TableMessageShape, ok boo
 			return s, true
 		}
 		return s, false
-	case k == 12 || k == 33:
+	case k == 12:
 		n, ok := r.Leb()
 		if !ok || n > math.MaxInt32 {
 			return s, false

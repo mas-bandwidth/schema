@@ -691,10 +691,6 @@ const wireRows = [
   // declared width (§3, §15), and the evolved type reading them (§4)
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
   ["tblscalars2", "SimState", "scalars2/Scalardemo2Variable.js"],
-  // wstring(N) as a field, in a type, in an array of that type and as an arm
-  // (§3; SPEC.md §4.12)
-  ["widedemo", "Caption", "wide/WideVariable.js"],
-  ["widedemo", "Stamp", "wide/WideVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -898,7 +894,6 @@ const textUnits = {
   tblr1: "r1/Tblr1Variable.js", tblr2: "r2/Tblr2Variable.js",
   tblp1: "p1/Tblp1Variable.js", tblp3: "p3/Tblp3Variable.js",
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
-  widedemo: "wide/WideVariable.js",
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
 };

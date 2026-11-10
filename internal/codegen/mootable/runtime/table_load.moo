@@ -60,7 +60,7 @@ local function skip(r: any, kind: number): boolean
 		r.at += w
 		return true
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
 			return false
@@ -1078,35 +1078,11 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		dst[i] = x
 		return true
 	elseif s == "str" or s == "text" then
-		-- a text element is kind 12 (33 wide): its own L, then L bytes (§2.13, §3)
+		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then
 			report.bodyDamaged = true
 			return false
-		end
-		if e.wide then
-			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
-				report.bodyDamaged = true
-				r.at += n
-				return true
-			end
-			local units = n // 2
-			if e.bound ~= nil and units > e.bound then
-				units = e.bound
-				report.outOfRange += 1
-			end
-			local b = dst[i]
-			if type(b) ~= "buffer" or buffer.len(b) < units * 2 then
-				b = buffer.create(units * 2)
-				dst[i] = b
-			end
-			buffer.fill(b, 0, 0)
-			buffer.copy(b, 0, r.b, r.at, units * 2)
-			if lens ~= nil then
-				lens[i] = units
-			end
-			r.at += n
-			return true
 		end
 		if not V.utf8(r.b, r.at, n) then
 			-- the element does not land: the list keeps the prefix (§2.13, §3)
@@ -1294,23 +1270,6 @@ read_field = function(fd: any, r: any, v: any): ...any
 		if r.bad or r.at + n > r.e then
 			_report.bodyDamaged = true
 			return false
-		end
-		if fd.wide then
-			if n % 2 ~= 0 or not V.wide(r.b, r.at, n) then
-				_report.bodyDamaged = true
-				r.at += n
-				return true, nil, false
-			end
-			local units = n // 2
-			if fd.bound ~= nil and units > fd.bound then
-				units = fd.bound
-				_report.outOfRange += 1
-			end
-			if fd.slot ~= nil and v ~= nil then
-				store_buffer(v, fd.slot, r.b, r.at, units * 2, units)
-			end
-			r.at += n
-			return true
 		end
 		if not V.utf8(r.b, r.at, n) then
 			_report.bodyDamaged = true
@@ -2434,7 +2393,7 @@ wcPayload = function(at: number, e: number, kind: number): number?
 		return nxt
 	elseif kind == 15 then
 		return wcUnion(at, e)
-	elseif kind == 12 or kind == 33 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+	elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
 		local n, nxt = V.leb(wc.b, at, e)
 		if n == nil or n > e - nxt then
 			wcFail("wire_damaged")
@@ -2460,11 +2419,6 @@ wcContent = function(s: number, e: number, kind: number): boolean
 	end
 	if kind == 12 then
 		if not V.utf8(wc.b, s, e - s) then
-			return wcFail("wire_damaged")
-		end
-		return true
-	elseif kind == 33 then
-		if (e - s) % 2 ~= 0 or not V.wide(wc.b, s, e - s) then
 			return wcFail("wire_damaged")
 		end
 		return true

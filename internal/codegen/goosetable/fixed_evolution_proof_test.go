@@ -340,7 +340,6 @@ func TestGooseFixedProofText(t *testing.T) {
 	const schema = `package probe
 fixed table T {
     s string(4)
-    w wstring(4)
 }
 `
 	u := parseCheckUnit(t, schema)
@@ -348,8 +347,6 @@ fixed table T {
     var v = probe::T {
         S: [97, 98, 0, 0],
         SLength: 2,
-        W: [0x0041, 0x0042, 0, 0],
-        WLength: 2,
     };
     var clean: u8[>..] = [];
     let _ = probe::TFixedSave([v], clean);
@@ -373,13 +370,6 @@ fixed table T {
     while i < clean.len { slackBytes.push(clean[i]); i += 1; }
     slackBytes[body + 4 + 2] = 0xff;
 
-    // C5: unpaired UTF-16 surrogate (0xd800) in used wstring units -> text_ill_formed
-    var badUtf16: u8[>..] = [];
-    i = 0;
-    while i < clean.len { badUtf16.push(clean[i]); i += 1; }
-    badUtf16[body + 8 + 4] = 0x00;
-    badUtf16[body + 8 + 5] = 0xd8;
-
     var dst: probe::T[1] = [probe::T { .. }; 1];
     var rep = schema_rt::FixedReport { .. };
     let n1 = probe::TFixedLoad(dst, overLen, rep);
@@ -388,12 +378,10 @@ fixed table T {
     let r2 = schema_rt::fixed_refusal_name(rep.reason);
     let n3 = probe::TFixedLoad(dst, slackBytes, rep);
     let r3 = schema_rt::fixed_refusal_name(rep.reason);
-    let n4 = probe::TFixedLoad(dst, badUtf16, rep);
-    let r4 = schema_rt::fixed_refusal_name(rep.reason);
-    print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3, " ", n4, " ", r4);
+    print(n1, " ", r1, " ", n2, " ", r2, " ", n3, " ", r3);
 }
 `, nil)
-	if got != "-1 length_over_bound -1 text_ill_formed 1 ok -1 text_ill_formed" {
+	if got != "-1 length_over_bound -1 text_ill_formed 1 ok" {
 		t.Fatalf("Text (C3/C4/C5/R24): got %q", got)
 	}
 }

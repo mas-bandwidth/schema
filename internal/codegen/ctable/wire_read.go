@@ -283,12 +283,6 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.emitListRead(f, dst, bounded)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.wireScalarRead(f, dst, "(*r)", "kind", ind, "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0;")
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sTableReader sub; int64_t keep, i;\n", ind)
-		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)
-		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
-		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, f.Type.Size)
-		g.pf("%sfor ( i = 0; i < keep; i++ ) { %s[i] = table_wire_utf16_unit( sub.buffer, i ); } %s[keep] = 0; %s_length = (int32_t)keep;\n", ind, dst, dst, dst)
 	case f.Type.TextUnbounded():
 		g.pf("%sTableReader sub; int refused = 0;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return 0; }\n", ind)

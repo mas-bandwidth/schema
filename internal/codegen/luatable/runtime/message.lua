@@ -255,7 +255,6 @@ local function elem_zero(d)
   if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "union" then return { tag = 0 } end
   return nil
@@ -313,8 +312,6 @@ local function elem_rides(T, d, v)
     return not same_float(d.f32, v, 0.0)
   elseif s == "string" or s == "bytes" then
     return #v > 0
-  elseif s == "wstring" then
-    return #v > 0
   end
   return true
 end
@@ -335,7 +332,6 @@ rides = function(T, f, v)
     return (v or false) ~= (def or false)
   end
   if s == "string" or s == "bytes" then return v ~= f.default end
-  if s == "wstring" then return #v > 0 end
   return not same_scalar(f, v)
 end
 
@@ -504,14 +500,6 @@ skip_entry = function(R, e, ctx)
     local n, ok = R:get(bits_range(0, e.max or 0))
     if not ok or not R:align() then return false end
     return R:raw(n) ~= nil
-  elseif k == 33 then
-    local n, ok = R:get(bits_range(0, e.max or 0))
-    if not ok then return false end
-    for _ = 1, n do
-      local _, ok2 = R:get(16)
-      if not ok2 then return false end
-    end
-    return true
   elseif k == 30 then
     local ref, ok = R:get(ctx.refBits)
     if not ok then return false end
@@ -618,22 +606,6 @@ read_value = function(R, T, f, holder, key, ctx, e)
       return false
     end
     holder[key] = raw
-    return true
-  elseif s == "wstring" then
-    local w = bits_range(0, (e and e.max) or f.bound)
-    local n, ok = R:get(w)
-    if not ok then return false end
-    local out = {}
-    for i = 1, n do
-      local u, ok2 = R:get(16)
-      if not ok2 then return false end
-      out[i] = u
-    end
-    if f.bound ~= nil and n > f.bound then
-      ctx.reason = "length_over_bound"
-      return false
-    end
-    holder[key] = out
     return true
   elseif s == "enum" then
     local ref, ok = R:get(ctx.refBits)
@@ -877,11 +849,6 @@ write_value = function(W, T, f, holder, key, ctx)
   if s == "string" or s == "bytes" then
     W:put(#v, bits_range(0, f.bound))
     W:raw(v)
-  elseif s == "wstring" then
-    W:put(#v, bits_range(0, f.bound))
-    for i = 1, #v do
-      W:put(v[i], 16)
-    end
   elseif s == "enum" then
     if v == nil then
       W:put(0, ctx.refBits)
@@ -994,7 +961,7 @@ local function known_kind(kind)
   return kind == 0
     or (kind >= 1 and kind <= 17)
     or (kind >= 18 and kind <= 29)
-    or (kind >= 30 and kind <= 33)
+    or (kind >= 30 and kind <= 32)
     or kind == 36
 end
 
@@ -1069,7 +1036,7 @@ local function read_shape(e, s, at)
       e.min = lo
     end
     return at + 16
-  elseif kind == 12 or kind == 33 then
+  elseif kind == 12 then
     local max
     max, at = leb(at)
     if at == nil then return nil end
@@ -1084,7 +1051,7 @@ local function read_shape(e, s, at)
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
-    if elem == 12 or elem == 33 then return nil end
+    if elem == 12 then return nil end
     e.min = min
     e.max = max
     e.elem = elem
@@ -1098,7 +1065,7 @@ local function read_shape(e, s, at)
     if at > #s then return nil end
     local elem = string.byte(s, at)
     at = at + 1
-    if elem == 12 or elem == 33 then return nil end
+    if elem == 12 then return nil end
     e.max = max
     e.elem = elem
     local inner = { kind = elem }

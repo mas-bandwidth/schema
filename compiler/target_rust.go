@@ -26,10 +26,6 @@ func (t rustTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // rusttable opens no file and a build ships a reader for every locked layout.
 func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains a named refusal.
-	if err := refuseWideText(u, "rust"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "rust"); err != nil {
 		return nil, err
 	}
@@ -100,7 +96,6 @@ func rustTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rusttable.
 }
 
 func init() {
-	registerWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
 	// AND THE TABLE WIRE'S DEFAULTS TOO, because the FIXED FORM needs them:
 	// §3.4's answer to a field a record does not carry is a PREFILL of the

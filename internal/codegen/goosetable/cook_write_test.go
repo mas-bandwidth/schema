@@ -79,7 +79,7 @@ enum Mode { First, Second }
 fixed table Child { n int32 = 7 }
 fixed table Rows { items [..3]Child }
 union Value { amount uint128
- words wstring(8)
+ words string(8)
  rows Rows
  empty }
 fixed table Root { flag bool
@@ -122,11 +122,6 @@ table Root { name string(12)
  caption ?int32
  names map[string]string(8) }
 `, []string{`{}`, `{"name":"root","leaf":{"note":"hi","data":"AQID"},"thumb":"BAUG","caption":4,"names":{"a":"x","bb":"yy"}}`}},
-	{"wstring", `package probe
-table Root { title wstring(8)
- label string(8) = "dflt"
- next *Root }
-`, []string{`{}`, `{"title":"h\u00e9llo \ud83d\ude00","label":"x","next":{"title":"z"}}`}},
 }
 
 // cookUnitFiles generates a unit for Goose with `override` replacing runtime
@@ -600,13 +595,6 @@ func TestGooseCookRegionWriterNegativeControl(t *testing.T) {
 		bad := featureProbe(t, cookSabotage(t, "    cook_put_at(c, at + col.len_off, n as! u64, 4);\n", "    cook_put_at(c, at + col.len_off, 0, 4);\n"))
 		if !strings.Contains(strings.Join(bad, "\n"), "Root.bin") {
 			t.Fatalf("a zero text length left the feature witnesses green: %q", bad)
-		}
-	})
-	t.Run("wstring-unit-order", func(t *testing.T) {
-		t.Parallel()
-		bad := cookProbe(t, "wstring", cookSabotage(t, "lo | (hi << 8)", "hi | (lo << 8)"))
-		if len(bad) == 0 {
-			t.Fatal("swapped code-unit bytes left the wstring case green")
 		}
 	})
 	t.Run("union-tag-bound", func(t *testing.T) {

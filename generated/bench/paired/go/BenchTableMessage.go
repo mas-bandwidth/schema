@@ -397,10 +397,10 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 // count, and the entry count is bounded above at 4096, so it is at most eight
 // million compares on a path that runs ONCE a connection and never again. The
 // compare is spelled inline so the emitter claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..33 plus the
-// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 34, 35 and 37
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
+// timestamp 36 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
 // stay malformed.
-func tableMessageKnownKind(k uint8) bool { return k <= 33 || k == 36 }
+func tableMessageKnownKind(k uint8) bool { return k <= 32 || k == 36 }
 func tableMessageKindBits(k uint8) int64 {
 	if k == 0 || k == 32 {
 		return 0
@@ -484,7 +484,7 @@ func tableMessageShapeRead(r *TableReader, k uint8) (s TableMessageShape, ok boo
 			return s, true
 		}
 		return s, false
-	case k == 12 || k == 33:
+	case k == 12:
 		n, ok := r.Leb()
 		if !ok || n > math.MaxInt32 {
 			return s, false
@@ -573,19 +573,12 @@ func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e 
 		}
 		arm, ok := v.Entry(ref)
 		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
-	case 12, 33:
+	case 12:
 		n, ok := tableMessageCount(r, s)
-		if !ok {
+		if !ok || !r.Align() {
 			return false
 		}
-		width := int64(16)
-		if s.Kind == 12 {
-			width = 8
-			if !r.Align() {
-				return false
-			}
-		}
-		return r.Skip(int64(n) * width)
+		return r.Skip(int64(n) * 8)
 	case 31:
 		if !r.Align() {
 			return false

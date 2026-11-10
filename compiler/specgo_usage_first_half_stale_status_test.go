@@ -70,9 +70,9 @@ func TestSpecGoUsageFirstHalfStaleStatus(t *testing.T) {
 	notHas("Payload-free arms in a table closure are C++ only")
 	notHas("other six targets refuse that table-side use")
 
-	// wstring(N): all nine carry table kind 33.
-	has("All nine also carry table kind `33`")
-	notHas("C++ also carries table kind `33`")
+	// wide text: there is no wstring type; text is UTF-8 string.
+	has("There is no wide string type")
+	notHas("table kind `33`")
 
 	// defaults: Go carries string, bytes and flags defaults on the table wire.
 	has("C++ and Go carry all three on")

@@ -342,7 +342,7 @@ defmodule Bench.TableMessage do
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32, 33] ->
+      kind in [12, 13, 14, 16, 31, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -463,7 +463,7 @@ defmodule Bench.TableMessage do
   defp entry(_), do: :error
 
   defp read_element(kind, id, s, <<elem, rest::binary>>) do
-    if not known_kind?(elem) or elem in [12, 33] do
+    if not known_kind?(elem) or elem == 12 do
       :error
     else
       case shape(elem, rest) do
@@ -474,7 +474,7 @@ defmodule Bench.TableMessage do
             # The shape bytes after that kind byte are still not decoded.
             case rest2 do
               <<inner, rest3::binary>> ->
-                if known_kind?(inner) and inner not in [12, 33] do
+                if known_kind?(inner) and inner != 12 do
                   inner_elem = %{kind: inner, shape: %{kind: inner}}
 
                   {:ok,
@@ -503,7 +503,7 @@ defmodule Bench.TableMessage do
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 33) or kind == 36
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
 
   defp kind_bits(kind) do
     case kind do
@@ -609,7 +609,7 @@ defmodule Bench.TableMessage do
     end
   end
 
-  defp shape(kind, bin) when kind == 12 or kind == 33 do
+  defp shape(kind, bin) when kind == 12 do
     case leb(bin) do
       {:ok, n, rest} when n <= 0x7FFFFFFF -> {:ok, %{kind: kind, max: n}, rest}
       _ -> :error

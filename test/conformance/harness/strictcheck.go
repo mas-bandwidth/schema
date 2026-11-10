@@ -187,32 +187,6 @@ func strictTextValid(b []byte) bool {
 	return utf8.Valid(b) && bytes.IndexByte(b, 0) < 0
 }
 
-func strictWideValid(b []byte) bool {
-	if len(b)&1 != 0 {
-		return false
-	}
-	n := len(b) / 2
-	for i := 0; i < n; i++ {
-		u := uint16(b[i*2]) | uint16(b[i*2+1])<<8
-		switch {
-		case u == 0:
-			return false
-		case u >= 0xD800 && u <= 0xDBFF:
-			if i+1 >= n {
-				return false
-			}
-			low := uint16(b[(i+1)*2]) | uint16(b[(i+1)*2+1])<<8
-			if low < 0xDC00 || low > 0xDFFF {
-				return false
-			}
-			i++
-		case u >= 0xDC00 && u <= 0xDFFF:
-			return false
-		}
-	}
-	return true
-}
-
 func strictFixedWidthKind(kind int) bool {
 	switch kind {
 	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8,
@@ -410,7 +384,7 @@ func (c *strictWireChecker) payload(buf []byte, off int, kind int) (int, bool) {
 		return next, true
 	case kind == ir.TableKindUnion:
 		return c.union(buf, off)
-	case kind == ir.TableKindString, kind == ir.TableKindWstring, kind == ir.TableKindEscape,
+	case kind == ir.TableKindString, kind == ir.TableKindEscape,
 		kind == ir.TableKindNoPayload, kind == ir.TableKindTable, kind == ir.TableKindArray,
 		kind == ir.TableKindKeyed:
 		n, next, ok := strictReadLeb(buf, off)
@@ -432,8 +406,6 @@ func (c *strictWireChecker) content(b []byte, kind int) bool {
 		return c.scalar(b, kind)
 	case kind == ir.TableKindString:
 		return strictTextValid(b)
-	case kind == ir.TableKindWstring:
-		return strictWideValid(b)
 	case kind == ir.TableKindEscape:
 		return true
 	case kind == ir.TableKindNoPayload:
@@ -809,12 +781,6 @@ func strictSkipMessageAt(r *strictBitReader, entries []ir.TableVocabularyEntry, 
 			return false
 		}
 		return r.skip(int(n) * 8)
-	case ir.TableKindWstring:
-		n, ok := r.get(ir.TableMessageBitsRequired(0, shape.Max))
-		if !ok {
-			return false
-		}
-		return r.skip(int(n) * 16)
 	case ir.TableKindEscape:
 		if !r.align() {
 			return false

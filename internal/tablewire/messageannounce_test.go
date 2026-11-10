@@ -91,7 +91,7 @@ func TestMessageAnnounceCarriesMessageClosureAlone(t *testing.T) {
 	}
 	// The tail takes no slot: not the node-table id, not a blob id, and not
 	// any table's name id, fixed or variable.
-	for _, id := range []uint64{ir.TableNodeWireId, ir.BytesWireTypeId, ir.StringWireTypeId, ir.WstringWireTypeId} {
+	for _, id := range []uint64{ir.TableNodeWireId, ir.BytesWireTypeId, ir.StringWireTypeId} {
 		if ids[id] {
 			t.Errorf("the announcement carries the tail id %016x", id)
 		}

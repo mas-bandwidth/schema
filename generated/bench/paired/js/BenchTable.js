@@ -106,7 +106,6 @@ const TableFixedOpWidenF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
 
 // the flavours an TableFixedOpText entry lands its units under
 const TableFixedTextUtf8 = 1;
-const TableFixedTextWide = 2;
 
 const TableFixedNoGuard = -1;
 
@@ -360,25 +359,8 @@ function TableFixedTagAt(src, at, argw) {
 // FIXED-FORM-ALGORITHM.md §4.5 fix 11): the USED units alone are held — never
 // the slack — and ill-formed text REFUSES BY NAME rather than landing a
 // default. flavour TableFixedTextUtf8 checks well-formed UTF-8 over a byte
-// length; TableFixedTextWide checks paired UTF-16 code units with no zero unit,
-// an ODD length being damage. The view is the caller's, made once per read.
+// length. The view is the caller's, made once per read.
 export function TableFixedTextOk(flavour, view, at, len) {
-  if (flavour === TableFixedTextWide) {
-    if ((len & 1) !== 0) { return false; }
-    for (let i = 0; i < len; i += 2) {
-      const u = view.getUint16(at + i, true);
-      if (u === 0) { return false; }             // a zero unit is damage
-      if (u >= 0xD800 && u <= 0xDBFF) {
-        if (i + 2 >= len) { return false; }       // an unpaired high surrogate
-        const lo = view.getUint16(at + i + 2, true);
-        if (lo < 0xDC00 || lo > 0xDFFF) { return false; }
-        i += 2;
-      } else if (u >= 0xDC00 && u <= 0xDFFF) {
-        return false;                             // a lone low surrogate
-      }
-    }
-    return true;
-  }
   for (let i = 0; i < len;) {
     const b0 = view.getUint8(at + i);
     if (b0 === 0) { return false; }               // a zero byte is damage
@@ -494,8 +476,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // the guard test above, on every entry, before any op runs. A text
         // field under a union arm needs BOTH, so they cannot share a lane
         // (docs/SPEC-TABLES.md §3.4).
-        const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;
-        const cap = (size / unit) | 0;
+        const cap = size | 0;
         // A TEXT LENGTH PAST THE CAP IS A REFUSAL BY NAME (§4.5), never a
         // clamp: the cap is the WRITER's own for the lineage entry, and a
         // forged length is not a count this writer could have written. It
@@ -503,9 +484,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         const v = TableFixedGetU32(src, s) | 0;
         if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }
         // THE CONTENT RULES APPLY TO THE USED UNITS AND NOTHING ELSE (§4.5 fix
-        // 11): UTF-8 validity over v bytes, never over N; wide code units over
-        // v, never 2N. A violation REFUSES BY NAME with nothing decoded past it.
-        if (!TableFixedTextOk(unit === 2 ? TableFixedTextWide : TableFixedTextUtf8, srcView, s + 4, v * unit)) {
+        // 11): UTF-8 validity over v bytes, never over N. A violation REFUSES BY
+        // NAME with nothing decoded past it.
+        if (!TableFixedTextOk(TableFixedTextUtf8, srcView, s + 4, v)) {
           report.refused = TableFixedRefusal.TextIllFormed;
           return;
         }
@@ -789,13 +770,13 @@ function TableFixedLeafSize(kind, size) {
 function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n === 8; }
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-// reserved: neither is a kind a declaration spells, so neither is ever an
-// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// reserved: none is a kind a declaration spells, so none is ever an entry's
+// kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
-  return kind === 32 || kind === 33 || kind === 35;
+  return kind === 32 || kind === 35;
 }
 
 function TableFixedClearView(out) {
@@ -891,11 +872,6 @@ function TableFixedCheckEntry(b, i, depth) {
     case 12: { // string(N): the length, then N bytes
       if (kids !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
       if (size < 4) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
-      break;
-    }
-    case 33: { // wstring(N): the length in CODE UNITS, then 2N bytes
-      if (kids !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
-      if (size < 4 || ((size - 4) % 2) !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
       break;
     }
     // Every kind of the closed set is either a leaf above or a case here,
@@ -1313,7 +1289,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       TableFixedPush(plan, TableFixedOpOrdinal, theirAt, at, theirSize, table, guard, arg, mySize & 0xff);
       break;
     }
-    case 12: case 33: { // text
+    case 12: { // text
       // ARG STAYS THE ARM'S, AND THE FLAVOUR GOES IN META. Writing the flavour
       // into arg was a text field under a union arm losing its guard value: the
       // read loop would then compare the writer's TAG BYTE against a text
@@ -1633,7 +1609,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: case 33: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -1683,7 +1659,7 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33 || k === 36; }
+function TableMessageKnownKind(k) { return k <= 32 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -1744,7 +1720,7 @@ function TableMessageShapeRead(r, k) {
     }
     return [s, false];
   }
-  if (k === 12 || k === 33) {
+  if (k === 12) {
     const [n, ok] = r.Leb();
     if (!ok || n > 2147483647n) { return [s, false]; }
     s.Max = Number(n);
@@ -1772,14 +1748,14 @@ function TableMessageEntryRead(r) {
   if (kind === 14 || kind === 16) {
     if (!r.Has(1)) { return [e, false]; }
     const elem = r.Get8();
-    if (!TableMessageKnownKind(elem) || elem === 12 || elem === 33) { return [e, false]; }
+    if (!TableMessageKnownKind(elem) || elem === 12) { return [e, false]; }
     const [es, eok] = TableMessageShapeRead(r, elem);
     e.Element = es;
     if (!eok) { return [e, false]; }
     if (elem === 14 || elem === 16) {
       if (!r.Has(1)) { return [e, false]; }
       const inner = r.Get8();
-      if (!TableMessageKnownKind(inner) || inner === 12 || inner === 33) { return [e, false]; }
+      if (!TableMessageKnownKind(inner) || inner === 12) { return [e, false]; }
     }
   }
   return [e, true];
@@ -2046,7 +2022,7 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
         tableMessageSkip(r, v, indexBits, arm, depth + 1);
     }
-    case 12: case 33: {
+    case 12: {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
       const width = s.Kind === 12 ? 8 : 16;

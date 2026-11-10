@@ -537,34 +537,6 @@ values = { v0, v1 }
 `,
 			want: []string{`r0.s=""`, "r0.s_length=0", `r1.s="hello"`, "r1.s_length=5"},
 		},
-		// port/moo/fixed/utf16-values
-		{
-			id: "utf16-values",
-			schema: `package probe
-fixed table T { w wstring(4) }
-`,
-			root:  "T",
-			body:  12,
-			count: 2,
-			cppSetup: `
-    value[1].w[0] = 0x0041;
-    value[1].w[1] = 0x03b1;
-    value[1].w[2] = 0xd83d;
-    value[1].w[3] = 0xde00;
-    value[1].w_length = 4;
-`,
-			build: `
-local v0 = T.NewT()
-local v1 = T.NewT()
-buffer.writeu16(v1.W, 0, 0x0041)
-buffer.writeu16(v1.W, 2, 0x03b1)
-buffer.writeu16(v1.W, 4, 0xd83d)
-buffer.writeu16(v1.W, 6, 0xde00)
-v1.WLength = 4
-values = { v0, v1 }
-`,
-			want: []string{"r0.w_length=0", "r1.w_length=4"},
-		},
 		// port/moo/fixed/byte-buffers
 		{
 			id: "byte-buffers",

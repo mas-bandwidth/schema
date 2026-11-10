@@ -52,7 +52,7 @@ table Shapes {
  floating float32 | required
  text string(8) | required
  data bytes(8) | required
- wide wstring(8) | required
+ wide string(8) | required
  huge int128 | min = -100, max = 100, required
  enumeration Key | required
  mask Flag | required

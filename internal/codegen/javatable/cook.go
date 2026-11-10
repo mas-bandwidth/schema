@@ -252,7 +252,6 @@ public enum TableCookStorage {
     WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
     LIST, // a []T holder: sixteen bytes, a self-relative reference and an int32 count (§2.9)
     MAP, // a map holder: the same sixteen bytes over its sorted entry array (§2.8)
-    WSTRING, // char16_t[N + 1] with an int32 used length in UTF-16 code units
 }
 `
 

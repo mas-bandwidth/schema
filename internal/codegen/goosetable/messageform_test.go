@@ -160,11 +160,6 @@ func gooseFieldAssign(t *testing.T, prefix string, fv *tabletext.Field, name str
 			out = append(out, fmt.Sprintf("%s[%d] = %d", slot, i, b))
 		}
 		out = append(out, fmt.Sprintf("%sLength = %d", slot, len(fv.Cell.Str)))
-	case f.Type.Kind == ir.TWString:
-		for i, u := range fv.Cell.Units {
-			out = append(out, fmt.Sprintf("%s[%d] = %d", slot, i, u))
-		}
-		out = append(out, fmt.Sprintf("%sLength = %d", slot, len(fv.Cell.Units)))
 	default:
 		out = append(out, gooseCellAssign(t, f, &fv.Cell, slot)...)
 	}

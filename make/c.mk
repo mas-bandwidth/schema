@@ -149,7 +149,6 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang c --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang c --out $(2)/p3 test/tables/P3.schema
-	$(1) generate --lang c --out $(2)/wide examples-wide
 	$(1) generate --lang c --out $(2)/scalars tables/scalars
 	$(1) generate --lang c --out $(2)/scalars2 test/tables/Scalars2.schema
 	$(1) generate --lang c --out $(2)/widelist tables/widelist
@@ -157,7 +156,7 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
-build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_WIDELIST) examples-wide/Caption.schema examples-wide/WideText.schema testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-c
 	$(call tables_generate_c,./bin/schema,build/tables-generated-c)
 	@touch $@
@@ -196,7 +195,6 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_tblm2.c build/tables-generated-c/m2/M2Table.c \
 	test/conformance/c/unit_tblm1.c build/tables-generated-c/m1/M1Table.c \
 	test/conformance/c/unit_messagedemo.c build/tables-generated-c/messages/MessagesTable.c \
-	test/conformance/c/unit_widedemo.c build/tables-generated-c/wide/CaptionTable.c \
 	test/conformance/c/unit_scalars.c test/conformance/c/unit_tblscalars2.c test/conformance/c/unit_widelist.c \
 	build/tables-generated-c/scalars/ScalarsTable.c build/tables-generated-c/scalars2/Scalars2Table.c build/tables-generated-c/widelist/WidesTable.c \
 	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
@@ -218,7 +216,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
 # own headers come from test/conformance/c.
-C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Ibuild/tables-generated-c/widelist -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2list -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
@@ -419,7 +417,6 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p1 test/tables/P1.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p2 test/tables/P2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/p3 test/tables/P3.schema
-	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/wide examples-wide
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars tables/scalars
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars2 test/tables/Scalars2.schema
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/widelist tables/widelist
@@ -1240,7 +1237,7 @@ tables-c-view: bin/schema test/c-tables/view_main.c
 	@set -e; for entry in $(VIEW_CORPUS); do \
 		dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		source=tables/$$dir; if [ "$$dir" = wide ]; then source=examples-wide; fi; \
+		source=tables/$$dir; \
 		./bin/schema generate --lang c --out build/c-view/$$dir $$source; \
 		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
 			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_PACKAGE=$$pkg -DVIEW_PACKAGE_UPPER=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z') test/c-tables/view_main.c \
@@ -1576,38 +1573,9 @@ tables-c-wire-fuzz: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --seed $(SEED) --n $(N)
 	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-c-asan.bin
 
-# Wide text on the packet wire, using the shared group's corpus.
-build/packet-wide/c/.stamp: bin/schema build/packet-wide/source/WideText.schema
-	./bin/schema generate --lang c --out build/packet-wide/c build/packet-wide/source/WideText.schema
-	@touch $@
 
-build/packet-wide/c-shapes/.stamp: bin/schema test/packet-wide/Shapes.schema
-	./bin/schema generate --lang c --out build/packet-wide/c-shapes test/packet-wide/Shapes.schema
-	@touch $@
 
-.PHONY: packet-wide-c
-packet-wide-c: build/packet-wide/c/.stamp build/packet-wide/c-shapes/.stamp build/packet-wide/cpp/driver build/packet-text/harness
-	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/debug
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/debug
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/release
-	./build/packet-text/harness -wide -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c/release
-	@for mode in '' '-DNDEBUG'; do \
-		$(CC) -std=c99 -Wall -Wextra -Werror $$mode -fsanitize=address,undefined -I$(SERIALIZE_C) -Ibuild/packet-wide/c -Ibuild/packet-wide/c-shapes test/packet-wide/c_contract.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c/contract || exit 1; \
-		./build/packet-wide/c/contract || exit 1; \
-	done
-
-.PHONY: packet-wide-c-negative-control
-packet-wide-c-negative-control: packet-wide-c
-	@mkdir -p build/packet-wide/c-negative
-	go run ./tools/sabotage -name packet-wide-c-pairing -out build/packet-wide/c-negative/wstring.gotext internal/codegen/c/wstring.go
-	@printf '{"Replace":{"%s/internal/codegen/c/wstring.go":"%s/build/packet-wide/c-negative/wstring.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-wide/c-negative/overlay.json
-	go run -overlay=build/packet-wide/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-wide/c-negative build/packet-wide/source/WideText.schema
-	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-wide/c-negative test/packet-wide/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-wide/c-negative/driver
-	@if ./build/packet-text/harness -wide -mutations-only -corpus testdata/conformance/text/wstring.txt -oracle build/packet-wide/cpp/driver ./build/packet-wide/c-negative/driver > build/packet-wide/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C wide pairing removal passed'; exit 1; fi
-	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-wide/c-negative/log || { cat build/packet-wide/c-negative/log; exit 1; }
-	@echo 'packet wide C negative control: removed pairing fails bit-flip agreement'
-
-test-c: packet-wide-c packet-wide-c-negative-control
+test-c:
 
 # Show that the independent differential detects a permissive LEB128 reader.
 # Only generated scratch headers change; no working source is sabotaged.

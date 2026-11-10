@@ -47,7 +47,6 @@ DOCUMENT Document {
  nodes [..3]Node
  pairs [2]int32
  optional ?[..4]int32
- wide wstring(4)
  blob bytes(4) | json = "bytes"
  low int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
  high uint128 | json = "unsigned"
@@ -139,8 +138,7 @@ func tfCases(t *testing.T) []tfCase {
 		"(:count 2 :count 3)": "dk", "(:nodes ((:id \"x\" :surprise 1)))": "uk",
 		"(:nodes ((\"&node\" 1 :id \"x\")))": "ref", "(:title)": "syn", "(1 2)": "syn",
 		"(:enabled 1)": "km", "(:enabled null)": "km", "(:optional null)": "ok",
-		"(:optional (1 2 3 4 5))": "b", "(:wide \"abcd\")": "ok",
-		"(:wide \"\\uD83D\\uDE00abc\")":                   "b",
+		"(:optional (1 2 3 4 5))":                         "b",
 		"(:text ((:line \"a\" :line \"b\")))":             "dk",
 		"(:time \"2026-10-15T08:34:05.123456789+05:30\")": "ok",
 		"(:time \"3000-01-01T00:00:00Z\")":                "ts", "\"x\"": "syn", "": "syn",

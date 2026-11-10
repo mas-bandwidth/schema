@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa8cd4fb39c1113e9)
-const _ = uint64(0xa8cd4fb39c1113e9 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x3874a951f98d7507)
+const _ = uint64(0x3874a951f98d7507 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -129,8 +129,6 @@ func tableUTF8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUTF8Clamp
 
 const tableBinaryMaxDepth = goruntime.TableBinaryMaxDepth
 
-func tableWireUtf16Valid(a0 []byte) bool { return goruntime.TableWireUtf16Valid(a0) }
-
 func tableOpenAnswer(a0 *TableReport, a1 TableOpenVerdict, a2 []byte) bool {
 	return goruntime.TableOpenAnswer(a0, a1, a2)
 }
@@ -166,7 +164,6 @@ const tableFixedBool = goruntime.TableFixedBool
 const tableFixedTag = goruntime.TableFixedTag
 
 const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
-const tableFixedTextWide = goruntime.TableFixedTextWide
 const tableFixedTextBytes = goruntime.TableFixedTextBytes
 
 const tableFixedPresent = goruntime.TableFixedPresent
@@ -254,8 +251,6 @@ func tableFixedTextIllFormed(a0 uint8, a1 uint32, a2 []byte) bool {
 }
 
 func tableFixedUTF8Ok(a0 []byte) bool { return goruntime.TableFixedUTF8Ok(a0) }
-
-func tableFixedUnitsIllFormed(a0 []uint16) bool { return goruntime.TableFixedUnitsIllFormed(a0) }
 
 func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 	return goruntime.TableFixedTextRefusal(a0, a1, a2)
@@ -1290,7 +1285,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32, 33:
+	case 12, 13, 14, 16, 31, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1589,7 +1584,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32, 33:
+	case 12, 13, 14, 16, 31, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1612,8 +1607,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 33:
-		return tableWireUtf16Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
 	case 31:
 		return true
 	case 32:
@@ -2135,15 +2128,7 @@ func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
 			c.fail("layout_size_mismatch")
 			return 0
 		}
-	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size < 4 || (e.Size-4)%2 != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
+
 	default:
 		// Every kind of the closed set is either a leaf above or a case here, so
 		// this is unreachable — and it refuses rather than admits, because a
@@ -2521,7 +2506,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)}
 		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
-	case 12, 33:
+	case 12:
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
@@ -4714,7 +4699,7 @@ func tableRetainFileMinimum(kind uint8) int64 {
 		return 10
 	case 15, 30:
 		return 8
-	case 12, 31, 32, 33:
+	case 12, 31, 32:
 		return 1
 	}
 	return 0
@@ -4840,7 +4825,7 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 		return s.raw(width)
 	}
 	switch kind {
-	case 12, 31, 32, 33:
+	case 12, 31, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) || !s.room(tableLebBytes(n)) {
 			return false
@@ -5111,7 +5096,7 @@ func (s *tableRetainOut) payload(kind uint8, depth int) bool {
 		return s.raw(n)
 	}
 	switch kind {
-	case 12, 31, 32, 33:
+	case 12, 31, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) {
 			return false

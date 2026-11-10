@@ -25,7 +25,6 @@ func TestCanonicalMovesLayoutNotTokens(t *testing.T) {
 		{"bench/corpus/Bench.schema"}, {"bench/corpus/RealWorld.schema"},
 		{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"},
 		{"test/packet-defaults/Defaults.schema"}, {"test/packet-defaults/Plain.schema"},
-		{"test/packet-wide/Shapes.schema"},
 	}
 	for _, paths := range units {
 		d := strings.Join(paths, "+")

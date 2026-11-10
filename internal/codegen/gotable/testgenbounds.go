@@ -365,7 +365,7 @@ func (g *tgBounds) value(f *ir.Field, where string) ([]tgVal, error) {
 			g.notes = append(g.notes, where+" (a compressed float range)")
 		}
 		return nil, nil
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		if t.Pointer {
 			return nil, nil
 		}
@@ -551,22 +551,16 @@ func tgPutInt(b *strings.Builder, w string, kind int, v *big.Int) {
 	}
 }
 
-// tgStringPast is a string(N) or wstring(N) one byte or code unit past N
-// (§16.11): `L`, then the bytes, `L` counting bytes for kind 33 (§3).
+// tgStringPast is a string(N) one byte past N (§16.11): `L`, then the bytes.
 func tgStringPast(f *ir.Field) []tgVal {
 	n := f.Type.Size
-	unit := "'a'"
-	width := int64(1)
-	if f.Type.Kind == ir.TWString {
-		unit, width = "'a', 0", 2
-	}
 	return []tgVal{{
 		name: ":above",
 		payload: func(b *strings.Builder, w string, d int) {
-			fmt.Fprintf(b, "%s.PutLeb(%d)\n%s.Raw(bytes.Repeat([]byte{%s}, %d))\n", w, (n+1)*width, w, unit, n+1)
+			fmt.Fprintf(b, "%s.PutLeb(%d)\n%s.Raw(bytes.Repeat([]byte{'a'}, %d))\n", w, n+1, w, n+1)
 		},
 		json: func(j *tgJSON) { (&tgGen{}).text(j, n) },
-		size: 10 + (n+1)*width,
+		size: 10 + (n + 1),
 	}}
 }
 
@@ -605,7 +599,7 @@ func tgFiller(f *ir.Field) (tgFill, bool) {
 			return put(kind, new(big.Int).SetUint64(uint64(math.Float32bits(float32(v)))), strconv.FormatFloat(v, 'g', -1, 32))
 		}
 		return put(kind, new(big.Int).SetUint64(math.Float64bits(v)), strconv.FormatFloat(v, 'g', -1, 64))
-	case ir.TString, ir.TWString:
+	case ir.TString:
 		return tgFill{func(b *strings.Builder, w string, d int) { fmt.Fprintf(b, "%s.PutLeb(0)\n", w) }, `""`, 1}, true
 	case ir.TBytes:
 		return tgFill{func(b *strings.Builder, w string, d int) {

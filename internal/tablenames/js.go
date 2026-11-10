@@ -137,7 +137,6 @@ func init() {
 		Name{Name: "TableFixedOpConst", What: "the plan op that lands a constant this reader's storage takes: a remapped union tag"},
 		Name{Name: "TableFixedOpWidenF", What: "the plan op that widens an f32 into an f64, §4's float rung"},
 		Name{Name: "TableFixedTextUtf8", What: "a text entry's utf-8 flavour"},
-		Name{Name: "TableFixedTextWide", What: "a text entry's wide flavour, whose units are two bytes"},
 
 		// the plan's storage, the cache that pays a compile once per endpoint, and
 		// §4's ledger with this form's refusals beside it
@@ -404,9 +403,6 @@ func init() {
 		Name{Name: "TableVariableUtf8Compare", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableUtf8Decode", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableUtf8Encode", What: "the JavaScript variable-form runtime module"},
-		Name{Name: "TableVariableWideClamp", What: "the JavaScript variable-form runtime module"},
-		Name{Name: "TableVariableWideDecode", What: "the JavaScript variable-form runtime module"},
-		Name{Name: "TableVariableWideWrite", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableWidens", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableWriteBody", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableWriteElement", What: "the JavaScript variable-form runtime module"},

@@ -78,7 +78,7 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 // the erlef/setup-beam steps this card may not change — leg.yml and
 // certify.yml are outside its PATHS — but which still predate the
 // hosted-runner rule. They are owed the same guard by the streams that own
-// them: leg.yml:130 gates only on matrix.otp, and certify.yml:177,409,579,863
+// them: leg.yml:130 gates only on matrix.otp, and certify.yml:177,414,584,868
 // are ungated or gate only on matrix.otp. The exemption is step-scoped, not
 // file-scoped (setup_java_test.go's ci-fast/ci-full exemption is the model
 // for naming it at all): every other step — in any other workflow, in a
@@ -88,7 +88,7 @@ func checkEverySetupBeamIsHostedOnly(wfs map[string]string) []string {
 // exemption so the list cannot outlive the steps it names.
 var setupBeamExemptSteps = map[string][]int{
 	"leg.yml":     {130},
-	"certify.yml": {177, 409, 579, 863},
+	"certify.yml": {177, 414, 584, 868},
 }
 
 // nonExemptSetupBeamErrorsFrom drops only the errors naming an exempt

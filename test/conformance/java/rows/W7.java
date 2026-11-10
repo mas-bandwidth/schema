@@ -13,8 +13,7 @@
 // UTF-8.
 //
 // If arg and meta shared one lane, the flavour (1) would overwrite the
-// guard ordinal (2) and the text entry would either not fire or read as
-// WIDE.
+// guard ordinal (2) and the text entry would not fire.
 
 package rows;
 
@@ -189,13 +188,13 @@ public final class W7 {
             }
         }
 
-        // ---- negative control: break the text flavour
+        // ---- negative control: one lane, as it was
         //
-        // Set meta to textWide instead of textUtf8. A wide read halves the
-        // bound (4 units instead of 8 bytes) and reads UTF-16 code units,
-        // which will not match "hello" encoded as UTF-8 bytes.
+        // Put the flavour (1) into the guard's lane. The text entry is then
+        // guarded on ordinal 1 while the record's tag is 2, so it never runs
+        // and the label keeps its default instead of "hello".
         TableFixed.Entry[] badPlan = buildCompiledPlan();
-        badPlan[1].meta = TableFixed.textWide;
+        badPlan[1].arg = badPlan[1].meta;
         byte[] image3 = UtRootFixed.image();
         TableFixed.Report report3 = new TableFixed.Report();
 
@@ -205,10 +204,10 @@ public final class W7 {
 
         String label3 = readLabel(result3.pick.b);
         if (!"hello".equals(label3)) {
-            System.out.println("PASS negative control: wrong flavour misreads label (" + label3 + ")");
+            System.out.println("PASS negative control: one shared lane misreads label (" + label3 + ")");
             pass++;
         } else {
-            System.out.println("FAIL negative control: wrong flavour still reads correctly");
+            System.out.println("FAIL negative control: one shared lane still reads correctly");
             fail++;
         }
 

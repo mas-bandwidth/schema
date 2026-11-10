@@ -328,8 +328,6 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 	case ir.TFloat64:
 		m.call(ind, "stream:serializeDouble(BYTES)", "")
 		m.Printf("%s%s = BYTES.value\n", ind, name)
-	case ir.TWString:
-		emitReadWString(m, f, name, ind)
 	case ir.TString, ir.TBytes:
 		// Each scalar gets its own Lua scope: adjacent string fields both need len.
 		m.Printf("%sdo\n", ind)
@@ -391,29 +389,6 @@ func emitReadBareInt(m *Module, f *ir.Field, name, ind string) {
 	}
 }
 
-func emitReadWString(m *Module, f *ir.Field, name, ind string) {
-	// Keep len and the surrogate-state local to this one field.
-	m.Printf("%sdo\n", ind)
-	ind += "  "
-	m.call(ind, fmt.Sprintf("stream:serializeInt(BITS, 0, %s)", IntLiteral(big.NewInt(f.Type.Size))),
-		" -- the length guards the payload (§6.3)")
-	m.Printf("%slocal len = BITS.value\n", ind)
-	m.Printf("%s%s = {}\n", ind, name)
-	m.Printf("%slocal expectLow = false\n", ind)
-	m.Printf("%sfor i = 1, len do\n", ind)
-	m.call(ind+"  ", "stream:serializeBits(BITS, 32)", "")
-	m.Printf("%s  local group = BITS.value\n", ind)
-	m.Printf("%s  if group == 0 or group > 0xFFFF then return false end -- UTF-16 code unit (SPEC §4.12)\n", ind)
-	m.Printf("%s  local high = group >= 0xD800 and group <= 0xDBFF\n", ind)
-	m.Printf("%s  local low = group >= 0xDC00 and group <= 0xDFFF\n", ind)
-	m.Printf("%s  if low ~= expectLow then return false end\n", ind)
-	m.Printf("%s  expectLow = high\n", ind)
-	m.Printf("%s  %s[i] = group\n", ind, name)
-	m.Printf("%send\n", ind)
-	m.Printf("%sif expectLow then return false end\n", ind)
-	m.Printf("%send\n", ind[:len(ind)-2])
-}
-
 // rawLiteral renders a fixed-point raw value: a Lua integer at 64 bits or
 // fewer, a { lo, hi } pair at 128.
 func rawLiteral(t ir.FieldType, v *big.Int) string {
@@ -440,8 +415,6 @@ func emitZeroField(m *Module, f *ir.Field, path, ind string) {
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		m.Printf("%s%s = \"\"\n", ind, name)
-	case f.Type.Kind == ir.TWString:
-		m.Printf("%s%s = {}\n", ind, name)
 	case f.Array != ir.ArrayNone:
 		if f.Type.Kind == ir.TNamed {
 			if _, ok := f.Type.Ref.(*ir.Struct); ok {

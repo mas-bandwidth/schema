@@ -154,7 +154,7 @@ func TestRule1CountMismatch(t *testing.T) {
 	refuses(t, z, "layout_count_mismatch", "RULE 1: an entry count of zero is not a layout")
 }
 
-// RULE 2: every kind is in the closed set 1..30, 32, 33, 35. A fixed form's
+// RULE 2: every kind is in the closed set 1..30, 32, 35. A fixed form's
 // kind set is CLOSED, so a kind outside it means a newer FORM BYTE — a
 // different form, not a newer layout of this one — and it is refused, never
 // stepped over. 0 is no kind at all and 31 is §3's framing escape: neither is a

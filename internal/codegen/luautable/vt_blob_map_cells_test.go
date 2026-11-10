@@ -31,7 +31,7 @@ table Root
     tags  map[string(8)]int32
     nums  []int32
     color Color
-    wide  wstring(4)
+    wide  string(4)
 }
 `
 

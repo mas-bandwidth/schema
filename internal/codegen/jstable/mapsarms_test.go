@@ -37,8 +37,7 @@ import (
 //
 // Every map corpus root is carried: Cells and Pairs (a fixed array [N]T as a
 // map value) are held by TestNestedTypesAndFixedArraysOnTheTableWireJavaScript,
-// and Text (a wstring(N) map value) by
-// TestFixedPointAndWideTextOnTheTableWireJavaScript.
+// and Text by TestFixedPointAndWideTextOnTheTableWireJavaScript.
 func TestMapsAndUnionArmsOnTheTableWireJavaScript(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 

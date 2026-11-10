@@ -296,7 +296,7 @@ element = function(s, at, elem)
     return ref(s, at, elem)
   elseif elem.shape == "string" and elem.unbounded then
     return text_slot(s, at)
-  elseif elem.shape == "string" or elem.shape == "bytes" or elem.shape == "wstring" then
+  elseif elem.shape == "string" or elem.shape == "bytes" then
     return companion(s, at + elem.companion, elem.bound)
   elseif elem.shape == "table" then
     return record(s, at, s.h.T.Tables[elem.target])
@@ -422,7 +422,7 @@ field = function(s, at, f)
     return true
   end
   if shape == "string" and f.unbounded then return text_slot(s, at) end
-  if shape == "string" or shape == "bytes" or shape == "wstring" then return companion(s, at + f.companion, f.bound) end
+  if shape == "string" or shape == "bytes" then return companion(s, at + f.companion, f.bound) end
   return element(s, at, f)
 end
 

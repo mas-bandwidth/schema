@@ -35,7 +35,7 @@ local kindWidth = function(kind) {
 
 // kinds whose payload is a length and its bytes, copied verbatim (§3, §6.6)
 local isLengthKind = function(kind) {
-  return kind == 12 || kind == 31 || kind == 32 || kind == 33;
+  return kind == 12 || kind == 31 || kind == 32;
 };
 
 local cursor = function(b, at, end) { return { b = b, at = at, end = end, bad = false }; };

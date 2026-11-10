@@ -166,7 +166,7 @@ func emitWriteElem(g *Gen, val string, f *ir.Field, indent string) {
 	}
 	length := ""
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		length = val + "Length[_i]"
 	}
 	emitWriteScalar(g, val+"[_i]", length, &elem, indent)
@@ -323,8 +323,6 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 		emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the length")
 		call(fmt.Sprintf("stream:serializeBytes(buffer.fromstring(buffer.readstring(%s, 0, %s)))", val, length),
 			" -- align, then the used bytes (SPEC §4.7)")
-	case ir.TWString:
-		emitWriteWString(g, val, length, t.Size, indent)
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
@@ -341,25 +339,6 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 			call(fmt.Sprintf("%s(stream, %s)", g.writeRef(t.Name), val), "")
 		}
 	}
-}
-
-// emitWriteWString writes a wstring(N) field (SPEC §4.12): the used length in
-// [0, N] over bits_required(0, N) bits, then each used code unit as a 32-bit
-// group, no alignment anywhere. The write checks the length and refuses a
-// zero code unit among the used units; surrogate pairing is the reader's.
-func emitWriteWString(g *Gen, val, length string, size int64, indent string) {
-	if length == "" {
-		length = val + "Length"
-	}
-	guardNum(g, indent, length, big.NewInt(0), big.NewInt(size), "the length guards the copy (SPEC §6.3)")
-	g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) < %s * 2 then return false end\n", indent, val, val, length)
-	emitBitsOrSkip(g, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "the code unit count")
-	g.Pf("%sfor _u = 0, %s - 1 do\n", indent, length)
-	g.Pf("%s  local unit = buffer.readu16(%s, _u * 2)\n", indent, val)
-	g.Pf("%s  if unit == 0 then return false end -- a zero code unit is refused (SPEC §4.12)\n", indent)
-	g.Pf("%s  BITS.value = unit\n", indent)
-	g.Pf("%s  if not stream:serializeBits(BITS, 32) then return false end -- one UTF-16 code unit as a 32-bit group\n", indent)
-	g.Pf("%send\n", indent)
 }
 
 // offset64 is val's offset from lo in the integer domain.

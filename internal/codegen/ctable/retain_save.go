@@ -39,7 +39,7 @@ static SCHEMA_UNUSED int table_retain_out_payload(TableRetainOut * s,uint8_t kin
  int width=table_retain_width(kind);uint64_t length;
  if(width){if(width>s->size-s->at||!table_retain_out_raw(s,s->input+s->at,width))return 0;s->at+=width;return 1;}
  switch(kind){
- case 12:case 31:case 32:case 33:if(!table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!table_retain_out_leb(s,length)||!table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;s->at+=(int64_t)length;return 1;
+ case 12:case 31:case 32:if(!table_retain_out_leb_read(s,&length)||length>(uint64_t)(s->size-s->at)||!table_retain_out_leb(s,length)||!table_retain_out_raw(s,s->input+s->at,(int64_t)length))return 0;s->at+=(int64_t)length;return 1;
  case 13:case 14:case 16:return table_retain_out_frame(s,kind,depth+1);
  case 15:{uint64_t arm;uint8_t k;if(s->size-s->at<8)return 0;arm=table_retain_u64(s->input+s->at);if(!table_retain_out_ref(s))return 0;if(!arm)return 1;if(s->at>=s->size)return 0;k=s->input[s->at++];return table_retain_out_raw(s,&k,1)&&table_retain_out_frame(s,k,depth+1);}
  case 30:return table_retain_out_ref(s);

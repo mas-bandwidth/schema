@@ -95,8 +95,7 @@ func TestUncoveredPaths(t *testing.T) {
 		}
 		text := `{
 			"names": { "zz": "last", "a": "first", "ab": "middle" },
-			"wide": { "10": "ten", "2": "two" },
-			"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
+					"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
 			"past": 7
 		}`
 		if !m.Read(inst, []byte(text), &r) || !r.Silent() {
@@ -441,62 +440,6 @@ func TestUncoveredPaths(t *testing.T) {
 			if string(bytes.TrimSpace(text)) != row.want {
 				t.Fatalf("float %v wrote %q, want %q", row.value, text, row.want)
 			}
-		}
-	})
-
-	t.Run("wide string units", func(t *testing.T) {
-		dir := t.TempDir()
-		source := `package wstr
-
-table Words
-{
-    w wstring(16)
-}
-`
-		if err := os.WriteFile(filepath.Join(dir, "Words.schema"), []byte(source), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		m, _ := load(t, dir)
-		st := m.Lookup("Words")
-		if st == nil {
-			t.Fatal("no Words table")
-		}
-		inst := m.New(st)
-		// a surrogate PAIR is one code point and a zero unit has its escape;
-		// an UNPAIRED half is not text, and the writer refuses it (§16.3).
-		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0xd800}
-		if out, err := m.Write(inst); err == nil || out != nil {
-			t.Fatalf("an unpaired surrogate wrote %q", out)
-		}
-		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00, 0x0000}
-		out, err := m.Write(inst)
-		if err != nil {
-			t.Fatalf("wstring write: %v", err)
-		}
-		if !utf8.Valid(out) {
-			t.Fatalf("wstring writer emitted invalid UTF-8: %q", out)
-		}
-		back := m.New(st)
-		var r tabletext.Report
-		// A ZERO UNIT IS REFUSED BY NAME ON READ (§16.2): the escaped form has
-		// no storage value, so the text is named rather than quietly kept.
-		if m.Read(back, out, &r) || !r.Refused || r.Reason != "text_holds_zero: Words.w" {
-			t.Fatalf("a zero unit must refuse by name: %+v\n%s", r, out)
-		}
-		// without it the same text round-trips, the pair intact.
-		field(t, inst, "w").Cell.Units = []uint16{'a', 0xd83d, 0xde00}
-		out, err = m.Write(inst)
-		if err != nil {
-			t.Fatalf("wstring write: %v", err)
-		}
-		back = m.New(st)
-		var rr tabletext.Report
-		if !m.Read(back, out, &rr) || !rr.Silent() {
-			t.Fatalf("wstring round trip: %+v\n%s", rr, out)
-		}
-		units := field(t, back, "w").Cell.Units
-		if len(units) != 3 || units[1] != 0xd83d || units[2] != 0xde00 {
-			t.Fatalf("wstring units came back %#v", units)
 		}
 	})
 

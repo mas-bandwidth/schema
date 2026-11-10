@@ -63,8 +63,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -122,7 +120,7 @@ func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
 		}
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+	case ir.TString, ir.TBytes, ir.TMap:
 		return false
 	}
 	return true
@@ -255,7 +253,6 @@ type fixedSlot struct {
 	setDouble    string
 	setWide      string
 	setBytes     string
-	setChars     string
 	setRawReport string
 	reset        string
 }
@@ -486,7 +483,7 @@ func (b *fixedRootBuild) countFieldSlots(f *ir.Field) int {
 		} else {
 			n += int(f.ArrayBound) * b.countElementSlots(f)
 		}
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		n += 2
 	default:
 		n += b.countElementSlots(f)
@@ -774,9 +771,6 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 	case f.Type.Kind == ir.TString:
 		b.entries = append(b.entries, fixedBlockEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name})
 		b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
-	case f.Type.Kind == ir.TWString:
-		b.entries = append(b.entries, fixedBlockEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name})
-		b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 	default:
 		b.pushElementBlockOnly(f, id, f.Name)
 	}
@@ -1013,37 +1007,6 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			op:    2,
 			arg:   arg,
 			meta:  1,
-		})
-		*wireOff += size
-
-	case f.Type.Kind == ir.TWString:
-		lenSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
-			reset:  textLenReset(f, fieldExpr),
-		})
-		bufSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setChars: fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<char>(b, %s); }", fieldExpr, fieldExpr),
-			reset:    bufferReset(f, fieldExpr),
-		})
-		b.entries = append(b.entries, fixedBlockEntry{
-			id:       id,
-			kind:     ir.TableKindWstring,
-			size:     size,
-			children: 0,
-			note:     f.Name,
-		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, %d, 0, 2)", lenSlot-baseSlot, bufSlot-baseSlot))
-		b.addPlan(fixedPlanEntry{
-			src:   fieldWireBase,
-			dst:   lenSlot,
-			size:  2 * f.Type.Size,
-			aux:   bufSlot,
-			guard: guard,
-			op:    2,
-			arg:   arg,
-			meta:  2,
 		})
 		*wireOff += size
 
@@ -1479,29 +1442,6 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		*wireOff += size
 
-	case f.Type.Kind == ir.TWString:
-		lenSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
-			reset:  textLenReset(f, fieldExpr),
-		})
-		bufSlot := len(b.slots)
-		b.slots = append(b.slots, fixedSlot{
-			setChars: fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<char>(b, %s); }", fieldExpr, fieldExpr),
-			reset:    bufferReset(f, fieldExpr),
-		})
-		b.addPlan(fixedPlanEntry{
-			src:   fieldWireBase,
-			dst:   lenSlot,
-			size:  2 * f.Type.Size,
-			aux:   bufSlot,
-			guard: guard,
-			op:    2,
-			arg:   arg,
-			meta:  2,
-		})
-		*wireOff += size
-
 	default:
 		b.buildElementSlotsAndPlan(f, fieldExpr, baseSlot, guard, arg, wireOff)
 	}
@@ -1605,11 +1545,6 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
-		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
-		g.pf("%sif (len_%s > 0) { TableFixedWire.WriteLittle<char>(%s.%s.AsSpan(0, len_%s), %s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
@@ -1860,9 +1795,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		}
 		if s.setBytes != "" {
 			parts = append(parts, "setBytes: "+s.setBytes)
-		}
-		if s.setChars != "" {
-			parts = append(parts, "setChars: "+s.setChars)
 		}
 		if s.setRawReport != "" {
 			parts = append(parts, "setRawReport: "+s.setRawReport)
@@ -2307,15 +2239,6 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	}
 	g.pf("        default: break;\n    }\n}\n\n")
 
-	g.pf("private static void %sFixedSetChars(%s t, uint slot, ReadOnlySpan<byte> b, int l)\n{\n", name, name)
-	g.pf("    switch (slot)\n    {\n")
-	for i, s := range slots {
-		if s.setChars != "" {
-			g.pf("        case %d: %s break;\n", i, fixedLambdaStmt(s.setChars))
-		}
-	}
-	g.pf("        default: break;\n    }\n}\n\n")
-
 	g.pf("private static void %sFixedResetSlot(%s t, uint slot)\n{\n", name, name)
 	g.pf("    switch (slot)\n    {\n")
 	for i, s := range slots {
@@ -2404,20 +2327,14 @@ func (g *tableGen) emitFixedRunHelpers(name string, slots []fixedSlot) {
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Text:\n                {\n")
-	g.pf("                    uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;\n")
-	g.pf("                    uint cap = p.Size / unit;\n")
+	g.pf("                    uint cap = p.Size;\n")
 	g.pf("                    int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));\n")
 	g.pf("                    if (v < 0 || (uint)v > cap) { return \"length_over_bound\"; }\n")
 	g.pf("                    ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);\n")
 	g.pf("                    if (TableFixedWire.TextIllFormed(p.Meta, (uint)v, textBytes))\n                    {\n")
 	g.pf("                        return \"text_ill_formed\";\n                    }\n")
 	g.pf("                    %sFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);\n", name)
-	g.pf("                    if (p.Meta == TableFixedWire.TextWide)\n                    {\n")
-	g.pf("                        %sFixedSetChars(dst, p.Aux, textBytes, v);\n", name)
-	g.pf("                    }\n")
-	g.pf("                    else\n                    {\n")
-	g.pf("                        %sFixedSetBytes(dst, p.Aux, textBytes, v);\n", name)
-	g.pf("                    }\n")
+	g.pf("                    %sFixedSetBytes(dst, p.Aux, textBytes, v);\n", name)
 	g.pf("                    break;\n                }\n")
 	g.pf("            case TableFixedWire.Ordinal:\n                {\n")
 	g.pf("                    ulong raw = 0;\n")

@@ -27,10 +27,6 @@ func (t javaTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 // javatable opens no file and a build ships a reader for every layout the lock
 // records.
 func (javaTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
-	if err := refuseWideText(u, "java"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "java"); err != nil {
 		return nil, err
 	}
@@ -123,7 +119,6 @@ func init() {
 	// IS the registration.
 	valueDefaultTargets = append(valueDefaultTargets, "java")
 	wasRowTargets = append(wasRowTargets, "java")
-	registerWideTextCarrier("java")
 	registerListCarrier("java")
 	registerMapCarrier("java")
 	registerOptionalArrayCarrier("java")

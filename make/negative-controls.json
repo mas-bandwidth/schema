@@ -6,6 +6,7 @@
       "why": "the C runtime-home control and its per-header stand-alone builds (62 s on its own), with the enum-bound, view, slot, C++ finite-float read and generated-tree controls beside it: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. One third of what was the single `base` group, cut on 2026-10-27 because that group ran 4m51s to 5m03s against the job's five-minute timeout (run 40596125566: 258 s of control time over 41 controls). Measured about 85 s of control time on that run.",
       "targets": [
         "check-enum-bound-negative-control",
+        "check-wstring-refusal-negative-control",
         "tables-cpp-bench-gate-negative-control",
         "tables-cpp-release-flags-negative-control",
         "generated-tree-negative-controls",
@@ -146,23 +147,6 @@
       ]
     },
     {
-      "name": "base-packet-4",
-      "when": "pull-request",
-      "why": "fourth slice of base-packet (split after base-packet ran 131-138 s wall on runs 42556155793 and 42554833739): packet-wide (C, Go) and wide string/table negative controls. Measured 25 s of control time over 10 controls.",
-      "targets": [
-        "packet-wide-c-negative-control",
-        "packet-wide-go-negative-control",
-        "wide-no-align-negative-control",
-        "wide-surrogate-negative-control",
-        "wide-table-byte-length-negative-control",
-        "wide-table-odd-length-negative-control",
-        "wide-table-surrogate-negative-control",
-        "wide-table-zero-unit-negative-control",
-        "wide-terminator-negative-control",
-        "wide-utf8-read-negative-control"
-      ]
-    },
-    {
       "name": "base-conformance-1",
       "when": "nightly",
       "why": "conformance-negative-control compiles all C++ CONFORMANCE_SOURCES twice in single-threaded g++ invocations (build/conformance-cpp plus the -DCONFORMANCE_SABOTAGE_CLAMP binary), running >107 s of control time and 131 s wall on run 42556155793 (killed at 2m) and >77 s inside the first g++ call on run 42554833739 (136 s wall, killed at 2m).",
@@ -245,7 +229,6 @@
       "targets": [
         "packet-finite-lua-negative-control",
         "packet-utf8-lua-negative-control",
-        "packet-wide-lua-negative-control",
         "packet-defaults-lua-negative-control"
       ],
       "lua": "5.4.8"
@@ -922,14 +905,6 @@
       ]
     },
     {
-      "name": "wire-fuzz-wide-text",
-      "when": "nightly",
-      "why": "the kind-33 surrogate pairing check, removed from a COPY of the C++ emitter (text.go), then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 129 s and 144 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
-      "targets": [
-        "tables-wire-fuzz-wide-text-negative-control"
-      ]
-    },
-    {
       "name": "wire-fuzz-retain-class",
       "when": "nightly",
       "why": "the retain-class check, removed from a COPY of the C++ emitter, then a regenerated corpus and a fresh leg. The per-commit row's job wall clock was 143 s and 132 s on runs 42556155793 and 42554833739. On main the per-commit row was killed by the runner's 2-minute rule before the control finished (runs 42556155793 and 42554833739: job wall clock 129-144 s; on wire-fuzz-arm-width of run 42556155793 the step died exit 137 while g++ was still compiling the sabotaged leg). That is past the 110 s per-commit target. Cutting the mutant count does not shrink the compile. One control, nightly, where the job timeout is 60 minutes. The long random passes stay on tables-wire-fuzz and tables-wire-fuzz-retain at N=500000.",
@@ -1109,8 +1084,7 @@
       "when": "pull-request",
       "why": "the C# packet text and wide families' harness bit-flip agreement against the C++ reference drivers: UTF-8 content validation (utf8.go sabotage) and wstring surrogate pairing (wstring.go sabotage), each rebuilt under an overlay, regenerated and run through the harness against the built C++ oracle. Split from the old cs-packet group when that seven-control row ran past the 120 s per-commit rule on the loaded fleet (run 42556155793 / 42554833739, 131-142 s wall).",
       "targets": [
-        "packet-utf8-cs-negative-control",
-        "packet-wide-cs-negative-control"
+        "packet-utf8-cs-negative-control"
       ],
       "dotnet": "pin"
     },
@@ -1405,8 +1379,7 @@
         "cards-rust-conformance-hash-negative-control",
         "packet-arm-defaults-rust-negative-control",
         "packet-defaults-rust-negative-control",
-        "packet-utf8-rust-negative-control",
-        "packet-wide-rust-negative-control"
+        "packet-utf8-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -1534,8 +1507,7 @@
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",
-        "packet-utf8-js-negative-control",
-        "packet-wide-js-negative-control"
+        "packet-utf8-js-negative-control"
       ],
       "node": "26"
     },
@@ -1682,7 +1654,6 @@
         "packet-defaults-dart-negative-control",
         "packet-finite-dart-negative-control",
         "packet-utf8-dart-negative-control",
-        "packet-wide-dart-negative-control",
         "tables-dart-alloc-negative-control",
         "tables-dart-alloc-runtime-negative-control",
         "tables-dart-soak-negative-control",
@@ -1751,8 +1722,7 @@
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
         "packet-finite-java-negative-control",
-        "packet-utf8-java-negative-control",
-        "packet-wide-java-negative-control"
+        "packet-utf8-java-negative-control"
       ],
       "java": "21"
     },
@@ -1869,7 +1839,6 @@
       "targets": [
         "packet-defaults-elixir-negative-control",
         "packet-utf8-elixir-negative-control",
-        "packet-wide-elixir-negative-control",
         "packet-finite-elixir-negative-control"
       ],
       "otp": "29.0.5",
@@ -2132,8 +2101,7 @@
       "targets": [
         "packet-defaults-goose-negative-control",
         "packet-finite-goose-negative-control",
-        "packet-utf8-goose-negative-control",
-        "packet-wide-goose-negative-control"
+        "packet-utf8-goose-negative-control"
       ]
     },
     {
@@ -2419,7 +2387,6 @@
       "why": "the Squirrel port's four packet families (constructor defaults, finite-float read vectors, UTF-8 and wide pairing), each one generate and one sq run. Split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 11 s of control time over the 4 packet controls.",
       "targets": [
         "packet-finite-squirrel-negative-control",
-        "packet-wide-squirrel-negative-control",
         "packet-utf8-squirrel-negative-control",
         "packet-defaults-squirrel-negative-control"
       ],
@@ -2526,8 +2493,7 @@
       "targets": [
         "packet-defaults-luau-negative-control",
         "packet-finite-luau-negative-control",
-        "packet-utf8-luau-negative-control",
-        "packet-wide-luau-negative-control"
+        "packet-utf8-luau-negative-control"
       ],
       "luau": "0.741"
     },
@@ -2844,10 +2810,6 @@
     {
       "target": "packet-utf8-moo-negative-control",
       "reason": "the moo leg's UTF-8 read control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
-    },
-    {
-      "target": "packet-wide-moo-negative-control",
-      "reason": "the moo leg's wide pairing control (make/moo-packet.mk). It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
     },
     {
       "target": "tables-cpp-format-negative-control",

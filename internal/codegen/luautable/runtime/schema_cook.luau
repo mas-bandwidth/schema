@@ -72,7 +72,7 @@ end
 -- value of shape text, or a text list element of shape str with no bound. Its
 -- storage is one eight-byte slot naming a blob record in the holder's extent.
 local function is_text(e: any): boolean
-	return e.s == "text" or (e.s == "str" and (e.bound or 0) == 0 and not e.wide)
+	return e.s == "text" or (e.s == "str" and (e.bound or 0) == 0)
 end
 
 -- the region alignment an unbounded text blob is padded to, the root
@@ -126,11 +126,7 @@ field_pieces = function(fd: any): { any }
 	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" or is_text(fd) then
 		out[1] = { size = 8, align = 8 }
 	elseif s == "str" then
-		if fd.wide then
-			out[1] = { size = ((fd.bound or 0) + 1) * 2, align = 2 }
-		else
-			out[1] = { size = (fd.bound or 0) + 1, align = 1 }
-		end
+		out[1] = { size = (fd.bound or 0) + 1, align = 1 }
 		out[2] = { size = 4, align = 4 }
 	elseif s == "bytes" then
 		out[1] = { size = fd.bound or 0, align = 1 }
@@ -242,15 +238,6 @@ end
 -- element, whose buffer's own length is the used length.
 local function used_bytes(holder: any, fd: any, x: any, slot: string?): (buffer?, number, number)
 	if typeof(x) ~= "buffer" then return nil, 0, 0 end
-	if fd.wide then
-		local units
-		if slot ~= nil and holder ~= nil and holder[slot .. "Length"] ~= nil then
-			units = holder[slot .. "Length"]
-		else
-			units = math.floor(buffer.len(x) / 2)
-		end
-		return x, units * 2, units
-	end
 	local n = buffer.len(x)
 	if slot ~= nil and holder ~= nil and holder[slot .. "Length"] ~= nil then n = holder[slot .. "Length"] end
 	return x, n, n
@@ -846,11 +833,7 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 	if s == "enum" then put(w, at, x or 0, storage_width(#(e.vs or {}))); return true end
 	if s == "str" or s == "bytes" then
 		local b, nbytes, count = used_bytes(holder, e, x, e.slot)
-		if e.wide and w.big and b ~= nil then
-			for i = 0, count - 1 do put(w, at + i * 2, buffer.readu16(b, i * 2), 2) end
-		else
-			put_copy(w, at, b, nbytes)
-		end
+		put_copy(w, at, b, nbytes)
 		-- the used length rides in every string's storage, a text list
 		-- element record's included (§2.13, §7.2)
 		put(w, piece_at(e, 2, at), count, 4)

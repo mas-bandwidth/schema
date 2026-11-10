@@ -334,7 +334,7 @@ func (g *gen) staticBitsField(f *ir.Field) (int64, bool) {
 
 func (g *gen) staticBitsScalar(f *ir.Field) (int64, bool) {
 	switch f.Type.Kind {
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		return 0, false
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
@@ -805,8 +805,6 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// finite only (SPEC §4.3): NaN and the infinities are writer misuse
 		g.pf("%sassert(%s.isFinite);\n", ind, name)
 		g.chunkAdd(fmt.Sprintf("Schema.float64BitsFromDouble(%s)", name), 64, ind)
-	case ir.TWString:
-		g.emitWriteWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		g.emitWriteBytesField(f, name, ind)
 	case ir.TNamed:
@@ -1111,7 +1109,7 @@ func readAssigned(items []ir.Item) map[*ir.Field]bool {
 			continue
 		}
 		switch fi.F.Type.Kind {
-		case ir.TString, ir.TBytes, ir.TWString:
+		case ir.TString, ir.TBytes:
 			continue
 		case ir.TNamed:
 			if _, nested := fi.F.Type.Ref.(*ir.Struct); nested {
@@ -1354,8 +1352,6 @@ func (g *gen) emitReadDynamicField(f *ir.Field, path, ind string) {
 		name = path
 	}
 	switch {
-	case f.Type.Kind == ir.TWString:
-		g.emitReadWString(f, name, ind)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.emitReadBytesField(f, name, ind)
 	case f.Array == ir.ArrayCounted:
@@ -1546,8 +1542,6 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string, bounded bool) {
 		return
 	}
 	switch f.Type.Kind {
-	case ir.TWString:
-		g.emitReadWString(f, name, ind)
 	case ir.TString, ir.TBytes:
 		// only reachable as an array element (never inside a fused run —
 		// staticBitsScalar calls it dynamic)
@@ -1906,7 +1900,7 @@ func (g *gen) emitInitializeField(f *ir.Field, path, ind string, viaCalls, defau
 	}
 	name := path + "." + dartName(f.Name)
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		fill := fmt.Sprintf("%s%s.fillRange(0, %s.length, 0);", ind, name, name)
 		if len(fill) <= 80 {
 			g.pf("%s\n", fill)

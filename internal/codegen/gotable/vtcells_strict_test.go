@@ -215,7 +215,7 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	t.Run("optional_fields_and_wstring", func(t *testing.T) {
 		const schema = `package probe
 union Value { number int64
- words wstring(8)
+ words string(8)
  empty }
 fixed table Child { n int32 = 7 }
 fixed table Root { flag bool
@@ -419,7 +419,7 @@ func TestVerdict(t *testing.T) {
 	t.Run("optional_fields_and_wstring", func(t *testing.T) {
 		const schema = `package probe
 union Value { number int64
- words wstring(8)
+ words string(8)
  empty }
 fixed table Child { n int32 = 7 }
 fixed table Root { flag bool

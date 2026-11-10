@@ -286,7 +286,7 @@ API.parseLayout <- function(bytes, at, len) {
     // stepped over." 31 is §3's body framing escape and 34 is reserved for
     // float16: neither is a kind a declaration spells.
     local function knownKind(kind) {
-        return (kind >= 1 && kind <= 30) || kind == 32 || kind == 33 || kind == 35;
+        return (kind >= 1 && kind <= 30) || kind == 32 || kind == 35;
     }
 
     // A LEAF KIND'S ADMITTED SIZES, §3.4's constant-size table. The one
@@ -395,9 +395,6 @@ API.parseLayout <- function(bytes, at, len) {
         } else if (e.kind == 12) { // string(N): the length in bytes, then N bytes
             if (e.children != 0) { why = "layout_kind_invalid"; return -1; }
             if (e.size < 4) { why = "layout_size_mismatch"; return -1; }
-        } else if (e.kind == 33) { // wstring(N): the length in code units, then 2N bytes
-            if (e.children != 0) { why = "layout_kind_invalid"; return -1; }
-            if (e.size < 4 || ((e.size - 4) % 2) != 0) { why = "layout_size_mismatch"; return -1; }
         }
         return at - i;
     }

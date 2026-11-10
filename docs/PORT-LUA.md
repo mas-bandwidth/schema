@@ -58,7 +58,6 @@ admits (the checker refuses the rest by name).
 | `flags` | integer: the uint64's 64 bits | integer | integer; descriptor `bits` |
 | `string(N)` | Lua string; its length is the used length | Lua string | Lua string; descriptor `bound` |
 | `bytes(N)` | Lua string | Lua string | Lua string |
-| `wstring(N)` | sequence of UTF-16 code units (integers) | the same | the same |
 | `timestamp` | integer: int64 nanoseconds | integer | integer; descriptor `timestamp = true` |
 | a `type` by value | its constructed table | — | — |
 | a `table` by value | — | its constructed table | its constructed table |
@@ -148,7 +147,7 @@ Fixed now, for the pro cards. Never rename it.
 | `internal/codegen/lua/lua.go` | the TYPE emitter; `RegisterPass` (a later file's `init()` adds its emission step) and `RegisterRuntime` (its embedded `runtime/*.lua`), so no later card edits lua.go |
 | `internal/codegen/lua/read.go`, `write.go` | the type wire, later; each embeds `runtime/*.lua` by glob and registers it |
 | `internal/codegen/lua/runtime/*.lua` | the type-wire runtime (`bitreader.lua`, `bitwriter.lua`), emitted beside the modules |
-| `internal/codegen/lua/runtime/serialize*.lua` | the serialize port vendored verbatim from `mas-bandwidth/serialize.lua` at release `v2.1.1` (format 2.0; `SERIALIZE_LUA_PIN` and `SERIALIZE_LUA_COMMIT` in `make/lua-serialize.mk`), pin `runtime/SERIALIZE_PIN` (the tag, the commit, one `sha256 <file>` line per file); `make vendor-serialize-lua` refreshes it. `wstring(N)` is composed by the generated code (SPEC §4.12), since format 2.0 removed it from the runtime. The type-wire cards call this library (serialize.WriteStream/ReadStream, serializeInt/serializeFloat/...) rather than a private bit reader or writer |
+| `internal/codegen/lua/runtime/serialize*.lua` | the serialize port vendored verbatim from `mas-bandwidth/serialize.lua` at release `v2.1.1` (format 2.0; `SERIALIZE_LUA_PIN` and `SERIALIZE_LUA_COMMIT` in `make/lua-serialize.mk`), pin `runtime/SERIALIZE_PIN` (the tag, the commit, one `sha256 <file>` line per file); `make vendor-serialize-lua` refreshes it. The type-wire cards call this library (serialize.WriteStream/ReadStream, serializeInt/serializeFloat/...) rather than a private bit reader or writer |
 | `internal/codegen/lua/luarun/luarun.go` | the test helper |
 | `internal/codegen/luatable/luatable.go` | ONE DESCRIPTOR per table as data a single runtime walks (the `jstable/variableruntime.go` shape), the constructors, `RegisterPass` for `fixedform.go` and `messageform.go`, and the `//go:embed runtime/*.lua` glob |
 | `internal/codegen/luatable/runtime/*.lua` | the table runtime, one file per card; `descriptor.lua` (the shared descriptor walk) is the first |

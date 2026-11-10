@@ -56,7 +56,6 @@ func init() {
 		Name{Name: "TableFixedHashAt", What: "the fixed form's pinned header: the layout hash at offset 8 (§3)", RustConst: true},
 		Name{Name: "TableFixedTag", What: "a union tag read at its OWN width, which is what keeps a foreign 0x0101 from firing arm 1", Scoped: true},
 		Name{Name: "TableUtf8Valid", What: "§3's one content rule for a string(N): well-formed UTF-8 with no zero among the used bytes", Scoped: true},
-		Name{Name: "TableUtf16Valid", What: "§3's one content rule for a wstring(N): paired UTF-16 with no zero among the used units", Scoped: true},
 		// THE KEYED ARRAY'S ACCESSOR (docs/PORTING.md M5, docs/SPEC-TABLES.md
 		// §2.3), in table_enums.rs beside the enums that key it.
 		Name{Name: "TableKeySlot", What: "the slot a key owns in a keyed array: key 1 in slot 0, E.Max in the last, None and past E.Max refused by one unsigned compare"},
@@ -113,10 +112,6 @@ func init() {
 		Name{Name: "TableKindWidth", What: "a fixed-width kind's payload size (§3)", Scoped: true},
 		Name{Name: "TableKindWidens", What: "the widening ladder: a narrower kind decoded exactly into a wider declaration (§4)", Scoped: true},
 		Name{Name: "TableScalarRead", What: "one scalar read at its kind's own width (§3, §4)", Scoped: true},
-		Name{Name: "TableWideUnits", What: "a kind 33 payload as UTF-16 code units, or None for an odd L, an unpaired surrogate or a zero unit (§3, §4)", Scoped: true},
-		Name{Name: "TableWideBoundary", What: "a wstring(N) clamp at N code units that never splits a pair (§3)", Scoped: true},
-		Name{Name: "TableWideFit", What: "the writer's wstring(N) bound: over N is the save's refusal by name (§3, SPEC §4.12)", Scoped: true},
-		Name{Name: "TableWidePut", What: "wstring(N) code units written little-endian under the caller's L (§3)", Scoped: true},
 		Name{Name: "TableRetainedFloatFinite", What: "the finite rule on a retained unknown of a float kind, tested on its raw bits like a known field (§3.3, §6.6)", Scoped: true},
 		Name{Name: "TableFloatRefuse", What: "the writer's finite rule: a NaN or an infinity is the save's refusal by name, non_finite_float (§3.3)", Scoped: true},
 		Name{Name: "TableRetainDepthCap", What: "the retain walk's nesting cap (§6.6)", RustConst: true},

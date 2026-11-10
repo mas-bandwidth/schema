@@ -17,7 +17,6 @@ import (
 	tblscalars2 "tblscalars2"
 	"tblv1"
 	"tblv2"
-	widedemo "widedemo"
 )
 
 func init() {
@@ -27,20 +26,6 @@ func init() {
 			v.Init(make([]messagedemo.TableMessageEntry, messagedemo.TableMessageEntriesHere))
 			return v
 		}, messagedemo.AnnounceMeasure, messagedemo.Announce, messagedemo.AnnounceRead, messagedemo.ToolMessageLoadMessages, messagedemo.ToolMessageMeasureMessages, messagedemo.ToolMessageSaveMessages, func(r *messagedemo.TableReport) report {
-			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-		}),
-		messageRow("widedemo", "Caption", widedemo.CaptionReset, func() *widedemo.TableVocabulary {
-			v := new(widedemo.TableVocabulary)
-			v.Init(make([]widedemo.TableMessageEntry, widedemo.TableMessageEntriesHere))
-			return v
-		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.CaptionLoadMessages, widedemo.CaptionMeasureMessages, widedemo.CaptionSaveMessages, func(r *widedemo.TableReport) report {
-			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-		}),
-		messageRow("widedemo", "Stamp", widedemo.StampReset, func() *widedemo.TableVocabulary {
-			v := new(widedemo.TableVocabulary)
-			v.Init(make([]widedemo.TableMessageEntry, widedemo.TableMessageEntriesHere))
-			return v
-		}, widedemo.AnnounceMeasure, widedemo.Announce, widedemo.AnnounceRead, widedemo.StampLoadMessages, widedemo.StampMeasureMessages, widedemo.StampSaveMessages, func(r *widedemo.TableReport) report {
 			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 		}),
 		messageRow("scalars", "SimState", scalardemo.SimStateReset, func() *scalardemo.TableVocabulary {

@@ -323,11 +323,6 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, ind
 		g.pf("%sview.setInt32(%s, %s.%sLength, true);\n", ind, off(base, at), val, name)
 		g.pf("%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint8(%s + i, %s.%s[i]); }\n",
 			ind, val, name, off(base, at+fixedCountBytes), val, name)
-	case f.Type.Kind == ir.TWString:
-		// the length in CODE UNITS, then that many two-byte units
-		g.pf("%sview.setInt32(%s, %s.%sLength, true);\n", ind, off(base, at), val, name)
-		g.pf("%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint16(%s + i * 2, %s.%s[i], true); }\n",
-			ind, val, name, off(base, at+fixedCountBytes), val, name)
 	default:
 		g.emitWriteElement(f, base, at, val+"."+name, ind)
 	}
@@ -597,7 +592,7 @@ func fixedFieldChecked(f *ir.Field) bool {
 		// wire_damaged like a bool (§4.5) before any payload is project.
 		return true
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || fixedIsFloat(f.Type) || f.Type.Kind == ir.TBool {
+	if f.Type.Kind == ir.TString || fixedIsFloat(f.Type) || f.Type.Kind == ir.TBool {
 		return true
 	}
 	if f.Array == ir.ArrayCounted {
@@ -673,13 +668,6 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind stri
 		g.pf("%s  const n = view.getInt32(%s, true);\n", ind, off(base, at))
 		g.pf("%s  if (n < 0 || n > %d) { report.refused = TableFixedRefusal.LengthOverBound; return; }\n", ind, f.Type.Size)
 		g.pf("%s  if (!TableFixedTextOk(TableFixedTextUtf8, view, %s, n)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
-			ind, off(base, at+fixedCountBytes))
-		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s{\n", ind)
-		g.pf("%s  const n = view.getInt32(%s, true);\n", ind, off(base, at))
-		g.pf("%s  if (n < 0 || n > %d) { report.refused = TableFixedRefusal.LengthOverBound; return; }\n", ind, f.Type.Size)
-		g.pf("%s  if (!TableFixedTextOk(TableFixedTextWide, view, %s, n * 2)) { report.refused = TableFixedRefusal.TextIllFormed; return; }\n",
 			ind, off(base, at+fixedCountBytes))
 		g.pf("%s}\n", ind)
 	default:
@@ -784,13 +772,6 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
 		iv := g.loopVar()
 		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint8(%s + %s); }\n",
-			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
-	case f.Type.Kind == ir.TWString:
-		// Content validity over the used units was checked before any write to
-		// value in emitCheckStruct (§4.5 fix 11, §5.3).
-		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size, "TableFixedRefusal.LengthOverBound")
-		iv := g.loopVar()
-		g.pf("%sfor (let %s = 0; %s < %d; %s++) { %s.%s[%s] = view.getUint16(%s + %s * 2, true); }\n",
 			ind, iv, iv, f.Type.Size, iv, val, name, iv, off(base, at+fixedCountBytes), iv)
 	default:
 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
@@ -1290,9 +1271,6 @@ func (g *fixedGen) emitFieldStorage(f *ir.Field, ind, target string) {
 		g.pf("%s%s.%s = new Uint8Array(%d);\n", ind, target, name, f.Type.Size)
 		g.emitDefaultTextBytes(f, ind, target)
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s%s.%s = new Uint16Array(%d);\n", ind, target, name, f.Type.Size)
-		g.pf("%s%s.%sLength = 0;\n", ind, target, name)
 	default:
 		if cls := fixedElementClass(f.Type); cls != "" {
 			g.pf("%s%s.%s = new %s();\n", ind, target, name, cls)
@@ -1327,14 +1305,8 @@ func (g *fixedGen) emitPresenceStorage(f *ir.Field, ind, target string) {
 // The prefill lays the same default down on the read side
 // (fixedprefill.go), so a constructed value and a record whose writer did not
 // carry the field now hold the same thing — which is what a default means.
-//
-// A wstring carries none: the IR holds a wstring default as BYTES and this form
-// counts CODE UNITS, so laying one down would be this backend guessing an
-// encoding. fixedDefaultTextLength answers 0 there for the same reason.
+
 func (g *fixedGen) emitDefaultTextBytes(f *ir.Field, ind, target string) {
-	if f.Type.Kind == ir.TWString {
-		return
-	}
 	n := fixedDefaultTextLength(f)
 	if n <= 0 {
 		return
@@ -1395,7 +1367,7 @@ func (g *fixedGen) emitPayloadReset(f *ir.Field, ind, target string) {
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s%s.%sCount = %d;\n", ind, target, name, f.ArrayMin)
 		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.%s.fill(0);\n", ind, target, name)
 		g.emitDefaultTextBytes(f, ind, target)
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))

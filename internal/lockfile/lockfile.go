@@ -271,10 +271,9 @@ type Entry struct {
 	// reader walks.
 	Shape string
 
-	// Cap is a text field's DECLARED CAPACITY in its own units — `string(N)`
-	// and `bytes(N)` in bytes, `wstring(N)` in UTF-16 code units — and 0 on
-	// every other field. Glenn: "wstring/strings/bytes can be widened only,
-	// not narrowed, because a narrowed string/array cannot read the old."
+	// Cap is a text field's DECLARED CAPACITY in bytes — `string(N)` and
+	// `bytes(N)` — and 0 on every other field. A capacity is widened only,
+	// never narrowed, because a narrowed string or array cannot read the old.
 	Cap int64
 
 	// Bits is a `bits(N)` field's DECLARED WIDTH, and 0 on every other field.
@@ -560,7 +559,7 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 			e.IBits = f.Type.IntBits
 		}
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TString, ir.TBytes:
 			e.Cap = f.Type.Size
 		case ir.TBits:
 			e.Bits = f.Type.Width
@@ -763,7 +762,7 @@ func defaultText(f *ir.Field) string {
 			return floatText(f.DefFloat)
 		}
 		return floatText(0)
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		// the bytes themselves, hex-spelled so a space in a default cannot
 		// split the token (SPEC §4.2)
 		if f.HasDefault {

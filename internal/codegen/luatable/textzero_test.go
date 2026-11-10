@@ -16,7 +16,7 @@ import (
 // storage refuses the read as text_holds_zero naming the innermost field, so
 // no read lands a value a writer refuses (§2.13, §3). The rows are the Go
 // oracle's (internal/codegen/gotable/textzero_test.go), for every construct
-// Lua carries: string(8), *string, a map[string(8)] key, a wstring(8), a map
+// Lua carries: string(8), *string, a map[string(8)] key, a map
 // key and a string one table down, with \u0000 at the front, middle and end.
 // A \u0001 in the same place reads clean and writes, reads and writes the same
 // text. A text list, an unbounded key and a timestamp are named and skipped:
@@ -37,7 +37,6 @@ table Root
     s *string
     l []string(8)
     m map[string(8)]int32
-    w wstring(8)
     i Inner
     at timestamp
     k map[int32]int32
@@ -66,7 +65,6 @@ table Root
 		{"t", `{"t":"%s"}`, "Root.t", true, false},
 		{"s", `{"s":"%s"}`, "Root.s", true, false},
 		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true, false},
-		{"w", `{"w":"%s"}`, "Root.w", true, false},
 		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true, false},
 		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false, false},
 		{"l", `{"l":["ok","%s"]}`, "Root.l", false, true},

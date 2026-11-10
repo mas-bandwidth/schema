@@ -338,7 +338,7 @@ func emitReadField(g *Gen, r *readBody, f *ir.Field, target, ind string) {
 		v := r.int()
 		emitReadScalar(g, r, &elem, v, "", ind+"    ")
 		r.pf(ind+"    ", "write_int8_le(%s, i, %s)", target, v)
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		emitReadScalar(g, r, &elem, target+"[i]", target+"Length[i]", ind+"    ")
 	default:
 		emitReadScalar(g, r, &elem, target+"[i]", "", ind+"    ")
@@ -395,8 +395,6 @@ func emitReadScalar(g *Gen, r *readBody, f *ir.Field, target, length, ind string
 			r.pf(ind, "%s = %s.text_refusal(%s, %s)", rt, RuntimeNamespace, target, v)
 			r.refuse(ind, rt+" != serialize_refusal_none", rt, "an interior NUL or malformed UTF-8 is refused (SPEC §4.7)")
 		}
-	case ir.TWString:
-		emitReadWString(r, f, target, length, ind)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -411,31 +409,6 @@ func emitReadScalar(g *Gen, r *readBody, f *ir.Field, target, length, ind string
 			r.pf(ind, "if not %s(stream, %s): return false", g.readRef(f.Type.Name), target)
 		}
 	}
-}
-
-// emitReadWString reads a wstring(N): the count in [0, N] code units, then
-// one 32-bit group per unit into the UTF-16LE buffer, with every content
-// refusal SPEC §4.12 states in one pass: a zero unit is embedded_nul, a group
-// above 0xFFFF and an unpaired surrogate (a low without a high, a high not
-// followed by a low, a high as the final unit) are value_out_of_range.
-func emitReadWString(r *readBody, f *ir.Field, target, length, ind string) {
-	if length == "" {
-		length = target + "Length"
-	}
-	v := r.int()
-	r.needWide = true
-	r.call(ind, v, fmt.Sprintf("serialize_int(%s, 0, %d) // the code unit count guards the loop (SPEC §4.12)", v, f.Type.Size))
-	r.pf(ind, "%s = %s", length, v)
-	r.pf(ind, "rlow = false")
-	r.pf(ind, "for(%s) u:", v)
-	in := ind + "    "
-	r.call(in, "runit", "serialize_bits(runit, 32) // one 32-bit group per code unit (SPEC §4.12)")
-	r.refuse(in, "runit == 0", "serialize_refusal_embedded_nul", "a zero code unit (SPEC §4.12)")
-	r.refuse(in, "runit > 0xFFFF", "serialize_refusal_value_out_of_range", "a group past 16 bits (SPEC §4.12)")
-	r.refuse(in, "(runit >= 0xDC00 and runit <= 0xDFFF) != rlow", "serialize_refusal_value_out_of_range", "an unpaired surrogate (SPEC §4.12)")
-	r.pf(in, "rlow = runit >= 0xD800 and runit <= 0xDBFF")
-	r.pf(in, "write_int16_le(%s, u * 2, runit)", target)
-	r.refuse(ind, "rlow", "serialize_refusal_value_out_of_range", "a high surrogate as the final unit (SPEC §4.12)")
 }
 
 // emitReadInt reads a bare or ranged integer of 64 bits or fewer.
@@ -555,11 +528,8 @@ func emitZeroItems(g *Gen, r *readBody, items []ir.Item, ind string) {
 
 func emitZeroField(g *Gen, r *readBody, f *ir.Field, target, ind string) {
 	t := f.Type
-	buffer := t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString
+	buffer := t.Kind == ir.TString || t.Kind == ir.TBytes
 	size := t.Size
-	if t.Kind == ir.TWString {
-		size = 2 * t.Size // two bytes a code unit
-	}
 	switch {
 	case f.Array != ir.ArrayNone && isByteElem(t):
 		r.pf(ind, "%s = %s.zeros(%d)", target, RuntimeNamespace, f.ArrayBound)

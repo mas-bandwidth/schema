@@ -120,15 +120,6 @@ var javaVarCellAnchors = map[string]struct {
 			`if(raw.compareTo(lo)<0){report.refuse("out_of_range");return lo;}if(raw.compareTo(hi)>0){report.refuse("out_of_range");return hi;}return raw;`,
 		},
 	},
-	// vt/wstring/java: WireCheck.wideBytesValid rejects odd byte lengths,
-	// NUL code units and unpaired UTF-16 surrogates on the wire before decode.
-	"vt/wstring/java": {
-		src: "internal/codegen/javatable/variableform.go",
-		want: []string{
-			`boolean wideBytesValid(int off, int end) {`,
-			"case 33:\n                    return wideBytesValid(off, end) || damage();",
-		},
-	},
 	// vt/widening/java: WireCheck.array requires the element payloads to
 	// consume the array body's L exactly (refusing trailing bytes like
 	// list_scalar_widen.bin), while lawful widening is accepted by the walk.
@@ -199,7 +190,6 @@ table Root
     item   OldItem
     mode   Mode = idle
     label  string(16) = "hi"
-    wide   wstring(16)
     rate   fixed(12, 4) | min = -10, max = 10
     big    int128 | min = -1000000000, max = 1000000000
     pick   Pick
@@ -232,7 +222,6 @@ table Root
     item   NewItem
     mode   Mode = idle
     label  string(16) = "hi"
-    wide   wstring(16)
     rate   fixed(12, 4) | min = -10, max = 10
     big    int128 | min = -1000000000, max = 1000000000
     pick   Pick
@@ -251,12 +240,11 @@ public final class Probe {
 
     public static void main(String[] args) {
         // 1. Fixed class, defaults, table/variant/arm renames, wide scalars,
-        // wstring, maps, union arms (scalar + table), and widening from oldvt -> newvt.
+        // maps, union arms (scalar + table), and widening from oldvt -> newvt.
         oldvt.RootVariable.Value oldVal = new oldvt.RootVariable.Value();
         oldVal.item.x = -120;
         oldVal.mode = 1; // legacy
         oldVal.label = "hi"; // declared default elides on wire
-        oldVal.wide = "αβ".toCharArray();
         oldVal.rate = 24; // 1.5 in Q12.4
         oldVal.big = new oldvt.Int128(0L, 123456789L);
         oldVal.pick.tag = 1;
@@ -279,7 +267,6 @@ public final class Probe {
         check(got.item.x == -120, "fixed-class + table rename + field widen: " + got.item.x);
         check(got.mode == 1, "variant rename: " + got.mode);
         check("hi".equals(got.label), "default restored: " + got.label);
-        check(Arrays.equals("αβ".toCharArray(), got.wide), "wstring");
         check(got.rate == 24, "fixed-point: " + got.rate);
         check(new newvt.Int128(0L, 123456789L).equals(got.big), "int128: " + got.big);
         check(got.pick.tag == 1 && got.pick.newarm == 42, "union arm rename + widen: " + got.pick.tag + "," + got.pick.newarm);

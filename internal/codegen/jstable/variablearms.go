@@ -210,7 +210,7 @@ function TableVariableLinkUnions(codecs, unions) {
 // fresh arm hold (tabletext FieldDefaultCell, NewArm)
 function TableVariableFieldDefault(fd) {
   switch (fd.s) {
-    case "bool": case "int": case "flags": case "float": case "str": case "wstr": case "enum": return fd.def;
+    case "bool": case "int": case "flags": case "float": case "str": case "enum": return fd.def;
     case "bytes": return Uint8Array.from(fd.def);
     case "arr": return fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableElemDefault(fd.e)) : [];
     case "tab": return fd.c.make();
@@ -261,10 +261,6 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       const index = val === null ? 0 : (fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val));
       TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
     }
-    case "wstr":
-      if (val.length > fd.bound) { return false; }
-      TableVariableHeader(w, ids, fd, 33); w.leb(val.length * 2);
-      return TableVariableWideWrite(w, val, fd.bound);
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
@@ -423,9 +419,6 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
     case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
     case "float": return TableVariableWriteFloat(w, f.f32, x);
     case "str": w.raw(TableVariableUtf8Encode(x)); return true;
-    // AN ARM'S L IS THE WSTRING'S BYTE LENGTH (§3's arm payload table): the
-    // units ride under it with no length of their own; past N units refuses
-    case "wstr": return TableVariableWideWrite(w, x, f.bound);
     case "bytes": w.u8(6); w.leb(x.length); w.raw(x); return true;
     case "enum": {
       const vref = TableVariableEnumRef(f, ids, x);
@@ -730,16 +723,6 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       } else {
         holder.value = dec.s;
       }
-      return holder;
-    }
-    case "wstr": {
-      // an ODD L or ill-formed UTF-16 at an arm is that arm's own damage: the
-      // union reads None, one damaged counts, the parent reads on past L
-      // (§3; decode.go arm); past N units clamps, a pair never split
-      const s = TableVariableWideDecode(r.b.subarray(r.at, r.end));
-      if (s === null) { report.damaged = true; return null; }
-      if (s.length > f.bound) { report.oor++; holder.value = TableVariableWideClamp(s, f.bound); }
-      else { holder.value = s; }
       return holder;
     }
     case "bytes": case "arr": {
