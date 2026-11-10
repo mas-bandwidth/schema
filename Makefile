@@ -2180,8 +2180,10 @@ tables-block-gate2-smoke: build/schema_test_block_gate2 build/tables-generated-c
 tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_negative_main.cpp
 	@rm -rf build/json-dup-sabotage && mkdir -p build/json-dup-sabotage
 	./bin/schema generate --lang cpp --out build/json-dup-sabotage tables/examples
-	@sed -i.bak -e 's|if ( ( seen\[slot >> 6\] \& bit ) != 0 ) { in.report->refused = true; in.report->refuse_reason = malformed; }|if ( ( seen[slot >> 6] \& bit ) != 0 ) { /* sabotaged: no refusal */ }|' \
-		-e 's|if ( repeated ) { in.report->refused = true; in.report->refuse_reason = malformed; }|if ( repeated ) { /* sabotaged: no refusal */ }|' build/json-dup-sabotage/KeyedTable.cpp
+	@sed -i.bak \
+		-e '/if ( repeated )/,/^ *}/ { s/in.report->refused = true;/\/\* sabotaged: no refusal *\//; s/in.report->refuse_reason = malformed;//; }' \
+		-e '/if ( ( seen\[slot >> 6\] \& bit ) != 0 )/,/^ *}/ { s/in.report->refused = true;/\/\* sabotaged: no refusal *\//; s/in.report->refuse_reason = malformed;//; }' \
+		build/json-dup-sabotage/KeyedTable.cpp
 	@[ "$$(grep -c 'sabotaged: no refusal' build/json-dup-sabotage/KeyedTable.cpp)" -ge 2 ] || { echo "NEGATIVE CONTROL: the sabotage did not apply to both the key-spelling and the slot check"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
@@ -2201,18 +2203,18 @@ tables-json-keyed-dup-negative-control: bin/schema test/tables/json_keyed_dup_ne
 
 # The NEGATIVE CONTROL for an over-long string in JSON (docs/SPEC-TABLES.md
 # §16.2, §4). A string past its field's bound used to clamp to a code-point
-# prefix; the strict read refuses the whole value (out_of_range). This sabotage
+# prefix; the strict read refuses the whole value (length_over_bound). This sabotage
 # removes the refusal, so the walker hands back the shortened string: the
 # fixture must see the accept (exit 0).
 #
 # THE CONTROL IS RUN BOTH WAYS, because a binary that only ever meets the
 # sabotage cannot show it has a blade: against the HONEST walker it must see
-# the refusal with out_of_range and the field at its default (exit 2).
+# the refusal with length_over_bound and the field at its default (exit 2).
 .PHONY: tables-json-clamp-prefix-negative-control
 tables-json-clamp-prefix-negative-control: bin/schema test/tables/json_clamp_prefix_negative_main.cpp
 	@rm -rf build/json-clamp-sabotage && mkdir -p build/json-clamp-sabotage
 	./bin/schema generate --lang cpp --out build/json-clamp-sabotage tables/examples
-	@sed -i.bak 's|else if ( oor_flag ) { in.report->refused = true; in.report->refuse_reason = out_of_range; }|else if ( oor_flag ) { /* SABOTAGED: no refusal */ }|' build/json-clamp-sabotage/TablesTable.cpp
+	@sed -i.bak '/else if ( oor_flag )/,/^ *}/ { s/in.report->refused = true;/\/\* SABOTAGED: no refusal *\//; s/in.report->refuse_reason = length_over_bound;//; }' build/json-clamp-sabotage/TablesTable.cpp
 	@grep -q 'SABOTAGED' build/json-clamp-sabotage/TablesTable.cpp || { echo "NEGATIVE CONTROL: the sabotage did not apply"; exit 1; }
 	@mkdir -p build
 	$(CXX) -std=c++17 -Wall -Wextra -Werror -ffp-contract=off \
