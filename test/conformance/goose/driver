@@ -121,8 +121,7 @@ recursive fn fixed_field_inner_size(unit: schema_rt::LoadUnit, f: schema_rt::Fie
         return 1;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
-        return 4 + f.bound * cw;
+        return 4 + f.bound;
     }
     if f.shape == schema_rt::ShapeTab { return fixed_tab_size(unit, schema_rt::value_table(unit, f.ref)); }
     if f.shape == schema_rt::ShapeUnion { return 1 + fixed_union_arm_bytes(unit, schema_rt::value_union(unit, f.ref)); }
@@ -197,13 +196,11 @@ recursive fn fixed_field_to_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fiel
         return true;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
         let used = schema_rt::fixed_u32(b, pos) as i64;
-        let nbytes = used * cw;
         let off = data.len;
-        data.append(b[pos + 4 .. pos + 4 + nbytes]);
-        pos += 4 + f.bound * cw;
-        vals[s] = schema_rt::LoadVal { state: schema_rt::ValPresent, shape: f.shape, off: off, len: nbytes, .. };
+        data.append(b[pos + 4 .. pos + 4 + used]);
+        pos += 4 + f.bound;
+        vals[s] = schema_rt::LoadVal { state: schema_rt::ValPresent, shape: f.shape, off: off, len: used, .. };
         return true;
     }
     if f.shape == schema_rt::ShapeTab {
@@ -303,24 +300,21 @@ recursive fn fixed_field_from_loaded(unit: schema_rt::LoadUnit, f: schema_rt::Fi
         return true;
     }
     if f.shape == schema_rt::ShapeStr || f.shape == schema_rt::ShapeBytes {
-        let cw: i64 = if f.wide { 2 } else { 1 };
         if rode {
             let off = vals[s].off;
             let n = vals[s].len;
             if off < 0 || n < 0 || off > data.len || n > data.len - off { return false; }
-            let units = n / cw;
-            if units > f.bound || n != units * cw { return false; }
-            schema_rt::fixed_put(out, units as! u64, 4);
+            if n > f.bound { return false; }
+            schema_rt::fixed_put(out, n as! u64, 4);
             out.append(data[off .. off + n]);
-            schema_rt::fixed_put_zeros(out, (f.bound - units) * cw);
+            schema_rt::fixed_put_zeros(out, f.bound - n);
             return true;
         }
-        let def_bytes = if f.has_def && !f.wide { f.def_s } else { "" };
-        let units = def_bytes.len / cw;
-        if units > f.bound || def_bytes.len != units * cw { return false; }
-        schema_rt::fixed_put(out, units as! u64, 4);
+        let def_bytes = if f.has_def { f.def_s } else { "" };
+        if def_bytes.len > f.bound { return false; }
+        schema_rt::fixed_put(out, def_bytes.len as! u64, 4);
         out.append(def_bytes);
-        schema_rt::fixed_put_zeros(out, (f.bound - units) * cw);
+        schema_rt::fixed_put_zeros(out, f.bound - def_bytes.len);
         return true;
     }
     if f.shape == schema_rt::ShapeTab {
