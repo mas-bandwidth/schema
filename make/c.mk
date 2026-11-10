@@ -216,7 +216,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
 # own headers come from test/conformance/c.
-C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2list -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Ibuild/tables-generated-c/widelist -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
@@ -313,7 +313,8 @@ build/schema_test_c_soak: build/tables-generated-c/.stamp test/c-tables/soak_mai
 	@mkdir -p build
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off $(C_CONFORMANCE_INCLUDES) \
-		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -578,7 +579,8 @@ build/schema_test_c_soak_be: build/tables-generated-c/.stamp test/c-tables/soak_
 	$(BE_CC) -std=c99 -Wall -Wextra -Werror -Wshadow -O2 -ffp-contract=off -static \
 		-DSCHEMA_SOAK_NO_INTERPOSE \
 		$(C_CONFORMANCE_INCLUDES) \
-		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
@@ -606,7 +608,8 @@ tables-c-big-endian: build/schema_test_c_soak_be
 C_BE_NC := build/c-be-sabotage
 C_BE_NC_GEN := $(C_BE_NC)/generated
 C_BE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_BE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
-C_BE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c \
+C_BE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
+	test/conformance/c/unit_backenddemo.c $(C_BE_NC_GEN)/backend/BackendTable.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_BE_NC_GEN)/examples/TablesTable.c $(C_BE_NC_GEN)/examples/WideTable.c \
@@ -630,6 +633,7 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/v2 test/tables/V2.schema
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p1 test/tables/P1.schema
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p3 test/tables/P3.schema
+	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/backend tables/backend
 	@grep -q "SABOTAGED: host order" $(C_BE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged fallback arm"; exit 1; }
 	@grep -q "memcpy( dst, w->vocabulary->ids" $(C_BE_NC_GEN)/examples/TablesTable.h || \
@@ -662,7 +666,8 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 C_LE_NC := build/c-le-sabotage
 C_LE_NC_GEN := $(C_LE_NC)/generated
 C_LE_NC_INCLUDES := $(subst build/tables-generated-c,$(C_LE_NC_GEN),$(C_CONFORMANCE_INCLUDES))
-C_LE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c \
+C_LE_NC_SOAK_SRCS := test/c-tables/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c \
+	test/conformance/c/unit_backenddemo.c $(C_LE_NC_GEN)/backend/BackendTable.c \
 	test/conformance/c/unit_tblv1.c test/conformance/c/unit_tblv2.c \
 	test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 	$(C_LE_NC_GEN)/examples/TablesTable.c $(C_LE_NC_GEN)/examples/WideTable.c \
@@ -686,6 +691,7 @@ tables-c-little-endian-negative-control: test/c-tables/soak_main.c
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/v2 test/tables/V2.schema
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p1 test/tables/P1.schema
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p3 test/tables/P3.schema
+	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/backend tables/backend
 	@grep -q "SABOTAGED: reversed id words" $(C_LE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged memcpy arm"; exit 1; }
 	@grep -Fq "v >> ( j * 8 )" $(C_LE_NC_GEN)/examples/TablesTable.h || \
@@ -1075,7 +1081,8 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) \
-		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
+		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/wref.c test/conformance/c/unit_tblv1.c \
+		test/conformance/c/unit_backenddemo.c build/tables-generated-c/backend/BackendTable.c \
 		test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c test/conformance/c/unit_tblp3.c \
 		build/tables-generated-c/examples/TablesTable.c build/tables-generated-c/examples/WideTable.c \
 		build/tables-generated-c/examples/NestedTable.c build/tables-generated-c/examples/KeyedTable.c \
