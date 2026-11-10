@@ -375,11 +375,16 @@ var messageTextSabotages = map[string][]edit{
 	}},
 
 	// AND THE SAME TWO IN THE C++ EMITTER, which is the one the reference
-	// reads with. The content rule first: the emitted reader stops calling
-	// TableUtf8Valid and stores whatever arrived.
+	// reads with. The content rule first: remove the UTF-8 refusal and its
+	// code-point clamp. Leaving TableUtf8Clamp in place turns an in-bound
+	// malformed payload into an out_of_range refusal, which the wire fuzzer
+	// cannot distinguish from the oracle's damage refusal.
 	"message-emitter-text-accepts-ill-formed": {{
 		old: "\t\tg.pf(\"%[1]s    if ( !TableUtf8Valid( text%[2]s, n%[3]s ) )\\n%[1]s    {\\n%[1]s        report->damaged = true;\\n%[1]s        return false;\\n%[1]s    }\\n\", ind, sfx, sfx)\n",
 		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
+	}, {
+		old: "\t\tg.pf(\"%s    const int32_t kept%s = (int32_t) TableUtf8Clamp( text%s, n%s, %d );\\n\", ind, sfx, sfx, sfx, f.Type.Size)\n",
+		new: "\t\tg.pf(\"%s    const int32_t kept%s = n%s > (uint64_t) %d ? (int32_t) %d : (int32_t) n%s; // SABOTAGED: preserve malformed text within the declared bound\\n\", ind, sfx, sfx, f.Type.Size, f.Type.Size, sfx)\n",
 	}},
 
 	// then the clamp: the emitted reader bounds the length itself instead of
