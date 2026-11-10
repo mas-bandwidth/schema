@@ -274,12 +274,23 @@ func constName(name string) string {
 	return ir.RustConstName(name)
 }
 
+// javaConstType is the Java primitive whose range holds v: int inside
+// int32, long beyond it — so a generated MAX_BITS/MAX_BYTES constant is
+// always a valid Java literal.
+func javaConstType(v int64) string {
+	if fitsInt32(big.NewInt(v)) {
+		return "int"
+	}
+	return "long"
+}
+
 func (g *gen) emitBounds(name, what string, maxBits int64) {
 	bits, bytes := constName(name+"MaxBits"), constName(name+"MaxBytes")
+	maxBytes := ir.MaxBytes(maxBits)
 	g.bpf("    // %s is %s (SPEC §6.1).\n", bits, what)
 	g.bpf("    // %s is rounded up to the 8-byte write-buffer granularity.\n", bytes)
-	g.bpf("    public static final int %s = %d;\n", bits, maxBits)
-	g.bpf("    public static final int %s = %d;\n\n", bytes, ir.MaxBytes(maxBits))
+	g.bpf("    public static final %s %s = %s;\n", javaConstType(maxBits), bits, javaIntLit(big.NewInt(maxBits)))
+	g.bpf("    public static final %s %s = %s;\n\n", javaConstType(maxBytes), bytes, javaIntLit(big.NewInt(maxBytes)))
 }
 
 func (g *gen) emitStructFunctions(st *ir.Struct) {
@@ -1159,7 +1170,7 @@ func (g *gen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.boundRead(fmt.Sprint(total), ind)
+				g.boundRead(javaIntLit(big.NewInt(total)), ind)
 			}
 			for ; i < j; i++ {
 				g.emitReadStaticItem(items[i], path, ind)
