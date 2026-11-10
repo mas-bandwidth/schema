@@ -1202,7 +1202,6 @@ typedef unsigned __int128 uint128_t;
 // FixedLoad succeeds with zero counters/refusals and re-saves to cppBytes).
 func buildAndRunCppFixedOracle(t *testing.T, id string, u *ir.Unit, root string, count int, cppSetup string) ([]byte, func([]byte) error) {
 	t.Helper()
-	slowtest.Gate(t, "c++ (it builds and runs the C++ fixed oracle)")
 	files, err := cpp.Generate(u)
 	if err != nil {
 		t.Fatalf("%s: cpp.Generate: %v", id, err)
