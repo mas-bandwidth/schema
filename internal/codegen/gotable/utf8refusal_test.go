@@ -7,7 +7,6 @@ const utf8RefusalSchema = `package probe
 fixed table Root
 {
     s string(16)
-    w wstring(16)
 }
 `
 
@@ -18,7 +17,6 @@ const utf8RefusalProbe = "package probe\n" +
 	"  `{\"s\":\"`+\"\\xed\\xa0\\x80\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xc0\\xaf\"+`\"}`,\n" +
 	"  `{\"`+\"\\xff\"+`\":1}`,\n" +
-	"  `{\"w\":\"`+\"\\xff\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xf4\\x90\\x80\\x80\"+`\"}`,\n" +
 	"  `{\"s\":\"`+\"\\xe0\\xff\"+`\"}`}\n" +
 	" for _,c:=range refusals {\n" +

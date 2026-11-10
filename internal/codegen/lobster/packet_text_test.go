@@ -1,18 +1,16 @@
-// Packet text on the Lobster type wire: string(N)'s UTF-8 rules (SPEC §4.7)
-// and wstring(N)'s UTF-16 rules (SPEC §4.12), the Lobster rows of the
-// packet-utf8 and packet-wide gates (make/checks/packet-text.mk,
+// Packet text on the Lobster type wire: string(N)'s UTF-8 rules (SPEC §4.7),
+// the Lobster rows of the packet-utf8 gate (make/checks/packet-text.mk,
 // test/packet-text/harness). The vectors are the harness's: the shared
 // corpus rows (testdata/conformance/text/string.txt at bound 16 for
-// test/packet-text/Narrow.schema; wstring.txt at bounds 8 and 5 for
-// examples-wide/WideText.schema's WideSeven and WideFour), SPEC §4.12's six
-// interop cases, and every single-bit flip of every accepted row. The
+// test/packet-text/Narrow.schema) and every single-bit flip of every
+// accepted row. The
 // verdict on each is the one test/packet-text/driver.c prints ("REFUSE", or
 // "OK <consumed> <payload> <written> <canonical bytes>"); the judge is the
 // pinned corpus for its rows and, for the flips, an oracle written here from
 // the SPEC rules, held to the corpus first exactly as the harness holds the
 // C++ oracle. No C++ toolchain is needed, so the gate runs in the lobster
-// unit leg. Two controls remove the Lobster reader's UTF-8 check and its
-// surrogate pairing; each must turn the bit-flip agreement red.
+// unit leg. The control removes the Lobster reader's UTF-8 check and must
+// turn the bit-flip agreement red.
 package lobster
 
 import (
@@ -35,7 +33,6 @@ type textVector struct {
 	name, wire, payload string
 	bits, bound         int
 	refused, mutation   bool
-	wide                bool
 }
 
 func packedHex(s string) string {
@@ -47,7 +44,7 @@ func packedHex(s string) string {
 }
 
 // textCorpus reads the shared corpus as test/packet-text/harness does.
-func textCorpus(t *testing.T, file string, wide bool) []textVector {
+func textCorpus(t *testing.T, file string) []textVector {
 	t.Helper()
 	f, err := os.Open(filepath.Join("..", "..", "..", "testdata", "conformance", "text", file))
 	if err != nil {
@@ -55,12 +52,12 @@ func textCorpus(t *testing.T, file string, wide bool) []textVector {
 	}
 	defer f.Close()
 	var all []textVector
-	v := textVector{wide: wide}
+	v := textVector{}
 	flush := func() {
-		if v.name != "" && ((!wide && v.bound == 16) || (wide && (v.bound == 8 || v.bound == 5))) {
+		if v.name != "" && v.bound == 16 {
 			all = append(all, v)
 		}
-		v = textVector{wide: wide}
+		v = textVector{}
 	}
 	s := bufio.NewScanner(f)
 	for s.Scan() {
@@ -146,77 +143,9 @@ func narrowOracle(wire []byte) string {
 	return fmt.Sprintf("OK %d %s %d %s", 8+8*n, p, 8+8*n, hex.EncodeToString(enc))
 }
 
-// wideOracle is SPEC §4.12 for wstring(bound): a 3-bit length in
-// [0, bound], then one 32-bit group per code unit, no align; a group is
-// nonzero and at most 0xFFFF, and surrogates pair.
-func wideOracle(bound int, wire []byte) string {
-	total := len(wire) * 8
-	if total < 3 {
-		return "REFUSE"
-	}
-	n := int(bitsAt(wire, 0, 3))
-	if n > bound || total < 3+32*n {
-		return "REFUSE"
-	}
-	var units []uint64
-	low := false
-	for i := range n {
-		u := bitsAt(wire, 3+32*i, 32)
-		isLow := u >= 0xDC00 && u <= 0xDFFF
-		if u == 0 || u > 0xFFFF || isLow != low {
-			return "REFUSE"
-		}
-		low = u >= 0xD800 && u <= 0xDBFF
-		units = append(units, u)
-	}
-	if low {
-		return "REFUSE"
-	}
-	bits := 3 + 32*n
-	enc := make([]byte, (bits+7)/8)
-	set := func(at int, v uint64, w int) {
-		for k := range w {
-			if v>>k&1 != 0 {
-				enc[(at+k)/8] |= 1 << ((at + k) % 8)
-			}
-		}
-	}
-	set(0, uint64(n), 3)
-	var p strings.Builder
-	for i, u := range units {
-		set(3+32*i, u, 32)
-		fmt.Fprintf(&p, "%04x", u)
-	}
-	ps := p.String()
-	if ps == "" {
-		ps = "-"
-	}
-	es := hex.EncodeToString(enc)
-	if es == "" {
-		es = "-"
-	}
-	return fmt.Sprintf("OK %d %s %d %s", bits, ps, bits, es)
-}
-
 func textVectors(t *testing.T) []textVector {
 	t.Helper()
-	base := append(textCorpus(t, "string.txt", false), textCorpus(t, "wstring.txt", true)...)
-	for i, units := range [][]uint16{{}, {0x043c, 0x0438, 0x0440}, {0xe000}, {0xffff}, {0x41, 0xd83d, 0xde00, 0x42}, {0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67}} {
-		bits := 3 + 32*len(units)
-		wire := make([]byte, (bits+7)/8)
-		wire[0] = byte(len(units))
-		var payload strings.Builder
-		for j, unit := range units {
-			fmt.Fprintf(&payload, "%04x", unit)
-			for k := range 16 {
-				if unit&(1<<k) != 0 {
-					offset := 3 + 32*j + k
-					wire[offset/8] |= 1 << (offset % 8)
-				}
-			}
-		}
-		base = append(base, textVector{name: fmt.Sprintf("wstring-interop-%d", i), wire: hex.EncodeToString(wire), payload: packedHex(payload.String()), bits: bits, bound: 8, wide: true})
-	}
+	base := textCorpus(t, "string.txt")
 	all := append([]textVector{}, base...)
 	for _, v := range base {
 		if v.refused {
@@ -229,7 +158,7 @@ func textVectors(t *testing.T) []textVector {
 		for bit := 0; bit < len(raw)*8; bit++ {
 			m := append([]byte{}, raw...)
 			m[bit/8] ^= 1 << (bit % 8)
-			all = append(all, textVector{name: fmt.Sprintf("%s/flip-%d", v.name, bit), wire: hex.EncodeToString(m), bound: v.bound, wide: v.wide, mutation: true})
+			all = append(all, textVector{name: fmt.Sprintf("%s/flip-%d", v.name, bit), wire: hex.EncodeToString(m), bound: v.bound, mutation: true})
 		}
 	}
 	return all
@@ -242,11 +171,7 @@ func oracleVerdicts(t *testing.T, all []textVector) []string {
 	out := make([]string, len(all))
 	for i, v := range all {
 		raw, _ := hex.DecodeString(strings.TrimPrefix(v.wire, "-"))
-		if v.wide {
-			out[i] = wideOracle(v.bound-1, raw)
-		} else {
-			out[i] = narrowOracle(raw)
-		}
+		out[i] = narrowOracle(raw)
 		if v.mutation {
 			continue
 		}
@@ -266,7 +191,6 @@ func generateText(t *testing.T) map[string][]byte {
 	files := map[string][]byte{}
 	for _, src := range []string{
 		filepath.Join("..", "..", "..", "test", "packet-text", "Narrow.schema"),
-		filepath.Join("..", "..", "..", "examples-wide", "WideText.schema"),
 	} {
 		dir := t.TempDir()
 		data, err := os.ReadFile(src)
@@ -289,11 +213,7 @@ func lobsterTextVerdicts(t *testing.T, files map[string][]byte, all []textVector
 	t.Helper()
 	var in strings.Builder
 	for _, v := range all {
-		b := 0
-		if v.wide {
-			b = v.bound - 1
-		}
-		fmt.Fprintf(&in, "%d %s\n", b, v.wire)
+		fmt.Fprintf(&in, "0 %s\n", v.wire)
 	}
 	dir := t.TempDir()
 	writeAll(t, dir, files)
@@ -327,21 +247,18 @@ func TestLobsterPacketText(t *testing.T) {
 	t.Logf("packet text: %d vectors agree", len(all))
 }
 
-// TestLobsterPacketTextNegativeControls remove one reader rule each, in the
-// emitted read, and require the bit-flip agreement to fail on that rule's
-// side only: UTF-8 (narrow rows) and surrogate pairing (wide rows). The
-// pinned rows of that rule disagree too; the bit flips are the harness's
-// mutation agreement and must go red.
+// TestLobsterPacketTextNegativeControls removes the reader's UTF-8 rule in the
+// emitted read and requires the bit-flip agreement to fail. The pinned rows of
+// that rule disagree too; the bit flips are the harness's mutation agreement
+// and must go red.
 func TestLobsterPacketTextNegativeControls(t *testing.T) {
 	t.Parallel()
 	all := textVectors(t)
 	want := oracleVerdicts(t, all)
 	for _, tc := range []struct {
 		name, file, anchor, with string
-		wide                     bool
 	}{
-		{"utf8", "schema_wire.lobster", "    if not string_utf8_valid(s, n):\n        return serialize_refusal_invalid_utf8\n", "", false},
-		{"pairing", "WideText.lobster", "if (runit >= 0xDC00 and runit <= 0xDFFF) != rlow: return stream.fail(", "if false: return stream.fail(", true},
+		{"utf8", "schema_wire.lobster", "    if not string_utf8_valid(s, n):\n        return serialize_refusal_invalid_utf8\n", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -352,27 +269,20 @@ func TestLobsterPacketTextNegativeControls(t *testing.T) {
 			}
 			files[tc.file] = []byte(strings.ReplaceAll(text, tc.anchor, tc.with))
 			got := lobsterTextVerdicts(t, files, all)
-			var red, other int
+			red := 0
 			for i, v := range all {
-				if got[i] == want[i] {
-					continue
-				}
-				switch {
-				case v.wide != tc.wide:
-					other++
-				case v.mutation:
+				if got[i] != want[i] && v.mutation {
 					red++
 				}
 			}
-			if red == 0 || other != 0 {
-				t.Fatalf("removing %s: %d bit flips on its side disagree (want > 0), %d vectors of the other kind (want 0)", tc.name, red, other)
+			if red == 0 {
+				t.Fatalf("removing %s: no bit flip disagrees (want > 0)", tc.name)
 			}
 		})
 	}
 }
 
 const packetTextDriver = `import .Narrow
-import .WideText
 import .serialize
 
 def unhex(s:string) -> string:
@@ -388,13 +298,6 @@ def hexs(b:string) -> string:
     var s = ""
     for(b) c:
         s += number_to_string(c, 16, 2)
-    return lowercase(s)
-
-def units(b:string, n:int) -> string:
-    if n == 0: return "-"
-    var s = ""
-    for(n) i:
-        s += number_to_string(read_uint16_le(b, i * 2), 16, 4)
     return lowercase(s)
 
 def written(write) -> int, string:
@@ -418,18 +321,4 @@ if text:
                 else:
                     let bits, enc = written() w: packettext.WriteNarrow(w, v)
                     print("OK " + string(r.bits_processed()) + " " + hexs(substring(v.Text, 0, v.TextLength)) + " " + string(bits) + " " + hexs(enc))
-            elif bound == 7:
-                let v = wide.NewWideSeven()
-                if not wide.ReadWideSeven(r, v):
-                    print("REFUSE")
-                else:
-                    let bits, enc = written() w: wide.WriteWideSeven(w, v)
-                    print("OK " + string(r.bits_processed()) + " " + units(v.Text, v.TextLength) + " " + string(bits) + " " + hexs(enc))
-            else:
-                let v = wide.NewWideFour()
-                if not wide.ReadWideFour(r, v):
-                    print("REFUSE")
-                else:
-                    let bits, enc = written() w: wide.WriteWideFour(w, v)
-                    print("OK " + string(r.bits_processed()) + " " + units(v.Text, v.TextLength) + " " + string(bits) + " " + hexs(enc))
 `

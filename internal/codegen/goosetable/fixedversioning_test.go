@@ -97,7 +97,6 @@ var gooseVersionRows = []gooseVersionRow{
 	{row: "union_append"},
 	// NOT A WIDEN, whatever its name: it appends a field inside an arm (§5.7)
 	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -937,7 +936,7 @@ func gooseAssign(t *testing.T, wst, rst *ir.Struct, segs []string, value string)
 			pre = append(pre, fmt.Sprintf("%s.%s = true", prefix, ir.GoExportName(rf.Name+"_present")))
 		}
 		prefix += "." + ir.GoExportName(rf.Name)
-		text := rf.Type.Kind == ir.TString || rf.Type.Kind == ir.TBytes || rf.Type.Kind == ir.TWString
+		text := rf.Type.Kind == ir.TString || rf.Type.Kind == ir.TBytes
 		if idx >= 0 && (!last || !text) {
 			prefix += fmt.Sprintf("[%d]", idx)
 		}
@@ -1086,11 +1085,8 @@ func goosePoisonLeaf(f *ir.Field, slot, owner, name string) []string {
 			v &= (uint64(1) << f.Type.Width) - 1
 		}
 		return []string{fmt.Sprintf("%s = %d", slot, v)}
-	case ir.TString, ir.TBytes, ir.TWString:
+	case ir.TString, ir.TBytes:
 		unit := "90"
-		if f.Type.Kind == ir.TWString {
-			unit = "23130"
-		}
 		out := []string{fmt.Sprintf("%s = %d", lengthSlot(), f.Type.Size)}
 		for i := int64(0); i < f.Type.Size; i++ {
 			out = append(out, fmt.Sprintf("%s[%d] = %s", slot, i, unit))
@@ -1170,13 +1166,6 @@ func gooseScalar(t *testing.T, f *ir.Field, slot string, idx int, value string) 
 			out = append(out, fmt.Sprintf("%s[%d] = %d", slot, i, s[i]))
 		}
 		return out
-	case ir.TWString:
-		units := gooseUTF16(t, value)
-		var out []string
-		for i, u := range units {
-			out = append(out, fmt.Sprintf("%s[%d] = %d", slot, i, u))
-		}
-		return out
 	case ir.TBytes:
 		if idx < 0 {
 			t.Fatalf("%s: a bytes value with no index", f.Name)
@@ -1234,43 +1223,4 @@ func gooseFloatBits(t *testing.T, f *ir.Field, value string, width int) uint64 {
 		return math.Float64bits(float64(math.Float32frombits(b)))
 	}
 	return bits
-}
-
-// gooseUTF16 reads a manifest `u"…"` value as code units: `\uXXXX` is one
-// unit as written (a lone or paired surrogate stays what it is), every other
-// rune its UTF-16 spelling.
-func gooseUTF16(t *testing.T, v string) []uint16 {
-	t.Helper()
-	if !strings.HasPrefix(v, `u"`) || !strings.HasSuffix(v, `"`) {
-		t.Fatalf("a wide text value %q that is no u\"…\"", v)
-	}
-	s := v[2 : len(v)-1]
-	var out []uint16
-	for i := 0; i < len(s); {
-		if s[i] == '\\' && i+1 < len(s) {
-			switch s[i+1] {
-			case 'u':
-				n, err := strconv.ParseUint(s[i+2:i+6], 16, 16)
-				if err != nil {
-					t.Fatalf("a wide text escape in %q: %v", v, err)
-				}
-				out = append(out, uint16(n))
-				i += 6
-				continue
-			case '\\', '"':
-				out = append(out, uint16(s[i+1]))
-				i += 2
-				continue
-			}
-		}
-		r := []rune(s[i:])[0]
-		if r >= 0x10000 {
-			r -= 0x10000
-			out = append(out, uint16(0xD800+(r>>10)), uint16(0xDC00+(r&0x3FF)))
-		} else {
-			out = append(out, uint16(r))
-		}
-		i += len(string(r))
-	}
-	return out
 }

@@ -106,7 +106,7 @@ local function skip(c: Ctx, r: any, kind: number): boolean
 	if kind == KIND_POINTER or kind == 30 then
 		return leb(c, r) ~= nil
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = leb(c, r)
 		if n == nil or not has(r, n) then
 			return false

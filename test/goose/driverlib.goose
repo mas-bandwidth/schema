@@ -1,5 +1,5 @@
 // driverlib.goose — the hex line helpers the Goose packet drivers share
-// (test/packet-text/goose, test/packet-wide/goose). Copied beside each
+// (test/packet-text/goose). Copied beside each
 // driver, which imports it as `import .driverlib;`.
 
 fn hex_nibble(c: u8) -> u8 {

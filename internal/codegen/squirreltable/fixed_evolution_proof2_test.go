@@ -81,14 +81,13 @@ func TestSquirrelFixedEvolutionArrayBounds(t *testing.T) {
 func TestSquirrelFixedEvolutionText(t *testing.T) {
 	sqrun.Require(t)
 	t.Parallel()
-	const src = "package probe\nfixed table T\n{\n    s string(4)\n    w wstring(4)\n}\n"
+	const src = "package probe\nfixed table T\n{\n    s string(4)\n}\n"
 	u := fixedSynthetic(t, src)
-	const setup = "local v = T.T();\nv.S = \"ab\";\nv.W = [0x41, 0x42];\nvalues.append(v);\n"
+	const setup = "local v = T.T();\nv.S = \"ab\";\nvalues.append(v);\n"
 	g := sqEvoGenerate(t, u, nil)
 	clean := g.save(t, "T", setup)
-	body := len(clean) - 20
+	body := len(clean) - 8
 	cut := func(f func(b []byte)) []byte { b := sqEvoClone(clean); f(b); return b }
-	unit := func(b []byte, i int, v uint16) { binary.LittleEndian.PutUint16(b[body+12+2*i:], v) }
 	cases := []struct {
 		name string
 		file []byte
@@ -100,19 +99,13 @@ func TestSquirrelFixedEvolutionText(t *testing.T) {
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refused("text_ill_formed")},
 		{"C4 a truncated two-byte sequence", cut(func(b []byte) { b[body+5] = 0xc3 }), refused("text_ill_formed")},
 		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 w0"},
-		{"C5 an unpaired high surrogate", cut(func(b []byte) { unit(b, 0, 0xd800) }), refused("text_ill_formed")},
-		{"C5 a lone low surrogate", cut(func(b []byte) { unit(b, 1, 0xdc00) }), refused("text_ill_formed")},
-		{"C5 a zero unit", cut(func(b []byte) { unit(b, 1, 0) }), refused("text_ill_formed")},
-		{"C5 a wide length past the capacity", cut(func(b []byte) { b[body+8] = 5 }), refused("length_over_bound")},
-		{"R24 a lone surrogate in the wide slack", cut(func(b []byte) { unit(b, 2, 0xd800); unit(b, 3, 0) }), "ok 1 w0"},
-		{"a surrogate pair in the used units", cut(func(b []byte) { unit(b, 0, 0xd83d); unit(b, 1, 0xde00) }), "ok 1 w0"},
 	}
 	for _, c := range cases {
 		if got := g.load(t, "T", c.file); !strings.HasPrefix(got.head, c.want) {
 			t.Errorf("%s: %s, want %s", c.name, got.head, c.want)
 		}
 	}
-	if got := g.load(t, "T", cases[5].file); got.dump["r0.s"] != `"ab"` || got.dump["r0.w_count"] != "2" || got.dump["r0.w[1]"] != "66" {
+	if got := g.load(t, "T", cases[5].file); got.dump["r0.s"] != `"ab"` {
 		t.Errorf("R24: the used text with poisoned slack: %v", got.dump)
 	}
 
@@ -133,19 +126,9 @@ func TestSquirrelFixedEvolutionText(t *testing.T) {
 		t.Errorf("the negative control: ill-formed UTF-8 still refuses without the check: %s", got.head)
 	}
 	gc = sqEvoGenerate(t, u, nil)
-	gc.dropLine(t, "if (w == null) return \"text_ill_formed\";")
-	if got := gc.load(t, "T", cases[6].file); strings.HasPrefix(got.head, refused("text_ill_formed")) {
-		t.Errorf("the negative control: an unpaired surrogate still refuses without the check: %s", got.head)
-	}
-	gc = sqEvoGenerate(t, u, nil)
 	gc.plant(t, "    if (n < 0 || n > 4) return \"length_over_bound\";\n    if (_rt_fixed.textIllFormed", "    if (_rt_fixed.textIllFormed")
 	if got := gc.load(t, "T", cases[0].file); strings.HasPrefix(got.head, refused("length_over_bound")) {
 		t.Errorf("the negative control: a narrow length past capacity still refuses without the check: %s", got.head)
-	}
-	gc = sqEvoGenerate(t, u, nil)
-	gc.plant(t, "    if (n < 0 || n > 4) return \"length_over_bound\";\n    local w = ", "    local w = ")
-	if got := gc.load(t, "T", cases[9].file); strings.HasPrefix(got.head, refused("length_over_bound")) {
-		t.Errorf("the negative control: a wide length past capacity still refuses without the check: %s", got.head)
 	}
 }
 

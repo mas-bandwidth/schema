@@ -687,8 +687,6 @@ func descriptorElemSize(u *ir.Unit, f *ir.Field) int64 {
 		return size
 	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return 1
-	case f.Type.Kind == ir.TWString:
-		return 2
 	}
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok && !f.Type.Pointer {
@@ -707,7 +705,7 @@ func descriptorCounted(f *ir.Field) bool {
 	}
 	return f.Array == ir.ArrayCounted ||
 		(!f.Type.Pointer && !f.Type.TextUnbounded() &&
-			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString))
+			(f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString))
 }
 
 // descriptorUnboundedContainer is the ONE TELL of a container with no declared
@@ -729,7 +727,7 @@ func descriptorArrayBound(f *ir.Field) int64 {
 		return f.KeyEnumRef.Max
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return f.Type.Size
 	}
 	return 0
@@ -804,7 +802,7 @@ func fieldPieces(u *ir.Unit, f *ir.Field) []ir.BlockFieldPiece {
 }
 
 // needsCompanion reports a field whose storage carries a count companion the
-// cook's check bounds (§7.4): a by-value string, bytes or wstring, and a
+// cook's check bounds (§7.4): a by-value string or bytes, and a
 // counted array.
 func needsCompanion(f *ir.Field) bool {
 	if f.Array == ir.ArrayCounted {
@@ -814,7 +812,7 @@ func needsCompanion(f *ir.Field) bool {
 		return false
 	}
 	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
+	case ir.TString, ir.TBytes:
 		return true
 	}
 	return false
@@ -873,8 +871,6 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			s += ", default = " + lua.ByteString(f.DefBytes)
 		}
 		return s
-	case ir.TWString:
-		return fmt.Sprintf("shape = \"wstring\", bound = %d", t.Size)
 	case ir.TBytes:
 		s := fmt.Sprintf("shape = \"bytes\", bound = %d", t.Size)
 		if withDefault {
@@ -1070,8 +1066,6 @@ func defaultExpr(f *ir.Field) string {
 		return "0.0"
 	case ir.TString, ir.TBytes:
 		return lua.ByteString(f.DefBytes)
-	case ir.TWString:
-		return "{}"
 	}
 	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
 		return lua.Int128Literal(defInt(f))
@@ -1103,8 +1097,6 @@ func zeroExpr(f *ir.Field) string {
 		return "0.0"
 	case ir.TString, ir.TBytes:
 		return `""`
-	case ir.TWString:
-		return "{}"
 	}
 	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {
 		return "{ lo = 0, hi = 0 }"

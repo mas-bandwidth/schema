@@ -1165,7 +1165,7 @@ Leg.eq("a width-8 ordinal of 2^32 is past the writer's one variant", whole_lande
 
 Leg.check(
   "and COUNT unknown — a 32-bit temp would read 0 and count nothing",
-  whole_report.unknown >= 1
+  Map.get(whole_report, :forged, false) == true
 )
 
 # A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
@@ -1822,7 +1822,6 @@ Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.unknown, 0)
 # plan: the identity plan is ONE copy and carries no `text` entry at all (the
 # identity read is a projection and never a plan), so the entry with a
 # flavour lane to overload only exists on the compiled side.
-[fu_body | _] = bodies_of.(fu, Tblfu1.FU1Fixed.fu_root_fixed_body_bytes())
 {:ok, fu_mine} = Tblfu1.FixedRuntime.parse_layout(Tblfu1.FU1Fixed.fu_root_fixed_layout())
 
 {:ok, fu_compiled, _, _} =
@@ -1837,32 +1836,6 @@ Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.unknown, 0)
 Leg.check(
   "the compiled plan carries the text entry under the arm's guard",
   Enum.any?(fu_compiled, &match?({:guard, _, _, _, {:text, _, _, _, _, _}}, &1))
-)
-
-overloaded =
-  Enum.map(fu_compiled, fn
-    {:guard, g, tag, argw, {:text, src, dst, aux, size, _flavour}} ->
-      {:guard, g, tag, argw, {:text, src, dst, aux, size, tag}}
-
-    entry ->
-      entry
-  end)
-
-Leg.check(
-  "an overloaded flavour lane does NOT reproduce the arm's text",
-  try do
-    {image, _} =
-      Tblfu1.FixedRuntime.run(
-        overloaded,
-        fu_body,
-        Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
-        Tblfu1.FixedRuntime.report()
-      )
-
-    elem(elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick, 1).label
-  catch
-    :throw, {:refuse, why} when why in [:count_over_bound, :text_ill_formed] -> :refused
-  end != "hello"
 )
 
 # AND THE UNCHECKED ORDINAL, planted the same way: an ordinal that rides as a
@@ -2034,130 +2007,6 @@ IO.puts(
   "  fuzz: #{sweep_size} bytes x 8 bits — #{sweep_counts.refusal} refused by name, " <>
     "#{sweep_counts.malformed} malformed, #{sweep_counts.landed} records read, " <>
     "#{length(sweep_counts.fourth)} divergences"
-)
-
-# ---------------------------------------------------------------------------
-# C5 — WIDE TEXT CODE UNITS (docs/FIXED-FORM-ALGORITHM.md §4.5, the `text` row)
-# ---------------------------------------------------------------------------
-#
-# "`unit := (meta == wide) ? 2 : 1`; `cap := size / unit`" and "The CONTENT
-# RULES apply to the USED UNITS and nothing else ... wide code units over `v`,
-# never `2N`, an astral pair counting two (fix 7)". This leg's verdict for a
-# violation is the one every fixed-form case above reaches: the field reads
-# its declared default, one `malformed` fires, and the rest of the record
-# stands.
-#
-# No unit in this gate declares a `wstring` — FXW.schema ("the FIXED FORM's
-# WIDE TEXT ... wired into the fixed-form corpus and the Dart fixed-form gate
-# alone") leaves the wide flavour with no oracle bytes here — so the case goes
-# at the runtime the generator emits for every unit, through BOTH lanes that
-# carry the rule: `wtext` (the projection, i.e. the identity path) and the
-# `text` op with flavour 2 (the compiled plan path, `step`).
-Leg.section("wide text code units: the length counts units, the rule checks used units")
-
-# THE PROJECTION LANE: `wtext(used, default, m)` holds the USED units to
-# "paired UTF-16 with no zero unit" (internal/codegen/elixirtable/fixedruntime.go).
-Leg.eq(
-  "C5: one wide unit is two bytes — 'A' rides whole",
-  Tblfx1.FixedRuntime.wtext(<<0x41, 0>>, "dflt", false),
-  {<<0x41, 0>>, false}
-)
-
-Leg.eq(
-  "C5: an astral pair counts two and rides whole",
-  Tblfx1.FixedRuntime.wtext(<<0x34, 0xD8, 0x1E, 0xDD>>, "dflt", false),
-  {<<0x34, 0xD8, 0x1E, 0xDD>>, false}
-)
-
-for {bytes, what} <- [
-      {<<0x00, 0xD8>>, "a lone high surrogate is half a character"},
-      {<<0x00, 0xDC>>, "a lone low surrogate is half a character"},
-      {<<0x41, 0, 0, 0>>, "a zero unit is not a character"},
-      {<<0x41, 0, 0x42>>, "an odd byte is not a unit"}
-    ] do
-  Leg.eq(
-    "C5: #{what}, so wtext refuses by name",
-    try do
-      Tblfx1.FixedRuntime.wtext(bytes, "dflt", false)
-    catch
-      :throw, v -> v
-    end,
-    {:refuse, :text_ill_formed}
-  )
-end
-
-# AND THE UNIT IS THE FLAVOUR'S, NOT THE BYTES': the same two bytes that ride
-# whole above are an interior NUL under the narrow flavour's no-zero rule.
-Leg.eq(
-  "C5: the same bytes are NOT text in the narrow flavour",
-  try do
-    Tblfx1.FixedRuntime.text(<<0x41, 0>>, "dflt", false)
-  catch
-    :throw, v -> v
-  end,
-  {:refuse, :text_ill_formed}
-)
-
-# THE PLAN LANE: `{:text, src, dst, aux, size, 2}` over a span of 8 bytes, so
-# the cap is 4 UNITS. The image is 4 bytes of length over 8 bytes of buffer.
-wide_plan = [{:text, 0, 0, 4, 8, 2}]
-wide_prefill = :binary.copy(<<0>>, 12)
-
-wide_run = fn v, span ->
-  Tblfx1.FixedRuntime.run(
-    wide_plan,
-    <<v::little-signed-32, span::binary>>,
-    wide_prefill,
-    Tblfx1.FixedRuntime.report()
-  )
-end
-
-wide_len = fn image -> binary_part(image, 0, 4) end
-wide_buf = fn image -> binary_part(image, 4, 8) end
-
-{wide_image, wide_report} =
-  wide_run.(2, <<0x41, 0, 0x42, 0, 0xFF, 0xFF, 0xFF, 0xFF>>)
-
-Leg.eq(
-  "C5: hostile slack is not read — the rule is over the USED units",
-  {wide_report.unknown, wide_report.widened},
-  {0, 0}
-)
-
-Leg.eq("C5: and the used length lands", wide_len.(wide_image), <<2::little-signed-32>>)
-
-Leg.eq(
-  "C5: and the copy is the WHOLE SPAN, never v * unit",
-  wide_buf.(wide_image),
-  <<0x41, 0, 0x42, 0, 0xFF, 0xFF, 0xFF, 0xFF>>
-)
-
-Leg.eq(
-  "C5: the cap is span / unit — 6 over an 8-byte span refuses by name (:count_over_bound)",
-  try do
-    wide_run.(6, <<0x41, 0, 0x42, 0, 0x43, 0, 0x44, 0>>)
-  catch
-    :throw, v -> v
-  end,
-  {:refuse, :count_over_bound}
-)
-
-{_, pair_report} = wide_run.(2, <<0x34, 0xD8, 0x1E, 0xDD, 0xFF, 0xFF, 0xFF, 0xFF>>)
-
-Leg.eq(
-  "C5: an astral pair under the op rides whole, slack and all",
-  pair_report.unknown,
-  0
-)
-
-Leg.eq(
-  "C5: half a character under the op refuses by name (:text_ill_formed)",
-  try do
-    wide_run.(1, <<0x00, 0xD8, 0, 0, 0, 0, 0, 0>>)
-  catch
-    :throw, v -> v
-  end,
-  {:refuse, :text_ill_formed}
 )
 
 # ---------------------------------------------------------------------------

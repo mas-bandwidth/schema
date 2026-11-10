@@ -795,7 +795,6 @@ public sealed class TableFieldInfo
     public Func<UInt128, bool> RequiredValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
-    public Func<object, char[]> GetChars;
     public byte[] DefaultBytes;
     public Action<object> ResetField;
     public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded

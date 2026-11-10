@@ -341,13 +341,19 @@ func (r *wireReader) skip(kind uint8) bool {
 		_, ok := r.leb()
 		return ok
 	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload, ir.TableKindWstring:
+		ir.TableKindEscape, ir.TableKindNoPayload:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
 		}
 		r.off += int(n)
 		return true
+	case ir.TableKindRetiredWstring, ir.TableKindReservedFloat16:
+		// KIND 33 IS RETIRED AND KIND 34 IS RESERVED FOR float16; NEITHER IS
+		// PART OF THIS MAJOR (§3): no writer emits them and no reader has a
+		// rule for them, so a reader meets them only as DAMAGE, exactly as it
+		// meets 35 or 200
+		return false
 	case ir.TableKindUnion:
 		arm, ok := r.leb()
 		if !ok {
@@ -505,14 +511,6 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		payload := r.buf[r.off : r.off+n]
 		r.off += n
 		return r.text(&fv.Cell, &fv.Count, f, payload, !f.Type.TextUnbounded(), int(f.Type.Size))
-	case f.Type.Kind == ir.TWString:
-		n, ok := r.lengthOf()
-		if !ok {
-			return false
-		}
-		payload := r.buf[r.off : r.off+n]
-		r.off += n
-		return r.wide(&fv.Cell, &fv.Count, f, payload)
 	case f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		return r.arrayBody(fv, -1)
 	case tabletext.UnionOf(f) != nil:
@@ -545,24 +543,6 @@ func (r *wireReader) text(cell *tabletext.Cell, count *int, f *ir.Field, payload
 	}
 	cell.Str = append([]byte(nil), payload...)
 	*count = len(payload)
-	return true
-}
-
-// wide places one kind 33 payload: an even L, paired surrogates, no zero unit,
-// and no more code units than the reader declares.
-func (r *wireReader) wide(cell *tabletext.Cell, count *int, f *ir.Field, payload []byte) bool {
-	if len(payload)&1 != 0 {
-		return r.damage("a wide text payload with an odd L")
-	}
-	units := wideUnits(payload)
-	if !wideValid(units) {
-		return r.damage("ill-formed wide text")
-	}
-	if len(units) > int(f.Type.Size) {
-		return r.refuseField(ReasonLengthOverBound, f)
-	}
-	cell.Units = units
-	*count = len(units)
 	return true
 }
 
@@ -1102,12 +1082,6 @@ func (r *wireReader) arm(cell *tabletext.Cell, arm ir.UnionVariant, tag, n int) 
 		payload := r.buf[r.off : r.off+n]
 		r.off += n
 		if !r.text(&av.Cell, &av.Count, f, payload, true, int(f.Type.Size)) {
-			return false
-		}
-	case f.Type.Kind == ir.TWString:
-		payload := r.buf[r.off : r.off+n]
-		r.off += n
-		if !r.wide(&av.Cell, &av.Count, f, payload) {
 			return false
 		}
 	case f.Type.Kind == ir.TBytes, f.Array != ir.ArrayNone:

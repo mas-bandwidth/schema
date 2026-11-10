@@ -166,31 +166,6 @@ func TestUtf8(t *testing.T) {
 `,
 	},
 	{
-		id:     "utf16-values/go/valid-data",
-		schema: "package probe\nfixed table Root { wide wstring(10) }\n",
-		// §3.4: UTF-16 stores one unit at a time at two bytes each. Empty, a
-		// BMP unit, a wide pair and the full capacity.
-		probe: t10Prelude + `
-func TestUtf16(t *testing.T) {
-	for _, want := range [][]uint16{nil, {0x0041}, {0x00E9, 0x4E2D}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}} {
-		var v Root
-		RootReset(&v)
-		copy(v.Wide[:], want)
-		v.WideLength = int32(len(want))
-		got := roundtrip(t, v)
-		if int(got.WideLength) != len(want) {
-			t.Fatalf("wstring %v: got len %d", want, got.WideLength)
-		}
-		for i := range want {
-			if got.Wide[i] != want[i] {
-				t.Fatalf("wstring %v: got %v", want, got.Wide[:got.WideLength])
-			}
-		}
-	}
-}
-`,
-	},
-	{
 		id:     "byte-buffers/go/valid-data",
 		schema: "package probe\nfixed table Root { blob bytes(6) }\n",
 		// §3.4: a bounded byte buffer is a length word and raw bytes. Empty, a

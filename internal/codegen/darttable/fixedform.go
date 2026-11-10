@@ -50,7 +50,6 @@ const fixedKindOptional = ir.TableKindOptional
 // the text flavours, which say how a `text` plan entry lands its units.
 const (
 	fixedTextUtf8  = 1
-	fixedTextWide  = 2
 	fixedTextBytes = 3
 )
 
@@ -388,9 +387,6 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
 	default:
 		fixedWalkElement(w, f, id, f.Name, at)
 	}

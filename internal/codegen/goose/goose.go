@@ -30,7 +30,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -587,11 +586,8 @@ func (g *Gen) Slots(f *ir.Field) []Slot {
 		out = append(out, Slot{Name: name, Type: "const u8[:]?", Comment: "a view of the blob's bytes: null is absent (docs/SPEC-TABLES.md §2.5)"})
 	case t.Pointer:
 		out = append(out, Slot{Name: name, Type: g.TypeRef(t.Name, true) + "?", Comment: "a pointer: null is null (docs/SPEC-TABLES.md §2.4)"})
-	case t.Kind == ir.TString || t.Kind == ir.TBytes || t.Kind == ir.TWString:
+	case t.Kind == ir.TString || t.Kind == ir.TBytes:
 		unit, size := "u8", t.Size
-		if t.Kind == ir.TWString {
-			unit = "u16"
-		}
 		if f.Array != ir.ArrayNone {
 			out = append(out, Slot{Name: name, Type: fmt.Sprintf("%s[%d][%d]", unit, size, f.ArrayBound)})
 			out = append(out, Slot{Name: name + "Length", Type: fmt.Sprintf("i32[%d]", f.ArrayBound)})
@@ -644,28 +640,19 @@ func typeWord(t ir.FieldType) string {
 	switch t.Kind {
 	case ir.TString:
 		return fmt.Sprintf("string(%d)", t.Size)
-	case ir.TWString:
-		return fmt.Sprintf("wstring(%d), UTF-16 code units", t.Size)
 	}
 	return fmt.Sprintf("bytes(%d)", t.Size)
 }
 
-// byteDefault is a string/bytes/wstring field's specified default as the
-// full array literal and its used length (SPEC §4.2): bytes for string and
-// bytes, UTF-16 code units for wstring.
+// byteDefault is a string/bytes field's specified default as the full array
+// literal and its used length (SPEC §4.2).
 func (g *Gen) byteDefault(f *ir.Field) (string, int) {
 	if !f.HasDefault || len(f.DefBytes) == 0 {
 		return "", 0
 	}
 	var units []int
-	if f.Type.Kind == ir.TWString {
-		for _, u := range utf16.Encode([]rune(string(f.DefBytes))) {
-			units = append(units, int(u))
-		}
-	} else {
-		for _, c := range f.DefBytes {
-			units = append(units, int(c))
-		}
+	for _, c := range f.DefBytes {
+		units = append(units, int(c))
 	}
 	parts := make([]string, f.Type.Size)
 	for i := range parts {

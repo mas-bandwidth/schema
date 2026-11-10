@@ -41,7 +41,7 @@ fixed table FixedDoc {
 	count    int32 | min = -10, max = 10
 	enabled  bool
 	title    string(16)
-	wide     wstring(4)
+	wide     string(4)
 	raw      bytes(4)
 	low      int128 | min = -1000, max = 1000
 	high     uint128
@@ -87,7 +87,7 @@ table VarDoc {
 	nums   []int32
 	color  Color
 	feat     Features
-	wide   wstring(4)
+	wide   string(4)
 	real32 float32
 	choice VarChoice
 }

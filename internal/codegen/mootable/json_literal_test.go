@@ -277,9 +277,6 @@ func (l *literal) field(rec string, fv *tabletext.Field) {
 		l.pf("%s = {}\n%sLength = {}\n", at, at)
 		for i := range fv.Elems {
 			data, n := fv.Elems[i].Str, len(fv.Elems[i].Str)
-			if t.Kind == ir.TWString {
-				data, n = unitsBytes(fv.Elems[i].Units), len(fv.Elems[i].Units)
-			}
 			l.pf("table.insert(%s, %s)\ntable.insert(%sLength, %d)\n", at, bufferLit(bufferSize(t), data), at, n)
 		}
 	case f.Array == ir.ArrayList:
@@ -298,9 +295,6 @@ func (l *literal) field(rec string, fv *tabletext.Field) {
 	case f.Array != ir.ArrayNone && isBuffer(t):
 		for i := 0; i < count; i++ {
 			data, n := fv.Elems[i].Str, len(fv.Elems[i].Str)
-			if t.Kind == ir.TWString {
-				data, n = unitsBytes(fv.Elems[i].Units), len(fv.Elems[i].Units)
-			}
 			l.pf("%s[%d] = %s\n%sLength[%d] = %d\n", at, i+1, bufferLit(bufferSize(t), data), at, i+1, n)
 		}
 	case f.Array != ir.ArrayNone:
@@ -311,9 +305,6 @@ func (l *literal) field(rec string, fv *tabletext.Field) {
 		l.pf("%s = %s\n", at, l.scalarExpr(f, &fv.Cell))
 	case isBuffer(t):
 		data, n := fv.Cell.Str, len(fv.Cell.Str)
-		if t.Kind == ir.TWString {
-			data, n = unitsBytes(fv.Cell.Units), len(fv.Cell.Units)
-		}
 		l.pf("%s = %s\n%sLength = %d\n", at, bufferLit(bufferSize(t), data), at, n)
 	default:
 		l.pf("%s = %s\n", at, l.scalarExpr(f, &fv.Cell))

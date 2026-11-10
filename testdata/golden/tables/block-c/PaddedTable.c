@@ -319,7 +319,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_is_enum( const blockdemo_table_fie
 static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_field_info_t * f )
 {
     if ( f->text_list != 0 ) { return 'a'; }
-    if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
+    if ( f->kind == 12 ) { return 's'; }           /* string */
     if ( blockdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( blockdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
     if ( f->sequence==2 ) { return 'o'; }
@@ -397,6 +397,9 @@ typedef struct blockdemo_table_json_out_t
     int64_t capacity;
     int64_t offset;
     int overflow;
+    /* storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+       refuses the whole write (docs/SPEC-TABLES.md §16.14 W0) */
+    int invalid;
     void * graph;
 } blockdemo_table_json_out_t;
 
@@ -510,9 +513,10 @@ static SCHEMA_UNUSED int32_t blockdemo_table_json_utf8( const char * s, int32_t 
     return code;
 }
 
-/* A JSON text must be valid UTF-8 (RFC 8259 section 8.1). Caller-filled storage can still contain
-   invalid bytes; write each such byte as U+FFFD rather than emitting invalid
-   JSON. The text reader also replaces ill-formed sequences before clamping. */
+/* A JSON text must be valid UTF-8 (RFC 8259 section 8.1), and no read puts
+   anything else into storage, so a byte that is not part of a well-formed
+   sequence was put there by a program: the write REFUSES (invalid_value,
+   docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced. */
 static SCHEMA_UNUSED void blockdemo_table_json_write_string( blockdemo_table_json_out_t * out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -547,7 +551,7 @@ static SCHEMA_UNUSED void blockdemo_table_json_write_string( blockdemo_table_jso
                     int32_t width = 0;
                     if ( blockdemo_table_json_utf8( s + i, length - i, &width ) < 0 )
                     {
-                        blockdemo_table_json_raw( out, "\xef\xbf\xbd", 3 ); /* U+FFFD, one per bad byte */
+                        out->invalid = 1; /* not text: the write refuses (§16.14 W0) */
                     }
                     else
                     {
@@ -560,50 +564,6 @@ static SCHEMA_UNUSED void blockdemo_table_json_write_string( blockdemo_table_jso
     }
     blockdemo_table_json_put( out, '"' );
 }
-
-static SCHEMA_UNUSED int32_t blockdemo_table_json_encode_utf8( uint32_t code, char * unit );
-
-static SCHEMA_UNUSED void blockdemo_table_json_write_w_string( blockdemo_table_json_out_t * out, const uint16_t * s, int32_t length )
-{
-    static const char hex[] = "0123456789abcdef";
-    blockdemo_table_json_put( out, '"' );
-    for ( int32_t i = 0; i < length; i++ )
-    {
-        uint32_t code = (uint32_t) (uint16_t) s[i];
-        if ( code >= 0xd800 && code <= 0xdbff && i + 1 < length )
-        {
-            const uint32_t low = (uint32_t) (uint16_t) s[i + 1];
-            if ( low >= 0xdc00 && low <= 0xdfff )
-            {
-                code = 0x10000 + ( ( code - 0xd800 ) << 10 ) + ( low - 0xdc00 );
-                i++;
-            }
-        }
-        if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
-        switch ( code )
-        {
-            case '"':  blockdemo_table_json_raw( out, "\\\"", 2 ); continue;
-            case '\\': blockdemo_table_json_raw( out, "\\\\", 2 ); continue;
-            case '\b': blockdemo_table_json_raw( out, "\\b", 2 ); continue;
-            case '\f': blockdemo_table_json_raw( out, "\\f", 2 ); continue;
-            case '\n': blockdemo_table_json_raw( out, "\\n", 2 ); continue;
-            case '\r': blockdemo_table_json_raw( out, "\\r", 2 ); continue;
-            case '\t': blockdemo_table_json_raw( out, "\\t", 2 ); continue;
-            default: break;
-        }
-        if ( code < 0x20 )
-        {
-            char escape[6] = { '\\', 'u', '0', '0', hex[ code >> 4 ], hex[ code & 0xf ] };
-            blockdemo_table_json_raw( out, escape, 6 );
-            continue;
-        }
-        char encoded[4];
-        const int32_t encoded_length = blockdemo_table_json_encode_utf8( code, encoded );
-        blockdemo_table_json_raw( out, encoded, encoded_length );
-    }
-    blockdemo_table_json_put( out, '"' );
-}
-
 
 static SCHEMA_UNUSED void blockdemo_table_json_write_unsigned( blockdemo_table_json_out_t * out, uint64_t value )
 {
@@ -949,9 +909,6 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_
     if(f->sequence==2) { return blockdemo_table_json_write_map(out,storage,f,depth); }
 #endif
 #endif
-    if ( f->kind == 33 ) {
-        blockdemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, blockdemo_table_json_count( base, f ) ); return 1;
-    }
     if ( f->kind == 12 && f->text_list == 0 )
     {
 #ifdef SCHEMA_BLOCKDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
@@ -1357,80 +1314,6 @@ static SCHEMA_UNUSED int blockdemo_table_json_scan_text( blockdemo_table_json_in
 {
     return blockdemo_table_json_scan_string_as( in, out, capacity, length, 1 );
 }
-
-
-static SCHEMA_UNUSED uint32_t blockdemo_table_json_decode_utf8( const char * unit, int32_t unit_length )
-{
-    const unsigned char lead = (unsigned char) unit[0];
-    if ( unit_length == 1 ) { return lead; }
-    uint32_t code = lead & ( unit_length == 2 ? 0x1fu : ( unit_length == 3 ? 0x0fu : 0x07u ) );
-    for ( int32_t i = 1; i < unit_length; i++ )
-    {
-        code = ( code << 6 ) | (uint32_t) ( (unsigned char) unit[i] & 0x3f );
-    }
-    return code;
-}
-
-// Scan one JSON string into a caller buffer of UTF-16 CODE UNITS: the wstring
-// row of §16.2, the text TRANSCODED at the boundary. It shares
-// table_json_scan_unit with the narrow scan, so the escape grammar and the
-// lone-surrogate rule are one grammar, and appends ONE CODE POINT AT A TIME —
-// one unit below U+10000 and a surrogate PAIR above it. A string longer than
-// the field is therefore out_of_range at N code units with a pair never split, and
-// a high surrogate left without its low half is dropped with it, which is the
-// same sentence the wire's clamp takes (§3). Clamping is counted, never fatal.
-static SCHEMA_UNUSED int blockdemo_table_json_scan_w_string( blockdemo_table_json_in_t * in, uint16_t * out, int32_t capacity, int32_t * length )
-{
-    if ( blockdemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
-    in->pos++;
-    int32_t placed = 0;
-    int out_of_range = 0;
-    for ( ;; )
-    {
-        char unit[4];
-        int32_t unit_length = 0;
-        if ( !blockdemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
-        if ( unit_length == 0 ) { break; }
-        const uint32_t code = blockdemo_table_json_decode_utf8( unit, unit_length );
-        if ( code == 0 ) { in->bad = 1; return 0; } /* a wstring value is text storage: text_holds_zero (§16.3) */
-        uint16_t units[2];
-        int32_t units_length = 1;
-        if ( code < 0x10000 )
-        {
-            units[0] = (uint16_t) code;
-        }
-        else
-        {
-            const uint32_t rest = code - 0x10000;
-            units[0] = (uint16_t) ( 0xd800 + ( rest >> 10 ) );
-            units[1] = (uint16_t) ( 0xdc00 + ( rest & 0x3ff ) );
-            units_length = 2;
-        }
-        if ( out == NULL )
-        {
-            if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
-            placed += units_length;
-        }
-        else if ( !out_of_range && placed <= capacity - units_length )
-        {
-            for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
-            placed += units_length;
-        }
-        else
-        {
-            // A CLAMP IS A PREFIX, the narrow scan's own rule: once one code
-            // point does not fit, the scan stops placing. A pair is placed
-            // whole or not at all, so no clamp can leave an unpaired
-            // surrogate in storage.
-            out_of_range = 1;
-        }
-    }
-    if ( out_of_range ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
-    if ( length != NULL ) { *length = placed; }
-    return 1;
-}
-
-
 
 /* Scan one number, to JSON's OWN grammar (RFC 8259 §6) and not to a run of
    number-ish characters:
@@ -2288,12 +2171,6 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
     if(f->sequence==2) { return blockdemo_table_json_read_map(in,storage,f,depth); }
 #endif
 #endif
-    if ( f->kind == 33 ) {
-        int32_t length = 0;
-        if ( !blockdemo_table_json_scan_w_string( in, (uint16_t *)(void *) storage, f->array_bound, &length ) ) { return 0; }
-        ((uint16_t *)(void *)storage)[length] = 0;
-        blockdemo_table_json_set_count( base, f, length ); return 1;
-    }
     if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
@@ -2732,6 +2609,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_write( const void * value, con
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = 0;
+    out.invalid = 0;
     out.graph = NULL;
     if ( !blockdemo_table_json_write_value( &out, value, info, 0 ) ) { return -1; }
     /* THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
@@ -2743,7 +2621,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_write( const void * value, con
        handed back through a pipe has to be one text in all three places, and a
        buffer whose last byte is a closing brace is the one shape that is not. */
     blockdemo_table_json_put( &out, '\n' );
-    if ( out.overflow ) { return -1; }
+    if ( out.overflow || out.invalid ) { return -1; }
     return out.offset;
 }
 

@@ -86,7 +86,7 @@ tables-squirrel-damage-discard-negative-control: toolchain-squirrel dist-squirre
 # M18: union-arm framing hands every payload to the ordinary field reader.
 .PHONY: tables-squirrel-arms tables-squirrel-arms-negative-control
 tables-squirrel-arms: toolchain-squirrel
-	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports TestSquirrelWideTextMatchesTheWire' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports|WideTextMatchesTheWire)$$' -count=1
+	sh test/slowgate/proof $@ 'TestSquirrelArmIsAFieldLine TestSquirrelTableLoadMatchesTheReports' ./internal/codegen/squirreltable -run '^TestSquirrel(ArmIsAFieldLine|TableLoadMatchesTheReports)$$' -count=1
 tables-squirrel-arms-negative-control:
 	sh test/slowgate/proof $@ 'TestSquirrelArmFieldLineNegativeControl' ./internal/codegen/squirreltable -run '^TestSquirrelArmFieldLineNegativeControl$$' -count=1
 

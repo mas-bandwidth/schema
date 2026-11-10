@@ -55,11 +55,11 @@ func TestLuaRoadmapNotesDescribeThePresent(t *testing.T) {
 	if len(packet) != 1 {
 		t.Fatalf("found %d packet tasks; want 1", len(packet))
 	}
-	if len(fixed) != 57 {
-		t.Fatalf("found %d fixed tasks; want 57", len(fixed))
+	if len(fixed) != 56 {
+		t.Fatalf("found %d fixed tasks; want 56", len(fixed))
 	}
-	if len(vt) != 32 {
-		t.Fatalf("found %d variable-table tasks; want 32 task nodes for the 33 cells (string-identity shares port/lua/vt/blobs)", len(vt))
+	if len(vt) != 31 {
+		t.Fatalf("found %d variable-table tasks; want 31 task nodes for the 32 cells (string-identity shares port/lua/vt/blobs)", len(vt))
 	}
 	if len(badTag) > 0 {
 		t.Fatalf("notes still name the retired tag: %s", strings.Join(badTag, ", "))

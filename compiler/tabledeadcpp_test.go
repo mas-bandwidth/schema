@@ -102,38 +102,6 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 	return string(header), files
 }
 
-func TestCppTableWideTextRuntimeFollowsTheCensus(t *testing.T) {
-	with, files := deadCppHeader(t, deadCppWideSrc)
-	for _, sym := range deadCppWideSymbols {
-		if !strings.Contains(with, sym) {
-			t.Errorf("a unit that declares wstring(N) must carry %s", sym)
-		}
-	}
-	// present is not the same as REACHED: the fixture's own codec has to call
-	// the pair, or the header carries three definitions nobody reads again
-	if !strings.Contains(with, "if ( !TableUtf16Valid( r.buffer + r.offset, units ) )") {
-		t.Error("the wide-text field's codec must call TableUtf16Valid")
-	}
-	if !strings.Contains(with, "TableUtf16Clamp( r.buffer + r.offset, units, 4 )") {
-		t.Error("the wide-text field's codec must call TableUtf16Clamp at its declared bound")
-	}
-	deadCppCompile(t, files)
-
-	without, _ := deadCppHeader(t, deadCppNarrowSrc)
-	for _, sym := range deadCppWideSymbols {
-		if strings.Contains(without, sym) {
-			t.Errorf("a unit with no wide text must carry no %s", sym)
-		}
-	}
-	// the kind 12 half stays in every unit: TableJsonScanUnit reads it and the
-	// generic walk is one artifact
-	for _, sym := range []string{"TableUtf8Valid", "TableUtf8Clamp"} {
-		if !strings.Contains(without, sym) {
-			t.Errorf("kind 12's runtime is every unit's and %s left one", sym)
-		}
-	}
-}
-
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {
 	with, files := deadCppHeader(t, deadCppBlobSrc)
 	for _, sym := range deadCppBlobSymbols {

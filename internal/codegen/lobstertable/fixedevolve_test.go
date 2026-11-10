@@ -96,7 +96,6 @@ var lobsterVersionRows = []lobsterVersionRow{
     assert_eq(back[0].Pick.Alpha.X, 21, "pick.alpha.x")
     assert_eq(back[0].Pick.Alpha.Y, 55, "pick.alpha.y prefill default")
     assert_eq(back[0].Seq, 18, "seq")`},
-	{row: "wstring_grow"},
 }
 
 func TestLobsterFixedFormEvolution(t *testing.T) {
@@ -804,7 +803,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     lead   uint32 = 1
     marks  [..4]int32
     label  string(8)
-    wide   wstring(4)
     val    int32 | min = 0, max = 100
     trail  uint32 = 2
 }
@@ -815,8 +813,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     good.MarksCount = 2
     good.Label = "abc"
     good.LabelLength = 3
-    good.Wide = write_int16_le(write_int16_le(schema_rt.zeros(8), 0, 65), 2, 66)
-    good.WideLength = 2
     good.Val = 50
     good.Trail = 20
     good.Marks = [11, 22, 0, 0]
@@ -830,8 +826,6 @@ fixed table CheckedHost | integrity = "crc32c" {
     bad_val.MarksCount = 2
     bad_val.Label = "abc"
     bad_val.LabelLength = 3
-    bad_val.Wide = good.Wide
-    bad_val.WideLength = 2
     bad_val.Val = 200
     bad_val.Trail = 20
     bad_val.Marks = [11, 22, 0, 0]
@@ -862,7 +856,7 @@ fixed table CheckedHost | integrity = "crc32c" {
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_len_sealed, plan, r), -1, "length_over_bound")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "length_over_bound", "length_over_bound reason")
 
-    // 18. text_ill_formed (invalid UTF-8 0xFF inside label[0..3], and unpaired surrogate 0xD800 inside wide[0..2])
+    // 18. text_ill_formed (invalid UTF-8 0xFF inside label[0..3])
     let f_utf8 = write_int8_le(substring(wire, 0, length(wire)), rec_body + 28, 0xFF)
     let ign_3, f_utf8_sealed = schema_rt.fixed_integrity_seal(f_utf8, need - 4)
     assert_eq(ign_3, need, "seal 3")

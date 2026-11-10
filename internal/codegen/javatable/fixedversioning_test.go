@@ -92,7 +92,6 @@ var versioningRows = []versioningRow{
 	{name: "range_widen"},
 	{name: "string_grow"},
 	{name: "uint_widen", widen: true},
-	{name: "wstring_grow"},
 }
 
 // sameHashRows move no layout byte and no digest byte, so they have NO second

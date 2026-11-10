@@ -115,12 +115,6 @@ var messageSabotages = map[string][]edit{
 		new: "\tcase ir.TableKindString:\n\t\tn, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))\n\t\tif !ok { // SABOTAGED: the skip does not align\n",
 	}},
 
-	// A WIDE STRING IS SIXTEEN BITS A CODE UNIT, not SPEC.md §4.12's group.
-	"message-wide-string-thirty-two": {{
-		old: "\t\treturn d.r.skip(int(n) * 16)\n",
-		new: "\t\treturn d.r.skip(int(n) * 32) // SABOTAGED: a thirty-two bit group a unit\n",
-	}},
-
 	// A RANGE THAT MOVED DECODES AT THE SENDER'S WIDTH, not the reader's own.
 	"message-reader-own-width": {{
 		old: "\twidth := int(ir.TableMessageValueBits(kind, shape))\n",
@@ -327,12 +321,12 @@ var messageColdReadSabotages = map[string][]edit{
 		new: "\t\t// SABOTAGED: a triple may be placed twice\n",
 	}},
 
-	// AN ELEMENT KIND OF 12 OR 33 IS A SHAPE LIKE ANY OTHER (§3.3): a text
+	// AN ELEMENT KIND OF 12 IS A SHAPE LIKE ANY OTHER (§3.3): a text
 	// list is a kind 14 array over kind 12, so refuse that element at the
 	// announcement and a unit with a text list is refused its own vocabulary.
 	"message-array-of-text-refused": {{
 		old: "\t\t\treturn s, 0, false // an element kind outside the closed set\n\t\t}\n",
-		new: "\t\t\treturn s, 0, false // an element kind outside the closed set\n\t\t}\n\t\tif s.Elem == TableKindString || s.Elem == TableKindWstring {\n\t\t\treturn s, 0, false // SABOTAGED: an array over element kind 12 or 33 is refused\n\t\t}\n",
+		new: "\t\t\treturn s, 0, false // an element kind outside the closed set\n\t\t}\n\t\tif s.Elem == TableKindString {\n\t\t\treturn s, 0, false // SABOTAGED: an array over element kind 12 is refused\n\t\t}\n",
 	}},
 
 	// A VARIANT REFERENCE IS RESOLVED EVEN ON THE SKIP PATH: step over its

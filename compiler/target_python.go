@@ -31,9 +31,6 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
 		return nil, err
 	}
-	if err := refuseWideText(u, "python"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "python"); err != nil {
 		return nil, err
 	}

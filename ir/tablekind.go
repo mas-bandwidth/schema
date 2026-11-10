@@ -153,13 +153,6 @@ func TableScalarKind(f *Field) int {
 		return TableKindF64
 	case TString:
 		return TableKindString
-	case TWString:
-		// WIDE TEXT is kind 33 (docs/SPEC-TABLES.md §3): `L` bytes holding
-		// `L / 2` UTF-16 code units, two bytes each little-endian. It is
-		// distinct from kind 12 for the reason every pair on this wire is
-		// distinct — a field respelled between `string(N)` and `wstring(N)`
-		// is an ordinary kind mismatch, not UTF-8 bytes read as code units.
-		return TableKindWstring
 	case TBytes:
 		return TableKindArray
 	case TNamed:
@@ -428,8 +421,6 @@ func TableTypeSpelling(f *Field) string {
 		return "float64"
 	case TString:
 		return "string"
-	case TWString:
-		return "wstring"
 	case TBytes:
 		return "bytes"
 	case TNamed:
@@ -485,7 +476,7 @@ func FieldTypeSpelling(f *Field) string {
 		prefix += "*"
 	}
 	switch f.Type.Kind {
-	case TString, TWString, TBytes:
+	case TString, TBytes:
 		if f.Type.Pointer || f.Type.Unbounded {
 			// *bytes / *string: a buffer at its used size; a bare `string`:
 			// unbounded text (docs/SPEC-TABLES.md §2.13.1)

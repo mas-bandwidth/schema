@@ -3,8 +3,8 @@
 # schema-luau-generated-analyze-strict-gate).
 #
 # luau-analyze --mode=strict over the generated Luau output for the schema
-# corpus the Makefile's generate targets read: examples, examples128,
-# examples-wide, the SCHEMAS_TABLES* directories, the bench corpus units and
+# corpus the Makefile's generate targets read: examples, examples128, the
+# SCHEMAS_TABLES* directories, the bench corpus units and
 # test/tables. Every generated module and every runtime module opens with
 # --!strict, so the analyzer is not left in its nonstrict default. The
 # analyzer exits 0 on lint warnings, so the test rejects any diagnostic line,

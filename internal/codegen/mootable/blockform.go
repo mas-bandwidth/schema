@@ -84,9 +84,6 @@ func blockFields(g *Gen, blocks *ir.BlockUnit, ml *ir.MemberLayout, bl *ir.Block
 		outOfLine := projection && ir.BlockOutOfLine(f)
 		facts := ir.BlockFieldOf(g.Unit, f, fl.Offset, projection)
 		fmt.Fprintf(&b, "%s\t{ name = %q, offset = %d, size = %d, kind = %d, ", ind, f.Name, fl.Offset, fl.Size, kind)
-		if f.Type.Kind == ir.TWString {
-			b.WriteString("wide = true, ")
-		}
 		fmt.Fprintf(&b, "isArray = %v, counted = %v, optional = %v, arrayBound = %d, elemSize = %d, countOffset = %s, presentOffset = %s",
 			facts.IsArray, facts.Counted, facts.Optional, facts.ArrayBound, facts.ElemSize, blockOffset(facts.CountOffset), blockOffset(facts.PresentOffset))
 		element := ""

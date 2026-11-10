@@ -27,7 +27,6 @@ for mode in wire json; do
             a1) input=test/tables/A1.schema ;; a2) input=test/tables/A2.schema ;;
             scalars) input=tables/scalars ;;
             scalars2) input=test/tables/Scalars2.schema ;;
-            caption) input=examples-wide/Caption.schema ;;
             pointers) input=tables/pointers ;;
             blobs) input=tables/blobs ;;
             p2) input=test/tables/P2.schema ;;

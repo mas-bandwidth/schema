@@ -32,8 +32,6 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	switch f.Type.Kind {
 	case ir.TString:
 		return expr + ".equals(" + variableDefault(f) + ")"
-	case ir.TWString:
-		return expr + ".length==0"
 	case ir.TBytes:
 		return "java.util.Arrays.equals(" + expr + "," + variableDefault(f) + ")"
 	case ir.TFloat32:
@@ -136,7 +134,7 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 func variablePayloadStart(f *ir.Field, w, start string) string {
 	switch ir.TableWireFieldKind(f) {
-	case 12, 13, 14, 16, 33:
+	case 12, 13, 14, 16:
 		return "TableVariable.lebEnd(" + w + ".buf," + start + "," + w + ".off)-" + start
 	}
 	return "0"

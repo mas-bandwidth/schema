@@ -176,22 +176,6 @@ func emitWriteScalar(m *Module, val string, f *ir.Field, indent string) {
 			indent, val, length, length, length, size, length, val)
 		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "")
 		m.Printf("%sif (!stream.serializeBytes(%s(%s, %s))) return false;\n", indent, m.Helper(usedBytes), val, length)
-	case ir.TWString:
-		size := t.Size
-		length := val + "Length"
-		// the used length is refused outside [0, N] and past the array's own
-		// length, exactly as the narrow string's (SPEC §4.12)
-		m.Printf("%sif (typeof %s != \"array\" || typeof %s != \"integer\" || %s < 0 || %s > %d || %s > %s.len()) return false;\n",
-			indent, val, length, length, length, size, length, val)
-		emitBits(m, indent, length, ir.BitsRequired(big.NewInt(0), big.NewInt(size)), "")
-		m.Printf("%sfor (local _j = 0; _j < %s; _j++) {\n", indent, length)
-		// a zero unit among the used units is refused, as §4.7 refuses the
-		// interior null, and a slot that is not a code unit has no group
-		// (SPEC §4.12)
-		m.Printf("%s  local _u = %s[_j];\n", indent, val)
-		m.Printf("%s  if (typeof _u != \"integer\" || _u <= 0 || _u > 0xFFFF) return false;\n", indent)
-		emitCall(m, indent+"  ", "_u", "serializeUint32")
-		m.Printf("%s}\n", indent)
 	case ir.TNamed:
 		emitWriteNamed(m, val, f, indent)
 	}

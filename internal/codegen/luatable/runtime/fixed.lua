@@ -52,23 +52,6 @@ local function check_utf8(s)
   if strfind(s, "\0", 1, true) or utf8len(s) == nil then error("text_ill_formed", 0) end
 end
 
-local function check_wstring(t)
-  local n = #t
-  local i = 1
-  while i <= n do
-    local u = t[i] or 0
-    if u == 0 then error("text_ill_formed", 0) end
-    if u >= 0xD800 and u <= 0xDBFF then
-      if i + 1 > n or (t[i + 1] or 0) < 0xDC00 or (t[i + 1] or 0) > 0xDFFF then error("text_ill_formed", 0) end
-      i = i + 2
-    elseif u >= 0xDC00 and u <= 0xDFFF then
-      error("text_ill_formed", 0)
-    else
-      i = i + 1
-    end
-  end
-end
-
 local function zeros(n)
   if n <= 0 then return "" end
   return string.rep("\0", n)
@@ -205,18 +188,6 @@ encode_value = function(T, d, v, size, elemSize)
     if n > cap then error("length_over_bound") end
     if s == "string" then check_utf8(v) end
     return string.pack("<i4", n) .. string.sub(v, 1, n) .. zeros(cap - n)
-  elseif s == "wstring" then
-    v = v or {}
-    local n = #v
-    local cap = math.floor((size - 4) / 2)
-    if n > cap then error("length_over_bound") end
-    check_wstring(v)
-    local parts = { string.pack("<i4", n) }
-    for i = 1, n do
-      parts[#parts + 1] = string.pack("<I2", v[i] or 0)
-    end
-    parts[#parts + 1] = zeros((size - 4) - 2 * n)
-    return table.concat(parts)
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local ord = 0
@@ -346,16 +317,6 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub, pos + size
-  elseif s == "wstring" then
-    local n = string.unpack("<i4", buf, pos)
-    local cap = math.floor((size - 4) / 2)
-    if n < 0 or n > cap then error("length_over_bound") end
-    local t = {}
-    for i = 1, n do
-      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
-    end
-    check_wstring(t)
-    return t, pos + size
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     local raw = unpack_int(buf, pos, w, false)
@@ -478,7 +439,6 @@ local function layout_tree(layout)
         (kind >= 1 and kind <= 16)
         or (kind >= 18 and kind <= 30)
         or kind == 32
-        or kind == 33
         or kind == 35
         or kind == 36
       )
@@ -592,8 +552,6 @@ local function compat_old(d, node)
     return node.kind == 12 and node.size >= 4
   elseif s == "bytes" then
     return (node.kind == 14 or node.kind == 12) and node.size >= 4
-  elseif s == "wstring" then
-    return node.kind == 33 and node.size >= 4
   elseif s == "enum" then
     return node.kind == 30 and node.size >= 1
   elseif s == "flags" then
@@ -676,16 +634,6 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     local sub = string.sub(buf, pos + 4, pos + 4 + n - 1)
     if s == "string" then check_utf8(sub) end
     return sub
-  elseif s == "wstring" then
-    local n = string.unpack("<i4", buf, pos)
-    local cap = math.floor((node.size - 4) / 2)
-    if n < 0 or n > cap then error("length_over_bound") end
-    local t = {}
-    for i = 1, n do
-      t[i] = string.unpack("<I2", buf, pos + 4 + (i - 1) * 2)
-    end
-    check_wstring(t)
-    return t
   elseif s == "enum" then
     local w = T.FixedEnums[d.enum] or 4
     if rep and node.size < w then rep.widened = rep.widened + 1 end

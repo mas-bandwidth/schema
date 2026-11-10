@@ -144,8 +144,6 @@ func fixedPlanField(p *fixedPlanBuild, f *ir.Field, at int64) {
 		fixedPlanElements(p, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
 		fixedPlanText(p, f, base, f.Type.Size, fixedTextUtf8)
-	case f.Type.Kind == ir.TWString:
-		fixedPlanText(p, f, base, 2*f.Type.Size, fixedTextWide)
 	case f.Type.Kind == ir.TBytes:
 		fixedPlanText(p, f, base, f.Type.Size, fixedTextBytes)
 	default:
@@ -256,11 +254,9 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 		for i := int64(0); i < f.ArrayBound; i++ {
 			fixedPlanElement(p, f, base+fixedCountBytes+i*elem, base+fixedCountBytes+i*elem, guard, arg)
 		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		units, flavour := f.Type.Size, fixedTextUtf8
 		switch f.Type.Kind {
-		case ir.TWString:
-			units, flavour = 2*f.Type.Size, fixedTextWide
 		case ir.TBytes:
 			flavour = fixedTextBytes
 		}
@@ -280,7 +276,7 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 
 // fixedFlatElem reports an element whose whole image is one run: nothing in
 // its closure needs a COUNT of its own, so no byte of it is anything but
-// moved. A string/wstring/bytes field's image IS its wire image — the length
+// moved. A string/bytes field's image IS its wire image — the length
 // and the units sit in order — and the TEXT op that clamps a hostile length
 // lives in the decode both paths share, over LIVE elements only. A counted
 // array of wrapped strings is therefore one COPY, never a TEXT per slack slot.

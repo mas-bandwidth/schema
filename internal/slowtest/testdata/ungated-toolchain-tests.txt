@@ -134,7 +134,6 @@ internal/codegen/javatable/variableescape_test.go
 internal/codegen/javatable/variableform_test.go
 internal/codegen/javatable/variablemaps_test.go
 internal/codegen/javatable/variableunions_test.go
-internal/codegen/javatable/variablewide_test.go
 internal/codegen/javatable/variablewide_widen_ladder_gap_test.go
 internal/codegen/javatable/view_test.go
 internal/codegen/javatable/widening_test.go
@@ -199,4 +198,3 @@ internal/codegen/rusttable/retainroots_test.go
 internal/codegen/rusttable/variableclass_test.go
 internal/codegen/rusttable/variablecodec_test.go
 internal/codegen/rusttable/variabletext_test.go
-internal/codegen/rusttable/widetext_test.go

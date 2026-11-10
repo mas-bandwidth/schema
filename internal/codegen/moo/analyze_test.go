@@ -21,7 +21,6 @@ var analyzeCorpora = [][]string{
 	{"test", "packet-finite"},
 	{"test", "packet-text"},
 	{"test", "packet-void"},
-	{"test", "packet-wide"},
 }
 
 func analyzeDir(t *testing.T, dir string) string {

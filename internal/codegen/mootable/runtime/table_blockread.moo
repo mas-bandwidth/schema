@@ -216,7 +216,7 @@ local function readField(block: any, info: any, f: any, at: number): any
 		if f.kind == 12 then
 			return buffer.readstring(buf, value, used)
 		end
-		local width = if f.wide then 2 else 1
+		local width = 1
 		local out = buffer.create(used * width)
 		buffer.copy(out, 0, buf, value, used * width)
 		return out

@@ -878,8 +878,6 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 		"packet-void-c-write-negative-control",
 		"packet-void-cpp-read-negative-control",
 		"packet-void-cpp-write-negative-control",
-		"packet-wide-c-negative-control",
-		"packet-wide-go-negative-control",
 		"projection-union-arm-order-negative-control",
 		"projection-variant-order-negative-control",
 		"projection-wire-law-negative-control",
@@ -957,14 +955,6 @@ func TestBaseNonCNegativeControlGroupsFitTheTwoMinuteCap(t *testing.T) {
 		"tables-wire-text-total-negative-control",
 		"tables-zero-cost-negative-control",
 		"toolchain-negative-control",
-		"wide-no-align-negative-control",
-		"wide-surrogate-negative-control",
-		"wide-table-byte-length-negative-control",
-		"wide-table-odd-length-negative-control",
-		"wide-table-surrogate-negative-control",
-		"wide-table-zero-unit-negative-control",
-		"wide-terminator-negative-control",
-		"wide-utf8-read-negative-control",
 	}
 
 	groupOf := map[string][]string{}
@@ -1037,7 +1027,7 @@ func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.
 		"tables-message-form-count-negative-control",
 		"tables-message-form-emitter-negative-control",
 		"tables-message-form-text-negative-control",
-		// rust (36)
+		// rust (35)
 		"cards-rust-conformance-negative-control",
 		"cards-rust-conformance-upgrade-negative-control",
 		"cards-rust-conformance-hash-negative-control",
@@ -1045,7 +1035,6 @@ func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.
 		"packet-arm-defaults-rust-negative-control",
 		"packet-defaults-rust-negative-control",
 		"packet-utf8-rust-negative-control",
-		"packet-wide-rust-negative-control",
 		"tables-rust-alloc-negative-control",
 		"tables-rust-cook-write-negative-control",
 		"tables-rust-json-differential-negative-control",

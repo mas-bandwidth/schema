@@ -316,7 +316,6 @@ const (
 	kF32
 	kF64
 	kStr
-	kWStr
 	kBytes
 	kStruct
 	kUnion
@@ -333,8 +332,6 @@ func (e *fixedEmit) kindOf(f *ir.Field) int {
 		return kF64
 	case ir.TString:
 		return kStr
-	case ir.TWString:
-		return kWStr
 	case ir.TBytes:
 		return kBytes
 	case ir.TNamed:
@@ -465,8 +462,6 @@ func (e *fixedEmit) writeElem(ind int, f *ir.Field, pl place) {
 		e.p(ind, "schema_rt::fixed_put(out, schema_rt::fixed_f64_bits(%s), 8);", pl.val)
 	case kStr, kBytes:
 		e.p(ind, "schema_rt::fixed_put_text(out, %s, %s, %d);", pl.val, pl.length, f.Type.Size)
-	case kWStr:
-		e.p(ind, "schema_rt::fixed_put_wtext(out, %s, %s, %d);", pl.val, pl.length, f.Type.Size)
 	case kStruct:
 		e.home(f.Type.Name)
 		e.p(ind, "_%sFixedWrite(out, %s);", f.Type.Name, pl.val)
@@ -531,8 +526,6 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 	switch e.kindOf(f) {
 	case kStr:
 		e.p(ind, "if !schema_rt::fixed_text_ok(%s, %s, %d) { return false; }", pl.val, pl.length, f.Type.Size)
-	case kWStr:
-		e.p(ind, "if !schema_rt::fixed_wtext_ok(%s, %s, %d) { return false; }", pl.val, pl.length, f.Type.Size)
 	case kBytes:
 		e.p(ind, "if !schema_rt::fixed_len_ok(%s, %d) { return false; }", pl.length, f.Type.Size)
 	case kStruct, kUnion:
@@ -614,8 +607,6 @@ func (e *fixedEmit) scanElem(ind int, f *ir.Field, off string) {
 		return
 	case kStr:
 		flavour = 1
-	case kWStr:
-		flavour = 2
 	case kBytes:
 		flavour = 3
 	case kStruct, kUnion:
@@ -693,9 +684,6 @@ func (e *fixedEmit) landElem(ind int, f *ir.Field, pl place, off string) {
 	case kStr, kBytes:
 		e.p(ind, "%s = schema_rt::fixed_i32(b, %s);", pl.length, off)
 		e.p(ind, "schema_rt::fixed_get_text(b, %s + 4, %s);", off, pl.val)
-	case kWStr:
-		e.p(ind, "%s = schema_rt::fixed_i32(b, %s);", pl.length, off)
-		e.p(ind, "schema_rt::fixed_get_wtext(b, %s + 4, %s);", off, pl.val)
 	case kStruct, kUnion:
 		e.home(f.Type.Name)
 		e.p(ind, "_%sFixedRead(b, %s, %s);", f.Type.Name, off, pl.val)
@@ -926,7 +914,7 @@ func elemNeedsClamp(f *ir.Field) bool {
 func elemNeedsCheck(f *ir.Field) bool {
 	return needs(f, map[string]bool{}, func(f *ir.Field) bool {
 		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes:
+		case ir.TString, ir.TBytes:
 			return true
 		}
 		return f.HasFloatRange || len(scalarBounds(f)) > 0
@@ -939,7 +927,7 @@ func elemNeedsScan(f *ir.Field) bool {
 			return true
 		}
 		switch f.Type.Kind {
-		case ir.TBool, ir.TString, ir.TWString, ir.TBytes:
+		case ir.TBool, ir.TString, ir.TBytes:
 			return true
 		}
 		return false

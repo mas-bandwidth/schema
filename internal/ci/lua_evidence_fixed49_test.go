@@ -58,8 +58,8 @@ var luaFixed49EvolutionRows = map[string]bool{
 	"interoperability":     true,
 }
 
-// TestLuaEvidenceFixed49Rows verifies the 49 untouched fixed rows appended
-// to docs/roadmap-evidence/lua.sexp: exactly the 49 rows of
+// TestLuaEvidenceFixed49Rows verifies the 48 untouched fixed rows appended
+// to docs/roadmap-evidence/lua.sexp: exactly the 48 rows of
 // fixedproof.Cases() are present as :done entries, none of the eight cut
 // rows is present, and each entry cites exactly its own value (or, for the
 // 16 non-value rows, evolution) subtest and its negative-control subtest,
@@ -129,8 +129,8 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	for _, c := range fixedproof.Cases() {
 		suiteRows[c.ID] = true
 	}
-	if len(suiteRows) != 49 {
-		return fmt.Errorf("fixed proof suite has %d rows, want 49", len(suiteRows))
+	if len(suiteRows) != 48 {
+		return fmt.Errorf("fixed proof suite has %d rows, want 48", len(suiteRows))
 	}
 	for _, cut := range luaFixed49CutRows {
 		if suiteRows[cut] {
@@ -181,8 +181,8 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 		rows[m[1]] = trimmed
 	}
 
-	if len(rows) != 49 {
-		return fmt.Errorf("overlay holds %d %s rows, want exactly 49", len(rows), luaFixed49IDPrefix)
+	if len(rows) != 48 {
+		return fmt.Errorf("overlay holds %d %s rows, want exactly 48", len(rows), luaFixed49IDPrefix)
 	}
 	if !sort.StringsAreSorted(fixedIDs) {
 		return fmt.Errorf("overlay %s rows are not sorted by :id", luaFixed49IDPrefix)
@@ -191,7 +191,7 @@ func validateLuaFixed49Overlay(root, overlay string) error {
 	for id := range rows {
 		row, ok := strings.CutPrefix(id, luaFixed49IDPrefix)
 		if !ok || !suiteRows[row] {
-			return fmt.Errorf("overlay row %s is not one of the 49 suite rows", id)
+			return fmt.Errorf("overlay row %s is not one of the 48 suite rows", id)
 		}
 	}
 

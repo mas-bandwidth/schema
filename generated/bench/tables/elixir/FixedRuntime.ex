@@ -227,6 +227,14 @@ defmodule Benchtable.FixedRuntime do
   def range_check(report, 0), do: report
   def range_check(_report, _n), do: throw({:refuse, :out_of_range})
 
+  # THE ORDINAL OP DOES NOT REFUSE BY ITSELF (§4.6). It lands None and marks
+  # the read; the load refuses out_of_range on that mark, after the plan has
+  # returned an image. A direct run still sees the None.
+  def forged_check(%{forged: true}), do: throw({:refuse, :out_of_range})
+  def forged_check(report), do: report
+
+  defp mark_forged(report), do: Map.put(report, :forged, true)
+
   @doc """
   The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
 
@@ -437,16 +445,6 @@ defmodule Benchtable.FixedRuntime do
 
   def text(used, _default, m, present) do
     if present and not text_ok?(1, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
-  end
-
-  @doc """
-  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or a
-  REFUSAL BY NAME (`text_ill_formed`), on the same present-flag rule.
-  """
-  def wtext(used, default, m), do: wtext(used, default, m, true)
-
-  def wtext(used, _default, m, present) do
-    if present and not text_ok?(2, used), do: throw({:refuse, :text_ill_formed}), else: {used, m}
   end
 
   # ---------------------------------------------------------------------------
@@ -662,11 +660,11 @@ defmodule Benchtable.FixedRuntime do
   def id_at(layout, i), do: elem(elem(layout.entries, i), 0)
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-  # the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-  # adds, the optional wrapper 35, plus timestamp 36. 31 is §3's body framing
-  # escape and 34 is reserved: neither is a kind a declaration spells.
+  # the no-payload variant 32, and the ONE kind this form's layout adds, the
+  # optional wrapper 35, plus timestamp 36. 31 is §3's body framing escape, 33
+  # is retired and 34 is reserved: none is a kind a declaration spells.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
-  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35 or kind == 36
+  defp known_kind?(kind), do: kind == 32 or kind == 35 or kind == 36
 
   # A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
   # ONE exception, stated here rather than left to be found: a bits(N) field
@@ -857,15 +855,6 @@ defmodule Benchtable.FixedRuntime do
     cond do
       children != 0 -> {:error, :layout_kind_invalid}
       size < 4 -> {:error, :layout_size_mismatch}
-      true -> :ok
-    end
-  end
-
-  # wstring(N): the length in CODE UNITS, then 2N bytes
-  defp check_composite(33, size, children, _facts) do
-    cond do
-      children != 0 -> {:error, :layout_kind_invalid}
-      size < 4 or rem(size - 4, 2) != 0 -> {:error, :layout_size_mismatch}
       true -> :ok
     end
   end
@@ -1254,7 +1243,7 @@ defmodule Benchtable.FixedRuntime do
       30 ->
         compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
 
-      k when k == 12 or k == 33 ->
+      12 ->
         units = min(size_at(mine, mi) - 4, size_at(theirs, ti) - 4)
         entry = {:text, their_at, at, aux_at, units, elem(row, 4)}
         {guarded(acc, guard, tag, entry), report}
@@ -1662,8 +1651,7 @@ defmodule Benchtable.FixedRuntime do
   end
 
   defp step([{:text, src, dst, aux, size, flavour} | rest], body, writes, report) do
-    unit = if flavour == 2, do: 2, else: 1
-    cap = div(size, unit)
+    cap = size
 
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
@@ -1673,7 +1661,7 @@ defmodule Benchtable.FixedRuntime do
         # over nothing else: the slack carries no meaning, and reading a whole
         # declared bound to check bytes that mean nothing is the cost this form
         # exists to avoid.
-        if text_ok?(flavour, binary_part(take, 0, v * unit)) do
+        if text_ok?(flavour, binary_part(take, 0, v)) do
           step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
         else
           # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is a REFUSAL BY
@@ -1752,10 +1740,13 @@ defmodule Benchtable.FixedRuntime do
   # A body too short to hold the tag counts nothing: a short record is the
   # caller's verdict through the record bounds, not this op's to invent.
   defp step([{:tagcount, src, size, arms} | rest], body, writes, report) do
+    # A TAG PAST THE WRITER'S ARM COUNT marks the read (§4.6). The op writes
+    # nothing, so the prefill's None stands, and the load refuses out_of_range
+    # on the mark. The op itself does not throw: a direct run still returns.
     case body do
       <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>>
       when raw > arms ->
-        step(rest, body, writes, bump(report, :unknown))
+        step(rest, body, writes, mark_forged(report))
 
       _ ->
         step(rest, body, writes, report)
@@ -1763,15 +1754,14 @@ defmodule Benchtable.FixedRuntime do
   end
 
   # ---------------------------------------------------------------------------
-  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
+  # THE CONTENT RULE: what a string(N) is allowed to be
   # ---------------------------------------------------------------------------
   #
   # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
   # ill-formed as. These sit AFTER every `step/4` clause so the compiler sees
   # one function, not a helper splitting the clauses.
   #
-  # UTF-8 IS ONE WALK, the same shape as the UTF-16 walk below: eight ASCII
-  # bytes per clause when they sit in 1..127, then four, then one, then a
+  # UTF-8 IS ONE WALK: eight ASCII bytes per clause when they sit in 1..127, then four, then one, then a
   # codepoint, and a zero is not a character. Hostile falls through. The
   # previous check was String.valid?/1 (one codepoint per call) plus a second
   # BIF for the NUL; this does both in one match.
@@ -1792,28 +1782,7 @@ defmodule Benchtable.FixedRuntime do
   defp text_ok?(1, <<c, rest::binary>>) when c >= 1 and c <= 127, do: text_ok?(1, rest)
   defp text_ok?(1, <<c::utf8, rest::binary>>) when c > 0, do: text_ok?(1, rest)
   defp text_ok?(1, _), do: false
-  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
   defp text_ok?(_, _), do: true
-
-  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
-  # ride little-endian and land as a raw copy, so this walks them as they lie.
-  defp utf16_ok?(<<>>), do: true
-  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
-
-  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
-    case rest do
-      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
-        utf16_ok?(more)
-
-      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
-      # low surrogate, is half a character and not a character.
-      _ ->
-        false
-    end
-  end
-
-  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
-  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
 
   defp leaf(body, src, size, true) do
     case body do
@@ -1833,9 +1802,8 @@ defmodule Benchtable.FixedRuntime do
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
 
   # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
-  # ALL: it lands None and counts one `out_of_range`, which is the answer §3 gives
-  # every other value outside its range and the answer a union tag beyond the
-  # declared arm count gets too. TAG 0 IS None and is not a clamp.
+  # ALL (§4.6): the read refuses `out_of_range` and lands nothing. TAG 0 IS
+  # None and is not a refusal.
   #
   # `remap` is the WRITER's table where the two sides can disagree about
   # what a number means, and the plain VARIANT COUNT where they cannot — which
@@ -1844,16 +1812,18 @@ defmodule Benchtable.FixedRuntime do
   defp ordinal(0, _remap, report), do: {0, report}
 
   defp ordinal(raw, variants, report) when is_integer(variants) do
-    if raw <= variants, do: {raw, report}, else: {0, bump(report, :unknown)}
+    # PAST THE WRITER'S VARIANT COUNT IS NOT A VARIANT (§4.6): refuse the
+    # whole read. Landing None and counting would be the retired census.
+    if raw <= variants, do: {raw, report}, else: {0, mark_forged(report)}
   end
 
   defp ordinal(raw, remap, report) do
     # THE LENGTH WORD IS THE BOUND (§5.2): slot 0 holds the writer's
-    # variant count n and slots 1..n the remap, so a raw past n lands None
-    # exactly as a raw past the writer's set does on every leg.
+    # variant count n and slots 1..n the remap. A raw past n refuses
+    # out_of_range, the same answer as the identity plan's bounds pass.
     if raw <= elem(remap, 0),
       do: {elem(remap, raw), report},
-      else: {0, bump(report, :unknown)}
+      else: {0, mark_forged(report)}
   end
 
   defp clamp_count(raw, max, report) do

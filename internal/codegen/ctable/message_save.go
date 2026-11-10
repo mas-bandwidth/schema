@@ -79,18 +79,14 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 
 func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, count, ind string) {
 	switch {
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s,%d);\n", ind, count, bits)
-		if f.Type.Kind == ir.TWString {
-			g.pf("%s{ int32_t i; for(i=0;i<%s;i++) table_bit_put(w,(uint16_t)%s[i],16); }\n", ind, count, expr)
-		} else {
-			g.pf("%stable_bit_align_write(w); table_bit_putbytes(w,%s,%s);\n", ind, expr, count)
-		}
+		g.pf("%stable_bit_align_write(w); table_bit_putbytes(w,%s,%s);\n", ind, expr, count)
 	case f.KeyEnum != "":
 		g.pf("%s{ uint32_t count=0; int32_t i;\n", ind)
 		g.pf("%s for(i=0;i<%d;i++) {\n", ind, f.ArrayBound)
@@ -207,7 +203,7 @@ func (g *tableGen) emitMessageSave(st *ir.Struct) {
 		condition := "!(" + g.wireDefaultEquals(f, expr) + ")"
 		count := strconv.FormatInt(f.ArrayBound, 10)
 		switch {
-		case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString):
+		case (f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString):
 			count = expr + "_length"
 			g.pf(" if(%s<0 || %s>%d) return 0;\n", count, count, f.Type.Size)
 			condition = g.wireBytesDiffer(f, expr)

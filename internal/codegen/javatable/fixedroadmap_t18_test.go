@@ -188,7 +188,6 @@ var t18Plain = map[string]string{
 	"p3.bin":    "test/tables/P3.schema",
 	"keyed.bin": "tables/examples/Keyed.schema",
 	"pack.bin":  "tables/examples/Pack.schema",
-	"fxw.bin":   "test/tables/FXW.schema",
 	"fu1.bin":   "test/tables/FU1.schema",
 	"fu2.bin":   "test/tables/FU2.schema",
 }

@@ -4,11 +4,11 @@
 // THE LAW (docs/FIXED-FORM-ALGORITHM.md:240): "`arg` and `meta` ARE TWO LANES
 // BECAUSE THEY ARE TWO FACTS, and must never share one. (fix 12) A `string(N)`
 // under a union arm needs both, and one lane gives whichever was stamped
-// last: a byte string under arm `2` read as WIDE, or an entry that runs only
+// last: a text string under arm `3` read as BYTES, or an entry that runs only
 // when the tag equals the flavour — under the wrong arm. Neither is visible to
 // this build's own records; only to a peer's." The plan entry spells the two
 // facts apart: `arg` IS THE GUARD'S ORDINAL and nothing else; `meta` IS THE
-// OP'S OWN ARGUMENT (a text flavour: 1 utf8, 2 wide, 3 bytes) — the same
+// OP'S OWN ARGUMENT (a text flavour: 1 utf8, 3 bytes) — the same
 // paragraph's struct, docs/FIXED-FORM-ALGORITHM.md §4.1.
 //
 // WHY THIS FIXTURE (tables/backend/Backend.schema, the Envelope root): a

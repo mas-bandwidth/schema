@@ -32,7 +32,7 @@ func TestRequiredConstructElixir(t *testing.T) {
  i int32 | required
  f float32 | required
  s string(8) | required
- w wstring(8) | required
+ w string(8) | required
  buf bytes(8) | required
  choice Choice | required
  u U | required

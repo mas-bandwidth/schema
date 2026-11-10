@@ -1169,39 +1169,6 @@ def j_decode_utf8(u:string) -> int:
         return ((c & 0x0F) << 12) | ((u[1] & 0x3F) << 6) | (u[2] & 0x3F)
     return ((c & 0x07) << 18) | ((u[1] & 0x3F) << 12) | ((u[2] & 0x3F) << 6) | (u[3] & 0x3F)
 
-// A decoded UTF-16 pair must fit whole; a read never truncates a string.
-def j_scan_wstring(r:JsonReader, capacity:int) -> [int], bool, bool:
-    let out:[int] = []
-    if j_peek(r) != '\"':
-        j_refuse(r, "kind_mismatch")
-        return out, false, false
-    r.pos++
-    while true:
-        let unit, done, ok = j_scan_unit(r)
-        if not ok:
-            return [], false, false
-        if done:
-            return out, false, true
-        let code = j_decode_utf8(unit)
-        if code == 0:
-            r.zero = true
-            j_refuse(r, "text_holds_zero")
-            return [], false, false
-        let units:[int] = []
-        if code < 0x10000:
-            push(units, code)
-        else:
-            let rest = code - 0x10000
-            push(units, 0xD800 + (rest >> 10))
-            push(units, 0xDC00 + (rest & 0x3FF))
-        if capacity >= 0 and length(units) > capacity - length(out):
-            j_refuse(r, "length_over_bound")
-            return [], false, false
-        for(units) u:
-            push(out, u)
-    return [], false, false
-
-
 def j_is_digit(c:int) -> bool:
     return c >= '0' and c <= '9'
 
@@ -1499,7 +1466,7 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
         return j_read_blob(r, sl)
     if s == "ptr":
         return j_read_pointer_cell(r, sl.cell, f.t, depth)
-    if s == "text" or (s == "str" and not f.wide):
+    if s == "text" or s == "str":
         let out, clamped, ok = j_scan_stored(r, if s == "text": -1 else: f.bound)
         if not ok:
             return false
@@ -1507,15 +1474,6 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
             return j_refuse(r, "length_over_bound")
         sl.cell.s = out
         sl.count = length(out)
-        return true
-    if s == "str":
-        let units, clamped, ok = j_scan_wstring(r, f.bound)
-        if not ok:
-            return false
-        if clamped:
-            return j_refuse(r, "length_over_bound")
-        sl.cell.units = units
-        sl.count = length(units)
         return true
     if s == "bytes":
         return j_read_base64(r, sl, f.bound)
@@ -2580,11 +2538,8 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
         else:
             j_write_base64(w, blob)
         return true
-    if s == "text" or (s == "str" and not f.wide):
+    if s == "text" or s == "str":
         j_write_string(w, sl.cell.s)
-        return true
-    if s == "str":
-        j_write_wstring(w, sl.cell.units)
         return true
     if s == "bytes":
         j_write_base64(w, sl.cell.s)
@@ -2855,27 +2810,6 @@ def j_write_string(w:JsonWriter, s:string):
             else:
                 j_raw(w, substring(s, i, width))
                 i += width
-    j_raw(w, "\"")
-
-// j_write_wstring is a wide field's text: code units back to UTF-8. An
-// unpaired surrogate has no text spelling and refuses as text_ill_formed
-// (W0, docs/SPEC-TABLES.md §16.14).
-def j_write_wstring(w:JsonWriter, units:[int]):
-    j_raw(w, "\"")
-    var i = 0
-    while i < length(units):
-        var code = units[i]
-        if code >= 0xD800 and code <= 0xDBFF and i + 1 < length(units):
-            let low = units[i + 1]
-            if low >= 0xDC00 and low <= 0xDFFF:
-                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
-                i++
-        if code >= 0xD800 and code <= 0xDFFF:
-            j_fail(w, "text_ill_formed")
-            code = 0xFFFD
-        if not j_escape(w, code):
-            j_raw(w, j_utf8(code))
-        i++
     j_raw(w, "\"")
 
 def j_write_base64(w:JsonWriter, data:string):

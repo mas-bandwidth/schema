@@ -59,7 +59,6 @@ union Effect
     inner  Inner
     number int32 | was = "num"
     label  string(8)
-    words  wstring(6)
     off
 }
 
@@ -71,7 +70,6 @@ fixed table Config | was = "OldConfig"
     tally   [Grade]int32
     leaf    Leaf
     effect  Effect
-    words   wstring(8)
     capsule uint128
     fx      fixed(16, 16) | min = -100, max = 100
     big     int128 | min = -100, max = 100

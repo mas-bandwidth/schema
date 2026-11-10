@@ -6,7 +6,7 @@ package elixirtable
 //
 // The variable probe drives one rich root (fixed-class tables by value,
 // enum-keyed and unbounded and pointer and union and optional arrays, maps,
-// wstring, wide scalars, a blob and a pointer graph) through the generated
+// string, wide scalars, a blob and a pointer graph) through the generated
 // Elixir load, load_retain, save, save_retain and text form: a lawful wire
 // reads whole and re-saves byte for byte, and every damaged wire refuses
 // plain and retaining with no value and the retaining store cleared. Every
@@ -58,7 +58,7 @@ fixed table Config
 {
     scale   float32 = 1.0
     name    string(16) = "hi"
-    caption wstring(8)
+    caption string(8)
     spot    Spot
 }
 
@@ -74,7 +74,7 @@ union Choice
     xs      [..4]int32
     leaf    *Leaf
     spot    Spot
-    caption wstring(8)
+    caption string(8)
 }
 
 table Root
@@ -83,7 +83,7 @@ table Root
     cfg     Config
     renamed int32 | was = "former"
     text    string(16)
-    caption wstring(16)
+    caption string(16)
     mood    Slot = beta
     keyed   [Slot]int32
     xs      []int32
@@ -124,7 +124,7 @@ fixed table Config
 {
     scale   float32 = 1.0
     name    string(16) = "hi"
-    caption wstring(8)
+    caption string(8)
     spot    Spot
 }
 
@@ -140,7 +140,7 @@ union Choice
     xs      [..4]int32
     leaf    *Leaf
     spot    Spot
-    caption wstring(8)
+    caption string(8)
 }
 
 table Root
@@ -149,7 +149,7 @@ table Root
     cfg     Config
     renamed int32 | was = "former"
     text    string(16)
-    caption wstring(16)
+    caption string(16)
     mood    Slot = beta
     keyed   [Slot]int32
     xs      []int32
@@ -449,7 +449,7 @@ fixed table Inner
 fixed table Root
 {
     name    string(16) = "hi"
-    caption wstring(8)
+    caption string(8)
     mood    Slot = beta
     vals    [..4]int32
     fixeds  [3]int16

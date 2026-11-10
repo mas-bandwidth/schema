@@ -1860,3 +1860,44 @@ func TestRetiredNamesLedgerVariantsAndArms(t *testing.T) {
 		}
 	}
 }
+
+// TestRetiredMapLeavesEntryFieldsOut: removing a map field retires the holder's
+// field and nothing of its generated entry. Every entry carries `key` and
+// `value` under the same two ids, so an entry's fields in the ledger would
+// refuse every other map in the unit (docs/SPEC-TABLES.md §2.8, §18.1). The
+// holder's field alone records the removal, and re-adding it is refused.
+func TestRetiredMapLeavesEntryFieldsOut(t *testing.T) {
+	const src = "package fixture\n\ntable Inventory\n{\n    names map[uint16]string(8)\n    counts map[uint16]int32\n    tail int32\n}\n"
+	dir, paths := writeUnit(t, src)
+	if _, _, err := baseline.Update(unit(t, src), paths, "the first baseline"); err != nil {
+		t.Fatal(err)
+	}
+	removed := editOf(t, src, "    counts map[uint16]int32\n", "")
+	if err := os.WriteFile(paths[0], []byte(removed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := baseline.Update(unit(t, removed), paths, "counts is retired"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, baseline.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, retired, _ := strings.Cut(string(data), "## retired")
+	retired, _, _ = strings.Cut(retired, "## history")
+	if !strings.Contains(retired, "field Inventory.counts") {
+		t.Fatalf("the ledger must retire the holder's map field:\n%s", data)
+	}
+	if strings.Contains(retired, ".key ") || strings.Contains(retired, ".value ") {
+		t.Errorf("the ledger must not retire a generated entry's key or value:\n%s", retired)
+	}
+	// the surviving map's entry keeps its `key` and `value`: the unit as it
+	// now stands passes its own baseline
+	if warns, errs := baseline.Check(unit(t, removed), paths); len(errs) != 0 {
+		t.Errorf("the unit that removed one map must pass its own baseline: %v %v", warns, errs)
+	}
+	// the holder's field still guards the name
+	if _, errs := baseline.Check(unit(t, src), paths); len(errs) != 1 || !strings.Contains(errs[0].Error(), "Inventory.counts") {
+		t.Errorf("re-adding the retired map field must be refused once, by its own entry, got: %v", errs)
+	}
+}

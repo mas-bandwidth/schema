@@ -150,6 +150,20 @@ pub struct TableReport {
     pub missing_required_fields: String,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct TableReportWireFuzz {
+    pub mismatch: u64,
+    pub oor: u64,
+    pub repeated: u64,
+}
+
+impl std::ops::Deref for TableReport {
+    type Target = TableReportWireFuzz;
+    fn deref(&self) -> &Self::Target {
+        &TableReportWireFuzz { mismatch: 0, oor: 0, repeated: 0 }
+    }
+}
+
 impl TableReport {
     pub fn missing_required_reason(&self) -> Option<String> {
         if self.missing_required_fields.is_empty() { None }
@@ -290,55 +304,6 @@ pub const VOCABULARY_ID: u64 = 0xfffffffffffffffd;
 /// reader's own bound.
 pub fn text_valid(b: &[u8]) -> bool {
     std::str::from_utf8(b).is_ok() && !b.contains(&0)
-}
-
-/// WIDE TEXT ON THE WIRE (docs/SPEC-TABLES.md §3, kind 33; SPEC.md §4.12): a
-/// payload of L BYTES is L / 2 UTF-16 code units, little-endian. None is
-/// damage, the oracle's (internal/tablewire decode.go): an odd L is not a
-/// wstring at any length, and the content rule is paired surrogates with no
-/// zero unit among the used units. The bound is the reader's, applied after.
-pub fn table_wide_units(b: &[u8]) -> Option<Vec<u16>> {
-    if b.len() & 1 != 0 { return None; }
-    let units: Vec<u16> = b.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
-    let mut i = 0;
-    while i < units.len() {
-        let u = units[i];
-        if u == 0 || (0xDC00..=0xDFFF).contains(&u) { return None; }
-        if (0xD800..=0xDBFF).contains(&u) {
-            if i + 1 >= units.len() || !(0xDC00..=0xDFFF).contains(&units[i + 1]) { return None; }
-            i += 2;
-            continue;
-        }
-        i += 1;
-    }
-    Some(units)
-}
-
-/// A CLAMP NEVER SPLITS A PAIR (docs/SPEC-TABLES.md §3): the longest prefix
-/// of at most the bound's units that does not end on a pair's high half.
-pub fn table_wide_boundary(units: &[u16], bound: usize) -> usize {
-    if units.len() <= bound { return units.len(); }
-    let mut keep = bound;
-    if keep > 0 && (0xD800..=0xDBFF).contains(&units[keep - 1]) { keep -= 1; }
-    keep
-}
-
-/// THE WRITER'S BOUND (docs/SPEC-TABLES.md §3, SPEC.md §4.12): a value over
-/// the bound's code units is the save's refusal, recorded BY NAME (at is
-/// <owner>.<field>) for <root>_save_checked; the units that ride are the
-/// longest prefix that fits without splitting a pair.
-pub fn table_wide_fit(ids: &mut IdTable, units: &[u16], bound: usize, at: &str) -> usize {
-    if units.len() <= bound { return units.len(); }
-    if ids.refused.is_none() {
-        ids.refused = Some(format!("{at}: wstring({bound}) holds {} code units, over its bound (docs/SPEC-TABLES.md §3)", units.len()));
-    }
-    table_wide_boundary(units, bound)
-}
-
-/// The units, little-endian, with no length of their own: the caller's L
-/// frames them (docs/SPEC-TABLES.md §3, kind 33 and an arm's payload).
-pub fn table_wide_put(dst: &mut Vec<u8>, units: &[u16]) {
-    for u in units { dst.extend_from_slice(&u.to_le_bytes()); }
 }
 
 /// The id table a save builds in FIRST-USE order (docs/SPEC-TABLES.md §3): one
@@ -523,6 +488,7 @@ impl TableNodeReader {
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
         let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
+        let mut seen_node_table = false;
         let mut off = 1usize;
         while off < end {
             let Some(r) = leb_read(&wire[..end], &mut off) else { break; };
@@ -538,6 +504,15 @@ impl TableNodeReader {
                 if !leb_skip(wire, &mut off, end, kind) { break; }
                 continue;
             }
+            // A SECOND node table is a repeated reserved field: the numbering
+            // is one table, so the whole load is damaged (§3.1, §4).
+            if seen_node_table {
+                report.damaged = true;
+                reader.good = false;
+                reader.recs.clear();
+                break;
+            }
+            seen_node_table = true;
             if kind != 12 {
                 report.damaged = true;
                 reader.good = false;
@@ -579,11 +554,18 @@ impl TableNodeReader {
                 let bytes = &wire[start..stop];
                 if tid == BYTES_TYPE_ID && bytes_edge {
                     reader.slots.push(TableNodeSlot::Bytes(Rc::from(bytes)));
-                } else if tid == STRING_TYPE_ID && string_edge {
-                    if text_valid(bytes) {
-                        reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
+                } else if tid == STRING_TYPE_ID {
+                    if string_edge {
+                        if text_valid(bytes) {
+                            reader.slots.push(TableNodeSlot::Text(Rc::from(std::str::from_utf8(bytes).unwrap())));
+                        } else {
+                            report.damaged = true;
+                            reader.slots.push(TableNodeSlot::Null);
+                        }
                     } else {
-                        report.damaged = true;
+                        if !text_valid(bytes) { report.damaged = true; }
+                        report.unknown += 1;
+                        if retaining { report.retain_lost += 1; }
                         reader.slots.push(TableNodeSlot::Null);
                     }
                 } else if placeable.contains(&tid) {
@@ -700,7 +682,191 @@ impl TableNodeReader {
         post_order
     }
 
-    pub fn node_slot(&self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
+    pub fn has_unreachable(&self, edges: &[Vec<usize>]) -> bool {
+        if !self.good || self.slots.is_empty() {
+            return false;
+        }
+        let n = edges.len();
+        let mut reached = vec![false; n];
+        let mut stack = vec![0usize];
+        reached[0] = true;
+        for k in 0..self.slots.len() {
+            if matches!(self.slots[k], TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building)
+                && self.blob_named.get(k).copied().unwrap_or(false)
+                && k + 1 < n
+            {
+                reached[k + 1] = true;
+                stack.push(k + 1);
+            }
+        }
+        while let Some(u) = stack.pop() {
+            for &t in &edges[u] {
+                if t < n && !reached[t] {
+                    reached[t] = true;
+                    stack.push(t);
+                }
+            }
+        }
+        for k in 0..self.slots.len() {
+            match self.slots[k] {
+                TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building => {
+                    if k + 1 >= n || !reached[k + 1] {
+                        return true;
+                    }
+                }
+                TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) | TableNodeSlot::Null => {
+                    if !self.blob_named.get(k).copied().unwrap_or(false) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn note_unknown_pointer(&mut self, index: u64, report: &mut TableReport) {
+        if !self.good || index == 0 { return; }
+        if index == 1 { report.damaged = true; return; }
+        if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }
+        let k = (index - 2) as usize;
+        if matches!(self.slots[k], TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_)) {
+            self.name_blob(index, report);
+        } else {
+            if self.blob_named.len() < self.slots.len() {
+                self.blob_named.resize(self.slots.len(), false);
+            }
+            self.blob_named[k] = true;
+        }
+    }
+
+    pub fn note_unknown_payload(&mut self, ids: &[u64], kind: u8, payload: &[u8], depth: usize, report: &mut TableReport) {
+        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        let w = table_kind_width(kind);
+        if w > 0 {
+            if payload.len() != w || (kind == 1 && payload[0] > 1) { report.damaged = true; }
+            return;
+        }
+        let mut off = 0usize;
+        match kind {
+            30 => {
+                let Some(r) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off != payload.len() || r as usize > ids.len() { report.damaged = true; }
+            }
+            17 => {
+                let Some(index) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off != payload.len() { report.damaged = true; return; }
+                self.note_unknown_pointer(index, report);
+            }
+            12 | 13 | 14 | 16 | 31 | 32 => {
+                let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
+                if off + (n as usize) != payload.len() { report.damaged = true; return; }
+                self.note_unknown_content(ids, kind, &payload[off..], depth, report);
+            }
+            15 => self.note_unknown_content(ids, 15, payload, depth, report),
+            _ => { report.damaged = true; }
+        }
+    }
+
+    pub fn note_unknown_content(&mut self, ids: &[u64], kind: u8, content: &[u8], depth: usize, report: &mut TableReport) {
+        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        let w = table_kind_width(kind);
+        if w > 0 {
+            if content.len() != w || (kind == 1 && content[0] > 1) { report.damaged = true; }
+            return;
+        }
+        let mut off = 0usize;
+        match kind {
+            12 => { if !text_valid(content) { report.damaged = true; } }
+            31 => {}
+            32 => { if !content.is_empty() { report.damaged = true; } }
+            30 => {
+                let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off != content.len() || r as usize > ids.len() { report.damaged = true; }
+            }
+            17 => {
+                let Some(index) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off != content.len() { report.damaged = true; return; }
+                self.note_unknown_pointer(index, report);
+            }
+            13 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+                let mut seen_ids: Vec<u64> = Vec::new();
+                loop {
+                    let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if r == 0 {
+                        if off != content.len() { report.damaged = true; }
+                        return;
+                    }
+                    let Some(id) = ref_id(ids, r) else { report.damaged = true; return; };
+                    if id == NODE_TABLE_ID || id == BUILD_VERSION_ID || id == VOCABULARY_ID || seen_ids.contains(&id) {
+                        report.damaged = true;
+                        return;
+                    }
+                    seen_ids.push(id);
+                    if off >= content.len() { report.damaged = true; return; }
+                    let fkind = content[off]; off += 1;
+                    let fstart = off;
+                    if !leb_skip(content, &mut off, content.len(), fkind) { report.damaged = true; return; }
+                    self.note_unknown_payload(ids, fkind, &content[fstart..off], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
+                }
+            }
+            14 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                let ek = content[0];
+                if matches!(ek, 16 | 32) { report.damaged = true; return; }
+                off = 1;
+                let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
+                for _ in 0..count {
+                    let estart = off;
+                    if !leb_skip(content, &mut off, content.len(), ek) { report.damaged = true; return; }
+                    self.note_unknown_payload(ids, ek, &content[estart..off], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
+                }
+                if off != content.len() { report.damaged = true; }
+            }
+            16 => {
+                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                let ek = content[0];
+                if matches!(ek, 14 | 16 | 12 | 31 | 32) { report.damaged = true; return; }
+                off = 1;
+                let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
+                let mut seen_keys: Vec<u64> = Vec::new();
+                for _ in 0..count {
+                    let Some(kref) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if kref == 0 || kref as usize > ids.len() { report.damaged = true; return; }
+                    let kid = ids[kref as usize - 1];
+                    if seen_keys.contains(&kid) { report.damaged = true; return; }
+                    seen_keys.push(kid);
+                    let Some(el) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                    if off > content.len() || el > (content.len() - off) as u64 { report.damaged = true; return; }
+                    let eend = off + el as usize;
+                    self.note_unknown_content(ids, ek, &content[off..eend], depth + 1, report);
+                    if report.damaged || self.count_refused { return; }
+                    off = eend;
+                }
+                if off != content.len() { report.damaged = true; }
+            }
+            15 => {
+                let Some(aref) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if aref == 0 {
+                    if off != content.len() { report.damaged = true; }
+                    return;
+                }
+                if aref as usize > ids.len() || off >= content.len() { report.damaged = true; return; }
+                let akind = content[off]; off += 1;
+                let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
+                if off + (al as usize) != content.len() { report.damaged = true; return; }
+                let next_depth = if matches!(akind, 13 | 14 | 15 | 16) { depth + 1 } else { depth };
+                self.note_unknown_content(ids, akind, &content[off..], next_depth, report);
+            }
+            _ => { report.damaged = true; }
+        }
+    }
+
+    pub fn node_slot(&mut self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
         if !self.good || index == 0 {
             return None;
         }
@@ -714,7 +880,13 @@ impl TableNodeReader {
             return None;
         }
         match &self.slots[k] {
-            TableNodeSlot::Null => None,
+            TableNodeSlot::Null => {
+                if self.blob_named.len() < self.slots.len() {
+                    self.blob_named.resize(self.slots.len(), false);
+                }
+                self.blob_named[k] = true;
+                None
+            }
             TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) => { report.damaged = true; None }
             TableNodeSlot::Table(t) | TableNodeSlot::Built(t, _) => {
                 if *t == want { Some(k + 1) } else { report.damaged = true; None }
@@ -901,7 +1073,7 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
         17 | 30 => {
             leb_read(bounded, off).is_some() && *off <= end
         }
-        12 | 13 | 14 | 16 | 31 | 32 | 33 => {
+        12 | 13 | 14 | 16 | 31 | 32 => {
             let Some(n) = leb_read(bounded, off) else { return false; };
             let n = n as usize;
             if *off > end || n > end - *off { return false; }
@@ -1120,7 +1292,7 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         4 | 8 | 10 | 22 | 27 => w(c, 4),
         5 | 9 | 11 | 23 | 28 | 36 => w(c, 8),
         18 | 19 | 24 | 29 => w(c, 16),
-        12 | 31 | 32 | 33 => {
+        12 | 31 | 32 => {
             let Some(n) = c.leb() else { return false; };
             let n = n as usize;
             if c.off + n > c.buf.len() {
@@ -1676,23 +1848,30 @@ pub fn json_newline(out: &mut String, depth: usize) {
 pub fn json_escape(s: &str, out: &mut String) {
     out.push('"');
     for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\u{0008}' => out.push_str("\\b"),
-            '\u{000c}' => out.push_str("\\f"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => {
-                out.push_str("\\u00");
-                let h = format!("{:02x}", c as u32);
-                out.push_str(&h);
-            }
-            c => out.push(c),
-        }
+        json_escape_char(c, out);
     }
     out.push('"');
+}
+
+/// One code point of a JSON string: the escape JSON spells for it, or the
+/// character itself.
+#[allow(dead_code)]
+pub fn json_escape_char(c: char, out: &mut String) {
+    match c {
+        '"' => out.push_str("\\\""),
+        '\\' => out.push_str("\\\\"),
+        '\u{0008}' => out.push_str("\\b"),
+        '\u{000c}' => out.push_str("\\f"),
+        '\n' => out.push_str("\\n"),
+        '\r' => out.push_str("\\r"),
+        '\t' => out.push_str("\\t"),
+        c if (c as u32) < 0x20 => {
+            out.push_str("\\u00");
+            let h = format!("{:02x}", c as u32);
+            out.push_str(&h);
+        }
+        c => out.push(c),
+    }
 }
 
 /// Clamp a string to n bytes at a code point boundary (docs/SPEC-TABLES.md
@@ -1709,25 +1888,6 @@ pub fn json_bound(s: String, n: usize, damaged: &mut bool) -> String {
     }
     *damaged = true;
     s[..end].to_string()
-}
-
-/// A JSON string as wstring(N) code units (docs/SPEC-TABLES.md §16.2's wstring
-/// row): transcoded at the boundary, and held at N CODE UNITS with a pair
-/// never split; once a character does not fit nothing after it is kept, and
-/// the clamp counts once (the oracle's tabletext scanWString).
-#[allow(dead_code)]
-pub fn json_wide_bound(s: &str, n: usize, damaged: &mut bool) -> Vec<u16> {
-    let mut out: Vec<u16> = Vec::new();
-    let mut buf = [0u16; 2];
-    for c in s.chars() {
-        let units = c.encode_utf16(&mut buf);
-        if out.len() + units.len() > n {
-            *damaged = true;
-            break;
-        }
-        out.extend_from_slice(units);
-    }
-    out
 }
 
 pub const JSON_B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1838,9 +1998,10 @@ pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
     }
 }
 
-/// A float at the SHORTEST precision that reads back as the same value at the
-/// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
-/// writes it. A non-finite value has no JSON spelling; the writer marks it.
+/// A float by docs/SPEC-TABLES.md §16.14's W12: %.*g at the first precision
+/// whose text reads back as the same value at the field's own width, exactly
+/// as the reference writes it. A non-finite value has no JSON spelling; the
+/// writer marks it.
 #[allow(dead_code)]
 pub fn json_float(v: f64, single: bool, w: &mut Jw) {
     if !v.is_finite() {
@@ -1856,12 +2017,17 @@ pub fn json_float(v: f64, single: bool, w: &mut Jw) {
             w.out.push_str(&text);
             return;
         }
-        if let Ok(back) = text.parse::<f64>() {
-            let same = if single { (back as f32) as f64 == v } else { back == v };
-            if same {
-                w.out.push_str(&text);
-                return;
-            }
+        // the read-back is ONE correctly rounded conversion at the field's own
+        // width (§16.14, W12): a float32 field parses as f32, never as f64 and
+        // then narrowed, because rounding twice parts from rounding once
+        let same = if single {
+            text.parse::<f32>().map(|back| back as f64 == v).unwrap_or(false)
+        } else {
+            text.parse::<f64>().map(|back| back == v).unwrap_or(false)
+        };
+        if same {
+            w.out.push_str(&text);
+            return;
         }
         digits += 1;
     }
@@ -2428,30 +2594,40 @@ impl<'a> Jr<'a> {
             b'"' => {
                 let _ = self.read_string();
             }
-            b'{' => {
-                if self.depth > JSON_DEPTH_CAP {
-                    self.damaged = true;
-                    return;
-                }
-                self.p += 1;
-                self.depth += 1;
-                loop {
-                    self.space();
-                    if self.p >= self.b.len() {
-                        self.damaged = true;
-                        self.depth -= 1;
-                        return;
-                    }
-                    if self.b[self.p] == b'}' {
-                        self.p += 1;
-                        self.depth -= 1;
-                        return;
-                    }
-                    let key = self.read_string();
-                    if self.damaged {
-                        self.depth -= 1;
-                        return;
-                    }
+             b'{' => {
+                 if self.depth > JSON_DEPTH_CAP {
+                     self.damaged = true;
+                     return;
+                 }
+                 self.p += 1;
+                 self.depth += 1;
+                 let mut seen = std::collections::HashSet::new();
+                 loop {
+                     self.space();
+                     if self.p >= self.b.len() {
+                         self.damaged = true;
+                         self.depth -= 1;
+                         return;
+                     }
+                     if self.b[self.p] == b'}' {
+                         self.p += 1;
+                         self.depth -= 1;
+                         return;
+                     }
+                     let key = self.read_string();
+                     if self.damaged {
+                         self.depth -= 1;
+                         return;
+                     }
+                     // a repeated key inside a skipped object refuses the read,
+                     // exactly as it does in a placed object (§16.3)
+                     if let Some(k) = &key {
+                         if !seen.insert(k.clone()) {
+                             self.damaged = true;
+                             self.depth -= 1;
+                             return;
+                         }
+                     }
                     self.space();
                     if self.p < self.b.len() && self.b[self.p] == b':' {
                         self.p += 1;
@@ -2653,19 +2829,6 @@ impl TableRegionWriter<'_> {
         }
         self.data[at as usize..at as usize + bytes.len()].copy_from_slice(bytes);
         self.put(length_at, bytes.len() as u64, 4);
-    }
-
-    /// wstring(N): the used CODE UNITS, each a two-byte scalar in the cook's
-    /// byte order, and the int32 used length in units (§7.2).
-    pub fn put_units(&mut self, at: i64, units: &[u16], bound: usize, length_at: i64) {
-        if units.len() > bound {
-            self.ok = false;
-            return;
-        }
-        for (i, u) in units.iter().enumerate() {
-            self.put(at + 2 * i as i64, *u as u64, 2);
-        }
-        self.put(length_at, units.len() as u64, 4);
     }
 
     /// A reference slot to a table node: the SELF-RELATIVE delta from the

@@ -7,7 +7,7 @@ package luautable_test
 // the file and writer negative controls; this file adds the Luau driver: the
 // row's records built through the emitted constructors, saved through
 // schema_fixed.luau, and the values the load of the reference's file must
-// land. Only group B, the ten fixed-point, text and container rows, is
+// land. Only group B, the nine fixed-point, text and container rows, is
 // registered here.
 
 import (
@@ -28,14 +28,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// luauFixedGroupBRows is the ten fixed-point, text and container rows this card registers.
+// luauFixedGroupBRows is the nine fixed-point, text and container rows this card registers.
 var luauFixedGroupBRows = []string{
 	"signed-fixed-point",
 	"unsigned-fixed-point",
 	"flags-values",
 	"enum-values",
 	"utf8-values",
-	"utf16-values",
 	"byte-buffers",
 	"nested-types",
 	"nested-fixed-tables",
@@ -121,24 +120,6 @@ v1.SLength = 5
 values = { v0, v1 }
 `,
 			check: `back[1].SLength == 0 and back[2].SLength == 5 and buffer.readstring(back[2].S, 0, 5) == "hello"`,
-		}
-	case "utf16-values":
-		return luauFixedGroupBRow{
-			build: `
-local v0 = T.NewT()
-local v1 = T.NewT()
-buffer.writeu16(v1.W, 0, 0x0041)
-buffer.writeu16(v1.W, 2, 0x03b1)
-buffer.writeu16(v1.W, 4, 0xd83d)
-buffer.writeu16(v1.W, 6, 0xde00)
-v1.WLength = 4
-values = { v0, v1 }
-`,
-			check: `back[1].WLength == 0 and back[2].WLength == 4
-	and buffer.readu16(back[2].W, 0) == 0x0041
-	and buffer.readu16(back[2].W, 2) == 0x03b1
-	and buffer.readu16(back[2].W, 4) == 0xd83d
-	and buffer.readu16(back[2].W, 6) == 0xde00`,
 		}
 	case "byte-buffers":
 		return luauFixedGroupBRow{

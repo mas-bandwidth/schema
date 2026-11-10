@@ -751,8 +751,6 @@ func applyJSONWriteDamage(value *tabletext.Instance, damage string) error {
 		}
 		if kind == "narrow" {
 			fv.Cell.Str = []byte{0x61, 0xff, 0x62}
-		} else {
-			fv.Cell.Units = []uint16{0x61, 0xd800, 0x62}
 		}
 		return nil
 	}

@@ -189,14 +189,13 @@ local function same_int(a: any, b: any): boolean
 	return as_number(a) == as_number(b)
 end
 
--- the used bytes of a string(N), wstring(N) or bytes(N) value: its buffer and
--- the length beside it, in bytes
-local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
+-- the used bytes of a string(N) or bytes(N) value: its buffer and the length
+-- beside it, in bytes
+local function used(v: any, slot: string): (buffer?, number)
 	local b = v[slot]
 	if typeof(b) ~= "buffer" then return nil, 0 end
 	local n = v[slot .. "Length"]
 	if n == nil then n = buffer.len(b) end
-	if wide then n = n * 2 end
 	return b, n
 end
 
@@ -521,7 +520,6 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	elseif s == "str" or s == "text" then
 		local n = 0
 		if typeof(val) == "buffer" then n = len or buffer.len(val) end
-		if e.wide then n = n * 2 end
 		w_leb(w, n)
 		if n > 0 then w_raw(w, val, 0, n) end
 	else
@@ -576,7 +574,7 @@ local function write_keyed(c: any, fd: any, w: any, val: any): boolean
 	local e = fd.e
 	for slot = 1, fd.bound do
 		local keyvs = fd.keyvs
-		local x = val[slot]
+		local x = elem_at(val, slot)
 		if keyvs == nil or keyvs[slot] == nil then
 			-- a descriptor that names no key ids (luautable.go does not emit
 			-- them yet): a slot at its default needs none and elides; any other
@@ -661,7 +659,7 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, not val and 0 or c.nodes.index[val])
 	elseif s == "str" then
-		local b, n = used(u, arm.slot, arm.wide)
+		local b, n = used(u, arm.slot)
 		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
 	elseif s == "text" then
 		if typeof(val) == "buffer" then w_raw(w, val, 0, buffer.len(val)) end
@@ -796,7 +794,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		end
 		header(c, w, fd.id, fd.k)
 		if s == "str" then
-			local b, n = used(v, fd.slot, fd.wide)
+			local b, n = used(v, fd.slot)
 			return write_value(c, { s = "text" }, w, b, n)
 		elseif s == "union" then
 			if val == nil or val.Type == 0 then w_leb(w, 0); return true end
@@ -808,11 +806,9 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		return write_keyed(c, fd, w, val)
 	end
 	if s == "str" then
-		local b, n = used(v, fd.slot, fd.wide)
+		local b, n = used(v, fd.slot)
 		if not required then
-			if fd.wide then
-				if n == 0 then return true end -- wide text takes no specified default
-			elseif equals_string(b, n, fd.def) then
+			if equals_string(b, n, fd.def) then
 				return true
 			end
 		end
@@ -993,9 +989,9 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 	for _, fd in d.fields do
 		if not guard_holds(fd, v) or (fd.present ~= nil and not v[fd.present]) then continue end
 		local val = v[fd.slot]
-		if fd.keyvs ~= nil and typeof(val) == "table" then
+		if fd.keyvs ~= nil and (typeof(val) == "table" or typeof(val) == "buffer") then
 			for slot, pair in fd.keyvs do
-				if pair[3] == true and not elem_is_default(fd.e, val[slot], nil) then
+				if pair[3] == true and not elem_is_default(fd.e, elem_at(val, slot), nil) then
 					return { name = "invalid_value", field = d.name .. "." .. fd.name, variant = pair[1] }
 				end
 			end

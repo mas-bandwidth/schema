@@ -674,7 +674,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
         default:
-            // every other content is bytes: a string, wide text, an escape, a
+            // every other content is bytes: a string, an escape, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -747,8 +747,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
         }
         case 12:
         case 31:
-        case 32:
-        case 33: // L, then L bytes, nothing framed inside
+        case 32: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -1195,7 +1194,6 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
         case 12:
         case 31:
         case 32:
-        case 33:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }

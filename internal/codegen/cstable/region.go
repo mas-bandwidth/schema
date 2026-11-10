@@ -128,7 +128,6 @@ const tableRegionSource = `
             value.Buffer(f).Clear(); value.SetCount(f, 0);
             if (defaults && f.DefaultBytes != null) { f.DefaultBytes.AsSpan().CopyTo(value.Buffer(f)); value.SetCount(f, f.DefaultBytes.Length); }
         }
-        else if (f.GetChars != null) { value.Chars(f).Clear(); value.SetCount(f, 0); }
         else
         {
             int n = f.IsArray ? f.ArrayBound : 1;
@@ -373,8 +372,7 @@ const tableRegionSource = `
     static void NativeZeroField(NativeValue value, TableFieldInfo f)
     {
         if (f.Dynamic) { NativeResetField(value, f, true); return; }
-        if (f.GetChars != null) { value.Chars(f).Clear(); }
-        else if (f.GetBuffer != null) { value.Buffer(f).Clear(); }
+        if (f.GetBuffer != null) { value.Buffer(f).Clear(); }
         else
         {
             int n = f.IsArray ? f.ArrayBound : 1;
@@ -413,10 +411,10 @@ const tableRegionSource = `
             NativePointer(ref state, value, f, 0, indexValue, report);
             return true;
         }
-        if (kind == 12 || kind == 33)
+        if (kind == 12)
         {
             NativeResetArm(value, f);
-            return kind == 33 ? NativeReadChars(r.Buffer, value, f, report) : NativeReadText(ref state, r.Buffer, value, f, report);
+            return NativeReadText(ref state, r.Buffer, value, f, report);
         }
         if (kind == 14)
         {
@@ -460,35 +458,14 @@ const tableRegionSource = `
         if (value.Base != null) { text.Slice(0, keep).CopyTo(value.Buffer(f)); value.SetCount(f, keep); }
         return true;
     }
-    static bool NativeReadChars(ReadOnlySpan<byte> text, NativeValue value, TableFieldInfo f, TableReport report)
-    {
-        if ((text.Length & 1) != 0) { return Damage(report); }
-        for (int i = 0; i < text.Length; i += 2)
-        {
-            int c = text[i] | text[i + 1] << 8;
-            if (c == 0 || (c >= 0xdc00 && c <= 0xdfff)) { return Damage(report); }
-            if (c >= 0xd800 && c <= 0xdbff)
-            {
-                if (i + 3 >= text.Length) { return Damage(report); }
-                int low = text[i + 2] | text[i + 3] << 8;
-                if (low < 0xdc00 || low > 0xdfff) { return Damage(report); }
-                i += 2;
-            }
-        }
-        int keep = text.Length / 2;
-        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-        Span<char> storage = value.Chars(f);
-        for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
-        value.SetCount(f, keep); return true;
-    }
     static bool NativeReadField(ref NativeState state, ref Reader r, NativeValue value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
     {
         placed = true;
         if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return NativeReadMapBody(ref state, ref map, value, f, report); }
-        if (kind == 12 || kind == 33)
+        if (kind == 12)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
-            if (!(kind == 33 ? NativeReadChars(text.Buffer, value, f, report) : NativeReadText(ref state, text.Buffer, value, f, report)))
+            if (!NativeReadText(ref state, text.Buffer, value, f, report))
             { NativeResetField(value, f, true); }
             return true;
         }
@@ -617,7 +594,6 @@ const tableRegionSource = `
             text.CopyTo(f.GetBuffer(target)); return;
         }
         if (f.GetBuffer != null) { source.Buffer(f).Slice(0, f.GetBuffer(target).Length).CopyTo(f.GetBuffer(target)); return; }
-        if (f.GetChars != null) { source.Chars(f).Slice(0, f.GetChars(target).Length).CopyTo(f.GetChars(target)); return; }
         for (int i = 0; i < n; i++)
         {
             if (f.Kind == 17)

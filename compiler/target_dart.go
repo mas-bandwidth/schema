@@ -30,10 +30,6 @@ func (t dartTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 // §5.2's backward read was inert on this leg however long the committed lock's
 // lineage was.
 func (dartTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried; table kind 33 remains refused.
-	if err := refuseWideText(u, "dart"); err != nil {
-		return nil, err
-	}
 	if err := refuseValueDefaults(u, "dart"); err != nil {
 		return nil, err
 	}
@@ -129,7 +125,6 @@ func init() {
 	// Form-1 tables now preserve declared string, bytes and flags defaults
 	// through storage, save elision and tolerant loads (SPEC-TABLES §5).
 	valueDefaultTargets = append(valueDefaultTargets, "dart")
-	registerWideTextCarrier("dart")
 	// The card record's closure also carries an unbounded []T of table
 	// elements (docs/SPEC-TABLES.md §2.9), so the Dart table backend registers
 	// as a list carrier too.

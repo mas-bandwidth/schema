@@ -184,7 +184,7 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		}
 		e := entries[i]
 		i++
-		if (e.kind < 1 || e.kind > 16) && (e.kind < 18 || e.kind > 30) && e.kind != 32 && e.kind != 33 && e.kind != fixedKindOptional && e.kind != 36 {
+		if (e.kind < 1 || e.kind > 16) && (e.kind < 18 || e.kind > 30) && e.kind != 32 && e.kind != fixedKindOptional && e.kind != 36 {
 			return nil
 		}
 		n := &fixedLayoutNode{
@@ -383,8 +383,6 @@ func fixedPlanCompat(f *ir.Field, node *fixedLayoutNode) bool {
 		return (node.kind == ir.TableKindArray || node.kind == ir.TableKindString) && node.size >= 4
 	case f.Type.Kind == ir.TString:
 		return node.kind == ir.TableKindString && node.size >= 4
-	case f.Type.Kind == ir.TWString:
-		return node.kind == ir.TableKindWstring && node.size >= 4
 	}
 	return fixedPlanElemCompat(f, node)
 }
@@ -453,9 +451,6 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			return
 		case fixedIsText(f):
 			oldCap := node.size - 4
-			if f.Type.Kind == ir.TWString {
-				oldCap = (node.size - 4) / 2
-			}
 			capLim := min(oldCap, f.Type.Size)
 			m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
 			m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, capLim)
@@ -464,10 +459,6 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 				m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + 4, n)) return \"text_ill_formed\";\n", ind, off)
 				m.Printf("%slocal s = \"\"; for (local i = 0; i < n; i++) s += b[at + %s + 4 + i].tochar();\n", ind, off)
 				m.Printf("%s%s = s;\n", ind, expr)
-			case ir.TWString:
-				m.Printf("%slocal w = _rt_fixed.wideUnits(b, at + %s + 4, n);\n", ind, off)
-				m.Printf("%sif (w == null) return \"text_ill_formed\";\n", ind)
-				m.Printf("%s%s = w;\n", ind, expr)
 			default:
 				m.Printf("%s%s = blob(n); for (local i = 0; i < n; i++) %s[i] = b[at + %s + 4 + i];\n", ind, expr, expr, off)
 			}

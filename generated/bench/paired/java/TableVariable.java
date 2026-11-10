@@ -358,7 +358,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb();
                         if (!fail && has((int) n)) {
@@ -724,7 +723,8 @@ public final class TableVariable {
         // value is decoded, in fields and records this reader names and in
         // those it does not.
         report.wireNonFinite = false;
-        WireCheck wc = new WireCheck(data, ids);
+        WireCheck wc = WIRE_CHECK.get();
+        wc.reset(data, ids);
         switch (wc.file(base)) {
             case WireCheck.DAMAGED:
                 report.damaged = true;
@@ -780,6 +780,9 @@ public final class TableVariable {
     // reaches, and one blob record named from two slots. tla/ReadOrder.tla
     // models the split (WireDamage, Unreachable, Cycle, BlobShared); the walk
     // covers every slot, known or not.
+    private static final ThreadLocal<WireCheck> WIRE_CHECK =
+            ThreadLocal.withInitial(WireCheck::new);
+
     static final class WireCheck {
         static final int OK = 0;
         static final int DAMAGED = 1;
@@ -788,28 +791,51 @@ public final class TableVariable {
         static final int COUNT_CAP = 4;
         static final int MAX_DEPTH = 128;
 
-        final byte[] buf;
-        final long[] ids;
+        byte[] buf;
+        long[] ids;
         // stamp holds, per id-table reference, the generation of the last body
         // or keyed array that named it: a body's headers are stamped in a pass
         // of their own before any payload is walked, so a nested body's stamps
         // never hide the parent's
-        final int[] stamp;
+        int[] stamp = new int[64];
         int gen;
         int depth;
         int fail;
         boolean nonFinite;
         // edges are the kind 17 payloads met, in wire order; edgeStart[k] is
         // where node k's begin (node 0 the root, node k record k - 1)
-        long[] edges = new long[0];
+        long[] edges = new long[64];
         int edgeCount;
         // the cursor a walk answers through: the offset after what it read
         int at;
+        final int[] table = new int[2];
+        final int[] rootOnlyEdgeStart = new int[2];
+        int[] recStart = new int[16];
+        int[] recEnd = new int[16];
+        boolean[] recBlob = new boolean[16];
+        int[] edgeStart = new int[16];
+        int[] names = new int[16];
+        byte[] mark = new byte[16];
+        int[] stack = new int[16];
+        int[] next = new int[16];
 
-        WireCheck(byte[] buf, long[] ids) {
+        WireCheck() {}
+
+        void reset(byte[] buf, long[] ids) {
             this.buf = buf;
             this.ids = ids;
-            this.stamp = new int[ids.length + 1];
+            if (stamp.length <= ids.length) {
+                stamp = new int[Math.max(ids.length + 1, stamp.length * 2)];
+                gen = 0;
+            } else if (gen > Integer.MAX_VALUE - (1 << 20)) {
+                java.util.Arrays.fill(stamp, 0);
+                gen = 0;
+            }
+            depth = 0;
+            fail = OK;
+            nonFinite = false;
+            edgeCount = 0;
+            at = 0;
         }
 
         boolean damage() {
@@ -888,13 +914,16 @@ public final class TableVariable {
         // file walks the root body, the node table and every record in it,
         // then the pointer graph, and answers the verdict.
         int file(int base) {
-            int[] table = new int[] {-1, -1};
+            table[0] = -1;
+            table[1] = -1;
             if (!body(1, base, true, table)) {
                 return fail;
             }
             int rootEdges = edgeCount;
             if (table[0] < 0) {
-                return graph(new int[] {0, rootEdges}, null) ? (nonFinite ? NON_FINITE : OK) : fail;
+                rootOnlyEdgeStart[0] = 0;
+                rootOnlyEdgeStart[1] = rootEdges;
+                return graph(rootOnlyEdgeStart, 1, null) ? (nonFinite ? NON_FINITE : OK) : fail;
             }
             int off = table[0];
             int end = table[1];
@@ -906,9 +935,6 @@ public final class TableVariable {
             // a record is three bytes at the least, so the walk is bounded by
             // the node table's own length whatever count it declares
             int n = 0;
-            int[] recStart = new int[4];
-            int[] recEnd = new int[4];
-            boolean[] recBlob = new boolean[4];
             while (off < end) {
                 long ref = leb(off, end);
                 if (at < 0 || ref == 0 || ref > ids.length) {
@@ -936,7 +962,10 @@ public final class TableVariable {
             if (off != end || declared != n) {
                 return DAMAGED;
             }
-            int[] edgeStart = new int[n + 2];
+            if (edgeStart.length < n + 2) {
+                edgeStart = new int[Math.max(n + 2, edgeStart.length * 2)];
+            }
+            edgeStart[0] = 0;
             edgeStart[1] = rootEdges;
             for (int k = 0; k < n; k++) {
                 if (!recBlob[k] && !body(recStart[k], recEnd[k], false, null)) {
@@ -944,7 +973,7 @@ public final class TableVariable {
                 }
                 edgeStart[k + 2] = edgeCount;
             }
-            return graph(edgeStart, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
+            return graph(edgeStart, n + 1, recBlob) ? (nonFinite ? NON_FINITE : OK) : fail;
         }
 
         // graph judges the pointer graph: node 0 is the root, node k record k
@@ -952,9 +981,17 @@ public final class TableVariable {
         // or a record; a walk from the root that meets a node whose descent is
         // still open is a cycle; a record the walk never enters is
         // unreachable; and a blob record named from two slots is blob_shared.
-        boolean graph(int[] edgeStart, boolean[] blob) {
-            int n = edgeStart.length - 1;
-            int[] names = new int[n];
+        boolean graph(int[] edgeStart, int n, boolean[] blob) {
+            if (names.length < n) {
+                int cap = Math.max(n, names.length * 2);
+                names = new int[cap];
+                mark = new byte[cap];
+                stack = new int[cap];
+                next = new int[cap];
+            } else {
+                java.util.Arrays.fill(names, 0, n, 0);
+                java.util.Arrays.fill(mark, 0, n, (byte) 0);
+            }
             for (int i = 0; i < edgeCount; i++) {
                 long index = edges[i];
                 if (index == 0) {
@@ -971,9 +1008,6 @@ public final class TableVariable {
                     return false;
                 }
             }
-            byte[] mark = new byte[n]; // 0 unvisited, 1 open, 2 closed
-            int[] stack = new int[n];
-            int[] next = new int[n];
             int depthNow = 0;
             stack[depthNow++] = 0;
             mark[0] = 1;
@@ -1087,7 +1121,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb(off, end);
                         return at < 0 || n > end - at ? -1 : at + (int) n;
@@ -1152,7 +1185,6 @@ public final class TableVariable {
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     {
                         long n = leb(off, end);
                         if (at < 0 || n > end - at) {
@@ -1182,8 +1214,6 @@ public final class TableVariable {
             switch (kind) {
                 case 12:
                     return textValid(buf, off, end - off) || damage();
-                case 33:
-                    return wideBytesValid(off, end) || damage();
                 case 31:
                     return true; // opaque: the one kind whose meaning a reader may not know (§3)
                 case 32:
@@ -1246,29 +1276,6 @@ public final class TableVariable {
                     | (buf[off + 1] & 0xff) << 8
                     | (buf[off + 2] & 0xff) << 16
                     | (buf[off + 3] & 0xff) << 24;
-        }
-
-        boolean wideBytesValid(int off, int end) {
-            if (((end - off) & 1) != 0) {
-                return false;
-            }
-            for (int i = off; i < end; i += 2) {
-                int u = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
-                if (u == 0 || u >= 0xdc00 && u <= 0xdfff) {
-                    return false;
-                }
-                if (u >= 0xd800 && u <= 0xdbff) {
-                    i += 2;
-                    if (i >= end) {
-                        return false;
-                    }
-                    int v = (buf[i] & 0xff) | (buf[i + 1] & 0xff) << 8;
-                    if (v < 0xdc00 || v > 0xdfff) {
-                        return false;
-                    }
-                }
-            }
-            return true;
         }
 
         // header reads an array, keyed or map header: THE HEADER LIES INSIDE
@@ -1621,7 +1628,6 @@ public final class TableVariable {
             case 16:
             case 31:
             case 32:
-            case 33:
                 {
                     int e = lebEnd(buf, off, limit);
                     if (e < 0) {
@@ -2239,10 +2245,10 @@ public final class TableVariable {
         return rec.bytes;
     }
 
-    // Wide values use UTF-16 code units in the public value API. Wire bytes
-    // are always little endian, independent of the cooked region's order.
+    // Wire bytes are always little endian, independent of the cooked region's
+    // order.
     static Reader fieldPayload(Reader raw, int kind) {
-        if (kind != 12 && kind != 13 && kind != 14 && kind != 16 && kind != 33) return raw;
+        if (kind != 12 && kind != 13 && kind != 14 && kind != 16) return raw;
         int size = raw.limit - raw.off;
         Writer framed = new Writer(new byte[size + 10], new Ids(1));
         framed.putLeb(size);
@@ -2266,26 +2272,6 @@ public final class TableVariable {
         while (list.size() < at) list.add(value);
         if (at < list.size()) list.set(at, value);
         else list.add(value);
-    }
-
-    static boolean wideValid(char[] text) {
-        if (text == null) return false;
-        for (int i = 0; i < text.length; i++) {
-            char c = text[i];
-            if (c == 0 || Character.isLowSurrogate(c)) return false;
-            if (Character.isHighSurrogate(c)) {
-                if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
-            }
-        }
-        return true;
-    }
-
-    static char[] wideClamp(char[] text, int bound, Report report) {
-        if (text.length <= bound) return text;
-        int keep = bound;
-        if (keep > 0 && Character.isHighSurrogate(text[keep - 1])) keep--;
-        report.refuse("out_of_range");
-        return java.util.Arrays.copyOf(text, keep);
     }
 
     // NodeTable is a load-side holder: the root body's node records, filled

@@ -31,7 +31,6 @@
 
 #include "TablesTable.h"
 #include "WideTable.h"
-#include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
 #include "FeaturesTable.h"
 #include "NestedTable.h"
 #include "KeyedTable.h"
@@ -371,11 +370,6 @@ static const Codec codecs[] = {
     CODEC( "vocabdemo", vocabdemo, Wide09 ),
     CODEC( "vocab9demo", vocab9demo, Wide00 ),
     CODEC( "vocab9demo", vocab9demo, Wide19 ),
-    // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): its own unit, because eight
-    // targets refuse wide text on either wire (SPEC.md §4.12) and answer
-    // ABSENT for these rows
-    CODEC( "widedemo", wide, Caption ),
-    CODEC( "widedemo", wide, Stamp ),
 };
 
 // ---------------------------------------------------------------------------
@@ -1282,27 +1276,6 @@ static bool framing_text_valid( const uint8_t * b, size_t len )
     return true;
 }
 
-static bool framing_wide_valid( const uint8_t * b, size_t len )
-{
-    if ( ( len & 1 ) != 0 ) return false;
-    const size_t n = len / 2;
-    for ( size_t i = 0; i < n; i++ )
-    {
-        const uint32_t u = (uint32_t) b[2 * i] | ( (uint32_t) b[2 * i + 1] << 8 );
-        if ( u == 0 ) return false;
-        if ( u >= 0xD800 && u <= 0xDBFF )
-        {
-            if ( i + 1 >= n ) return false;
-            const uint32_t low = (uint32_t) b[2 * ( i + 1 )] | ( (uint32_t) b[2 * ( i + 1 ) + 1] << 8 );
-            if ( low < 0xDC00 || low > 0xDFFF ) return false;
-            i++;
-        }
-        else if ( u >= 0xDC00 && u <= 0xDFFF ) return false;
-    }
-    return true;
-}
-
-static bool framing_body( FramingWalk * w, const uint8_t * buf, size_t len, bool root );
 static bool framing_payload( FramingWalk * w, const uint8_t * buf, size_t len, size_t off, int kind, size_t * next );
 static bool framing_content( FramingWalk * w, const uint8_t * b, size_t len, int kind );
 
@@ -1394,7 +1367,6 @@ static bool framing_content( FramingWalk * w, const uint8_t * b, size_t len, int
     switch ( kind )
     {
         case 12: return framing_text_valid( b, len );
-        case 33: return framing_wide_valid( b, len );
         case 31: return true; // the escape: opaque by rule (§3)
         case 32: return len == 0; // kind 32 with a nonzero L is damage
         case 13: case 14: case 16:
@@ -1444,7 +1416,7 @@ static bool framing_payload( FramingWalk * w, const uint8_t * buf, size_t len, s
         }
         case 15:
             return framing_union( w, buf, len, off, next );
-        case 12: case 33: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 31: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             size_t after_n = 0;
@@ -1827,13 +1799,6 @@ static bool damage_text( const std::string & unit, const std::string & root, voi
         tabledemo::ProfileConfig & v = *(tabledemo::ProfileConfig *) value;
         v.name[0] = 0x61; v.name[1] = (char) 0xff; v.name[2] = 0x62;
         v.name_length = 3;
-        return true;
-    }
-    if ( damage == "wide:label" && unit == "widedemo" && root == "Stamp" )
-    {
-        wide::Stamp & v = *(wide::Stamp *) value;
-        v.label[0] = 0x61; v.label[1] = 0xd800; v.label[2] = 0x62;
-        v.label_length = 3;
         return true;
     }
     fprintf( stderr, "driver: damage %s names no text field of %s.%s\n", damage.c_str(), unit.c_str(), root.c_str() );

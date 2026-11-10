@@ -543,12 +543,165 @@ static SCHEMA_UNUSED int blockdemo_table_reader_skip( blockdemo_table_reader_t *
             if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
             /* fall through */
-        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+        case 12: case 13: case 14: case 16: case 31: case 32:
             if ( !blockdemo_table_reader_leb( r, &n ) || !blockdemo_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;
         default: return 0;
     }
     if ( !blockdemo_table_reader_has( r, width ) ) { return 0; } r->offset += width; return 1;
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_utf8( const uint8_t * p, uint64_t n )
+{
+    uint64_t i = 0;
+    while ( i < n )
+    {
+        uint8_t b = p[i++]; uint32_t cp; int more, j;
+        if ( b == 0 ) { return 0; } if ( b < 128 ) { continue; }
+        if ( b >= 194 && b <= 223 ) { cp = b & 31; more = 1; }
+        else if ( b >= 224 && b <= 239 ) { cp = b & 15; more = 2; }
+        else if ( b >= 240 && b <= 244 ) { cp = b & 7; more = 3; }
+        else { return 0; }
+        if ( (uint64_t) more > n-i ) { return 0; }
+        for ( j = 0; j < more; j++ ) { b = p[i++]; if ( (b & 192) != 128 ) { return 0; } cp = (cp << 6) | (b & 63); }
+        if ( (more == 2 && cp < 2048) || (more == 3 && cp < 65536) || cp > 1114111 || (cp >= 55296 && cp <= 57343) ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
+static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root );
+static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
+{
+    switch ( kind )
+    {
+        case 12: return blockdemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
+        case 31: return 1;
+        case 32: return sub.size == 0;
+        case 13: return blockdemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 14: case 16:
+        {
+            blockdemo_table_reader_t rr = sub;
+            return blockdemo_table_skip_array( &rr, kind == 16, nodes, depth );
+        }
+        case 15: case 17: case 30:
+        {
+            blockdemo_table_reader_t rr = sub;
+            if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+        default:
+        {
+            blockdemo_table_reader_t rr = sub;
+            if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+    }
+}
+static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root )
+{
+    uint8_t seen[512];
+    memset( seen, 0, sizeof( seen ) );
+    for ( ;; )
+    {
+        uint64_t ref, id; uint8_t kind;
+        if ( !blockdemo_table_reader_leb( &r, &ref ) ) { return -1; }
+        if ( ref == 0 ) { return r.offset; }
+        if ( ref > r.id_count || ref > 4096 || !blockdemo_table_reader_has( &r, 1 ) ) { return -1; }
+        if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
+        seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
+        id = blockdemo_table_reader_id_at( &r, ref ); kind = blockdemo_table_reader_get8( &r );
+        if ( id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { return -1; }
+        if ( id == 0xffffffffffffffffull )
+        {
+            blockdemo_table_reader_t payload;
+            if ( !root || kind != 12 || !blockdemo_table_reader_span( &r, &payload ) ) { return -1; }
+            continue;
+        }
+        if ( !blockdemo_table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth )
+{
+    uint8_t elem_kind; uint64_t count, i;
+    if ( sub->size < 2 ) { return 0; }
+    elem_kind = blockdemo_table_reader_get8( sub );
+    if ( !blockdemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( count > 2147483647ull ) { return 0; }
+    if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
+    if ( !keyed )
+    {
+        for ( i = 0; i < count; i++ ) { if ( !blockdemo_table_skip_value( sub, elem_kind, nodes, depth ) ) { return 0; } }
+        return sub->offset == sub->size;
+    }
+    {
+        uint8_t seen[512];
+        memset( seen, 0, sizeof( seen ) );
+        for ( i = 0; i < count; i++ )
+        {
+            uint64_t key; blockdemo_table_reader_t elem;
+            if ( !blockdemo_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
+            seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
+            if ( !blockdemo_table_reader_span( sub, &elem ) ) { return 0; }
+            if ( !blockdemo_table_skip_framed( elem, elem_kind, nodes, depth ) ) { return 0; }
+        }
+        return sub->offset == sub->size;
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth )
+{
+    uint64_t n;
+    if ( depth > 128 ) { return 0; }
+    switch ( kind )
+    {
+        case 1: return blockdemo_table_reader_has( r, 1 ) && blockdemo_table_reader_get8( r ) <= 1;
+        case 10: return blockdemo_table_reader_has( r, 4 ) && ( blockdemo_table_reader_get32( r ) & 0x7f800000u ) != 0x7f800000u;
+        case 11: return blockdemo_table_reader_has( r, 8 ) && ( blockdemo_table_reader_get64( r ) & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull;
+        case 17:
+            if ( !blockdemo_table_reader_leb( r, &n ) ) { return 0; }
+            return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
+        case 30:
+            if ( !blockdemo_table_reader_leb( r, &n ) ) { return 0; }
+            return n <= r->id_count;
+        case 15:
+        {
+            uint64_t ref; uint8_t arm_kind; blockdemo_table_reader_t arm;
+            if ( !blockdemo_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
+            if ( ref == 0 ) { return 1; }
+            if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
+            arm_kind = blockdemo_table_reader_get8( r );
+            if ( !blockdemo_table_reader_span( r, &arm ) ) { return 0; }
+            return blockdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+        }
+        case 12: case 13: case 14: case 16: case 31: case 32:
+        {
+            blockdemo_table_reader_t sub;
+            if ( !blockdemo_table_reader_span( r, &sub ) ) { return 0; }
+            if ( kind == 13 ) { return depth < 128 && blockdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
+            if ( kind == 14 || kind == 16 ) { return depth < 128 && blockdemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
+            return blockdemo_table_skip_framed( sub, kind, nodes, depth );
+        }
+        default:
+        {
+            int width = 0;
+            switch ( kind )
+            {
+                case 2: case 6: case 20: case 25: width = 1; break;
+                case 3: case 7: case 21: case 26: width = 2; break;
+                case 4: case 8: case 22: case 27: width = 4; break;
+                case 5: case 9: case 23: case 28: case 36: width = 8; break;
+                case 18: case 19: case 24: case 29: width = 16; break;
+                default: return 0;
+            }
+            if ( !blockdemo_table_reader_has( r, width ) ) { return 0; }
+            r->offset += width;
+            return 1;
+        }
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_reader_skip_checked( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes )
+{
+    return blockdemo_table_skip_value( r, kind, nodes, 0 );
 }
 static SCHEMA_UNUSED int blockdemo_table_kind_widens( uint8_t kind, uint8_t declared )
 {
@@ -711,14 +864,13 @@ enum
     BLOCKDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BLOCKDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BLOCKDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: land byte != 0 as 1, never verbatim (fix 2) */
+    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
 };
 
 /* meta on a kTableFixedText entry */
 enum
 {
     BLOCKDEMO_K_TABLE_FIXED_TEXT_UTF8  = 1,
-    BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE  = 2,
     BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES = 3
 };
 
@@ -777,9 +929,8 @@ enum
     SCHEMA_BLOCKDEMO_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_BLOCKDEMO_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-       string(N)'s used bytes that are not well-formed UTF-8 — or a
-       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
-       name, the verdict the packet reader gives, this form having no L to
+       string(N)'s used bytes that are not well-formed UTF-8 refuse the read
+       by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED = 20
 };
@@ -869,6 +1020,13 @@ typedef struct blockdemo_table_fixed_entry_t
        inside an arm answers to BOTH outer tags and its own. */
     uint32_t guard_count;
     uint32_t guard_index;
+    /* elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+       value rides as two 8-byte lanes). The wire is little-endian on every
+       host (§3.4), so on a big-endian host a copy must reverse each element
+       rather than land the wire bytes in host order. Zero is a raw byte copy,
+       which is every non-copy op and every byte-sized element. It sits last
+       so existing positional initializers keep their meaning. */
+    uint8_t elem;
 } blockdemo_table_fixed_entry_t;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -968,6 +1126,27 @@ static SCHEMA_UNUSED uint64_t blockdemo_table_fixed_get64( const uint8_t * b )
     for ( i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+/* A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+   const ops read their source through this, never through a memcpy into a
+   native word, which would read the wire in host order. */
+static SCHEMA_UNUSED uint64_t blockdemo_table_fixed_get_le( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    uint32_t i;
+    for ( i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+/* THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+   little-endian on every host, so only a copy into native storage consults
+   it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+   the big-endian copy path so a test can hold its byte image. */
+#if defined( SCHEMA_BLOCKDEMO_TABLE_FIXED_FORCE_BIG_ENDIAN )
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 1;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 1;
+#else
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 0;
+#endif
 
 /* THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
    byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -1061,6 +1240,26 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_co
     memcpy( d, s, n );
 }
 
+/* A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+   copy above IS the wire image and stays one copy. On a big-endian host each
+   element of elem bytes is reversed, so the value lands in this host's order
+   and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+   number of elements, is a raw byte copy. */
+static SCHEMA_UNUSED void blockdemo_table_fixed_copy_le( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( blockdemo_table_fixed_big_endian_host && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        uint32_t i;
+        for ( i = 0; i < size; i += elem )
+        {
+            uint8_t j;
+            for ( j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    blockdemo_table_fixed_copy_run( dst, src, size );
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1074,24 +1273,27 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_co
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_apply( const blockdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened )
+                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
 {
     switch ( p->op )
     {
         case BLOCKDEMO_K_TABLE_FIXED_COPY:
         {
-            blockdemo_table_fixed_copy_run( dst + p->dst, src + p->src, p->size );
+            blockdemo_table_fixed_copy_le( dst + p->dst, src + p->src, p->size, p->elem );
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL LANDS AS byte != 0. A plain copy would let a forged 0x02
-               ride into a bool, which is a value the language does not promise
-               holds a 0 or 1 (docs/FIXED-FORM-ALGORITHM.md §4.5). */
+            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
+               value out of range: no writer emits one, so it is neither
+               stored verbatim nor normalised to 1
+               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
+               lands normalised here; table_fixed_run turns damaged into
+               the wire_damaged refusal and the load resets every record. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*out_of_range)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_COUNT:
@@ -1104,8 +1306,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         }
         case BLOCKDEMO_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( p->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
-            const uint32_t cap = p->size / unit;
+            const uint32_t cap = p->size;
             int32_t v = (int32_t) blockdemo_table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
@@ -1114,11 +1315,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             if ( p->meta != BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
-                   unit longer than the bound for exactly this. A store, not a
+                   byte longer than the bound for exactly this. A store, not a
                    call: memset of a runtime length is a call. */
-                uint8_t * end = dst + p->aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p->aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -1129,7 +1328,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
                reinterpreted. The table is the plan's own, laid down by the
                compiler above the entries. */
             uint64_t raw = 0;
-            memcpy( &raw, src + p->src, p->size );
+            raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -1147,7 +1346,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p->src, p->size );
+            raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
             if ( p->sign != 0 )
             {
                 /* TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -1166,7 +1365,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
                hardware cast, matching the C++ twin's widenf — an f32 stays an
                f32 and the value rides the conversion, no bit reassembly. */
             float f = 0.0f;
-            memcpy( &f, src + p->src, 4 );
+            { const uint32_t bits = blockdemo_table_fixed_get32( src + p->src ); memcpy( &f, &bits, 4 ); }
             const double d = (double) f;
             memcpy( dst + p->dst, &d, 8 );
             (*widened)++;
@@ -1187,7 +1386,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p->src, p->size );
+                raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
                 if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }
             }
             break;
@@ -1219,6 +1418,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
+    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1227,7 +1427,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened );
+        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1253,9 +1453,10 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
             if ( blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened );
+        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
     }
-    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1336,10 +1537,9 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_entry_lands( const blockdemo_tab
         case BLOCKDEMO_K_TABLE_FIXED_COUNT: lands[1] = e->dst + 4u; break;
         case BLOCKDEMO_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
             lands[1] = e->dst + 4u;
             lands[2] = e->aux;
-            lands[3] = e->aux + e->size + ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : unit );
+            lands[3] = e->aux + e->size + ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : 1u );
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
@@ -1576,14 +1776,14 @@ static SCHEMA_UNUSED int blockdemo_table_fixed_leaf_size( uint8_t kind, uint32_t
 static SCHEMA_UNUSED int blockdemo_table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-   reserved: neither is a kind a declaration spells, so neither is ever an
-   entry's kind. */
+   the no-payload variant 32, and the ONE kind this form's layout adds, the
+   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   reserved: none is a kind a declaration spells, so none is ever an entry's
+   kind. */
 static SCHEMA_UNUSED int blockdemo_table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 /* table_fixed_check_entry validates the subtree rooted at i and answers how
@@ -1685,12 +1885,6 @@ static SCHEMA_UNUSED int32_t blockdemo_table_fixed_check_entry( blockdemo_table_
         {
             if ( e.children != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
             if ( e.size < 4u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
-            break;
-        }
-        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
-        {
-            if ( e.children != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
             break;
         }
         /* Every kind of the closed set is either a leaf above or a case here,
@@ -2163,7 +2357,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 blockdemo_table_fixed_push( c, e );
                 break;
             }
-            case 12: case 33: /* text */
+            case 12: /* text */
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 blockdemo_table_fixed_entry_t e = blockdemo_table_fixed_entry_zero();
@@ -2180,6 +2374,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 {
                     e.size = me.size;
                     e.op = ( me.kind == 1 ) ? BLOCKDEMO_K_TABLE_FIXED_BOOL : BLOCKDEMO_K_TABLE_FIXED_COPY;
+                    e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                     blockdemo_table_fixed_push( c, e );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
@@ -2248,7 +2443,7 @@ static SCHEMA_UNUSED int32_t blockdemo_table_fixed_compile( const blockdemo_tabl
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
-             plan[out-1].argw2 == plan[i].argw2 &&
+             plan[out-1].argw2 == plan[i].argw2 && plan[out-1].elem == plan[i].elem &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -2382,6 +2577,7 @@ static SCHEMA_UNUSED void blockdemo_table_non_finite_float( blockdemo_table_repo
 {
     report->refused = 1;
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT;
     report->non_finite_floats++;
 }
 /* table_non_finite_refused is that load's end: 1 when the walk met a
@@ -2392,6 +2588,7 @@ static SCHEMA_UNUSED int blockdemo_table_non_finite_refused( blockdemo_table_rep
     if ( report->non_finite_floats == before ) { return 0; }
     report->refused = 1;
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT;
     return 1;
 }
 static SCHEMA_UNUSED uint32_t schema_blockdemo_table_crc32c_( const uint8_t * data, int64_t bytes )
@@ -2653,11 +2850,6 @@ static SCHEMA_UNUSED void blockdemo_table_cook_put128(uint8_t * at,uint64_t lo,u
 }
 static SCHEMA_UNUSED void blockdemo_table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
 { if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
-static SCHEMA_UNUSED void blockdemo_table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
-{
-    int64_t i, count=used<capacity ? used : capacity;
-    for(i=0;i<count;i++) { blockdemo_table_cook_put(at+i*2,source[i],2,order); }
-}
 static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
 {
     blockdemo_table_cook_put(raw,blockdemo_table_cook_magic,8,order); blockdemo_table_cook_put(raw+8,version,8,order);
@@ -2668,8 +2860,8 @@ static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #endif
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE
-enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=88, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=912, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
-static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xa7,0xdd,0xa3,0x09,0xa2,0x89,0x6e,0xc0,0x02,0x0e,0xe8,0x06,0x06,0xe5,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=87, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=903, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
+static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xa7,0xdd,0xa3,0x09,0xa2,0x89,0x6e,0xc0,0x02,0x0e,0xdf,0x06,0x06,0xdc,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct blockdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } blockdemo_table_bit_writer_t;
 typedef struct blockdemo_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } blockdemo_table_bit_reader_t;
@@ -2833,7 +3025,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_fixed_kind( uint8_t kind ) { re
 
 static SCHEMA_UNUSED int blockdemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 
@@ -2911,7 +3103,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_shape_read(const uint8_t * in,i
    return blockdemo_table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!blockdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ if(kind==12){if(!blockdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
  f->max=(int64_t)v;
  return 1;
  }
@@ -2923,7 +3115,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_shape_read(const uint8_t * in,i
   f->max=(int64_t)v;
   if(*at>=size)return 0;
   f->elem_kind=in[(*at)++];
-  return blockdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+  return blockdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12;
  }return 1;
 }
 static SCHEMA_UNUSED int blockdemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,blockdemo_table_message_entry_t * e)
@@ -3144,10 +3336,9 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
  case 15:
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && blockdemo_table_message_skip_deeper(r,entry));
- case 12:case 33:
-  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,e->max)))return 0;
-  if(e->kind==12 && !blockdemo_table_bit_align_read(&r->bits))return 0;
-  return blockdemo_table_message_skip_run(r,n,e->kind==12?8:16);
+ case 12:
+  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,e->max))||!blockdemo_table_bit_align_read(&r->bits))return 0;
+  return blockdemo_table_message_skip_run(r,n,8);
  case 31:
   if(!blockdemo_table_bit_align_read(&r->bits)||!blockdemo_table_bit_get(&r->bits,&n,32))return 0;
   return blockdemo_table_message_skip_run(r,n,8);
@@ -3495,6 +3686,7 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_save( const blockdemo_padded_r
 static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_t * r, blockdemo_padded_row_t * value )
 {
     blockdemo_padded_row_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -3502,7 +3694,8 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x56d7ab194448a4f3ull: /* tag */
@@ -3656,6 +3849,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -3692,6 +3886,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                             }
                         }
                         end_slots: ;
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -3706,6 +3901,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, i;
@@ -3740,6 +3936,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                         }
                         next_teams: ;
                     }
+                    if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                 }
                 break;
             }
@@ -3794,7 +3991,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -4329,6 +4526,7 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_save( const blockdemo_padded
 static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reader_t * r, blockdemo_padded_frame_t * value )
 {
     blockdemo_padded_frame_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -4336,7 +4534,8 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xeddcb72b15486e77ull: /* marker */
@@ -4418,6 +4617,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -4444,6 +4644,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->rows_count;tail<(uint32_t)previous_count && tail<64;tail++) {
                          blockdemo_padded_row_reset(&value->rows[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -4458,6 +4659,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -4489,13 +4691,14 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
                             value->blob_length = (int32_t) i + 1;
                         }
                         end_blob: ;
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -4928,22 +5131,30 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_padded_row_fixe
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_padded_row_fixed_plan[] = {
-    { 0u, 0u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 9u, 16u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 10u, 20u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 14u, 40u, 15u, 24u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 33u, 44u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 45u, 60u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 46u, 56u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
+    { 0u, 0u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 9u, 16u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 10u, 20u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 14u, 40u, 15u, 24u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 33u, 44u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 35u, 46u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 37u, 48u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 39u, 50u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 41u, 52u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 42u, 53u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 43u, 54u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 44u, 55u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 45u, 60u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 46u, 56u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_plan_count = 8;
-static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_plan_guarded = 8;
+static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_plan_count = 15;
+static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_plan_guarded = 15;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_padded_row_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -5251,530 +5462,979 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_padded_frame_fi
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_padded_frame_fixed_plan[] = {
-    { 0u, 0u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* marker */
-    { 1u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* stamp */
-    { 9u, 4112u, 64u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COUNT, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* rows count */
-    { 13u, 16u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 14u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 22u, 32u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 23u, 36u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 27u, 56u, 15u, 40u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 46u, 60u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 58u, 76u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 59u, 72u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 63u, 80u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 64u, 88u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 72u, 96u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 73u, 100u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 77u, 120u, 15u, 104u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 96u, 124u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 108u, 140u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 109u, 136u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 113u, 144u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 114u, 152u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 122u, 160u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 123u, 164u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 127u, 184u, 15u, 168u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 146u, 188u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 158u, 204u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 159u, 200u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 163u, 208u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 164u, 216u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 172u, 224u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 173u, 228u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 177u, 248u, 15u, 232u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 196u, 252u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 208u, 268u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 209u, 264u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 213u, 272u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 214u, 280u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 222u, 288u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 223u, 292u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 227u, 312u, 15u, 296u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 246u, 316u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 258u, 332u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 259u, 328u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 263u, 336u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 264u, 344u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 272u, 352u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 273u, 356u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 277u, 376u, 15u, 360u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 296u, 380u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 308u, 396u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 309u, 392u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 313u, 400u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 314u, 408u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 322u, 416u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 323u, 420u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 327u, 440u, 15u, 424u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 346u, 444u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 358u, 460u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 359u, 456u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 363u, 464u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 364u, 472u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 372u, 480u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 373u, 484u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 377u, 504u, 15u, 488u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 396u, 508u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 408u, 524u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 409u, 520u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 413u, 528u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 414u, 536u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 422u, 544u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 423u, 548u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 427u, 568u, 15u, 552u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 446u, 572u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 458u, 588u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 459u, 584u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 463u, 592u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 464u, 600u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 472u, 608u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 473u, 612u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 477u, 632u, 15u, 616u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 496u, 636u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 508u, 652u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 509u, 648u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 513u, 656u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 514u, 664u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 522u, 672u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 523u, 676u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 527u, 696u, 15u, 680u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 546u, 700u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 558u, 716u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 559u, 712u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 563u, 720u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 564u, 728u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 572u, 736u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 573u, 740u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 577u, 760u, 15u, 744u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 596u, 764u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 608u, 780u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 609u, 776u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 613u, 784u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 614u, 792u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 622u, 800u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 623u, 804u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 627u, 824u, 15u, 808u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 646u, 828u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 658u, 844u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 659u, 840u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 663u, 848u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 664u, 856u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 672u, 864u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 673u, 868u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 677u, 888u, 15u, 872u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 696u, 892u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 708u, 908u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 709u, 904u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 713u, 912u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 714u, 920u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 722u, 928u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 723u, 932u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 727u, 952u, 15u, 936u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 746u, 956u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 758u, 972u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 759u, 968u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 763u, 976u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 764u, 984u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 772u, 992u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 773u, 996u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 777u, 1016u, 15u, 1000u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 796u, 1020u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 808u, 1036u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 809u, 1032u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 813u, 1040u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 814u, 1048u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 822u, 1056u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 823u, 1060u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 827u, 1080u, 15u, 1064u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 846u, 1084u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 858u, 1100u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 859u, 1096u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 863u, 1104u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 864u, 1112u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 872u, 1120u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 873u, 1124u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 877u, 1144u, 15u, 1128u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 896u, 1148u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 908u, 1164u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 909u, 1160u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 913u, 1168u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 914u, 1176u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 922u, 1184u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 923u, 1188u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 927u, 1208u, 15u, 1192u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 946u, 1212u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 958u, 1228u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 959u, 1224u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 963u, 1232u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 964u, 1240u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 972u, 1248u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 973u, 1252u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 977u, 1272u, 15u, 1256u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 996u, 1276u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1008u, 1292u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1009u, 1288u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1013u, 1296u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1014u, 1304u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1022u, 1312u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1023u, 1316u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1027u, 1336u, 15u, 1320u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1046u, 1340u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1058u, 1356u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1059u, 1352u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1063u, 1360u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1064u, 1368u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1072u, 1376u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1073u, 1380u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1077u, 1400u, 15u, 1384u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1096u, 1404u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1108u, 1420u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1109u, 1416u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1113u, 1424u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1114u, 1432u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1122u, 1440u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1123u, 1444u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1127u, 1464u, 15u, 1448u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1146u, 1468u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1158u, 1484u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1159u, 1480u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1163u, 1488u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1164u, 1496u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1172u, 1504u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1173u, 1508u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1177u, 1528u, 15u, 1512u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1196u, 1532u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1208u, 1548u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1209u, 1544u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1213u, 1552u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1214u, 1560u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1222u, 1568u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1223u, 1572u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1227u, 1592u, 15u, 1576u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1246u, 1596u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1258u, 1612u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1259u, 1608u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1263u, 1616u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1264u, 1624u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1272u, 1632u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1273u, 1636u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1277u, 1656u, 15u, 1640u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1296u, 1660u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1308u, 1676u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1309u, 1672u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1313u, 1680u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1314u, 1688u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1322u, 1696u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1323u, 1700u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1327u, 1720u, 15u, 1704u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1346u, 1724u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1358u, 1740u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1359u, 1736u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1363u, 1744u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1364u, 1752u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1372u, 1760u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1373u, 1764u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1377u, 1784u, 15u, 1768u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1396u, 1788u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1408u, 1804u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1409u, 1800u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1413u, 1808u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1414u, 1816u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1422u, 1824u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1423u, 1828u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1427u, 1848u, 15u, 1832u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1446u, 1852u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1458u, 1868u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1459u, 1864u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1463u, 1872u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1464u, 1880u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1472u, 1888u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1473u, 1892u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1477u, 1912u, 15u, 1896u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1496u, 1916u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1508u, 1932u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1509u, 1928u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1513u, 1936u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1514u, 1944u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1522u, 1952u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1523u, 1956u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1527u, 1976u, 15u, 1960u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1546u, 1980u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1558u, 1996u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1559u, 1992u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1563u, 2000u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1564u, 2008u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1572u, 2016u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1573u, 2020u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1577u, 2040u, 15u, 2024u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1596u, 2044u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1608u, 2060u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1609u, 2056u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1613u, 2064u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1614u, 2072u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1622u, 2080u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1623u, 2084u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1627u, 2104u, 15u, 2088u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1646u, 2108u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1658u, 2124u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1659u, 2120u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1663u, 2128u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1664u, 2136u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1672u, 2144u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1673u, 2148u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1677u, 2168u, 15u, 2152u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1696u, 2172u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1708u, 2188u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1709u, 2184u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1713u, 2192u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1714u, 2200u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1722u, 2208u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1723u, 2212u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1727u, 2232u, 15u, 2216u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1746u, 2236u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1758u, 2252u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1759u, 2248u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1763u, 2256u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1764u, 2264u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1772u, 2272u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1773u, 2276u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1777u, 2296u, 15u, 2280u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1796u, 2300u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1808u, 2316u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1809u, 2312u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1813u, 2320u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1814u, 2328u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1822u, 2336u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1823u, 2340u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1827u, 2360u, 15u, 2344u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1846u, 2364u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1858u, 2380u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1859u, 2376u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1863u, 2384u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1864u, 2392u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1872u, 2400u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1873u, 2404u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1877u, 2424u, 15u, 2408u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1896u, 2428u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1908u, 2444u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1909u, 2440u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1913u, 2448u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1914u, 2456u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1922u, 2464u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1923u, 2468u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1927u, 2488u, 15u, 2472u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1946u, 2492u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 1958u, 2508u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 1959u, 2504u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 1963u, 2512u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 1964u, 2520u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 1972u, 2528u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 1973u, 2532u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 1977u, 2552u, 15u, 2536u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 1996u, 2556u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2008u, 2572u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2009u, 2568u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2013u, 2576u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2014u, 2584u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2022u, 2592u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2023u, 2596u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2027u, 2616u, 15u, 2600u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2046u, 2620u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2058u, 2636u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2059u, 2632u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2063u, 2640u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2064u, 2648u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2072u, 2656u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2073u, 2660u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2077u, 2680u, 15u, 2664u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2096u, 2684u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2108u, 2700u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2109u, 2696u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2113u, 2704u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2114u, 2712u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2122u, 2720u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2123u, 2724u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2127u, 2744u, 15u, 2728u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2146u, 2748u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2158u, 2764u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2159u, 2760u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2163u, 2768u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2164u, 2776u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2172u, 2784u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2173u, 2788u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2177u, 2808u, 15u, 2792u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2196u, 2812u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2208u, 2828u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2209u, 2824u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2213u, 2832u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2214u, 2840u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2222u, 2848u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2223u, 2852u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2227u, 2872u, 15u, 2856u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2246u, 2876u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2258u, 2892u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2259u, 2888u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2263u, 2896u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2264u, 2904u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2272u, 2912u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2273u, 2916u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2277u, 2936u, 15u, 2920u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2296u, 2940u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2308u, 2956u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2309u, 2952u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2313u, 2960u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2314u, 2968u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2322u, 2976u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2323u, 2980u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2327u, 3000u, 15u, 2984u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2346u, 3004u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2358u, 3020u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2359u, 3016u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2363u, 3024u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2364u, 3032u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2372u, 3040u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2373u, 3044u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2377u, 3064u, 15u, 3048u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2396u, 3068u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2408u, 3084u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2409u, 3080u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2413u, 3088u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2414u, 3096u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2422u, 3104u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2423u, 3108u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2427u, 3128u, 15u, 3112u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2446u, 3132u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2458u, 3148u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2459u, 3144u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2463u, 3152u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2464u, 3160u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2472u, 3168u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2473u, 3172u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2477u, 3192u, 15u, 3176u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2496u, 3196u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2508u, 3212u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2509u, 3208u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2513u, 3216u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2514u, 3224u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2522u, 3232u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2523u, 3236u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2527u, 3256u, 15u, 3240u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2546u, 3260u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2558u, 3276u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2559u, 3272u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2563u, 3280u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2564u, 3288u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2572u, 3296u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2573u, 3300u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2577u, 3320u, 15u, 3304u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2596u, 3324u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2608u, 3340u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2609u, 3336u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2613u, 3344u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2614u, 3352u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2622u, 3360u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2623u, 3364u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2627u, 3384u, 15u, 3368u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2646u, 3388u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2658u, 3404u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2659u, 3400u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2663u, 3408u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2664u, 3416u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2672u, 3424u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2673u, 3428u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2677u, 3448u, 15u, 3432u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2696u, 3452u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2708u, 3468u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2709u, 3464u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2713u, 3472u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2714u, 3480u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2722u, 3488u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2723u, 3492u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2727u, 3512u, 15u, 3496u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2746u, 3516u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2758u, 3532u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2759u, 3528u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2763u, 3536u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2764u, 3544u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2772u, 3552u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2773u, 3556u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2777u, 3576u, 15u, 3560u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2796u, 3580u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2808u, 3596u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2809u, 3592u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2813u, 3600u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2814u, 3608u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2822u, 3616u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2823u, 3620u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2827u, 3640u, 15u, 3624u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2846u, 3644u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2858u, 3660u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2859u, 3656u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2863u, 3664u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2864u, 3672u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2872u, 3680u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2873u, 3684u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2877u, 3704u, 15u, 3688u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2896u, 3708u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2908u, 3724u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2909u, 3720u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2913u, 3728u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2914u, 3736u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2922u, 3744u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2923u, 3748u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2927u, 3768u, 15u, 3752u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2946u, 3772u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 2958u, 3788u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 2959u, 3784u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 2963u, 3792u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 2964u, 3800u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 2972u, 3808u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 2973u, 3812u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 2977u, 3832u, 15u, 3816u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 2996u, 3836u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 3008u, 3852u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 3009u, 3848u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 3013u, 3856u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 3014u, 3864u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 3022u, 3872u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 3023u, 3876u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 3027u, 3896u, 15u, 3880u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 3046u, 3900u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 3058u, 3916u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 3059u, 3912u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 3063u, 3920u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 3064u, 3928u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 3072u, 3936u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 3073u, 3940u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 3077u, 3960u, 15u, 3944u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 3096u, 3964u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 3108u, 3980u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 3109u, 3976u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 3113u, 3984u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 3114u, 3992u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 3122u, 4000u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 3123u, 4004u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 3127u, 4024u, 15u, 4008u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 3146u, 4028u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 3158u, 4044u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 3159u, 4040u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 3163u, 4048u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* tag */
-    { 3164u, 4056u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* value */
-    { 3172u, 4064u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* flag */
-    { 3173u, 4068u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* id */
-    { 3177u, 4088u, 15u, 4072u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* label */
-    { 3196u, 4092u, 12u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* slots, whole */
-    { 3208u, 4108u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter present */
-    { 3209u, 4104u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* counter */
-    { 3213u, 4128u, 12u, 4116u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 3, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* blob */
+    { 0u, 0u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* marker */
+    { 1u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* stamp */
+    { 9u, 4112u, 64u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COUNT, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* rows count */
+    { 13u, 16u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 14u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 22u, 32u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 23u, 36u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 27u, 56u, 15u, 40u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 46u, 60u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 48u, 62u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 50u, 64u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 52u, 66u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 54u, 68u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 55u, 69u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 56u, 70u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 57u, 71u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 58u, 76u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 59u, 72u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 63u, 80u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 64u, 88u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 72u, 96u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 73u, 100u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 77u, 120u, 15u, 104u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 96u, 124u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 98u, 126u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 100u, 128u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 102u, 130u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 104u, 132u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 105u, 133u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 106u, 134u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 107u, 135u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 108u, 140u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 109u, 136u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 113u, 144u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 114u, 152u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 122u, 160u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 123u, 164u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 127u, 184u, 15u, 168u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 146u, 188u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 148u, 190u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 150u, 192u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 152u, 194u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 154u, 196u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 155u, 197u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 156u, 198u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 157u, 199u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 158u, 204u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 159u, 200u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 163u, 208u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 164u, 216u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 172u, 224u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 173u, 228u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 177u, 248u, 15u, 232u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 196u, 252u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 198u, 254u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 200u, 256u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 202u, 258u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 204u, 260u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 205u, 261u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 206u, 262u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 207u, 263u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 208u, 268u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 209u, 264u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 213u, 272u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 214u, 280u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 222u, 288u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 223u, 292u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 227u, 312u, 15u, 296u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 246u, 316u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 248u, 318u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 250u, 320u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 252u, 322u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 254u, 324u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 255u, 325u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 256u, 326u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 257u, 327u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 258u, 332u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 259u, 328u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 263u, 336u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 264u, 344u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 272u, 352u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 273u, 356u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 277u, 376u, 15u, 360u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 296u, 380u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 298u, 382u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 300u, 384u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 302u, 386u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 304u, 388u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 305u, 389u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 306u, 390u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 307u, 391u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 308u, 396u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 309u, 392u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 313u, 400u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 314u, 408u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 322u, 416u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 323u, 420u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 327u, 440u, 15u, 424u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 346u, 444u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 348u, 446u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 350u, 448u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 352u, 450u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 354u, 452u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 355u, 453u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 356u, 454u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 357u, 455u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 358u, 460u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 359u, 456u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 363u, 464u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 364u, 472u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 372u, 480u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 373u, 484u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 377u, 504u, 15u, 488u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 396u, 508u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 398u, 510u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 400u, 512u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 402u, 514u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 404u, 516u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 405u, 517u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 406u, 518u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 407u, 519u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 408u, 524u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 409u, 520u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 413u, 528u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 414u, 536u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 422u, 544u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 423u, 548u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 427u, 568u, 15u, 552u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 446u, 572u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 448u, 574u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 450u, 576u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 452u, 578u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 454u, 580u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 455u, 581u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 456u, 582u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 457u, 583u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 458u, 588u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 459u, 584u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 463u, 592u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 464u, 600u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 472u, 608u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 473u, 612u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 477u, 632u, 15u, 616u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 496u, 636u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 498u, 638u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 500u, 640u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 502u, 642u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 504u, 644u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 505u, 645u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 506u, 646u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 507u, 647u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 508u, 652u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 509u, 648u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 513u, 656u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 514u, 664u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 522u, 672u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 523u, 676u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 527u, 696u, 15u, 680u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 546u, 700u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 548u, 702u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 550u, 704u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 552u, 706u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 554u, 708u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 555u, 709u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 556u, 710u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 557u, 711u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 558u, 716u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 559u, 712u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 563u, 720u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 564u, 728u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 572u, 736u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 573u, 740u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 577u, 760u, 15u, 744u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 596u, 764u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 598u, 766u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 600u, 768u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 602u, 770u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 604u, 772u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 605u, 773u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 606u, 774u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 607u, 775u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 608u, 780u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 609u, 776u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 613u, 784u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 614u, 792u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 622u, 800u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 623u, 804u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 627u, 824u, 15u, 808u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 646u, 828u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 648u, 830u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 650u, 832u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 652u, 834u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 654u, 836u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 655u, 837u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 656u, 838u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 657u, 839u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 658u, 844u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 659u, 840u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 663u, 848u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 664u, 856u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 672u, 864u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 673u, 868u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 677u, 888u, 15u, 872u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 696u, 892u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 698u, 894u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 700u, 896u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 702u, 898u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 704u, 900u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 705u, 901u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 706u, 902u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 707u, 903u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 708u, 908u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 709u, 904u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 713u, 912u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 714u, 920u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 722u, 928u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 723u, 932u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 727u, 952u, 15u, 936u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 746u, 956u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 748u, 958u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 750u, 960u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 752u, 962u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 754u, 964u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 755u, 965u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 756u, 966u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 757u, 967u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 758u, 972u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 759u, 968u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 763u, 976u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 764u, 984u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 772u, 992u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 773u, 996u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 777u, 1016u, 15u, 1000u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 796u, 1020u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 798u, 1022u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 800u, 1024u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 802u, 1026u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 804u, 1028u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 805u, 1029u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 806u, 1030u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 807u, 1031u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 808u, 1036u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 809u, 1032u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 813u, 1040u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 814u, 1048u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 822u, 1056u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 823u, 1060u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 827u, 1080u, 15u, 1064u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 846u, 1084u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 848u, 1086u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 850u, 1088u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 852u, 1090u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 854u, 1092u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 855u, 1093u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 856u, 1094u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 857u, 1095u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 858u, 1100u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 859u, 1096u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 863u, 1104u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 864u, 1112u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 872u, 1120u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 873u, 1124u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 877u, 1144u, 15u, 1128u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 896u, 1148u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 898u, 1150u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 900u, 1152u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 902u, 1154u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 904u, 1156u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 905u, 1157u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 906u, 1158u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 907u, 1159u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 908u, 1164u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 909u, 1160u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 913u, 1168u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 914u, 1176u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 922u, 1184u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 923u, 1188u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 927u, 1208u, 15u, 1192u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 946u, 1212u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 948u, 1214u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 950u, 1216u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 952u, 1218u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 954u, 1220u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 955u, 1221u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 956u, 1222u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 957u, 1223u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 958u, 1228u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 959u, 1224u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 963u, 1232u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 964u, 1240u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 972u, 1248u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 973u, 1252u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 977u, 1272u, 15u, 1256u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 996u, 1276u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 998u, 1278u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1000u, 1280u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1002u, 1282u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1004u, 1284u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1005u, 1285u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1006u, 1286u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1007u, 1287u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1008u, 1292u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1009u, 1288u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1013u, 1296u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1014u, 1304u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1022u, 1312u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1023u, 1316u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1027u, 1336u, 15u, 1320u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1046u, 1340u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1048u, 1342u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1050u, 1344u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1052u, 1346u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1054u, 1348u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1055u, 1349u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1056u, 1350u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1057u, 1351u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1058u, 1356u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1059u, 1352u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1063u, 1360u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1064u, 1368u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1072u, 1376u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1073u, 1380u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1077u, 1400u, 15u, 1384u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1096u, 1404u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1098u, 1406u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1100u, 1408u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1102u, 1410u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1104u, 1412u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1105u, 1413u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1106u, 1414u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1107u, 1415u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1108u, 1420u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1109u, 1416u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1113u, 1424u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1114u, 1432u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1122u, 1440u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1123u, 1444u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1127u, 1464u, 15u, 1448u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1146u, 1468u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1148u, 1470u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1150u, 1472u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1152u, 1474u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1154u, 1476u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1155u, 1477u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1156u, 1478u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1157u, 1479u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1158u, 1484u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1159u, 1480u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1163u, 1488u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1164u, 1496u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1172u, 1504u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1173u, 1508u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1177u, 1528u, 15u, 1512u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1196u, 1532u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1198u, 1534u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1200u, 1536u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1202u, 1538u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1204u, 1540u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1205u, 1541u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1206u, 1542u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1207u, 1543u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1208u, 1548u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1209u, 1544u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1213u, 1552u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1214u, 1560u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1222u, 1568u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1223u, 1572u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1227u, 1592u, 15u, 1576u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1246u, 1596u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1248u, 1598u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1250u, 1600u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1252u, 1602u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1254u, 1604u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1255u, 1605u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1256u, 1606u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1257u, 1607u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1258u, 1612u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1259u, 1608u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1263u, 1616u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1264u, 1624u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1272u, 1632u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1273u, 1636u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1277u, 1656u, 15u, 1640u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1296u, 1660u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1298u, 1662u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1300u, 1664u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1302u, 1666u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1304u, 1668u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1305u, 1669u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1306u, 1670u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1307u, 1671u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1308u, 1676u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1309u, 1672u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1313u, 1680u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1314u, 1688u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1322u, 1696u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1323u, 1700u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1327u, 1720u, 15u, 1704u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1346u, 1724u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1348u, 1726u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1350u, 1728u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1352u, 1730u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1354u, 1732u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1355u, 1733u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1356u, 1734u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1357u, 1735u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1358u, 1740u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1359u, 1736u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1363u, 1744u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1364u, 1752u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1372u, 1760u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1373u, 1764u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1377u, 1784u, 15u, 1768u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1396u, 1788u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1398u, 1790u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1400u, 1792u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1402u, 1794u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1404u, 1796u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1405u, 1797u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1406u, 1798u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1407u, 1799u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1408u, 1804u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1409u, 1800u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1413u, 1808u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1414u, 1816u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1422u, 1824u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1423u, 1828u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1427u, 1848u, 15u, 1832u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1446u, 1852u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1448u, 1854u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1450u, 1856u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1452u, 1858u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1454u, 1860u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1455u, 1861u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1456u, 1862u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1457u, 1863u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1458u, 1868u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1459u, 1864u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1463u, 1872u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1464u, 1880u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1472u, 1888u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1473u, 1892u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1477u, 1912u, 15u, 1896u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1496u, 1916u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1498u, 1918u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1500u, 1920u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1502u, 1922u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1504u, 1924u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1505u, 1925u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1506u, 1926u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1507u, 1927u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1508u, 1932u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1509u, 1928u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1513u, 1936u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1514u, 1944u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1522u, 1952u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1523u, 1956u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1527u, 1976u, 15u, 1960u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1546u, 1980u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1548u, 1982u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1550u, 1984u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1552u, 1986u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1554u, 1988u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1555u, 1989u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1556u, 1990u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1557u, 1991u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1558u, 1996u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1559u, 1992u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1563u, 2000u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1564u, 2008u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1572u, 2016u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1573u, 2020u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1577u, 2040u, 15u, 2024u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1596u, 2044u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1598u, 2046u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1600u, 2048u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1602u, 2050u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1604u, 2052u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1605u, 2053u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1606u, 2054u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1607u, 2055u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1608u, 2060u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1609u, 2056u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1613u, 2064u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1614u, 2072u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1622u, 2080u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1623u, 2084u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1627u, 2104u, 15u, 2088u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1646u, 2108u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1648u, 2110u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1650u, 2112u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1652u, 2114u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1654u, 2116u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1655u, 2117u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1656u, 2118u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1657u, 2119u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1658u, 2124u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1659u, 2120u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1663u, 2128u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1664u, 2136u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1672u, 2144u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1673u, 2148u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1677u, 2168u, 15u, 2152u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1696u, 2172u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1698u, 2174u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1700u, 2176u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1702u, 2178u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1704u, 2180u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1705u, 2181u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1706u, 2182u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1707u, 2183u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1708u, 2188u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1709u, 2184u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1713u, 2192u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1714u, 2200u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1722u, 2208u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1723u, 2212u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1727u, 2232u, 15u, 2216u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1746u, 2236u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1748u, 2238u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1750u, 2240u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1752u, 2242u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1754u, 2244u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1755u, 2245u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1756u, 2246u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1757u, 2247u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1758u, 2252u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1759u, 2248u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1763u, 2256u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1764u, 2264u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1772u, 2272u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1773u, 2276u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1777u, 2296u, 15u, 2280u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1796u, 2300u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1798u, 2302u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1800u, 2304u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1802u, 2306u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1804u, 2308u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1805u, 2309u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1806u, 2310u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1807u, 2311u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1808u, 2316u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1809u, 2312u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1813u, 2320u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1814u, 2328u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1822u, 2336u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1823u, 2340u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1827u, 2360u, 15u, 2344u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1846u, 2364u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1848u, 2366u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1850u, 2368u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1852u, 2370u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1854u, 2372u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1855u, 2373u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1856u, 2374u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1857u, 2375u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1858u, 2380u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1859u, 2376u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1863u, 2384u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1864u, 2392u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1872u, 2400u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1873u, 2404u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1877u, 2424u, 15u, 2408u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1896u, 2428u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1898u, 2430u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1900u, 2432u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1902u, 2434u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1904u, 2436u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1905u, 2437u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1906u, 2438u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1907u, 2439u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1908u, 2444u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1909u, 2440u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1913u, 2448u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1914u, 2456u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1922u, 2464u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1923u, 2468u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1927u, 2488u, 15u, 2472u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1946u, 2492u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1948u, 2494u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1950u, 2496u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1952u, 2498u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1954u, 2500u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1955u, 2501u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1956u, 2502u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1957u, 2503u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 1958u, 2508u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 1959u, 2504u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 1963u, 2512u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 1964u, 2520u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 1972u, 2528u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 1973u, 2532u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 1977u, 2552u, 15u, 2536u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 1996u, 2556u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 1998u, 2558u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2000u, 2560u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2002u, 2562u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2004u, 2564u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2005u, 2565u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2006u, 2566u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2007u, 2567u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2008u, 2572u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2009u, 2568u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2013u, 2576u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2014u, 2584u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2022u, 2592u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2023u, 2596u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2027u, 2616u, 15u, 2600u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2046u, 2620u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2048u, 2622u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2050u, 2624u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2052u, 2626u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2054u, 2628u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2055u, 2629u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2056u, 2630u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2057u, 2631u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2058u, 2636u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2059u, 2632u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2063u, 2640u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2064u, 2648u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2072u, 2656u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2073u, 2660u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2077u, 2680u, 15u, 2664u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2096u, 2684u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2098u, 2686u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2100u, 2688u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2102u, 2690u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2104u, 2692u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2105u, 2693u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2106u, 2694u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2107u, 2695u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2108u, 2700u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2109u, 2696u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2113u, 2704u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2114u, 2712u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2122u, 2720u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2123u, 2724u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2127u, 2744u, 15u, 2728u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2146u, 2748u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2148u, 2750u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2150u, 2752u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2152u, 2754u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2154u, 2756u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2155u, 2757u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2156u, 2758u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2157u, 2759u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2158u, 2764u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2159u, 2760u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2163u, 2768u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2164u, 2776u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2172u, 2784u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2173u, 2788u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2177u, 2808u, 15u, 2792u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2196u, 2812u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2198u, 2814u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2200u, 2816u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2202u, 2818u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2204u, 2820u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2205u, 2821u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2206u, 2822u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2207u, 2823u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2208u, 2828u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2209u, 2824u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2213u, 2832u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2214u, 2840u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2222u, 2848u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2223u, 2852u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2227u, 2872u, 15u, 2856u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2246u, 2876u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2248u, 2878u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2250u, 2880u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2252u, 2882u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2254u, 2884u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2255u, 2885u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2256u, 2886u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2257u, 2887u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2258u, 2892u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2259u, 2888u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2263u, 2896u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2264u, 2904u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2272u, 2912u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2273u, 2916u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2277u, 2936u, 15u, 2920u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2296u, 2940u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2298u, 2942u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2300u, 2944u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2302u, 2946u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2304u, 2948u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2305u, 2949u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2306u, 2950u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2307u, 2951u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2308u, 2956u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2309u, 2952u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2313u, 2960u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2314u, 2968u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2322u, 2976u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2323u, 2980u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2327u, 3000u, 15u, 2984u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2346u, 3004u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2348u, 3006u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2350u, 3008u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2352u, 3010u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2354u, 3012u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2355u, 3013u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2356u, 3014u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2357u, 3015u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2358u, 3020u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2359u, 3016u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2363u, 3024u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2364u, 3032u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2372u, 3040u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2373u, 3044u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2377u, 3064u, 15u, 3048u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2396u, 3068u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2398u, 3070u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2400u, 3072u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2402u, 3074u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2404u, 3076u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2405u, 3077u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2406u, 3078u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2407u, 3079u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2408u, 3084u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2409u, 3080u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2413u, 3088u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2414u, 3096u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2422u, 3104u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2423u, 3108u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2427u, 3128u, 15u, 3112u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2446u, 3132u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2448u, 3134u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2450u, 3136u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2452u, 3138u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2454u, 3140u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2455u, 3141u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2456u, 3142u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2457u, 3143u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2458u, 3148u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2459u, 3144u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2463u, 3152u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2464u, 3160u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2472u, 3168u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2473u, 3172u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2477u, 3192u, 15u, 3176u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2496u, 3196u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2498u, 3198u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2500u, 3200u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2502u, 3202u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2504u, 3204u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2505u, 3205u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2506u, 3206u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2507u, 3207u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2508u, 3212u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2509u, 3208u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2513u, 3216u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2514u, 3224u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2522u, 3232u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2523u, 3236u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2527u, 3256u, 15u, 3240u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2546u, 3260u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2548u, 3262u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2550u, 3264u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2552u, 3266u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2554u, 3268u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2555u, 3269u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2556u, 3270u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2557u, 3271u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2558u, 3276u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2559u, 3272u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2563u, 3280u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2564u, 3288u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2572u, 3296u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2573u, 3300u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2577u, 3320u, 15u, 3304u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2596u, 3324u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2598u, 3326u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2600u, 3328u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2602u, 3330u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2604u, 3332u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2605u, 3333u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2606u, 3334u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2607u, 3335u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2608u, 3340u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2609u, 3336u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2613u, 3344u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2614u, 3352u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2622u, 3360u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2623u, 3364u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2627u, 3384u, 15u, 3368u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2646u, 3388u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2648u, 3390u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2650u, 3392u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2652u, 3394u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2654u, 3396u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2655u, 3397u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2656u, 3398u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2657u, 3399u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2658u, 3404u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2659u, 3400u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2663u, 3408u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2664u, 3416u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2672u, 3424u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2673u, 3428u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2677u, 3448u, 15u, 3432u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2696u, 3452u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2698u, 3454u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2700u, 3456u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2702u, 3458u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2704u, 3460u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2705u, 3461u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2706u, 3462u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2707u, 3463u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2708u, 3468u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2709u, 3464u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2713u, 3472u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2714u, 3480u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2722u, 3488u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2723u, 3492u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2727u, 3512u, 15u, 3496u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2746u, 3516u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2748u, 3518u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2750u, 3520u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2752u, 3522u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2754u, 3524u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2755u, 3525u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2756u, 3526u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2757u, 3527u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2758u, 3532u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2759u, 3528u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2763u, 3536u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2764u, 3544u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2772u, 3552u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2773u, 3556u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2777u, 3576u, 15u, 3560u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2796u, 3580u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2798u, 3582u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2800u, 3584u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2802u, 3586u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2804u, 3588u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2805u, 3589u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2806u, 3590u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2807u, 3591u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2808u, 3596u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2809u, 3592u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2813u, 3600u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2814u, 3608u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2822u, 3616u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2823u, 3620u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2827u, 3640u, 15u, 3624u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2846u, 3644u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2848u, 3646u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2850u, 3648u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2852u, 3650u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2854u, 3652u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2855u, 3653u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2856u, 3654u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2857u, 3655u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2858u, 3660u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2859u, 3656u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2863u, 3664u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2864u, 3672u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2872u, 3680u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2873u, 3684u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2877u, 3704u, 15u, 3688u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2896u, 3708u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2898u, 3710u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2900u, 3712u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2902u, 3714u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2904u, 3716u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2905u, 3717u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2906u, 3718u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2907u, 3719u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2908u, 3724u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2909u, 3720u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2913u, 3728u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2914u, 3736u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2922u, 3744u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2923u, 3748u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2927u, 3768u, 15u, 3752u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2946u, 3772u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2948u, 3774u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2950u, 3776u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2952u, 3778u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2954u, 3780u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2955u, 3781u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2956u, 3782u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2957u, 3783u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 2958u, 3788u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 2959u, 3784u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 2963u, 3792u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 2964u, 3800u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 2972u, 3808u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 2973u, 3812u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 2977u, 3832u, 15u, 3816u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 2996u, 3836u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 2998u, 3838u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3000u, 3840u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3002u, 3842u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3004u, 3844u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3005u, 3845u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3006u, 3846u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3007u, 3847u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3008u, 3852u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 3009u, 3848u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 3013u, 3856u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 3014u, 3864u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 3022u, 3872u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 3023u, 3876u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 3027u, 3896u, 15u, 3880u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 3046u, 3900u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3048u, 3902u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3050u, 3904u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3052u, 3906u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3054u, 3908u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3055u, 3909u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3056u, 3910u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3057u, 3911u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3058u, 3916u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 3059u, 3912u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 3063u, 3920u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 3064u, 3928u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 3072u, 3936u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 3073u, 3940u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 3077u, 3960u, 15u, 3944u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 3096u, 3964u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3098u, 3966u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3100u, 3968u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3102u, 3970u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3104u, 3972u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3105u, 3973u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3106u, 3974u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3107u, 3975u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3108u, 3980u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 3109u, 3976u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 3113u, 3984u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 3114u, 3992u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 3122u, 4000u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 3123u, 4004u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 3127u, 4024u, 15u, 4008u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 3146u, 4028u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3148u, 4030u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3150u, 4032u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3152u, 4034u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3154u, 4036u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3155u, 4037u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3156u, 4038u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3157u, 4039u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3158u, 4044u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 3159u, 4040u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 3163u, 4048u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* tag */
+    { 3164u, 4056u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* value */
+    { 3172u, 4064u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* flag */
+    { 3173u, 4068u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* id */
+    { 3177u, 4088u, 15u, 4072u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 1, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* label */
+    { 3196u, 4092u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3198u, 4094u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3200u, 4096u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3202u, 4098u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* slots, whole */
+    { 3204u, 4100u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3205u, 4101u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3206u, 4102u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3207u, 4103u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* slots, whole */
+    { 3208u, 4108u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* counter present */
+    { 3209u, 4104u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* counter */
+    { 3213u, 4128u, 12u, 4116u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_TEXT, 0, 3, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* blob */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_plan_count = 516;
-static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_plan_guarded = 516;
+static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_plan_count = 964;
+static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_plan_guarded = 964;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_padded_frame_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };

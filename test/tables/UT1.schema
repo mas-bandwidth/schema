@@ -6,10 +6,9 @@
 // a `string(N)` under a union's arm could be guarded correctly or read with the
 // right flavour and could not be both. This pair is what says so by test.
 //
-// The string sits under the SECOND arm on purpose: the flavour of a
-// `string(N)` is 1 and the second arm's ordinal is 2, so a shared lane does not
-// merely lose one fact — it turns a byte string into a WIDE one, halving the
-// bound and terminating two bytes at a time.
+// The string sits under the SECOND arm. UT2's copy of it sits under the THIRD,
+// and 3 is the bytes flavour, so there a shared lane reads a string as bytes
+// and never terminates it: that is where the negative control watches it.
 //
 // UT2 inserts an arm IN THE MIDDLE, which moves the same string from arm 2 to
 // arm 3 and makes the read a COMPILED plan: the guard must then hold THEIR

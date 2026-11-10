@@ -975,11 +975,11 @@ func TestMooFixedEvolutionArrayBounds(t *testing.T) {
 func TestMooFixedEvolutionText(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
-	u := unitFromSource(t, "package probe\nfixed table T\n{\n    s string(4)\n    w wstring(4)\n}\n")
-	const setup = "local v = T.NewT()\nv.S = \"ab\"\nbuffer.writeu16(v.W, 0, 0x41)\nbuffer.writeu16(v.W, 2, 0x42)\nv.WLength = 2\nvalues = { v }\n"
+	u := unitFromSource(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n")
+	const setup = "local v = T.NewT()\nv.S = \"ab\"\nvalues = { v }\n"
 	g := fixedUnit(t, u, nil)
 	clean := evoSave(t, g, "ProbeTable", "T", setup)
-	body := len(clean) - 20
+	body := len(clean) - 8
 	cut := func(f func(b []byte)) []byte { b := clone(clean); f(b); return b }
 	cases := []struct {
 		name string
@@ -990,15 +990,13 @@ func TestMooFixedEvolutionText(t *testing.T) {
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), refusedTotal("text_ill_formed", false, "-")},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), refusedTotal("text_ill_formed", false, "-")},
 		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 u0 k0 c0 w0 d0 -"},
-		{"C5 an unpaired surrogate", cut(func(b []byte) { b[body+12], b[body+13] = 0x00, 0xd8 }), refusedTotal("text_ill_formed", false, "-")},
-		{"C5 a wide length past the capacity", cut(func(b []byte) { b[body+8] = 5 }), refusedTotal("length_over_bound", false, "-")},
 	}
 	for _, c := range cases {
 		if got := evoLoad(t, g, "ProbeTable", "T", c.file, -1).head; got != c.want {
 			t.Errorf("%s: %s, want %s", c.name, got, c.want)
 		}
 	}
-	if got := evoLoad(t, g, "ProbeTable", "T", clean, -1); got.dump["r0.s"] != `"ab"` || got.dump["r0.w_length"] != "2" {
+	if got := evoLoad(t, g, "ProbeTable", "T", clean, -1); got.dump["r0.s"] != `"ab"` {
 		t.Errorf("the control: %v", got.dump)
 	}
 	plant(t, g, "\tif not V.utf8(rec, at, length) then\n", "\tif false then\n")

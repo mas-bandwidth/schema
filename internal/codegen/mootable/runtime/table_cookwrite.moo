@@ -160,7 +160,7 @@ local hasExtentUnion: any
 -- an unbounded text (§2.13.1): a field or a `?` element's value (text), or a
 -- plain text list's element (str at bound 0, as table_cookread.moo reads it)
 local function unboundedText(e: any): boolean
-	return e.s == "text" or (e.s == "str" and not e.wide and (e.bound or 0) == 0)
+	return e.s == "text" or (e.s == "str" and (e.bound or 0) == 0)
 end
 
 -- a by-value container beneath a field or an element: a nested record, a
@@ -314,7 +314,7 @@ writeElement = function(ctx: any, owner: string, fd: any, e: any, at: number, w:
 	return writeScalar(ctx, owner, fd, e, at, w, x)
 end
 
--- the live length of a wstring(N) or bytes(N) value, bounded by its capacity
+-- the live length of a bytes(N) value, bounded by its capacity
 local function usedLength(v: any, slot: string, bound: number): number
 	local n = v[slot .. "Length"]
 	if type(n) ~= "number" or n < 0 then
@@ -334,24 +334,7 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 	if fd.present ~= nil then
 		buffer.writeu8(b, base + l.p[#l.p], if v[fd.present] == true then 1 else 0)
 	end
-	if s == "str" and fd.wide then
-		local src = v[slot]
-		local n = usedLength(v, slot, fd.bound)
-		if n > 0 and type(src) ~= "buffer" then
-			return fail(ctx, "invalid_value", owner, fd)
-		end
-		if ctx.big then
-			-- each UTF-16 code unit is a scalar, its high byte first
-			for i = 0, n - 1 do
-				local u = buffer.readu16(src, i * 2)
-				buffer.writeu8(b, at + i * 2, u // 256)
-				buffer.writeu8(b, at + i * 2 + 1, u % 256)
-			end
-		elseif n > 0 then
-			buffer.copy(b, at, src, 0, n * 2)
-		end
-		putUN(ctx, base + l.p[2], 4, n)
-	elseif s == "str" then
+	if s == "str" then
 		local src = v[slot]
 		if type(src) ~= "string" or #src > fd.bound then
 			return fail(ctx, "invalid_value", owner, fd)

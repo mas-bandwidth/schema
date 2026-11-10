@@ -13,9 +13,6 @@ package elixirtable
 // direct/general arm is a table-closure construct the checker moves out of
 // u.Unions, so the elixir packet emitter emits no module for it and the fixed
 // emitter's `%Probe.Pick{}` does not compile; see its note below.
-// `utf16-values/elixir/valid-data` IS here but is `unknown`: the emitter carries
-// the fixed `wstring(8)` (asserted below) but the elixir target refuses a
-// table-closure wstring by name before reaching that emitter.
 //
 // A [capability] row is satisfied when the leg WRITES a value with non-default
 // and boundary field values through the fixed form's own writer and READS it
@@ -157,7 +154,6 @@ func TestFixedRoadmapElixirT09FloatsUnions(t *testing.T) {
 		{id: "signed-fixed-point/elixir/valid-data", run: t09SignedFixed},
 		{id: "unsigned-fixed-point/elixir/valid-data", run: t09UnsignedFixed},
 		{id: "flags-values/elixir/valid-data", run: t09Flags},
-		{id: "utf16-values/elixir/valid-data", run: t09UTF16},
 		{id: "union-values/elixir/valid-data", run: t09UnionValues},
 		{id: "union-arrays/elixir/valid-data", run: t09UnionArrays},
 	}
@@ -311,7 +307,6 @@ func t09UTF16(t *testing.T) {
 
 fixed table T
 {
-    w wstring(8)
 }
 `)
 	t09Probe(t, u, "T", `  ab = <<0x41, 0x00, 0x42, 0x00>>

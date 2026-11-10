@@ -1121,14 +1121,6 @@ namespace Tabledemo
             }
         }
 
-        private static void RangedSignedFixedSetChars(RangedSigned t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void RangedSignedFixedResetSlot(RangedSigned t, uint slot)
         {
             switch (slot)
@@ -1200,6 +1192,13 @@ namespace Tabledemo
                             else { RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedSignedFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             RangedSignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -1255,8 +1254,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -1265,14 +1263,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             RangedSignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                RangedSignedFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                RangedSignedFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            RangedSignedFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -1773,14 +1764,6 @@ namespace Tabledemo
             }
         }
 
-        private static void RangedUnsignedFixedSetChars(RangedUnsigned t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void RangedUnsignedFixedResetSlot(RangedUnsigned t, uint slot)
         {
             switch (slot)
@@ -1852,6 +1835,13 @@ namespace Tabledemo
                             else { RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedUnsignedFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             RangedUnsignedFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -1907,8 +1897,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -1917,14 +1906,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             RangedUnsignedFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                RangedUnsignedFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                RangedUnsignedFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            RangedUnsignedFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -2376,14 +2358,6 @@ namespace Tabledemo
             }
         }
 
-        private static void RangedWidthsFixedSetChars(RangedWidths t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void RangedWidthsFixedResetSlot(RangedWidths t, uint slot)
         {
             switch (slot)
@@ -2443,6 +2417,13 @@ namespace Tabledemo
                             else { RangedWidthsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size); }
                             break;
                         }
+                    case TableFixedWire.BoolByte:
+                        {
+                            ulong raw = src[(int)p.Src];
+                            if (raw > 1) { return "wire_damaged"; }
+                            RangedWidthsFixedSetRaw(dst, p.Dst, raw, report);
+                            break;
+                        }
                     case TableFixedWire.Flat:
                         {
                             RangedWidthsFixedSetBytes(dst, p.Dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
@@ -2498,8 +2479,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -2508,14 +2488,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             RangedWidthsFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                RangedWidthsFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                RangedWidthsFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            RangedWidthsFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:

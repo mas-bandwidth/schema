@@ -272,7 +272,6 @@ namespace Tabledemo
         public Func<UInt128, bool> RequiredValidWide;
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
-        public Func<object, char[]> GetChars;
         public byte[] DefaultBytes;
         public Action<object> ResetField;
         public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
@@ -637,7 +636,6 @@ namespace Tabledemo
         public readonly Action<T, double> SetDouble;
         public readonly Action<T, UInt128> SetWide;
         public readonly TableFixedSetBytes<T> SetBytes;
-        public readonly TableFixedSetBytes<T> SetChars;
         public readonly Action<T, ulong, TableReport> SetRawReport;
         public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
@@ -646,7 +644,6 @@ namespace Tabledemo
             Action<T, double> setDouble = null,
             Action<T, UInt128> setWide = null,
             TableFixedSetBytes<T> setBytes = null,
-            TableFixedSetBytes<T> setChars = null,
             Action<T, ulong, TableReport> setRawReport = null,
             Action<T> reset = null)
         {
@@ -654,7 +651,6 @@ namespace Tabledemo
             SetDouble = setDouble;
             SetWide = setWide;
             SetBytes = setBytes;
-            SetChars = setChars;
             SetRawReport = setRawReport;
             Reset = reset;
         }
@@ -795,7 +791,7 @@ namespace Tabledemo
                     int code = text[i];
                     if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.Length && text[i + 1] >= 0xdc00 && text[i + 1] <= 0xdfff)
                     { code = 0x10000 + ((code - 0xd800) << 10) + text[++i] - 0xdc00; }
-                    else if (code >= 0xd800 && code <= 0xdfff) { code = 0xfffd; }
+                    else if (code >= 0xd800 && code <= 0xdfff) { o.Invalid = true; continue; } // an unpaired surrogate is not text: the write refuses (§16.14 W0)
                     if (!WriteEscape(ref o, code)) { WriteUtf8(ref o, code); }
                 }
                 o.Put((byte)'"');
@@ -952,7 +948,7 @@ namespace Tabledemo
                 if (f.Map) { return 'o'; }
                 if (f.Kind == 17 && !f.IsArray) { return f.BlobKind != 0 ? 's' : 'o'; }
                 if (f.TextList) { return 'a'; }
-                if (f.Kind == 12 || f.Kind == 33) { return 's'; }          // string
+                if (f.Kind == 12) { return 's'; }          // string
                 if (IsBytes(f)) { return 's'; }            // bytes: base64
                 if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
                 if (f.IsArray) { return 'a'; }
@@ -1023,6 +1019,9 @@ namespace Tabledemo
                 public bool Measuring;
                 public long Offset;
                 public bool Overflow;
+                // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+                // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+                public bool Invalid;
                 internal TableWire.Graph Graph;
 
                 public void Raw(ReadOnlySpan<byte> data)
@@ -1162,15 +1161,10 @@ namespace Tabledemo
                 o.Put((byte)(0x80 | (code & 0x3f)));
             }
 
-            // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-            // byte-transparent — the wire imposes no encoding (§3) and a string may
-            // hold anything — so the WRITER is where that obligation is met: a byte
-            // that is not part of a well-formed sequence is written as U+FFFD, one per
-            // bad byte, and never raw. A text this walk writes is therefore readable by
-            // any conforming parser, which a raw byte would not be. The cost is stated
-            // plainly: for a string holding invalid UTF-8, the round trip is NOT
-            // byte-identical, because the alternative is emitting a text that is not
-            // JSON.
+            // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
+            // anything else into storage, so a byte that is not part of a well-formed
+            // sequence was put there by a program: the write REFUSES (invalid_value,
+            // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
             static void WriteString(ref Out o, ReadOnlySpan<byte> s)
             {
                 o.Put((byte)'"');
@@ -1182,7 +1176,7 @@ namespace Tabledemo
                     int width;
                     if (Utf8(s, i, out width) < 0)
                     {
-                        WriteUtf8(ref o, 0xfffd); // one per bad byte
+                        o.Invalid = true; // not text: the write refuses (§16.14 W0)
                     }
                     else
                     {
@@ -1336,11 +1330,11 @@ namespace Tabledemo
                 return n;
             }
 
-            // A float writes at the SHORTEST precision that reads back as the same
-            // value at the field's own width, so a round trip is exact and a text stays
-            // readable. Non-finite values have no JSON spelling at all, and the writer
-            // REFUSES rather than losing one silently — the same rule measure and save
-            // already apply to an enum value no variant names (§5).
+            // A float writes by §16.14's W12: C's %.*g at the first precision whose
+            // text reads back as the same value at the field's own width. Non-finite
+            // values have no JSON spelling at all, and the writer REFUSES rather than
+            // losing one silently — the same rule measure and save already apply to an
+            // enum value no variant names (§5).
             static bool WriteFloat(ref Out o, double value, bool single)
             {
                 if (!Finite(value)) { return false; }
@@ -1353,17 +1347,21 @@ namespace Tabledemo
                     length = FormatG(value, digits, text);
                     if (length <= 0) { return false; }
                     if (digits >= high) { break; }
-                    double back;
-                    if (!double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                            System.Globalization.CultureInfo.InvariantCulture, out back))
-                    {
-                        continue;
-                    }
+                    // the read-back is ONE correctly rounded conversion at the field's
+                    // own width (§16.14, W12): a float32 parses as a float, never as a
+                    // double then narrowed, because rounding twice parts from once
                     if (single)
                     {
-                        if ((double)(float)back == value) { break; }
+                        float back32;
+                        if (float.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out back32)
+                            && (double)back32 == value) { break; }
+                        continue;
                     }
-                    else if (back == value) { break; }
+                    double back;
+                    if (double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out back)
+                        && back == value) { break; }
                 }
                 for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
                 return true;
@@ -1488,10 +1486,6 @@ namespace Tabledemo
             {
                 if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
-                if (f.Kind == 33)
-                {
-                    WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
-                }
                 if (f.Kind == 12 && !f.TextList)
                 {
                     if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
@@ -1672,7 +1666,7 @@ namespace Tabledemo
                 if (f.BlobKind == 12)
                 {
                     In probe = input;
-                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true, stored: true)) { input = probe; return false; }
+                    if (!ScanText(text, ref probe, Span<byte>.Empty, false, out int size, true, stored: true)) { input = probe; return false; }
                     byte[] data = new byte[size];
                     if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
                     f.SetChild(owner, index, new TableBlob(data)); return true;
@@ -2051,7 +2045,7 @@ namespace Tabledemo
             // string without keeping it, and counts no clamp for what it dropped —
             // C++'s NULL destination.
             static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool stored = false)
-            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length, stored: stored); }
+            { return ScanText(text, ref input, destination, keep, out length, stored: stored); }
             static bool RefuseText(ref In input, string reason)
             {
                 input.Bad = true;
@@ -2096,13 +2090,13 @@ namespace Tabledemo
                     return true;
                 }
                 In probe = input;
-                if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                if (!ScanText(text, ref probe, Span<byte>.Empty, false, out int size, true)) { input = probe; return false; }
                 byte[] decoded = new byte[size];
-                if (!ScanText(text, ref input, decoded, Span<char>.Empty, false, true, out int used)) { return false; }
+                if (!ScanText(text, ref input, decoded, true, out int used)) { return false; }
                 body = new ReadOnlySpan<byte>(decoded, 0, used);
                 return true;
             }
-            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false, bool stored = false)
+            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool measure = false, bool stored = false)
             {
                 length = 0;
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -2189,17 +2183,6 @@ namespace Tabledemo
                     {
                         if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
                         placed += unitLength;
-                    }
-                    else if (keep && wide)
-                    {
-                        int code = Utf8(unit.Slice(0, unitLength), 0, out _);
-                        int n = code > 0xffff ? 2 : 1;
-                        if (!clamped && placed + n <= chars.Length)
-                        {
-                            if (n == 1) { chars[placed++] = (char)code; }
-                            else { code -= 0x10000; chars[placed++] = (char)(0xd800 | (code >> 10)); chars[placed++] = (char)(0xdc00 | (code & 1023)); }
-                        }
-                        else { clamped = true; }
                     }
                     else if (keep)
                     {
@@ -2746,11 +2729,6 @@ namespace Tabledemo
             static bool ReadField(ReadOnlySpan<byte> text, ref In input, object value, TableFieldInfo f, int depth)
             {
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
-                if (f.Kind == 33)
-                {
-                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
-                    f.SetCount(value, used); return true;
-                }
                 if (f.Unbounded)
                 {
                     if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
@@ -2837,14 +2815,15 @@ namespace Tabledemo
                     // occurrence's slots standing
                     ResetSlots(value, f);
                     char shape = ElementShape(f);
-                    // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
-                    // duplicate key like any other, last-wins and counted (§16.2).
+                    // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
+                    // repeated key like any other, and damage.
                     // The schema fixes the vocabulary size. Small schemas use the
                     // stack; larger ones still count every duplicate exactly.
                     int words = (f.ArrayBound + 63) / 64;
                     Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                     seen.Clear();
                     Span<byte> key = stackalloc byte[MaxKey];
+                    System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
@@ -2871,6 +2850,13 @@ namespace Tabledemo
                         }
                         if (slot < 0)
                         {
+                            // a key this reader cannot place (None, or a name outside
+                            // the key vocabulary) is still a key: spelling it twice is
+                            // a repeated key, damage like a placed one.
+                            // Compared on the decoded bytes, so an
+                            // escaped spelling of the same name is the same key.
+                            unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                            if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                             input.Report.Unknown++;
                             if (!SkipValue(text, ref input, depth + 1)) { return false; }
                         }
@@ -2943,7 +2929,7 @@ namespace Tabledemo
             }
 
             // ONE table object: keys are field keys, unknown ones are skipped and
-            // counted, a repeated key is last-wins and counted. The instance is already
+            // counted, a repeated key (known or unknown) is damage. The instance is already
             // at its declared defaults when this is entered, so a key the text never
             // mentions keeps the default an absent field takes on the wire (§4).
             static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
@@ -2965,6 +2951,7 @@ namespace Tabledemo
                 Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
                 seen.Clear();
                 Span<byte> key = stackalloc byte[MaxKey];
+                System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
@@ -2990,6 +2977,10 @@ namespace Tabledemo
                     }
                     if (index < 0)
                     {
+                        // an unknown key is still a key: spelling it twice is a
+                        // repeated JSON key, damage
+                        unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                        if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                         input.Report.Unknown++;
                         if (!SkipValue(text, ref input, depth + 1)) { return false; }
                     }
@@ -3089,13 +3080,14 @@ namespace Tabledemo
                 o.Measuring = measuring;
                 o.Offset = 0;
                 o.Overflow = false;
+                o.Invalid = false;
                 if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
                 if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
                 // writer emits it — this one, the C++ walk and schema unpack — and
                 // every reader accepts a text with or without.
                 o.Put((byte)'\n');
-                if (o.Overflow) { return -1; }
+                if (o.Overflow || o.Invalid) { return -1; }
                 return o.Offset;
             }
         }
@@ -3379,7 +3371,6 @@ namespace Tabledemo
                         case 16:
                         case 31:
                         case 32:
-                        case 33:
                             return Slice(out _);
                         case 15:
                             if (!Var(out ulong arm)) { return false; }
@@ -3392,6 +3383,312 @@ namespace Tabledemo
                 }
             }
 
+
+            // WireCheck's answers: the file is whole, damaged, holds a count past the
+            // storage cap (count_over_extent_cap), or names one blob record from two
+            // slots (blob_shared). A non-finite float is answered apart, so the decode
+            // can name the field when this reader declares it.
+            internal const int WireWhole = 0, WireDamaged = 1, WireCountCap = 2, WireBlobShared = 3;
+            internal static int WireCheck(ReadOnlySpan<byte> body, ReadOnlySpan<byte> ids, bool announcement, out bool nonFinite)
+            {
+                WireWalk w = new WireWalk { Ids = ids, Words = (ids.Length / 8 + 64) / 64, Announcement = announcement };
+                try
+                {
+                    w.Root(body);
+                    nonFinite = w.NonFinite;
+                    return w.Fail;
+                }
+                finally { w.Release(); }
+            }
+            ref struct WireWalk
+            {
+                public ReadOnlySpan<byte> Ids, Table;
+                public int Words, Depth, Fail, Nodes, EdgeCount;
+                public bool Announcement, NonFinite, Present;
+                // Edges holds every non-null kind 17 payload in wire order, the root
+                // body's first and then each record's; Starts[k] is node k's first edge
+                // (node 0 the root, node k record k).
+                public ulong[] Edges;
+                public int[] Starts;
+                public void Release()
+                {
+                    if (Edges != null) { System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = null; }
+                    if (Starts != null) { System.Buffers.ArrayPool<int>.Shared.Return(Starts); Starts = null; }
+                }
+                bool Damage() { if (Fail == WireWhole) { Fail = WireDamaged; } return false; }
+                static bool Leb(ReadOnlySpan<byte> b, ref int off, out ulong v)
+                {
+                    v = 0;
+                    for (int i = 0; i < 10; i++)
+                    {
+                        if (off + i >= b.Length) { return false; }
+                        byte c = b[off + i];
+                        if (i == 9 && c > 1) { return false; }
+                        v |= (ulong)(c & 127) << (7 * i);
+                        if (c < 128) { if (i > 0 && c == 0) { return false; } off += i + 1; return true; }
+                    }
+                    return false;
+                }
+                void Edge(ulong index)
+                {
+                    if (index == 0) { return; }
+                    if (Edges == null) { Edges = System.Buffers.ArrayPool<ulong>.Shared.Rent(16); }
+                    else if (EdgeCount == Edges.Length)
+                    {
+                        ulong[] grown = System.Buffers.ArrayPool<ulong>.Shared.Rent(Edges.Length * 2);
+                        Array.Copy(Edges, grown, EdgeCount);
+                        System.Buffers.ArrayPool<ulong>.Shared.Return(Edges); Edges = grown;
+                    }
+                    Edges[EdgeCount++] = index;
+                }
+                public void Root(ReadOnlySpan<byte> body)
+                {
+                    if (!Body(body, true)) { return; }
+                    int rootEdges = EdgeCount;
+                    int records = 0;
+                    if (Present)
+                    {
+                        // THE AUTHORITATIVE RECORD SCAN (docs/SPEC-TABLES.md §3.1): the
+                        // records are read until the payload is consumed, and a node_count
+                        // the scan does not match is damage.
+                        ReadOnlySpan<byte> t = Table;
+                        int off = 0;
+                        if (!Leb(t, ref off, out ulong declared)) { Damage(); return; }
+                        int first = off;
+                        while (off < t.Length)
+                        {
+                            if (!Leb(t, ref off, out ulong reference) || reference == 0 || reference > (ulong)(Ids.Length / 8)) { Damage(); return; }
+                            if (!Leb(t, ref off, out ulong length) || length > (ulong)(t.Length - off)) { Damage(); return; }
+                            off += (int)length; records++;
+                        }
+                        if (declared != (ulong)records) { Damage(); return; }
+                        Starts = System.Buffers.ArrayPool<int>.Shared.Rent(records + 2);
+                        Starts[0] = 0; Starts[1] = rootEdges;
+                        off = first;
+                        for (int k = 0; k < records; k++)
+                        {
+                            Leb(t, ref off, out ulong reference); Leb(t, ref off, out ulong length);
+                            ReadOnlySpan<byte> rec = t.Slice(off, (int)length); off += (int)length;
+                            ulong id = Read64(Ids, (int)(reference - 1) * 8);
+                            // A BLOB RECORD IS ITS BYTES (§2.5, §3.1): a text blob's content
+                            // rule is a wire-alone condition
+                            if (id == StringTypeId) { if (!TextValid(rec)) { Damage(); return; } }
+                            else if (id != BytesTypeId) { if (!Body(rec, false)) { return; } }
+                            Starts[k + 2] = EdgeCount;
+                        }
+                    }
+                    Nodes = records + 1;
+                    if (EdgeCount > 0 || records > 0) { Graph(); }
+                }
+                // Graph judges the pointer graph: every pointer names the root or a
+                // record, a walk from the root that meets a node whose descent is still
+                // open is a cycle, a record the walk never enters is unreachable, and a
+                // blob record named from two slots is blob_shared (§6.5, THE GRAPH,
+                // DEFINED ONCE).
+                void Graph()
+                {
+                    int n = Nodes;
+                    int[] names = System.Buffers.ArrayPool<int>.Shared.Rent(n * 3);
+                    try
+                    {
+                        Span<int> name = names.AsSpan(0, n), mark = names.AsSpan(n, n), next = names.AsSpan(2 * n, n);
+                        name.Clear(); mark.Clear(); next.Clear();
+                        for (int e = 0; e < EdgeCount; e++)
+                        {
+                            if (Edges[e] - 1 >= (ulong)n) { Damage(); return; }
+                            name[(int)(Edges[e] - 1)]++;
+                        }
+                        if (n > 1)
+                        {
+                            ReadOnlySpan<byte> t = Table;
+                            int off = 0; Leb(t, ref off, out _);
+                            for (int k = 1; k < n; k++)
+                            {
+                                Leb(t, ref off, out ulong reference); Leb(t, ref off, out ulong length); off += (int)length;
+                                ulong id = Read64(Ids, (int)(reference - 1) * 8);
+                                if ((id == StringTypeId || id == BytesTypeId) && name[k] > 1) { if (Fail == WireWhole) { Fail = WireBlobShared; } return; }
+                            }
+                        }
+                        // mark: 0 unvisited, 1 open, 2 closed; next[k] counts the edges
+                        // of node k already followed; path is the stack of open nodes,
+                        // each entered once, so it never holds more than n.
+                        int[] rented = System.Buffers.ArrayPool<int>.Shared.Rent(n);
+                        try
+                        {
+                            Span<int> path = rented.AsSpan(0, n);
+                            int top = 0; path[0] = 0; mark[0] = 1;
+                            while (top >= 0)
+                            {
+                                int node = path[top];
+                                int from = Starts == null ? 0 : Starts[node];
+                                int to = Starts == null ? EdgeCount : Starts[node + 1];
+                                if (from + next[node] == to) { mark[node] = 2; top--; continue; }
+                                int target = (int)(Edges[from + next[node]] - 1); next[node]++;
+                                if (mark[target] == 1) { Damage(); return; }
+                                if (mark[target] == 2) { continue; }
+                                mark[target] = 1; path[++top] = target;
+                            }
+                        }
+                        finally { System.Buffers.ArrayPool<int>.Shared.Return(rented); }
+                        for (int k = 1; k < n; k++) { if (mark[k] == 0) { Damage(); return; } }
+                    }
+                    finally { System.Buffers.ArrayPool<int>.Shared.Return(names); }
+                }
+                // Body walks one table body that must end with its terminator as its
+                // LAST byte. The root admits the node table's reserved id, whose kind 12
+                // payload is kept for Root instead of being read as text.
+                bool Body(ReadOnlySpan<byte> buf, bool root)
+                {
+                    Span<ulong> seen = stackalloc ulong[Words];
+                    int off = 0;
+                    while (true)
+                    {
+                        if (!Leb(buf, ref off, out ulong reference)) { return Damage(); }
+                        if (reference == 0) { return off == buf.Length || Damage(); }
+                        if (reference > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        int r = (int)reference;
+                        if ((seen[r >> 6] & (1ul << (r & 63))) != 0) { return Damage(); }
+                        seen[r >> 6] |= 1ul << (r & 63);
+                        if (off >= buf.Length) { return Damage(); }
+                        byte kind = buf[off++];
+                        ulong id = Read64(Ids, (r - 1) * 8);
+                        if (id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2)
+                        {
+                            if (!root || !Announcement) { return Damage(); }
+                        }
+                        else if (id == ulong.MaxValue)
+                        {
+                            if (!root || kind != 12) { return Damage(); }
+                            if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
+                            Table = buf.Slice(off, (int)n); Present = true; off += (int)n;
+                            continue;
+                        }
+                        if (!Payload(buf, ref off, kind)) { return false; }
+                    }
+                }
+                // Payload walks one SELF-FRAMED payload of kind at off: what follows a
+                // field's kind byte, and an array element.
+                bool Payload(ReadOnlySpan<byte> buf, ref int off, byte kind)
+                {
+                    int w = Width(kind);
+                    if (w != 0)
+                    {
+                        if (w > buf.Length - off) { return Damage(); }
+                        off += w;
+                        return Scalar(buf.Slice(off - w, w), kind);
+                    }
+                    switch (kind)
+                    {
+                        case 17:
+                            if (!Leb(buf, ref off, out ulong index)) { return Damage(); }
+                            Edge(index); return true;
+                        case 30:
+                            if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
+                            return true;
+                        case 15: return Union(buf, ref off);
+                        case 12: case 31: case 32: case 13: case 14: case 16:
+                            if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
+                            off += (int)n;
+                            return Content(buf.Slice(off - (int)n, (int)n), kind);
+                    }
+                    return Damage();
+                }
+                // Content walks a payload already framed by a length and requires it to
+                // be consumed exactly: a field's L, an arm's L, a keyed slot's L.
+                bool Content(ReadOnlySpan<byte> b, byte kind)
+                {
+                    int w = Width(kind);
+                    if (w != 0) { return b.Length == w ? Scalar(b, kind) : Damage(); }
+                    switch (kind)
+                    {
+                        case 12: return TextValid(b) || Damage();
+                        case 31: return true;
+                        case 32: return b.Length == 0 || Damage();
+                        case 13: case 14: case 16:
+                        {
+                            // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
+                            if (Depth >= 128) { return Damage(); }
+                            Depth++;
+                            bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
+                            Depth--;
+                            return good;
+                        }
+                        case 17: case 30: case 15:
+                        {
+                            int end = 0;
+                            if (!Payload(b, ref end, kind)) { return false; }
+                            return end == b.Length || Damage();
+                        }
+                    }
+                    return Damage();
+                }
+                // Scalar checks a fixed-width value: a bool is 0 or 1, and a float is
+                // finite (§3.3); the walk goes on past a non-finite float.
+                bool Scalar(ReadOnlySpan<byte> b, byte kind)
+                {
+                    if (kind == 1 && b[0] > 1) { return Damage(); }
+                    if (kind == 10 || kind == 11)
+                    {
+                        ulong raw = kind == 10 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b) : System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(b);
+                        if (NonFiniteBits(kind, raw)) { NonFinite = true; }
+                    }
+                    return true;
+                }
+                // Header reads an array, keyed or map content's element kind and count.
+                // THE HEADER LIES INSIDE ITS OWN L (§4); a count past int.MaxValue is
+                // the storage cap.
+                bool Header(ReadOnlySpan<byte> b, out byte kind, out ulong count, out int off)
+                {
+                    kind = 0; count = 0; off = 1;
+                    if (b.Length < 2) { return Damage(); }
+                    kind = b[0];
+                    if (!Leb(b, ref off, out count)) { return Damage(); }
+                    if (count > int.MaxValue) { if (Fail == WireWhole) { Fail = WireCountCap; } return false; }
+                    return true;
+                }
+                bool ArrayBody(ReadOnlySpan<byte> b)
+                {
+                    if (!Header(b, out byte kind, out ulong count, out int off)) { return false; }
+                    for (ulong i = 0; i < count; i++) { if (!Payload(b, ref off, kind)) { return false; } }
+                    return off == b.Length || Damage();
+                }
+                bool KeyedBody(ReadOnlySpan<byte> b)
+                {
+                    if (!Header(b, out byte kind, out ulong count, out int off)) { return false; }
+                    Span<ulong> seen = stackalloc ulong[Words];
+                    for (ulong i = 0; i < count; i++)
+                    {
+                        if (!Leb(b, ref off, out ulong key) || key == 0 || key > (ulong)(Ids.Length / 8)) { return Damage(); }
+                        int k = (int)key;
+                        if ((seen[k >> 6] & (1ul << (k & 63))) != 0) { return Damage(); }
+                        seen[k >> 6] |= 1ul << (k & 63);
+                        if (!Leb(b, ref off, out ulong n) || n > (ulong)(b.Length - off)) { return Damage(); }
+                        off += (int)n;
+                        if (!Content(b.Slice(off - (int)n, (int)n), kind)) { return false; }
+                    }
+                    return off == b.Length || Damage();
+                }
+                // Union walks a union payload in place: the arm reference, and for a set
+                // arm its kind byte, its L and the content. A STRUCTURAL ARM IS A LEVEL
+                // (docs/SPEC-TABLES.md §4).
+                bool Union(ReadOnlySpan<byte> buf, ref int off)
+                {
+                    if (!Leb(buf, ref off, out ulong arm)) { return Damage(); }
+                    if (arm == 0) { return true; }
+                    if (arm > (ulong)(Ids.Length / 8) || off >= buf.Length) { return Damage(); }
+                    byte kind = buf[off++];
+                    if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
+                    off += (int)n;
+                    ReadOnlySpan<byte> content = buf.Slice(off - (int)n, (int)n);
+                    bool structural = kind == 13 || kind == 14 || kind == 16 || kind == 15;
+                    if (!structural) { return Content(content, kind); }
+                    if (Depth >= 128) { return Damage(); }
+                    Depth++;
+                    bool good = Content(content, kind);
+                    Depth--;
+                    return good;
+                }
+            }
 
             internal sealed class Node
             {
@@ -3808,7 +4105,11 @@ namespace Tabledemo
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-                if (EndsEarly(root)) { return -1; }
+                int whole = WireCheck(root.Buffer, ids, false, out _);
+                if (whole == WireDamaged) { return -1; }
+                // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
+                // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
+                if (whole != WireWhole) { reason = whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"; return -1; }
                 long extent = 0;
                 if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
                 long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
@@ -3872,13 +4173,12 @@ namespace Tabledemo
                     }
                 }
             }
-            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report, ReadOnlySpan<byte> headerTail = default)
+            static bool ReadMapBody(ref Reader a, object value, TableFieldInfo f, TableReport report)
             {
-                if (!a.Has(2)) { return true; }
+                // THE HEADER LIES INSIDE THE MAP'S OWN L (docs/SPEC-TABLES.md §2.8, §3)
+                if (!a.Has(2)) { return Damage(report); }
                 byte kind = a.Byte();
-                Reader header = headerTail.IsEmpty ? a : new Reader(headerTail, a.Vocabulary) { Offset = 1 };
-                if (!header.Var(out ulong count)) { Damage(report); return true; }
-                a.Offset = Math.Min(a.Buffer.Length, header.Offset);
+                if (!a.Var(out ulong count)) { return Damage(report); }
                 if (kind != 13) { return Fail(report, "kind_mismatch"); }
                 if (count > int.MaxValue) { return CollectionCap(report); }
                 f.ResetField(value);
@@ -3902,12 +4202,14 @@ namespace Tabledemo
                     if (order == 0) { return Fail(report, "duplicate"); }
                     else { last = KeyOf(entry, keyField); landed++; }
                 }
-                f.SetCount(value, landed); return true;
+                f.SetCount(value, landed);
+                // bytes left inside the map's L after its entries are damage
+                return report.Damaged || report.Refused || a.Offset == a.Buffer.Length || Damage(report);
             }
 
             static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
             static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-            static bool MessageKind(byte kind) { return kind <= 33 || kind == 36; }
+            static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
             static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
             static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
             static int ValueBits(byte kind, TableMessageShape s)
@@ -3946,14 +4248,14 @@ namespace Tabledemo
                     }
                     else if (shape.Packing != 0) { return false; }
                 }
-                else if (kind == 12 || kind == 33)
+                else if (kind == 12)
                 { if (!r.Var(out shape.Max) || shape.Max > int.MaxValue) { return false; } }
                 else if (kind == 14 || kind == 16)
                 {
                     if (kind == 14 && (!r.Var(out shape.Min) || shape.Min > uint.MaxValue)) { return false; }
                     if (!r.Var(out shape.Max) || shape.Max > uint.MaxValue || shape.Max < shape.Min || !r.Has(1)) { return false; }
                     shape.Elem = r.Byte();
-                    if (!MessageKind(shape.Elem) || shape.Elem == 33) { return false; }
+                    if (!MessageKind(shape.Elem)) { return false; }
                     // An entry carries its own shape and one element shape. The C++
                     // announcement reader does not recursively parse nested arrays.
                     if (!element && !Shape(ref r, shape.Elem, out shape.Inner, true)) { return false; }
@@ -4080,11 +4382,10 @@ namespace Tabledemo
                         MessageElement(ref w, value, f, i, shape.Inner);
                     }
                 }
-                else if (f.Kind == 12 || f.Kind == 33)
+                else if (f.Kind == 12)
                 {
                     int count = Count(value, f); w.Put((uint)count, BitCount(shape.Max));
-                    if (f.Kind == 12) { w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count)); }
-                    else { for (int i = 0; i < count; i++) { w.Put(f.GetChars(value)[i], 16); } }
+                    w.Align(); w.Raw(f.GetBuffer(value).AsSpan(0, count));
                 }
                 else { MessageElement(ref w, value, f, 0, shape); }
             }
@@ -4183,7 +4484,6 @@ namespace Tabledemo
                     case 13: return MessageSkipBody(ref r, d, depth + 1);
                     case 17: return false; // a node reference: no fixed body holds one
                     case 12:
-                    case 33:
                         if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
                         return r.Skip((long)length * (kind == 12 ? 8 : 16));
                     case 31:
@@ -4243,31 +4543,13 @@ namespace Tabledemo
                     if (value != null) { r.Bytes.Slice((int)(r.At / 8), kept).CopyTo(f.GetBuffer(value)); f.SetCount(value, kept); }
                     r.At += (long)n * 8; return true;
                 }
-                if (kind == 12 || kind == 33)
+                if (kind == 12)
                 {
-                    if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-                    long bits = (long)length * (kind == 12 ? 8 : 16);
+                    if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align()) { return false; }
+                    long bits = (long)length * 8;
                     if (bits > r.End - r.At) { return false; }
-                    if (kind == 12)
-                    {
-                        ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
-                        return ReadText(text, value, f, d.Report);
-                    }
-                    BitReader check = r;
-                    for (int i = 0; i < (int)length; i++)
-                    {
-                        check.Get(16, out UInt128 raw); uint c = (uint)raw;
-                        if (c == 0 || c >= 0xdc00 && c <= 0xdfff) { return false; }
-                        if (c >= 0xd800 && c <= 0xdbff)
-                        { if (++i == (int)length || !check.Get(16, out UInt128 low) || low < 0xdc00 || low > 0xdfff) { return false; } }
-                    }
-                    if (length > (uint)f.ArrayBound) { return Fail(d.Report, "length_over_bound: " + f.Name); }
-                    int keep = (int)length;
-                    char last = default;
-                    for (int i = 0; i < keep; i++) { r.Get(16, out UInt128 raw); last = (char)(uint)raw; if (value != null) { f.GetChars(value)[i] = last; } }
-                    if (keep > 0 && keep < (int)length && char.IsHighSurrogate(last)) { keep--; }
-                    if (value != null) { f.SetCount(value, keep); }
-                    r = check; return true;
+                    ReadOnlySpan<byte> text = r.Bytes.Slice((int)(r.At / 8), (int)length); r.At += bits;
+                    return ReadText(text, value, f, d.Report);
                 }
                 if (f.IsArray)
                 {
@@ -4490,8 +4772,6 @@ namespace Tabledemo
                 }
                 if (f.Kind == 12 && !f.TextList)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
-                if (f.Kind == 33)
-                { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, f.GetChars(value)[i], 2); } return true; }
                 int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
                 if (f.GetBuffer != null)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
@@ -4761,7 +5041,7 @@ namespace Tabledemo
             {
                 if (f == null) { return 0; }
                 if (f.IsArray) { return ArraySize(value, f, ref ids, elemCache); }
-                if (f.Kind == 12 || f.Kind == 33) { return Count(value, f) * (f.Kind == 33 ? 2L : 1L); }
+                if (f.Kind == 12) { return Count(value, f); }
                 return ElementSize(value, f, 0, ref ids, false);
             }
             static long ElementSize(object value, TableFieldInfo f, int i, ref Ids ids, bool framed)
@@ -4821,7 +5101,7 @@ namespace Tabledemo
                     TableFieldInfo f = type.Fields[i];
                     if (!Rides(value, f)) { continue; }
                     n += VarSize(ids.Reference(f.Id)) + 1;
-                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                     {
                         scoped Span<long> elemCache = default;
                         if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
@@ -4910,7 +5190,6 @@ namespace Tabledemo
                         }
                     }
                 }
-                else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
                 else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
                 else { WriteElement(ref w, value, f, 0, ref ids, false); }
             }
@@ -4930,7 +5209,7 @@ namespace Tabledemo
                         elemCache = rootElemSizes.Slice(elemOffset, take);
                         elemOffset += take;
                     }
-                    if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                    if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                     { w.Var((ulong)(rootPayloadSizes.IsEmpty ? PayloadSize(value, f, ref ids) : rootPayloadSizes[i])); }
                     WritePayload(ref w, value, f, ref ids, elemCache);
                 }
@@ -4949,7 +5228,7 @@ namespace Tabledemo
                 payload = 0;
                 if (!Rides(value, f)) { return 0; }
                 long n = VarSize(ids.Reference(f.Id)) + 1;
-                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                 {
                     payload = PayloadSize(value, f, ref ids, elemCache);
                     n += VarSize((ulong)payload) + payload;
@@ -4968,7 +5247,7 @@ namespace Tabledemo
             {
                 if (!Rides(value, f)) { return; }
                 w.Header(ids.Reference(f.Id), Kind(f));
-                if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+                if (f.IsArray || f.Kind == 12 || f.Kind == 13)
                 {
                     long payload = cachedPayload >= 0 ? cachedPayload : PayloadSize(value, f, ref ids);
                     w.Var((ulong)payload);
@@ -5103,6 +5382,9 @@ namespace Tabledemo
             static bool CollectionCap(TableReport report)
             { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
             static bool Damage(TableReport report) { report.Damaged = true; return false; }
+            // EndsEarly is the announcement's framing pre-walk (AnnounceRead): a body
+            // whose terminator comes before its last byte. A file load runs the whole
+            // wire-alone walk instead (WireCheck).
             static bool EndsEarly(Reader r)
             {
                 while (r.Ref(out ulong reference, out _))
@@ -5227,8 +5509,7 @@ namespace Tabledemo
             static void ZeroField(object value, TableFieldInfo f)
             {
                 if (f.Dynamic) { f.ResetField(value); return; }
-                if (f.GetChars != null) { Array.Clear(f.GetChars(value), 0, f.ArrayBound); }
-                else if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
+                if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
                 else
                 {
                     int n = f.IsArray ? f.ArrayBound : 1;
@@ -5298,15 +5579,15 @@ namespace Tabledemo
                     f.SetChild(value, 0, r.Graph == null ? null : r.Graph.Resolve(indexValue, f, report));
                     return true;
                 }
-                if (kind == 12 || kind == 33)
+                if (kind == 12)
                 {
                     ResetArm(value, f);
-                    return kind == 33 ? ReadChars(r.Buffer, value, f, report) : ReadText(r.Buffer, value, f, report);
+                    return ReadText(r.Buffer, value, f, report);
                 }
                 if (kind == 14)
                 {
                     ResetArm(value, f);
-                    if (!r.Has(2)) { return true; } // an inert short arm still selects
+                    if (!r.Has(2)) { return Damage(report); } // the header lies inside the arm's L
                     byte elementKind = r.Byte();
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
@@ -5321,7 +5602,9 @@ namespace Tabledemo
                         decoded++;
                     }
                     if (f.Counted) { f.SetCount(value, decoded); }
-                    return true; // damaged elements preserve the selected arm's prefix
+                    // bytes left inside the arm's L after its payload are damage
+                    if (!report.Damaged && !report.Refused && r.Offset != r.Buffer.Length) { return Damage(report); }
+                    return true;
                 }
                 if (!ReadScalar(ref r, value, f, 0, kind, report)) { return false; }
                 return r.Offset == r.Buffer.Length || Damage(report);
@@ -5333,27 +5616,6 @@ namespace Tabledemo
                 if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
                 if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
                 return true;
-            }
-            static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
-            {
-                if ((text.Length & 1) != 0) { return Damage(report); }
-                for (int i = 0; i < text.Length; i += 2)
-                {
-                    int c = text[i] | text[i + 1] << 8;
-                    if (c == 0 || (c >= 0xdc00 && c <= 0xdfff)) { return Damage(report); }
-                    if (c >= 0xd800 && c <= 0xdbff)
-                    {
-                        if (i + 3 >= text.Length) { return Damage(report); }
-                        int low = text[i + 2] | text[i + 3] << 8;
-                        if (low < 0xdc00 || low > 0xdfff) { return Damage(report); }
-                        i += 2;
-                    }
-                }
-                int keep = text.Length / 2;
-                if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-                char[] storage = f.GetChars(value);
-                for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
-                f.SetCount(value, keep); return true;
             }
             internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
             { return Fail(report, "length_over_bound: " + field.TextField); }
@@ -5379,25 +5641,23 @@ namespace Tabledemo
             static bool ReadField(ref Reader r, object value, TableFieldInfo f, byte kind, TableReport report, out bool placed)
             {
                 placed = true;
-                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report, r.Buffer.Slice(r.Offset - map.Buffer.Length)); }
-                if (kind == 12 || kind == 33)
+                if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
+                if (kind == 12)
                 {
                     if (!r.Slice(out Reader text)) { return Damage(report); }
-                    if (!(kind == 33 ? ReadChars(text.Buffer, value, f, report) : ReadText(text.Buffer, value, f, report)))
+                    if (!ReadText(text.Buffer, value, f, report))
                     { f.ResetField(value); }
                     return true;
                 }
                 if (kind == 14 || kind == 16)
                 {
                     if (!r.Slice(out Reader array)) { return Damage(report); }
-                    if (array.Buffer.Length < 2) { return true; } // inert, including under a repeat
+                    // THE HEADER LIES INSIDE ITS OWN L (docs/SPEC-TABLES.md §3,
+                    // tla/Framing.tla): an L too short for it, or a count that crosses
+                    // it, is damage, as the Go oracle's arrayBody and keyed say.
+                    if (array.Buffer.Length < 2) { return Damage(report); }
                     byte elementKind = array.Byte();
-                    // Match the reference's header cursor: the count is read at the
-                    // enclosing cursor, then all elements are bounded by the array's L.
-                    // A count spilling past L can clamp, but cannot invent an element.
-                    Reader header = new Reader(r.Buffer.Slice(r.Offset - array.Buffer.Length + 1), r.Vocabulary);
-                    if (!header.Var(out ulong count)) { Damage(report); return true; }
-                    array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
+                    if (!array.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
                     if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     if (kind == 16)
@@ -5410,6 +5670,8 @@ namespace Tabledemo
                             if (slot == 0) { report.Unknown++; continue; }
                             ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
                             if (report.Refused) { return false; }
+                            // bytes left inside a keyed slot after its element are damage
+                            if (element.Offset != element.Buffer.Length) { return Damage(report); }
                         }
                     }
                     else
@@ -5431,6 +5693,8 @@ namespace Tabledemo
                         }
                         if (f.Counted) { ResetCountedTail(value, f, previous, decoded); }
                     }
+                    // bytes left inside the array's L after its elements are damage
+                    if (!report.Damaged && !report.Refused && array.Offset != array.Buffer.Length) { return Damage(report); }
                     return true;
                 }
                 return ReadElement(ref r, value, f, 0, kind, report, true);
@@ -5585,7 +5849,11 @@ namespace Tabledemo
                 ReadOnlySpan<byte> vocabulary = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
-                if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE WIRE-ALONE CONDITIONS (docs/SPEC-TABLES.md §6.5) are judged over
+                // every byte before anything is decoded, known fields and unknown alike.
+                int whole = WireCheck(r.Buffer, vocabulary, false, out bool wireNonFinite);
+                if (whole == WireDamaged) { Damage(report); return Finish(report, Verdict.Damaged); }
+                if (whole != WireWhole) { Fail(report, whole == WireCountCap ? "count_over_extent_cap" : "blob_shared"); return Finish(report, Verdict.Refused); }
                 bool damagedBefore = report.Damaged;
                 report.Damaged = false;
                 // Managed collections grow only after each bounded element. The actual
@@ -5593,6 +5861,7 @@ namespace Tabledemo
                 // region extent scan can visit map values their keys would not admit.
                 if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
                 bool complete = ReadBody(ref r, value, type, report, false);
+                if (wireNonFinite && report.NonFiniteFloat == null) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; }
                 if (NonFiniteRefused(report)) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
                 if (report.Refused) { report.Damaged |= damagedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
                 // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
@@ -5697,10 +5966,13 @@ namespace Tabledemo
             // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
             // WRITER's element width and DstSize the READER's.
             public const byte FlatWiden = 8;
+            // A PRESENCE BYTE OR A BOOL IS 0 OR 1 (docs/SPEC-TABLES.md §3.4): the
+            // fixed form refuses any other value, as the variable form does. Copy
+            // would land a forged byte as truth.
+            public const byte BoolByte = 9;
 
             // Arg on a Text entry
             public const byte TextUtf8 = 1;
-            public const byte TextWide = 2;
             public const byte TextBytes = 3;
 
             public const int EntryBytes = 17;
@@ -5807,7 +6079,7 @@ namespace Tabledemo
             private static bool KnownKind(byte kind)
             {
                 if (kind >= 1 && kind <= 30) return true;
-                return kind == 32 || kind == 33 || kind == 35;
+                return kind == 32 || kind == 35;
             }
 
             private ref struct Checker
@@ -5897,10 +6169,6 @@ namespace Tabledemo
                     case 12: // string
                         if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
                         if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
-                        break;
-                    case 33: // wstring
-                        if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
-                        if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
                         break;
                     default:
                         c.Fail("layout_kind_unknown");
@@ -6346,7 +6614,6 @@ namespace Tabledemo
                             break;
                         }
                     case 12:
-                    case 33: // Text / WString
                         {
                             uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
@@ -6799,6 +7066,13 @@ namespace Tabledemo
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
                                 break;
                             }
+                        case BoolByte:
+                            {
+                                ulong raw = src[(int)p.Src];
+                                if (raw > 1) { return "wire_damaged"; }
+                                slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
+                                break;
+                            }
                         case FlatWiden:
                             {
                                 int sw = p.Meta == 0 ? 1 : p.Meta;
@@ -6859,8 +7133,7 @@ namespace Tabledemo
                             }
                         case Text:
                             {
-                                uint unit = (p.Meta == TextWide) ? 2u : 1u;
-                                uint cap = p.Size / unit;
+                                uint cap = p.Size;
                                 int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                                 if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                                 ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -6875,14 +7148,7 @@ namespace Tabledemo
                                     return "text_ill_formed";
                                 }
                                 slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
-                                if (p.Meta == TextWide)
-                                {
-                                    slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
-                                }
-                                else
-                                {
-                                    slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
-                                }
+                                slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
                                 break;
                             }
                         case Ordinal:
@@ -6983,10 +7249,9 @@ namespace Tabledemo
 
             // TextIllFormed reports whether a text payload's USED units are the text
             // its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-            // with no zero byte for string, paired non-zero UTF-16 code units for
-            // wstring. bytes(N) carries no text rule at all, and slack past the used
-            // units is unspecified and never a refusal (docs/SPEC-TABLES.md §3.4).
-            // The used argument is the clamped length in the flavour's own units.
+            // with no zero byte for string. bytes(N) carries no text rule at all, and
+            // slack past the used bytes is unspecified and never a refusal
+            // (docs/SPEC-TABLES.md §3.4). The used argument is the clamped length.
             public static bool TextIllFormed(byte meta, uint used, ReadOnlySpan<byte> p)
             {
                 switch (meta)
@@ -7015,23 +7280,6 @@ namespace Tabledemo
                                 if (continuations == 2 && (code_point < 0x800 || (code_point >= 0xD800 && code_point <= 0xDFFF))) { return true; }
                                 if (continuations == 3 && (code_point < 0x10000 || code_point > 0x10FFFF)) { return true; }
                                 i += 1 + continuations;
-                            }
-                            break;
-                        }
-                    case TextWide:
-                        {
-                            for (uint i = 0; i < used; i++)
-                            {
-                                uint u = (uint)(p[(int)i * 2] | (p[(int)i * 2 + 1] << 8));
-                                if (u == 0) { return true; }
-                                if (u >= 0xD800 && u <= 0xDBFF)
-                                {
-                                    if (i + 1 >= used) { return true; }
-                                    uint lo = (uint)(p[(int)(i + 1) * 2] | (p[(int)(i + 1) * 2 + 1] << 8));
-                                    if (lo < 0xDC00 || lo > 0xDFFF) { return true; }
-                                    i++;
-                                }
-                                else if (u >= 0xDC00 && u <= 0xDFFF) { return true; }
                             }
                             break;
                         }

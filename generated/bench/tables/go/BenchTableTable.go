@@ -1313,7 +1313,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32, 33:
+	case 12, 13, 14, 16, 31, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1657,7 +1657,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32, 33:
+	case 12, 13, 14, 16, 31, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1680,8 +1680,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 33:
-		return tableWireUtf16Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
 	case 31:
 		return true
 	case 32:
@@ -1822,28 +1820,6 @@ func (c *tableWireCheck) record(at int64) bool {
 		return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
 	}
 	return c.framed(body, 13)
-}
-
-func tableWireUtf16Valid(data []byte) bool {
-	if len(data)&1 != 0 {
-		return false
-	}
-	for i := 0; i < len(data); i += 2 {
-		u := binary.LittleEndian.Uint16(data[i:])
-		if u == 0 || u >= 0xdc00 && u <= 0xdfff {
-			return false
-		}
-		if u >= 0xd800 && u <= 0xdbff {
-			i += 2
-			if i >= len(data) {
-				return false
-			}
-			if v := binary.LittleEndian.Uint16(data[i:]); v < 0xdc00 || v > 0xdfff {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // tableWireVerify holds every wire-alone condition over an opened file
@@ -2135,7 +2111,6 @@ const (
 
 const (
 	tableFixedTextUTF8  uint8 = 1
-	tableFixedTextWide  uint8 = 2
 	tableFixedTextBytes uint8 = 3
 )
 
@@ -2272,17 +2247,17 @@ func tableFixedSignedKind(kind uint8) bool {
 }
 
 // THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
-// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-// adds, the optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing
-// escape and 34 is reserved: none of the three is a kind a declaration spells,
-// so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// the no-payload variant 32, and the ONE kind this form's layout adds, the
+// optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing escape, 33
+// is retired and 34 is reserved: none of the four is a kind a declaration
+// spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
 // leaf to step over — the form byte versions the kinds behind it, so a kind
 // this build does not know names a FORM this reader never saw.
 func tableFixedKindKnown(kind uint8) bool {
 	if kind >= 1 && kind <= 30 {
 		return true
 	}
-	return kind == 32 || kind == 33 || kind == 35
+	return kind == 32 || kind == 35
 }
 
 // tableFixedOrdinalWidth is the widths an ordinal — an enum's, a union tag's —
@@ -2641,28 +2616,13 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
 			v := int32(tableFixedGet32(src[p.Src:]))
-			unit := uint32(1)
-			if p.Meta == tableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
+			capn := p.Size
 			// tableFixedTextRefusal above already proved the used extent and
 			// content; this path only lands the validated value and live bytes.
 			binary.NativeEndian.PutUint32(dst[p.Dst:], uint32(v))
-			if p.Meta == tableFixedTextWide {
-				// A wstring's storage is native uint16 units, not wire bytes.
-				for off := uint32(0); off+2 <= p.Size; off += 2 {
-					binary.NativeEndian.PutUint16(dst[p.Aux+off:], binary.LittleEndian.Uint16(src[p.Src+4+off:]))
-				}
-			} else {
-				tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
-			}
+			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
 			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
-				off := p.Aux + uint32(v)*unit
-				dst[off] = 0
-				if unit == 2 {
-					dst[off+1] = 0
-				}
+				dst[p.Aux+uint32(v)] = 0
 			}
 		case tableFixedOrdinal:
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
@@ -2721,8 +2681,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
 // text its kind says (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11): UTF-8
-// with no zero byte for string, paired non-zero UTF-16 code units for wstring.
-// bytes(N) carries no text rule at all, and slack past the used units is
+// with no zero byte for string. bytes(N) carries no text rule at all, and slack past the used units is
 // unspecified and never a refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4). The used argument
 // is the clamped length in the flavour's own units. THE STRING RULE IS THE
 // PACKET READER'S EXACTLY: unicode/utf8.Valid over the used bytes, then no
@@ -2737,25 +2696,6 @@ func tableFixedTextIllFormed(meta uint8, used uint32, p []byte) bool {
 		}
 		if slices.Contains(p[:used], 0) {
 			return true
-		}
-	case tableFixedTextWide:
-		for i := uint32(0); i < used; i++ {
-			u := uint16(p[i*2]) | uint16(p[i*2+1])<<8
-			switch {
-			case u == 0:
-				return true
-			case u >= 0xD800 && u <= 0xDBFF:
-				if i+1 >= used {
-					return true
-				}
-				lo := uint16(p[(i+1)*2]) | uint16(p[(i+1)*2+1])<<8
-				if lo < 0xDC00 || lo > 0xDFFF {
-					return true
-				}
-				i++
-			case u >= 0xDC00 && u <= 0xDFFF:
-				return true
-			}
 		}
 	}
 	return false
@@ -2795,27 +2735,6 @@ func tableFixedUTF8Ok(p []byte) bool {
 		return false
 	}
 	return hi&0x8080808080808080 == 0 || utf8.Valid(p)
-}
-
-// tableFixedUnitsIllFormed is the WRITER's twin of the wide arm above, over the
-// caller's own wstring storage: the used units are paired UTF-16 with no zero
-// unit (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5).
-func tableFixedUnitsIllFormed(units []uint16) bool {
-	for i := 0; i < len(units); i++ {
-		u := units[i]
-		switch {
-		case u == 0:
-			return true
-		case u >= 0xD800 && u <= 0xDBFF:
-			if i+1 >= len(units) || units[i+1] < 0xDC00 || units[i+1] > 0xDFFF {
-				return true
-			}
-			i++
-		case u >= 0xDC00 && u <= 0xDFFF:
-			return true
-		}
-	}
-	return false
 }
 
 // tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
@@ -2865,12 +2784,8 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
 			}
 		case tableFixedText:
-			unit := uint32(1)
-			if p.Meta == tableFixedTextWide {
-				unit = 2
-			}
-			capn := p.Size / unit
 			v := int32(tableFixedGet32(src[p.Src:]))
+			capn := p.Size
 			if v < 0 || uint32(v) > capn {
 				return TableRefuseLengthOverBound.Error()
 			}
@@ -3183,15 +3098,7 @@ func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
 			c.fail("layout_size_mismatch")
 			return 0
 		}
-	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size < 4 || (e.Size-4)%2 != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
+
 	default:
 		// Every kind of the closed set is either a leaf above or a case here, so
 		// this is unreachable — and it refuses rather than admits, because a
@@ -3614,7 +3521,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)}
 		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
-	case 12, 33:
+	case 12:
 		units := me.Size - 4
 		units = min(units, te.Size-4)
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
@@ -4853,9 +4760,10 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 	}
 }
 
-// TableEntity also carries the FIXED form (form 3): TableEntityFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableEntity is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableEntityFixedLoad reads form 3.
 // TableEntityLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -4868,8 +4776,16 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableEntityReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableEntityReset(value)
 		return false
@@ -5088,9 +5004,10 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 	}
 }
 
-// TableStat also carries the FIXED form (form 3): TableStatFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableStat is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableStatFixedLoad reads form 3.
 // TableStatLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -5103,8 +5020,16 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableStatReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableStatReset(value)
 		return false
@@ -6793,9 +6718,10 @@ func TableMixedLoadBody(r *TableReader, value *TableMixed) bool {
 	}
 }
 
-// TableMixed also carries the FIXED form (form 3): TableMixedFixedLoad reads that one and
-// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
-// point and reads form 1 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
+// TableMixed is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
+// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
+// previous_form, never reading a value.
+// TableMixedFixedLoad reads form 3.
 // TableMixedLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open
@@ -6808,8 +6734,16 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		read.Refuse(TableRefusePreviousForm, "")
+		TableMixedReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableMixedReset(value)
 		return false
@@ -7145,6 +7079,9 @@ func TableHitEventLoad(value *TableHitEvent, data []byte, report *TableReport) b
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableHitEventReset(value)
 		return false
@@ -7387,6 +7324,9 @@ func TableChatEventLoad(value *TableChatEvent, data []byte, report *TableReport)
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TableChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TableChatEventReset(value)
 		return false
@@ -7629,6 +7569,9 @@ func TablePickupEventLoad(value *TablePickupEvent, data []byte, report *TableRep
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TablePickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		TablePickupEventReset(value)
 		return false

@@ -70,7 +70,7 @@ func needsFieldsArray(st *ir.Struct) bool {
 
 func isPayloadPrefixed(f *ir.Field) bool {
 	kind := tableScalarKind(f)
-	return f.Array != ir.ArrayNone || kind == tkString || kind == 33 || kind == tkTable
+	return f.Array != ir.ArrayNone || kind == tkString || kind == tkTable
 }
 
 // leafRideCondition is a clean scalar leaf's elision test. A float compares
@@ -410,7 +410,7 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		b.WriteString(wideColumns(f))
 		return b.String()
 	}
-	if f.IsMap() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes || isClassRef(f.Type) {
+	if f.IsMap() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || isClassRef(f.Type) {
 		return b.String()
 	}
 	defaultExpr := fieldDefaultExpr(f)
@@ -763,7 +763,6 @@ public static partial class TableWire
                 case 16:
                 case 31:
                 case 32:
-                case 33:
                     return Slice(out _);
                 case 15:
                     if (!Var(out ulong arm)) { return false; }
@@ -903,7 +902,7 @@ public static partial class TableWire
     {
         if (f == null) { return 0; }
         if (f.IsArray) { return ArraySize(value, f, ref ids, elemCache); }
-        if (f.Kind == 12 || f.Kind == 33) { return Count(value, f) * (f.Kind == 33 ? 2L : 1L); }
+        if (f.Kind == 12) { return Count(value, f); }
         return ElementSize(value, f, 0, ref ids, false);
     }
     static long ElementSize(object value, TableFieldInfo f, int i, ref Ids ids, bool framed)
@@ -963,7 +962,7 @@ public static partial class TableWire
             TableFieldInfo f = type.Fields[i];
             if (!Rides(value, f)) { continue; }
             n += VarSize(ids.Reference(f.Id)) + 1;
-            if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+            if (f.IsArray || f.Kind == 12 || f.Kind == 13)
             {
                 scoped Span<long> elemCache = default;
                 if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)
@@ -1052,7 +1051,6 @@ public static partial class TableWire
                 }
             }
         }
-        else if (f.Kind == 33) { char[] chars = f.GetChars(value); int count = Count(value, f); for (int i = 0; i < count; i++) { w.Fixed(chars[i], 2); } }
         else if (f.Kind == 12) { w.Raw(f.GetBuffer(value).AsSpan(0, Count(value, f))); }
         else { WriteElement(ref w, value, f, 0, ref ids, false); }
     }
@@ -1072,7 +1070,7 @@ public static partial class TableWire
                 elemCache = rootElemSizes.Slice(elemOffset, take);
                 elemOffset += take;
             }
-            if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+            if (f.IsArray || f.Kind == 12 || f.Kind == 13)
             { w.Var((ulong)(rootPayloadSizes.IsEmpty ? PayloadSize(value, f, ref ids) : rootPayloadSizes[i])); }
             WritePayload(ref w, value, f, ref ids, elemCache);
         }
@@ -1091,7 +1089,7 @@ public static partial class TableWire
         payload = 0;
         if (!Rides(value, f)) { return 0; }
         long n = VarSize(ids.Reference(f.Id)) + 1;
-        if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+        if (f.IsArray || f.Kind == 12 || f.Kind == 13)
         {
             payload = PayloadSize(value, f, ref ids, elemCache);
             n += VarSize((ulong)payload) + payload;
@@ -1110,7 +1108,7 @@ public static partial class TableWire
     {
         if (!Rides(value, f)) { return; }
         w.Header(ids.Reference(f.Id), Kind(f));
-        if (f.IsArray || f.Kind == 12 || f.Kind == 33 || f.Kind == 13)
+        if (f.IsArray || f.Kind == 12 || f.Kind == 13)
         {
             long payload = cachedPayload >= 0 ? cachedPayload : PayloadSize(value, f, ref ids);
             w.Var((ulong)payload);
@@ -1372,8 +1370,7 @@ public static partial class TableWire
     static void ZeroField(object value, TableFieldInfo f)
     {
         if (f.Dynamic) { f.ResetField(value); return; }
-        if (f.GetChars != null) { Array.Clear(f.GetChars(value), 0, f.ArrayBound); }
-        else if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
+        if (f.GetBuffer != null) { Array.Clear(f.GetBuffer(value), 0, f.ArrayBound); }
         else
         {
             int n = f.IsArray ? f.ArrayBound : 1;
@@ -1443,10 +1440,10 @@ public static partial class TableWire
             f.SetChild(value, 0, r.Graph == null ? null : r.Graph.Resolve(indexValue, f, report));
             return true;
         }
-        if (kind == 12 || kind == 33)
+        if (kind == 12)
         {
             ResetArm(value, f);
-            return kind == 33 ? ReadChars(r.Buffer, value, f, report) : ReadText(r.Buffer, value, f, report);
+            return ReadText(r.Buffer, value, f, report);
         }
         if (kind == 14)
         {
@@ -1481,27 +1478,6 @@ public static partial class TableWire
         if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
         return true;
     }
-    static bool ReadChars(ReadOnlySpan<byte> text, object value, TableFieldInfo f, TableReport report)
-    {
-        if ((text.Length & 1) != 0) { return Damage(report); }
-        for (int i = 0; i < text.Length; i += 2)
-        {
-            int c = text[i] | text[i + 1] << 8;
-            if (c == 0 || (c >= 0xdc00 && c <= 0xdfff)) { return Damage(report); }
-            if (c >= 0xd800 && c <= 0xdbff)
-            {
-                if (i + 3 >= text.Length) { return Damage(report); }
-                int low = text[i + 2] | text[i + 3] << 8;
-                if (low < 0xdc00 || low > 0xdfff) { return Damage(report); }
-                i += 2;
-            }
-        }
-        int keep = text.Length / 2;
-        if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-        char[] storage = f.GetChars(value);
-        for (int i = 0; i < keep; i++) { storage[i] = (char)(text[i * 2] | text[i * 2 + 1] << 8); }
-        f.SetCount(value, keep); return true;
-    }
     internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
     { return Fail(report, "length_over_bound: " + field.TextField); }
     internal static bool TextValid(ReadOnlySpan<byte> text)
@@ -1527,10 +1503,10 @@ public static partial class TableWire
     {
         placed = true;
         if (f.Map) { if (!r.Slice(out Reader map)) { return Damage(report); } return ReadMapBody(ref map, value, f, report); }
-        if (kind == 12 || kind == 33)
+        if (kind == 12)
         {
             if (!r.Slice(out Reader text)) { return Damage(report); }
-            if (!(kind == 33 ? ReadChars(text.Buffer, value, f, report) : ReadText(text.Buffer, value, f, report)))
+            if (!ReadText(text.Buffer, value, f, report))
             { f.ResetField(value); }
             return true;
         }

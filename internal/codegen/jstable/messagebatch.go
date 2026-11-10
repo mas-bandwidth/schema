@@ -184,7 +184,7 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
       return arm !== null && arm.Id < 0xfffffffffffffffdn && arm.Shape.Kind !== 0 &&
         tableMessageSkip(r, v, indexBits, arm, depth + 1);
     }
-    case 12: case 33: {
+    case 12: {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
       const width = s.Kind === 12 ? 8 : 16;
@@ -422,8 +422,6 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 			return mem + "Length > 0"
 		}
 		return fmt.Sprintf("%sLength !== %d", mem, len(f.DefBytes))
-	case ir.TWString:
-		return mem + "Length > 0"
 	}
 	if f.Array == ir.ArrayCounted {
 		return mem + "Count > 0"
@@ -493,9 +491,6 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 	case f.Type.Kind == ir.TString:
 		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
 		g.pf("%sw.Raw(%s.subarray(0, %sLength));\n", ind, mem, mem)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sw.Put(BigInt(%sLength), %d);\n", ind, mem, ir.TableMessageCountBits(entry.Shape))
-		g.pf("%sfor (let i = 0; i < %sLength; i++) { w.Put(BigInt(%s[i]), 16); }\n", ind, mem, mem)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageWriteArray(f, entry, mem, ind)
 	case isStructRef(f.Type):
@@ -684,23 +679,6 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
-		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || Number(n) * 16 > r.Bits.Buffer.length * 8 - r.Bits.Offset) { r.Report.Damaged = true; return false; }\n", ind, shape)
-		g.pf("%s  const rawLen = Number(n);\n", ind)
-		g.pf("%s  let kept = rawLen;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
-		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  let high = false;\n", ind)
-		g.pf("%s  for (let i = 0; i < rawLen; i++) {\n", ind)
-		g.pf("%s    const [u, uok] = r.Bits.Get(16);\n", ind)
-		g.pf("%s    const unit = Number(u);\n", ind)
-		g.pf("%s    if (!uok || unit === 0 || (unit >= 0xdc00 && unit <= 0xdfff && !high) || (high && (unit < 0xdc00 || unit > 0xdfff))) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s    high = unit >= 0xd800 && unit <= 0xdbff;\n", ind)
-		g.pf("%s    if (i < kept) { %s[i] = unit; }\n", ind, mem)
-		g.pf("%s  }\n", ind)
-		g.pf("%s  if (high) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  if (kept > 0 && %s[kept - 1] >= 0xd800 && %s[kept - 1] <= 0xdbff) { kept--; %s[kept] = 0; }\n", ind, mem, mem, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, mem, ind)

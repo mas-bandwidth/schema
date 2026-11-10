@@ -72,7 +72,6 @@ module's exports are a table, a descriptor is a table.
 | a `type` | its class instance, pre-allocated |
 | a `union` | its class instance: `Type` (0 = None, then each arm in declared order) beside one pre-allocated member per arm with a payload; a payload-free arm has no member |
 | `string(N)`, `bytes(N)` | a `blob` of N bytes beside a `<Member>Length` integer (the used length), the default's bytes written in |
-| `wstring(N)` | an array of N integers (UTF-16 code units) beside `<Member>Length` |
 | `[N]uint8` | a `blob` of N bytes |
 | `[N]T`, other T | an array of N elements, each its element's zero or a pre-allocated instance |
 | `[..N]T`, `[A..B]T` | the same N-element array beside `<Member>Count`, born at A (SPEC §4.6) |
@@ -104,7 +103,6 @@ the member and the text key side by side.
 | `[E]T` (§2.4) | an array of E.Max elements, key k at index k − 1 |
 | `[N]T`, `[A..B]T`, `[..N]T`, `[]T` (§2.9) | an array born at its born length (N, A, 0, 0), each element its zero |
 | `map[K]V` (§2.8) | not mapped: refused by name (THE REGISTER) |
-| `wstring(N)` in a table (table kind 33) | an array of integers, the UTF-16 CODE UNITS, whose length is the used length; born empty (SPEC §4.12 takes no default). The wire carries the units two bytes each little-endian (§3), the message form sixteen bits each (§3.3), the fixed form an int32 length and N two-byte units (§3.4), and the text forms one JSON string transcoded at the boundary (§16.2) |
 
 Every field's descriptor is a table with every key present, `null` where the
 shape has no such fact, so a runtime walk reads a slot and never asks whether
@@ -379,7 +377,6 @@ for exactly what it carries; what no component carries stays refused by name
 | reflection | the unit view (§8.3) | `view.go` |
 | conformance leg | every surface the harness asks, four negative controls, the release tier | `test/conformance/squirrel/main.nut`, `driver`, `negative-control`, `make/squirrel-conformance.mk` |
 | fuzz differential | the tolerant wire's fuzzer against the Go engine, plain and builder arms | `test/conformance/squirrel/wirefuzz.nut`, `make/squirrel-fuzz.mk` |
-| packet wide text | the shared wstring corpus and its bit flips against C++, the composition contracts, the pairing control | `test/packet-wide/squirrel/main.nut`, `make/squirrel-packet-wide.mk` |
 
 ## DEEPEN
 

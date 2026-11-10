@@ -143,7 +143,7 @@ local function skip(r: any, kind: number): boolean
 		if r.at + 8 > r.e then return false end; r.at = r.at + 8; return true
 	elseif kind == 18 or kind == 19 or kind == 24 or kind == 29 then
 		if r.at + 16 > r.e then return false end; r.at = r.at + 16; return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n = r_leb(r); if r.bad then return false end
 		if r.at + n > r.e then return false end; r.at = r.at + n; return true
 	elseif kind == 15 then
@@ -215,30 +215,6 @@ local function utf8_ok(b: buffer, at: number, n: number): boolean
 	return true
 end
 
--- UTF-16 code units, exact and validating (docs/SPEC-TABLES.md §3, §4): a zero
--- code unit, a high surrogate not followed by a low one, and a low surrogate
--- with no high before it are not text, checked as the payload arrives and
--- before the reader's own bound, exactly as kind 12's utf8_ok.
-local function wide_ok(b: buffer, at: number, n: number): boolean
-	local units = n / 2
-	local i = 0
-	while i < units do
-		local u = buffer.readu16(b, at + i * 2)
-		if u == 0 then return false end
-		if u >= 0xD800 and u <= 0xDBFF then
-			if i + 1 >= units then return false end
-			local low = buffer.readu16(b, at + (i + 1) * 2)
-			if low < 0xDC00 or low > 0xDFFF then return false end
-			i = i + 2
-		elseif u >= 0xDC00 and u <= 0xDFFF then
-			return false
-		else
-			i = i + 1
-		end
-	end
-	return true
-end
-
 -- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
 local ID_TABLE_BOUND = 4096
 
@@ -285,6 +261,7 @@ local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, repo
 		local id = ids[ref]
 		local kind = r_u8(w)
 		if id == NodeTableId then
+			if present then bad = true; break end
 			present = true
 			if kind ~= 12 then bad = true; break end
 			local n = r_leb(w)
@@ -566,9 +543,8 @@ local function enum_read(fd: any, r: any, report: any): (any, boolean)
 	return 0, true
 end
 
--- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12 / 33): a
--- string past its bound keeps the last whole UTF-8 code point within it, and
--- a wide string its first N code units less an orphan high surrogate.
+-- A CLAMP KEEPS WHOLE CODE POINTS (docs/SPEC-TABLES.md §3, KIND 12): a string
+-- past its bound keeps the last whole UTF-8 code point within it.
 local function clamp_utf8(b: buffer, at: number, keep: number): number
 	while keep > 0 do
 		local x = buffer.readu8(b, at + keep)
@@ -578,15 +554,7 @@ local function clamp_utf8(b: buffer, at: number, keep: number): number
 	return keep
 end
 
-local function clamp_wide(b: buffer, at: number, units: number): number
-	if units > 0 then
-		local last = buffer.readu16(b, at + (units - 1) * 2)
-		if last >= 0xD800 and last <= 0xDBFF then units = units - 1 end
-	end
-	return units
-end
-
--- a string(N), wstring(N) or bytes(N) value lands in its buffer with its used
+-- a string(N) or bytes(N) value lands in its buffer with its used
 -- length beside it (docs/PORT-LUAU.md, THE TYPE MAPPING; SPEC §4.7)
 local function store_bytes(v: any, slot: string, src: buffer, at: number, nbytes: number, length: number)
 	local dst = v[slot]
@@ -707,6 +675,7 @@ read_map = function(fd: any, r: any, report: any, v: any): boolean
 	if r.bad or r.at + n > r.e then report.malformed = true; return false end
 	local endpos = r.at + n
 	local landed: { any } = {}
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE MAP'S HEADER IS READ AGAINST THE PARENT, as every array's is
 		-- (internal/tablewire decode.go mapField, subTo; docs/SPEC-TABLES.md
@@ -845,6 +814,7 @@ local function read_keyed(fd: any, r: any, report: any, v: any): boolean
 	local endpos = r.at + n
 	local dst: any = nil
 	if v ~= nil and fd.slot ~= nil then dst = v[fd.slot] end
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE KEYED BODY'S HEADER IS READ AGAINST THE PARENT, as every
 		-- array's is (internal/tablewire decode.go keyed, subTo;
@@ -910,7 +880,7 @@ end
 local array_body: any
 local text_elem_bytes: any
 
--- AN ARRAY BODY (§2.9, §3): a body shorter than its header is inert, a
+-- AN ARRAY BODY (§2.9, §3): a body shorter than its header is damage, a
 -- damaged count is malformed, a foreign element kind is one kind_mismatch, a
 -- bounded array's excess is clamped, and elements are bounded by the body.
 -- The second answer is the engine's `selected` (internal/tablewire decode.go,
@@ -922,6 +892,9 @@ read_array = function(fd: any, r: any, report: any, v: any): (boolean, boolean)
 	if r.bad or r.at + n > r.e then report.malformed = true; return false, false end
 	local endpos = r.at + n
 	local selected = true
+	-- a body shorter than its header is damage, not an inert array
+	-- (internal/tablewire wirecheck.go, arrayHeader)
+	if n < 2 then report.malformed = true end
 	if n >= 2 then
 		-- THE HEADER IS READ AGAINST THE PARENT BUFFER (docs/SPEC-TABLES.md
 		-- §2.9, the decoding cursor reads the count against the enclosing
@@ -994,6 +967,9 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		if sub.at + have > sub.e then have = sub.e - sub.at; report.malformed = true end
 		if holder ~= nil then store_bytes(holder, slot, sub.b, sub.at, have, have) end
 		sub.at = sub.at + have
+		-- bytes left inside the array's L after its elements are damage
+		-- (internal/tablewire decode.go, arrayBody)
+		if have == keep and sub.at < sub.e then report.malformed = true end
 		return true
 	end
 	local dst: any
@@ -1027,6 +1003,12 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		end
 		got = i
 	end
+	-- bytes left inside the array's L after its elements are damage
+	-- (internal/tablewire decode.go, arrayBody): every declared element
+	-- was read, yet the body still holds bytes. A clamped or text-total
+	-- truncation leaves bytes by design and already refuses on its own
+	-- counter, so it is not counted again here.
+	if got == keep and keep == count and sub.at < sub.e then report.malformed = true end
 	if fd.array == "counted" and holder ~= nil then holder[slot .. "Count"] = got end
 	-- a list of pointers may hold null slots, which a Luau length cannot see:
 	-- its live length rides as n, the table.pack convention, and the save reads it
@@ -1119,20 +1101,6 @@ read_element = function(fd: any, r: any, e: any, dst: any, i: number, report: an
 		-- a text element is kind 12: its own L, then L bytes (§2.13, §3)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then report.malformed = true; return false end
-		if e.wide then
-			-- a wstring element: L is a byte length, twice the code units (§3)
-			if n % 2 ~= 0 then report.malformed = true; r.at = r.at + n; return true end
-			if not wide_ok(r.b, r.at, n) then report.malformed = true; r.at = r.at + n; return true end
-			local units = n / 2
-			if e.bound ~= nil and units > e.bound then units = clamp_wide(r.b, r.at, e.bound); report.clamped = report.clamped + 1 end
-			local b = dst[i]
-			if typeof(b) ~= "buffer" or buffer.len(b) < units * 2 then b = buffer.create(units * 2); dst[i] = b end
-			buffer.fill(b, 0, 0)
-			buffer.copy(b, 0, r.b, r.at, units * 2)
-			if lens ~= nil then lens[i] = units end
-			r.at = r.at + n
-			return true
-		end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ill-formed UTF-8 or a zero byte in an element is malformed, and
 			-- the element does not land: the list keeps the prefix the body
@@ -1281,7 +1249,7 @@ end
 
 -- ONE FIELD (docs/SPEC-TABLES.md §3): every value read is stored in its slot
 -- in the shape docs/PORT-LUAU.md THE TYPE MAPPING names; a string clamps at a
--- whole code point and a wide string at a whole code unit (§3, KIND 12 / 33).
+-- whole code point (§3, KIND 12).
 -- It answers (ok, selected, intact): ok false stops the body; selected false
 -- is an array of a FOREIGN ELEMENT KIND (§3); intact false is a payload
 -- damaged inside its own L, which a field answers with its declared default
@@ -1296,15 +1264,6 @@ read_field = function(fd: any, r: any, v: any): any
 	elseif s == "str" then
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then _report.malformed = true; return false end
-		if fd.wide then
-			if n % 2 ~= 0 then _report.malformed = true; r.at = r.at + n; return true, nil, false end
-			if not wide_ok(r.b, r.at, n) then _report.malformed = true; r.at = r.at + n; return true, nil, false end
-			local units = n / 2
-			if fd.bound ~= nil and units > fd.bound then units = clamp_wide(r.b, r.at, fd.bound); _report.clamped = _report.clamped + 1 end
-			if fd.slot ~= nil and v ~= nil then store_bytes(v, fd.slot, r.b, r.at, units * 2, units) end
-			r.at = r.at + n
-			return true
-		end
 		if not utf8_ok(r.b, r.at, n) then
 			-- ILL-FORMED TEXT IS DAMAGE (docs/SPEC-TABLES.md §3, §4): the field
 			-- reads its DECLARED DEFAULT, one malformed counts, and the parent
@@ -1630,6 +1589,10 @@ read_body = function(desc: any, r: any, v: any, nested: boolean): boolean
 		if r.at >= r.e then _report.malformed = true; return false end
 		local kind = r_u8(r)
 		local id = _table[ref]
+		-- a repeated field id in one body is damage (docs/SPEC-TABLES.md
+		-- §6.5, wirecheck's R5); the value still lands last-wins on the walk
+		if seen[id] then _report.duplicate = (_report.duplicate or 0) + 1 end
+		seen[id] = true
 		if id == BuildVersionId or id == MessageVocabularyId then _report.malformed = true; return false end
 		if id == NodeTableId then
 			if nested then _report.malformed = true; return false end
@@ -1820,7 +1783,7 @@ function L.loadWalk(root: string, bytes: buffer, report: any): any
 		report.duplicate = (report.duplicate or 0) + (fx.duplicate or 0)
 		return out[1]
 	end
-	if d.integrity ~= nil and d.integrity ~= "" then
+	if d.integrity ~= nil and d.integrity ~= "" and bytes ~= nil and buffer.len(bytes) >= 1 and buffer.readu8(bytes, 0) == 1 then
 		local body = integrityOpen(bytes)
 		if body == nil then
 			report.malformed = true
@@ -1945,7 +1908,7 @@ local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 		if at + fixedWidth > e then return nil end
 		return at + fixedWidth
 	end
-	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
+	if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
 		local n, p = leb(b, at, e)
 		if n == nil or p + n > e then return nil end
 		return p + n
@@ -2242,6 +2205,335 @@ end
 -- wire always answers one name. R.ReadStrict's fixed-form dispatch lives in
 -- schema_refusal.luau; this is the half a form-1 file reaches, including a declared
 -- fixed root handed its form-1 wire.
+-- THE WIRE-ALONE CONDITIONS THE VALUE WALK DOES NOT JUDGE (docs/SPEC-TABLES.md
+-- §6.5, internal/tablewire wirecheck.go): skipped is not unread, so an unknown
+-- field's framed bytes are walked by the same rules as a known one's, a pointer
+-- index is judged against the numbering wherever it rides, and the node
+-- table's own framing (its count, its records' type references and bodies)
+-- is checked even at a root whose descriptor is not of the variable class.
+local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): boolean
+	local recordCount = 0
+	local recs: { any } = {}
+	local nodeSegs = 0
+	for _, s in top.fields do
+		if s.id == NodeTableId then
+			nodeSegs += 1
+			if nodeSegs > 1 then return true end
+			if s.kind ~= 12 then return true end
+			local n, ps = leb(b, s.ps, s.e)
+			if n == nil or ps + n > s.e then return true end
+			local c, p = leb(b, ps, ps + n)
+			if c == nil then return true end
+			while p < ps + n do
+				local tref, q = leb(b, p, ps + n)
+				if tref == nil or tref == 0 or tref > #ids then return true end
+				local tlen, r = leb(b, q, ps + n)
+				if tlen == nil or r + tlen > ps + n then return true end
+				recs[#recs + 1] = { tid = ids[tref], s = r, e = r + tlen }
+				p = r + tlen
+			end
+			if c ~= #recs then return true end
+			recordCount = #recs
+		end
+	end
+	local edges: { [number]: number } = {}
+	local children: { { number } } = {}
+	local curEdges: { number } = {}
+	local depth = 0
+	local checkFields: any
+	local scanPayload: any
+	local scanContent: any
+	local function scanScalar(at: number, kind: number): boolean
+		if kind == 1 then
+			return buffer.readu8(b, at) > 1
+		elseif kind == 10 then
+			if bit32.band(buffer.readu32(b, at), 0x7F800000) == 0x7F800000 then
+				refuseNonFinite({ name = "?" })
+				rep.nonFiniteFloat = _nonFinite
+			end
+		elseif kind == 11 then
+			if bit32.band(buffer.readu32(b, at + 4), 0x7FF00000) == 0x7FF00000 then
+				refuseNonFinite({ name = "?" })
+				rep.nonFiniteFloat = _nonFinite
+			end
+		end
+		return false
+	end
+	local function scanArrayBody(s: number, e: number): boolean
+		if e - s < 2 then return true end
+		local ek = buffer.readu8(b, s)
+		local count, p = leb(b, s + 1, e)
+		if count == nil then return true end
+		if count > 0x7fffffff then
+			refuseCount(rep)
+			return false
+		end
+		local w = width_of(ek)
+		if w > 0 then
+			if p + count * w > e then return true end
+			if ek == 1 or ek == 10 or ek == 11 then
+				for i = 0, count - 1 do
+					if scanScalar(p + i * w, ek) then return true end
+				end
+			end
+			p += count * w
+		else
+			for _ = 1, count do
+				local nxt = stepOver(b, p, e, ek)
+				if nxt == nil then return true end
+				if scanPayload(p, nxt, ek) then return true end
+				p = nxt
+			end
+		end
+		-- bytes left inside an array's or map's L after its elements are damage
+		return p ~= e
+	end
+	local function scanKeyedBody(s: number, e: number): boolean
+		if e - s < 2 then return true end
+		local ek = buffer.readu8(b, s)
+		local count, p = leb(b, s + 1, e)
+		if count == nil then return true end
+		if count > 0x7fffffff then
+			refuseCount(rep)
+			return false
+		end
+		local seenKeys: { [number]: boolean } = {}
+		for _ = 1, count do
+			local key, q = leb(b, p, e)
+			if key == nil or key == 0 or key > #ids then return true end
+			if seenKeys[key] then return true end
+			seenKeys[key] = true
+			local n, after = leb(b, q, e)
+			if n == nil or after + n > e then return true end
+			if scanContent(after, after + n, ek) then return true end
+			p = after + n
+		end
+		-- bytes left inside a keyed array's L after its slots are damage
+		return p ~= e
+	end
+	scanContent = function(s: number, e: number, kind: number): boolean
+		local w = width_of(kind)
+		if w > 0 then
+			if e - s ~= w then return true end
+			return scanScalar(s, kind)
+		end
+		if kind == 12 then
+			return not utf8_ok(b, s, e - s)
+		elseif kind == 31 then
+			return false
+		elseif kind == 32 then
+			return e ~= s
+		elseif kind == 13 or kind == 14 or kind == 16 then
+			if depth >= 128 then return true end
+			depth += 1
+			local bad = false
+			if kind == 13 then
+				local inner = walkBody(b, s, e, ids)
+				bad = inner == nil or inner.term + 1 ~= e or checkFields(inner.fields, false)
+			elseif kind == 14 then
+				bad = scanArrayBody(s, e)
+			else
+				bad = scanKeyedBody(s, e)
+			end
+			depth -= 1
+			return bad
+		elseif kind == 17 or kind == 30 or kind == 15 then
+			return scanPayload(s, e, kind)
+		end
+		return true
+	end
+	scanPayload = function(at: number, e: number, kind: number): boolean
+		local w = width_of(kind)
+		if w > 0 then
+			if e - at ~= w then return true end
+			return scanScalar(at, kind)
+		end
+		if kind == 17 then
+			local idx, nxt = leb(b, at, e)
+			if idx == nil or nxt ~= e or idx > recordCount + 1 then return true end
+			if idx ~= 0 then
+				edges[idx] = (edges[idx] or 0) + 1
+				curEdges[#curEdges + 1] = idx
+			end
+			return false
+		elseif kind == 30 then
+			local ref, nxt = leb(b, at, e)
+			return ref == nil or nxt ~= e or ref > #ids
+		elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+			local n, bs = leb(b, at, e)
+			if n == nil or bs + n ~= e then return true end
+			return scanContent(bs, bs + n, kind)
+		elseif kind == 15 then
+			local ref, p = leb(b, at, e)
+			if ref == nil or ref > #ids then return true end
+			if ref == 0 then return p ~= e end
+			if p >= e then return true end
+			local kb = buffer.readu8(b, p)
+			local n, after = leb(b, p + 1, e)
+			if n == nil or after + n ~= e then return true end
+			local structural = kb == 13 or kb == 14 or kb == 16 or kb == 15
+			if structural then
+				if depth >= 128 then return true end
+				depth += 1
+			end
+			local bad = scanContent(after, after + n, kb)
+			if structural then
+				depth -= 1
+			end
+			return bad
+		end
+		return true
+	end
+	checkFields = function(fields: any, isRoot: boolean): boolean
+		local seen: { [integer]: boolean } = {}
+		for _, f in fields do
+			if seen[f.id] then return true end
+			seen[f.id] = true
+			if f.id == BuildVersionId or f.id == MessageVocabularyId then return true end
+			if f.id == NodeTableId then
+				if not isRoot or f.kind ~= 12 then return true end
+				continue
+			elseif scanPayload(f.ps, f.e, f.kind) then
+				return true
+			end
+		end
+		return false
+	end
+	children[1] = curEdges
+	if checkFields(top.fields, true) then return true end
+	for i, rec in recs do
+		curEdges = {}
+		children[i + 1] = curEdges
+		if rec.tid == StringBlobId or rec.tid == BytesBlobId then
+			if rec.e - rec.s > 0xffffffff then
+				rep.reason = "blob_over_size_cap"
+				return true
+			end
+			if rec.tid == StringBlobId and not utf8_ok(b, rec.s, rec.e - rec.s) then
+				return true
+			end
+		else
+			local inner = walkBody(b, rec.s, rec.e, ids)
+			if inner == nil or inner.term + 1 ~= rec.e then return true end
+			if checkFields(inner.fields, false) then return true end
+		end
+	end
+	for i = 1, recordCount do
+		local rec = recs[i]
+		if (rec.tid == StringBlobId or rec.tid == BytesBlobId) and (edges[i + 1] or 0) > 1 then
+			rep.blobShared = math.max(rep.blobShared or 0, 1)
+		end
+	end
+	local mark: { number } = table.create(recordCount + 1, 0)
+	local stackNode: { number } = { 1 }
+	local stackNext: { number } = { 1 }
+	mark[1] = 1
+	while #stackNode > 0 do
+		local topIdx = #stackNode
+		local u = stackNode[topIdx]
+		local out = children[u]
+		local nxt = stackNext[topIdx]
+		if nxt > #out then
+			mark[u] = 2
+			stackNode[topIdx] = nil
+			stackNext[topIdx] = nil
+		else
+			stackNext[topIdx] = nxt + 1
+			local vIdx = out[nxt]
+			if mark[vIdx] == 1 then
+				return true
+			elseif mark[vIdx] == 0 then
+				mark[vIdx] = 1
+				stackNode[topIdx + 1] = vIdx
+				stackNext[topIdx + 1] = 1
+			end
+		end
+	end
+	for i = 1, recordCount do
+		if mark[i + 1] == 0 then return true end
+	end
+	return false
+end
+
+-- the variable-form half of the strict read, shared by ReadStrict (a
+-- non-fixed root, or a fixed root's form-3 dispatch above it) and by
+-- ReadStrictVariable (a fixed root handed form-1 bytes, for the framing
+-- surface alone: docs/LAYERS/1-framing.md, test/conformance/go/fixed.go's
+-- variableLoad). It assumes the report is reset and the buffer is non-empty.
+local function strictVariable(root: string, bytes: buffer, rep: any, d: any): any
+	local b = bytes
+	local form = buffer.readu8(b, 0)
+	if form == 2 then rep.reason = "message_form_as_file"; return nil end
+	if form ~= 1 then rep.reason = "newer_form"; return nil end
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(b)
+		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
+		b = body
+	end
+	local fr = frame(b)
+	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
+	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+		rep.malformed = true
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local opened = open(b, rep)
+	if opened == nil then
+		rep.reason = "wire_damaged"
+		return nil
+	end
+	local v = loadOpened(root, b, rep, opened)
+	if rep.nonFiniteFloat ~= nil then
+		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
+		rep.reason = "non_finite_float"
+		rep.field = rep.nonFiniteFloat
+		return nil
+	end
+	if _countRefused then
+		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
+		-- already named it count_over_extent_cap and set refused
+		return nil
+	end
+	-- WIRE-ALONE DAMAGE (docs/SPEC-TABLES.md §6.5): the conditions the value
+	-- walk does not judge are declared after the named refusals, so an over-cap
+	-- array/map count (count_over_extent_cap, §2.9) and a NaN or infinity
+	-- (non_finite_float, §3.3) answer their own names and never fall through to
+	-- wire_damaged.
+	if top ~= nil then
+		local damaged = wireDamage(b, top, fr.ids, rep)
+		if rep.nonFiniteFloat ~= nil then
+			rep.reason = "non_finite_float"
+			rep.field = rep.nonFiniteFloat
+			return nil
+		end
+		if _countRefused then
+			return nil
+		end
+		if damaged then
+			if rep.reason == "blob_over_size_cap" then return nil end
+			rep.malformed = true
+			rep.reason = "wire_damaged"
+			return nil
+		end
+	end
+	for _, k in REFUSING do
+		if moved(rep, k) then
+			if k == "missingRequired" then
+				-- Go's TableMissingRequired text (docs/SPEC-TABLES.md §2.3)
+				rep.reason = "missing_required: " .. (rep.missingName or "")
+				rep.field = rep.missingName
+			else
+				rep.reason = NAMES[k]
+				rep.field = witness(root, b, k)
+			end
+			return nil
+		end
+	end
+	if rep.unknown > 0 then rep.unknownField = witness(root, b, "unknown") end
+	if rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end
+	return v
+end
+
 function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	local rep: any = report or {}
 	reset(rep)
@@ -2277,54 +2569,23 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 		end
 		return out[1]
 	end
-	local form = buffer.readu8(b, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
-	if d.integrity ~= nil and d.integrity ~= "" then
-		local body = integrityOpen(b)
-		if body == nil then rep.malformed = true; rep.reason = "integrity_mismatch"; return nil end
-		b = body
-	end
-	local fr = frame(b)
-	local top = fr ~= nil and walkBody(b, 1, fr.e, fr.ids) or nil
-	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
+	return strictVariable(root, b, rep, d)
+end
+
+-- THE VARIABLE FORM'S STRICT READ AT ANY ROOT (docs/LAYERS/1-framing.md):
+-- the framing surface's read of a form-1 file at a fixed root, where
+-- ReadStrict itself answers previous_form. The descriptor is never
+-- modified; the save that follows still sees the fixed root and writes
+-- form 3.
+function L.ReadStrictVariable(root: string, bytes: buffer, report: any): any
+	local rep: any = report or {}
+	reset(rep)
+	if bytes == nil or buffer.len(bytes) < 1 then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local opened = open(b, rep)
-	if opened == nil then
-		rep.reason = "wire_damaged"
-		return nil
-	end
-	local v = loadOpened(root, b, rep, opened)
-	if rep.nonFiniteFloat ~= nil then
-		-- every read's refusal (docs/SPEC-TABLES.md §3.3), the field named
-		rep.reason = "non_finite_float"
-		rep.field = rep.nonFiniteFloat
-		return nil
-	end
-	if _countRefused then
-		-- the storage cap refusal (docs/SPEC-TABLES.md §2.9, §6.5): the walk
-		-- already named it count_over_extent_cap and set refused
-		return nil
-	end
-	for _, k in REFUSING do
-		if moved(rep, k) then
-			if k == "missingRequired" then
-				-- Go's TableMissingRequired text (docs/SPEC-TABLES.md §2.3)
-				rep.reason = "missing_required: " .. (rep.missingName or "")
-				rep.field = rep.missingName
-			else
-				rep.reason = NAMES[k]
-				rep.field = witness(root, b, k)
-			end
-			return nil
-		end
-	end
-	if rep.unknown > 0 then rep.unknownField = witness(root, b, "unknown") end
-	if rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end
-	return v
+	return strictVariable(root, bytes :: buffer, rep, S.lookup(root))
 end
 
 -- resetReport is the report at rest, shared with schema_refusal.luau's fixed path.

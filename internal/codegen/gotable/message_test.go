@@ -24,13 +24,12 @@ func TestMessageWriter(t *testing.T) {
  big uint128
  text string(15)
  blob bytes(9)
- wide wstring(8)
  items [..3]int32
  grades [Grade]Nested
  choice Choice
  optional ?Nested }
  `
-	text := `{"yes":true,"small":-3,"raw":18446744073709551615,"big":340282366920938463463374607431768211455,"text":"hi😀","blob":"AAECAw==","wide":"hello","items":[-3,7],"grades":{"Silver":{"n":4}},"choice":{"pair":[5,9]},"optional":{}}`
+	text := `{"yes":true,"small":-3,"raw":18446744073709551615,"big":340282366920938463463374607431768211455,"text":"hi😀","blob":"AAECAw==","items":[-3,7],"grades":{"Silver":{"n":4}},"choice":{"pair":[5,9]},"optional":{}}`
 	u := unitFrom(t, schema)
 	m := tabletext.NewModel(u)
 	v := m.New(m.Lookup("Root"))

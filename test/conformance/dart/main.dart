@@ -32,7 +32,6 @@ import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tab
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
-import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
 import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
 import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
 import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
@@ -64,8 +63,6 @@ import '../../../build/tables-generated-dart/m1/Tblm1Fixed.dart' as tblm1_fixed;
 import '../../../build/tables-generated-dart/m1/M1Fixed.dart' as m1_fixed;
 import '../../../build/tables-generated-dart/m2/Tblm2Fixed.dart' as tblm2_fixed;
 import '../../../build/tables-generated-dart/m2/M2Fixed.dart' as m2_fixed;
-import '../../../build/tables-generated-dart/wide/WideFixed.dart' as widedemo_fixed;
-import '../../../build/tables-generated-dart/wide/CaptionFixed.dart' as caption_fixed;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoFixed.dart' as scalardemo_fixed;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalarsFixed.dart' as scalars_fixed;
 import '../../../build/tables-generated-dart-scalars/scalars/Int128.dart' as scalars_i128;
@@ -866,16 +863,6 @@ void _w2fBytes(String s, Uint8List dst, void Function(int) setLen) {
 
 String _f2wBytes(Uint8List src, int len) =>
     latin1.decode(src.sublist(0, len));
-
-void _w2fWide(String s, Uint16List dst, void Function(int) setLen) {
-  final cu = s.codeUnits;
-  final n = cu.length <= dst.length ? cu.length : dst.length;
-  dst.setRange(0, n, cu);
-  setLen(n);
-}
-
-String _f2wWide(Uint16List src, int len) =>
-    String.fromCharCodes(src.sublist(0, len));
 
 scalars_i128.Int128 _w2fInt128(BigInt b) {
   final u = b.toUnsigned(128);
@@ -1989,45 +1976,6 @@ void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
   w.field1911 = f.field1911;
   w.field1912 = f.field1912;
 }
-void _w2f_wide_Line(widedemo.Line w, dynamic f) {
-  _w2fWide(w.text, f.text, (n) => f.textLength = n);
-}
-void _f2w_wide_Line(dynamic f, widedemo.Line w) {
-  w.text = _f2wWide(f.text, f.textLength);
-}
-void _w2f_wide_Body(widedemo.Body w, widedemo_fixed.Body f) {
-  f.type = (w.armTag as dynamic);
-  _w2fWide(w.wide, f.wide, (n) => f.wideLength = n);
-  _w2fUtf8(w.narrow, f.narrow, (n) => f.narrowLength = n);
-  f.tally = w.tally;
-}
-void _f2w_wide_Body(widedemo_fixed.Body f, widedemo.Body w) {
-  w.armTag = (f.type as int);
-  w.wide = _f2wWide(f.wide, f.wideLength);
-  w.narrow = _f2wUtf8(f.narrow, f.narrowLength);
-  w.tally = f.tally;
-}
-void _w2f_wide_Caption(widedemo.Caption w, widedemo_fixed.Caption f) {
-  _w2fWide(w.title, f.title, (n) => f.titleLength = n);
-  _w2f_wide_Line(w.line, f.line);
-  f.linesCount = w.lines.length;
-  for (var i = 0; i < w.lines.length; i++) _w2f_wide_Line(w.lines[i], f.lines[i]);
-  _w2f_wide_Body(w.body, f.body);
-}
-void _f2w_wide_Caption(widedemo_fixed.Caption f, widedemo.Caption w) {
-  w.title = _f2wWide(f.title, f.titleLength);
-  _f2w_wide_Line(f.line, w.line);
-  w.lines = List<widedemo.Line>.generate(f.linesCount, (i) { final e = widedemo.Line(); _f2w_wide_Line(f.lines[i], e); return e; });
-  _f2w_wide_Body(f.body, w.body);
-}
-void _w2f_wide_Stamp(widedemo.Stamp w, widedemo_fixed.Stamp f) {
-  _w2fWide(w.label, f.label, (n) => f.labelLength = n);
-  f.seq = w.seq;
-}
-void _f2w_wide_Stamp(widedemo_fixed.Stamp f, widedemo.Stamp w) {
-  w.label = _f2wWide(f.label, f.labelLength);
-  w.seq = f.seq;
-}
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
@@ -2327,26 +2275,6 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
       }
       return _fixedResave(wire, vocabdemo_fixed.Wide09.new, vocab.wide09FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, vocab.wide09FixedLoad, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
-    case 'widedemo Caption':
-      if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = widedemo.TableWireReport();
-        final w = widedemo.captionWireLoad(wire, rep);
-        if (rep.refused) return null;
-        final f = widedemo_fixed.Caption();
-        _w2f_wide_Caption(w, f);
-        return _fixedSaveOne(f, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
-      }
-      return _fixedResave(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.captionFixedLoad, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
-    case 'widedemo Stamp':
-      if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = widedemo.TableWireReport();
-        final w = widedemo.stampWireLoad(wire, rep);
-        if (rep.refused) return null;
-        final f = widedemo_fixed.Stamp();
-        _w2f_wide_Stamp(w, f);
-        return _fixedSaveOne(f, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
-      }
-      return _fixedResave(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
   }
   return null;
 }
@@ -2679,20 +2607,6 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = vocabdemo_fixed.Wide09();
       _w2f_vocab_Wide09(w, f);
       return _fixedSaveOne(f, vocab.wide09FixedMeasure, vocab.wide09FixedSave);
-    case 'widedemo Caption':
-      final rep = widedemo.TableTextReport();
-      final w = widedemo.captionFromJson(text, rep);
-      if (rep.refused) return null;
-      final f = widedemo_fixed.Caption();
-      _w2f_wide_Caption(w, f);
-      return _fixedSaveOne(f, caption_fixed.captionFixedMeasure, caption_fixed.captionFixedSave);
-    case 'widedemo Stamp':
-      final rep = widedemo.TableTextReport();
-      final w = widedemo.stampFromJson(text, rep);
-      if (rep.refused) return null;
-      final f = widedemo_fixed.Stamp();
-      _w2f_wide_Stamp(w, f);
-      return _fixedSaveOne(f, caption_fixed.stampFixedMeasure, caption_fixed.stampFixedSave);
   }
   return null;
 }
@@ -3140,30 +3054,6 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = vocabdemo.Wide09();
       _f2w_vocab_Wide09(f, w);
       return vocabdemo.wide09ToJson(w);
-    case 'widedemo Caption':
-      if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = widedemo.TableWireReport();
-        final w = widedemo.captionWireLoad(wire, rep);
-        if (rep.refused) return null;
-        return widedemo.captionToJson(w);
-      }
-      final f = _fixedLoadOne(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.captionFixedLoad);
-      if (f == null) return null;
-      final w = widedemo.Caption();
-      _f2w_wide_Caption(f, w);
-      return widedemo.captionToJson(w);
-    case 'widedemo Stamp':
-      if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = widedemo.TableWireReport();
-        final w = widedemo.stampWireLoad(wire, rep);
-        if (rep.refused) return null;
-        return widedemo.stampToJson(w);
-      }
-      final f = _fixedLoadOne(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad);
-      if (f == null) return null;
-      final w = widedemo.Stamp();
-      _f2w_wide_Stamp(f, w);
-      return widedemo.stampToJson(w);
   }
   return null;
 }
@@ -3356,10 +3246,6 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, vocabdemo_fixed.Wide00.new, vocab.wide00FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab.wide00FixedLoad);
     case 'vocabdemo Wide09':
       return _fixedReportLine(wire, vocabdemo_fixed.Wide09.new, vocab.wide09FixedNewPlan, vocabdemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), vocab.wide09FixedLoad);
-    case 'widedemo Caption':
-      return _fixedReportLine(wire, widedemo_fixed.Caption.new, caption_fixed.captionFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), caption_fixed.captionFixedLoad);
-    case 'widedemo Stamp':
-      return _fixedReportLine(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), caption_fixed.stampFixedLoad);
     case 'tbla2 Root':
       return _fixedReportLine(wire, tbla2_fixed.Root.new, a2_fixed.rootFixedNewPlan, tbla2_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), a2_fixed.rootFixedLoad);
     case 'tblk1 Root':
@@ -3880,14 +3766,6 @@ int surfaceJsonWrite(String outDir) {
           _f2w_examples_ProfileConfig(fx, v);
           if (f[5] == 'narrow:name') v.name = String.fromCharCodes(const <int>[0x61, 0xd800, 0x62]);
           outText = tabledemo.profileConfigToJson(v);
-          break;
-        case 'widedemo Stamp':
-          final fx = _fixedLoadOne(wire, widedemo_fixed.Stamp.new, caption_fixed.stampFixedNewPlan, widedemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, caption_fixed.stampFixedLoad);
-          if (fx == null) return 1;
-          final v = widedemo.Stamp();
-          _f2w_wide_Stamp(fx, v);
-          if (f[5] == 'wide:label') v.label = String.fromCharCodes(const <int>[0x61, 0xd800, 0x62]);
-          outText = widedemo.stampToJson(v);
           break;
       }
     } on StateError {
@@ -4825,12 +4703,6 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'vocabdemo Wide09':
       return _FuzzRoot(
           _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave));
-    case 'widedemo Caption':
-      return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoad, widedemo.captionWireSave));
-    case 'widedemo Stamp':
-      return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave));
     case 'widelist Wide':
       return _FuzzRoot(
           _plainCodec(widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoad, widelist.wideWireSave),

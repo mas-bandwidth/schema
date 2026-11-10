@@ -542,12 +542,165 @@ static SCHEMA_UNUSED int blockdemo_table_reader_skip( blockdemo_table_reader_t *
             if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
             /* fall through */
-        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+        case 12: case 13: case 14: case 16: case 31: case 32:
             if ( !blockdemo_table_reader_leb( r, &n ) || !blockdemo_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;
         default: return 0;
     }
     if ( !blockdemo_table_reader_has( r, width ) ) { return 0; } r->offset += width; return 1;
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_utf8( const uint8_t * p, uint64_t n )
+{
+    uint64_t i = 0;
+    while ( i < n )
+    {
+        uint8_t b = p[i++]; uint32_t cp; int more, j;
+        if ( b == 0 ) { return 0; } if ( b < 128 ) { continue; }
+        if ( b >= 194 && b <= 223 ) { cp = b & 31; more = 1; }
+        else if ( b >= 224 && b <= 239 ) { cp = b & 15; more = 2; }
+        else if ( b >= 240 && b <= 244 ) { cp = b & 7; more = 3; }
+        else { return 0; }
+        if ( (uint64_t) more > n-i ) { return 0; }
+        for ( j = 0; j < more; j++ ) { b = p[i++]; if ( (b & 192) != 128 ) { return 0; } cp = (cp << 6) | (b & 63); }
+        if ( (more == 2 && cp < 2048) || (more == 3 && cp < 65536) || cp > 1114111 || (cp >= 55296 && cp <= 57343) ) { return 0; }
+    }
+    return 1;
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
+static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root );
+static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth );
+static SCHEMA_UNUSED int blockdemo_table_skip_framed( blockdemo_table_reader_t sub, uint8_t kind, int64_t nodes, int depth )
+{
+    switch ( kind )
+    {
+        case 12: return blockdemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
+        case 31: return 1;
+        case 32: return sub.size == 0;
+        case 13: return blockdemo_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
+        case 14: case 16:
+        {
+            blockdemo_table_reader_t rr = sub;
+            return blockdemo_table_skip_array( &rr, kind == 16, nodes, depth );
+        }
+        case 15: case 17: case 30:
+        {
+            blockdemo_table_reader_t rr = sub;
+            if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+        default:
+        {
+            blockdemo_table_reader_t rr = sub;
+            if ( !blockdemo_table_skip_value( &rr, kind, nodes, depth ) ) { return 0; }
+            return rr.offset == sub.size;
+        }
+    }
+}
+static SCHEMA_UNUSED int64_t blockdemo_table_skip_body( blockdemo_table_reader_t r, int64_t nodes, int depth, int root )
+{
+    uint8_t seen[512];
+    memset( seen, 0, sizeof( seen ) );
+    for ( ;; )
+    {
+        uint64_t ref, id; uint8_t kind;
+        if ( !blockdemo_table_reader_leb( &r, &ref ) ) { return -1; }
+        if ( ref == 0 ) { return r.offset; }
+        if ( ref > r.id_count || ref > 4096 || !blockdemo_table_reader_has( &r, 1 ) ) { return -1; }
+        if ( seen[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { return -1; }
+        seen[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7));
+        id = blockdemo_table_reader_id_at( &r, ref ); kind = blockdemo_table_reader_get8( &r );
+        if ( id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { return -1; }
+        if ( id == 0xffffffffffffffffull )
+        {
+            blockdemo_table_reader_t payload;
+            if ( !root || kind != 12 || !blockdemo_table_reader_span( &r, &payload ) ) { return -1; }
+            continue;
+        }
+        if ( !blockdemo_table_skip_value( &r, kind, nodes, depth ) ) { return -1; }
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_array( blockdemo_table_reader_t * sub, int keyed, int64_t nodes, int depth )
+{
+    uint8_t elem_kind; uint64_t count, i;
+    if ( sub->size < 2 ) { return 0; }
+    elem_kind = blockdemo_table_reader_get8( sub );
+    if ( !blockdemo_table_reader_leb( sub, &count ) ) { return 0; }
+    if ( count > 2147483647ull ) { return 0; }
+    if ( count > (uint64_t)(sub->size - sub->offset) ) { return 0; }
+    if ( !keyed )
+    {
+        for ( i = 0; i < count; i++ ) { if ( !blockdemo_table_skip_value( sub, elem_kind, nodes, depth ) ) { return 0; } }
+        return sub->offset == sub->size;
+    }
+    {
+        uint8_t seen[512];
+        memset( seen, 0, sizeof( seen ) );
+        for ( i = 0; i < count; i++ )
+        {
+            uint64_t key; blockdemo_table_reader_t elem;
+            if ( !blockdemo_table_reader_leb( sub, &key ) || key == 0 || key > sub->id_count || key > 4096 ) { return 0; }
+            if ( seen[(key-1)>>3] & (uint8_t)(1u << ((key-1) & 7)) ) { return 0; }
+            seen[(key-1)>>3] |= (uint8_t)(1u << ((key-1) & 7));
+            if ( !blockdemo_table_reader_span( sub, &elem ) ) { return 0; }
+            if ( !blockdemo_table_skip_framed( elem, elem_kind, nodes, depth ) ) { return 0; }
+        }
+        return sub->offset == sub->size;
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_skip_value( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes, int depth )
+{
+    uint64_t n;
+    if ( depth > 128 ) { return 0; }
+    switch ( kind )
+    {
+        case 1: return blockdemo_table_reader_has( r, 1 ) && blockdemo_table_reader_get8( r ) <= 1;
+        case 10: return blockdemo_table_reader_has( r, 4 ) && ( blockdemo_table_reader_get32( r ) & 0x7f800000u ) != 0x7f800000u;
+        case 11: return blockdemo_table_reader_has( r, 8 ) && ( blockdemo_table_reader_get64( r ) & 0x7ff0000000000000ull ) != 0x7ff0000000000000ull;
+        case 17:
+            if ( !blockdemo_table_reader_leb( r, &n ) ) { return 0; }
+            return n == 0 || ( n > 1 && n <= (uint64_t)(nodes + 1) );
+        case 30:
+            if ( !blockdemo_table_reader_leb( r, &n ) ) { return 0; }
+            return n <= r->id_count;
+        case 15:
+        {
+            uint64_t ref; uint8_t arm_kind; blockdemo_table_reader_t arm;
+            if ( !blockdemo_table_reader_leb( r, &ref ) || ref > r->id_count ) { return 0; }
+            if ( ref == 0 ) { return 1; }
+            if ( !blockdemo_table_reader_has( r, 1 ) ) { return 0; }
+            arm_kind = blockdemo_table_reader_get8( r );
+            if ( !blockdemo_table_reader_span( r, &arm ) ) { return 0; }
+            return blockdemo_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
+        }
+        case 12: case 13: case 14: case 16: case 31: case 32:
+        {
+            blockdemo_table_reader_t sub;
+            if ( !blockdemo_table_reader_span( r, &sub ) ) { return 0; }
+            if ( kind == 13 ) { return depth < 128 && blockdemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size; }
+            if ( kind == 14 || kind == 16 ) { return depth < 128 && blockdemo_table_skip_array( &sub, kind == 16, nodes, depth + 1 ); }
+            return blockdemo_table_skip_framed( sub, kind, nodes, depth );
+        }
+        default:
+        {
+            int width = 0;
+            switch ( kind )
+            {
+                case 2: case 6: case 20: case 25: width = 1; break;
+                case 3: case 7: case 21: case 26: width = 2; break;
+                case 4: case 8: case 22: case 27: width = 4; break;
+                case 5: case 9: case 23: case 28: case 36: width = 8; break;
+                case 18: case 19: case 24: case 29: width = 16; break;
+                default: return 0;
+            }
+            if ( !blockdemo_table_reader_has( r, width ) ) { return 0; }
+            r->offset += width;
+            return 1;
+        }
+    }
+}
+static SCHEMA_UNUSED int blockdemo_table_reader_skip_checked( blockdemo_table_reader_t * r, uint8_t kind, int64_t nodes )
+{
+    return blockdemo_table_skip_value( r, kind, nodes, 0 );
 }
 static SCHEMA_UNUSED int blockdemo_table_kind_widens( uint8_t kind, uint8_t declared )
 {
@@ -710,14 +863,13 @@ enum
     BLOCKDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BLOCKDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BLOCKDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: land byte != 0 as 1, never verbatim (fix 2) */
+    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
 };
 
 /* meta on a kTableFixedText entry */
 enum
 {
     BLOCKDEMO_K_TABLE_FIXED_TEXT_UTF8  = 1,
-    BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE  = 2,
     BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES = 3
 };
 
@@ -776,9 +928,8 @@ enum
     SCHEMA_BLOCKDEMO_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_BLOCKDEMO_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-       string(N)'s used bytes that are not well-formed UTF-8 — or a
-       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
-       name, the verdict the packet reader gives, this form having no L to
+       string(N)'s used bytes that are not well-formed UTF-8 refuse the read
+       by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED = 20
 };
@@ -868,6 +1019,13 @@ typedef struct blockdemo_table_fixed_entry_t
        inside an arm answers to BOTH outer tags and its own. */
     uint32_t guard_count;
     uint32_t guard_index;
+    /* elem IS A COPY ENTRY'S ELEMENT WIDTH IN BYTES (1, 2, 4 or 8; a 128-bit
+       value rides as two 8-byte lanes). The wire is little-endian on every
+       host (§3.4), so on a big-endian host a copy must reverse each element
+       rather than land the wire bytes in host order. Zero is a raw byte copy,
+       which is every non-copy op and every byte-sized element. It sits last
+       so existing positional initializers keep their meaning. */
+    uint8_t elem;
 } blockdemo_table_fixed_entry_t;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -967,6 +1125,27 @@ static SCHEMA_UNUSED uint64_t blockdemo_table_fixed_get64( const uint8_t * b )
     for ( i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
     return v;
 }
+/* A LITTLE-ENDIAN LOAD OF 1..8 BYTES, zero-extended. The widen, ordinal and
+   const ops read their source through this, never through a memcpy into a
+   native word, which would read the wire in host order. */
+static SCHEMA_UNUSED uint64_t blockdemo_table_fixed_get_le( const uint8_t * b, uint32_t size )
+{
+    uint64_t v = 0;
+    uint32_t i;
+    for ( i = 0; i < size && i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+/* THIS BUILD'S HOST ORDER, for the fixed form only. The wire is
+   little-endian on every host, so only a copy into native storage consults
+   it. SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN lets a little-endian host compile
+   the big-endian copy path so a test can hold its byte image. */
+#if defined( SCHEMA_BLOCKDEMO_TABLE_FIXED_FORCE_BIG_ENDIAN )
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 1;
+#elif defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 1;
+#else
+static SCHEMA_UNUSED const int blockdemo_table_fixed_big_endian_host = 0;
+#endif
 
 /* THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
    byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
@@ -1060,6 +1239,26 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_co
     memcpy( d, s, n );
 }
 
+/* A COPY FROM THE WIRE INTO NATIVE STORAGE. On a little-endian host the bulk
+   copy above IS the wire image and stays one copy. On a big-endian host each
+   element of elem bytes is reversed, so the value lands in this host's order
+   and not in the wire's. An elem of 0 or 1, or a size that is not a whole
+   number of elements, is a raw byte copy. */
+static SCHEMA_UNUSED void blockdemo_table_fixed_copy_le( uint8_t * dst, const uint8_t * src, uint32_t size, uint8_t elem )
+{
+    if ( blockdemo_table_fixed_big_endian_host && ( elem == 2 || elem == 4 || elem == 8 ) && size % elem == 0 )
+    {
+        uint32_t i;
+        for ( i = 0; i < size; i += elem )
+        {
+            uint8_t j;
+            for ( j = 0; j < elem; ++j ) { dst[i + j] = src[i + elem - 1 - j]; }
+        }
+        return;
+    }
+    blockdemo_table_fixed_copy_run( dst, src, size );
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1073,24 +1272,27 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_co
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_apply( const blockdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened )
+                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
 {
     switch ( p->op )
     {
         case BLOCKDEMO_K_TABLE_FIXED_COPY:
         {
-            blockdemo_table_fixed_copy_run( dst + p->dst, src + p->src, p->size );
+            blockdemo_table_fixed_copy_le( dst + p->dst, src + p->src, p->size, p->elem );
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_BOOL:
         {
-            /* A BOOL LANDS AS byte != 0. A plain copy would let a forged 0x02
-               ride into a bool, which is a value the language does not promise
-               holds a 0 or 1 (docs/FIXED-FORM-ALGORITHM.md §4.5). */
+            /* A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 IS WIRE DAMAGE, not a
+               value out of range: no writer emits one, so it is neither
+               stored verbatim nor normalised to 1
+               (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 2). The byte still
+               lands normalised here; table_fixed_run turns damaged into
+               the wire_damaged refusal and the load resets every record. */
             uint8_t * d = dst + p->dst;
             const uint8_t * s = src + p->src;
             uint32_t i;
-            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*out_of_range)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
+            for ( i = 0; i < p->size; ++i ) { if ( s[i] > 1 ) { (*damaged)++; } d[i] = (uint8_t) ( s[i] != 0 ); }
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_COUNT:
@@ -1103,8 +1305,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         }
         case BLOCKDEMO_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( p->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
-            const uint32_t cap = p->size / unit;
+            const uint32_t cap = p->size;
             int32_t v = (int32_t) blockdemo_table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
@@ -1113,11 +1314,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             if ( p->meta != BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
-                   unit longer than the bound for exactly this. A store, not a
+                   byte longer than the bound for exactly this. A store, not a
                    call: memset of a runtime length is a call. */
-                uint8_t * end = dst + p->aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p->aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -1128,7 +1327,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
                reinterpreted. The table is the plan's own, laid down by the
                compiler above the entries. */
             uint64_t raw = 0;
-            memcpy( &raw, src + p->src, p->size );
+            raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
             uint64_t v = 0;
             if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
@@ -1146,7 +1345,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN:
         {
             uint64_t raw = 0;
-            memcpy( &raw, src + p->src, p->size );
+            raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
             if ( p->sign != 0 )
             {
                 /* TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
@@ -1165,7 +1364,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
                hardware cast, matching the C++ twin's widenf — an f32 stays an
                f32 and the value rides the conversion, no bit reassembly. */
             float f = 0.0f;
-            memcpy( &f, src + p->src, 4 );
+            { const uint32_t bits = blockdemo_table_fixed_get32( src + p->src ); memcpy( &f, &bits, 4 ); }
             const double d = (double) f;
             memcpy( dst + p->dst, &d, 8 );
             (*widened)++;
@@ -1186,7 +1385,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             if ( p->aux == 0 && p->dstsize != 0 && p->guard == SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD )
             {
                 uint64_t raw = 0;
-                memcpy( &raw, src + p->src, p->size );
+                raw = blockdemo_table_fixed_get_le( src + p->src, p->size );
                 if ( raw > (uint64_t) p->dstsize ) { (*out_of_range)++; }
             }
             break;
@@ -1218,6 +1417,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        and every store to a field would then reload it. */
     int32_t out_of_range = 0;
     int32_t widened = 0;
+    int32_t damaged = 0;
     int32_t i;
     /* THE ORDINAL REMAP TABLES RIDE ABOVE THE ENTRIES IN THE SAME STORAGE, so
        the plan's own base is the base an ordinal entry's aux is measured from.
@@ -1226,7 +1426,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened );
+        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1252,9 +1452,10 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
             if ( blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened );
+        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
     }
-    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
+    if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
+    else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
     report->widened += widened;
 }
 
@@ -1335,10 +1536,9 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_entry_lands( const blockdemo_tab
         case BLOCKDEMO_K_TABLE_FIXED_COUNT: lands[1] = e->dst + 4u; break;
         case BLOCKDEMO_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
             lands[1] = e->dst + 4u;
             lands[2] = e->aux;
-            lands[3] = e->aux + e->size + ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : unit );
+            lands[3] = e->aux + e->size + ( e->meta == BLOCKDEMO_K_TABLE_FIXED_TEXT_BYTES ? 0u : 1u );
             break;
         }
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
@@ -1575,14 +1775,14 @@ static SCHEMA_UNUSED int blockdemo_table_fixed_leaf_size( uint8_t kind, uint32_t
 static SCHEMA_UNUSED int blockdemo_table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-   reserved: neither is a kind a declaration spells, so neither is ever an
-   entry's kind. */
+   the no-payload variant 32, and the ONE kind this form's layout adds, the
+   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   reserved: none is a kind a declaration spells, so none is ever an entry's
+   kind. */
 static SCHEMA_UNUSED int blockdemo_table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 /* table_fixed_check_entry validates the subtree rooted at i and answers how
@@ -1684,12 +1884,6 @@ static SCHEMA_UNUSED int32_t blockdemo_table_fixed_check_entry( blockdemo_table_
         {
             if ( e.children != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
             if ( e.size < 4u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
-            break;
-        }
-        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
-        {
-            if ( e.children != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_KIND_INVALID ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { blockdemo_table_fixed_fail( c, SCHEMA_BLOCKDEMO_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
             break;
         }
         /* Every kind of the closed set is either a leaf above or a case here,
@@ -2162,7 +2356,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 blockdemo_table_fixed_push( c, e );
                 break;
             }
-            case 12: case 33: /* text */
+            case 12: /* text */
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 blockdemo_table_fixed_entry_t e = blockdemo_table_fixed_entry_zero();
@@ -2179,6 +2373,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
                 {
                     e.size = me.size;
                     e.op = ( me.kind == 1 ) ? BLOCKDEMO_K_TABLE_FIXED_BOOL : BLOCKDEMO_K_TABLE_FIXED_COPY;
+                    e.elem = (uint8_t) ( me.size == 16 ? 8 : me.size );
                     blockdemo_table_fixed_push( c, e );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
@@ -2247,7 +2442,7 @@ static SCHEMA_UNUSED int32_t blockdemo_table_fixed_compile( const blockdemo_tabl
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
-             plan[out-1].argw2 == plan[i].argw2 &&
+             plan[out-1].argw2 == plan[i].argw2 && plan[out-1].elem == plan[i].elem &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -2381,6 +2576,7 @@ static SCHEMA_UNUSED void blockdemo_table_non_finite_float( blockdemo_table_repo
 {
     report->refused = 1;
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT;
     report->non_finite_floats++;
 }
 /* table_non_finite_refused is that load's end: 1 when the walk met a
@@ -2391,6 +2587,7 @@ static SCHEMA_UNUSED int blockdemo_table_non_finite_refused( blockdemo_table_rep
     if ( report->non_finite_floats == before ) { return 0; }
     report->refused = 1;
     report->reason = SCHEMA_BLOCKDEMO_TABLE_NON_FINITE_FLOAT;
+    report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_NON_FINITE_FLOAT;
     return 1;
 }
 static SCHEMA_UNUSED uint32_t schema_blockdemo_table_crc32c_( const uint8_t * data, int64_t bytes )
@@ -2652,11 +2849,6 @@ static SCHEMA_UNUSED void blockdemo_table_cook_put128(uint8_t * at,uint64_t lo,u
 }
 static SCHEMA_UNUSED void blockdemo_table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
 { if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
-static SCHEMA_UNUSED void blockdemo_table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
-{
-    int64_t i, count=used<capacity ? used : capacity;
-    for(i=0;i<count;i++) { blockdemo_table_cook_put(at+i*2,source[i],2,order); }
-}
 static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
 {
     blockdemo_table_cook_put(raw,blockdemo_table_cook_magic,8,order); blockdemo_table_cook_put(raw+8,version,8,order);
@@ -2667,8 +2859,8 @@ static SCHEMA_UNUSED void blockdemo_table_cook_header(uint8_t * raw,uint64_t ver
 #endif
 #ifndef SCHEMA_BLOCKDEMO_TABLE_MESSAGE
 #define SCHEMA_BLOCKDEMO_TABLE_MESSAGE
-enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=88, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=912, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
-static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xa7,0xdd,0xa3,0x09,0xa2,0x89,0x6e,0xc0,0x02,0x0e,0xe8,0x06,0x06,0xe5,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xc7,0xd4,0x7b,0x26,0xb0,0x9d,0x29,0x5f,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+enum { BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE=7, BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE=87, BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES=903, BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX=256 };
+static const uint8_t BLOCKDEMO_K_TABLE_ANNOUNCE[BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES]={0x01,0x01,0x09,0xa7,0xdd,0xa3,0x09,0xa2,0x89,0x6e,0xc0,0x02,0x0e,0xdf,0x06,0x06,0xdc,0x06,0x77,0x6e,0x48,0x15,0x2b,0xb7,0xdc,0xed,0x06,0x00,0x44,0x41,0xc6,0x45,0xad,0xa9,0x7b,0xee,0x09,0x00,0x38,0x81,0x0a,0xf1,0x1f,0x06,0xa7,0xa3,0x0e,0x00,0x40,0x0d,0xca,0x48,0x91,0xc2,0x9b,0xb3,0x73,0xc5,0x0e,0x00,0x0c,0x06,0x00,0xf3,0xa4,0x48,0x44,0x19,0xab,0xd7,0x56,0x06,0x00,0xea,0x0c,0xe8,0x30,0x94,0xfd,0xe4,0x7c,0x0b,0x17,0x0b,0x8c,0x08,0x79,0xd0,0xf2,0xd5,0x01,0xc0,0x3a,0x5c,0xb5,0x07,0x2e,0xb7,0x08,0x08,0x00,0x3d,0x62,0xcb,0x8f,0xec,0xfc,0xf7,0x39,0x0c,0x0f,0x46,0x56,0xee,0xb1,0x6b,0x2e,0x8c,0xe6,0x0e,0x04,0x04,0x07,0x00,0x6d,0xfa,0xa8,0xa5,0x48,0xb0,0xae,0xba,0x10,0x04,0x06,0x00,0x63,0x7c,0x51,0x16,0x74,0x6c,0x97,0x77,0x04,0x00,0x4a,0xd7,0xa1,0xfc,0x26,0x3a,0xbf,0x4c,0x0d,0x9f,0x70,0x34,0xcd,0x05,0xfb,0x1a,0xb5,0x0d,0x2e,0xb9,0x4a,0x08,0x0f,0x70,0x61,0x9f,0x08,0x00,0x9b,0x0c,0xfd,0xff,0xc7,0x3d,0x6d,0x33,0x08,0x00,0xc2,0xb9,0x52,0x69,0x15,0x6a,0x0c,0x6a,0x08,0x00,0x5c,0xe1,0xd9,0xfe,0x18,0x7c,0xb2,0xdc,0x0a,0x00,0x91,0x1d,0x1a,0xb7,0xfb,0xb9,0xac,0x6a,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x00,0x26,0x2e,0x6b,0xe5,0x49,0x44,0x6e,0xb6,0x08,0x00,0x28,0xc2,0xdd,0xcb,0x3b,0xf7,0x7b,0x4d,0x06,0x00,0xad,0x5d,0x4c,0x5e,0x15,0x6f,0x62,0xe5,0x1e,0x2c,0xc3,0xaf,0x19,0xef,0xd9,0x23,0xfa,0x1e,0x12,0x98,0xf1,0x07,0x2c,0xb4,0xda,0x0b,0x08,0x00,0x46,0x3c,0x76,0x85,0x52,0x01,0xe0,0x5d,0x06,0x00,0xa3,0x02,0x02,0x86,0x4c,0xe9,0x63,0xaf,0x0b,0x78,0xd7,0x6e,0xb1,0xa0,0x3f,0x7f,0xfd,0x08,0x00,0x93,0x6c,0x04,0xb4,0x3c,0x7b,0xee,0x0b,0x08,0x00,0xe5,0x3b,0x39,0xd3,0x9c,0xeb,0x89,0xdc,0x1e,0x37,0xea,0x08,0x98,0x2c,0xc6,0x62,0xbb,0x09,0x00,0xa7,0xa2,0x7a,0xba,0xd2,0x22,0x92,0x0f,0x0e,0x00,0x01,0x0d,0x44,0xad,0xe1,0x13,0x49,0x5c,0x4a,0x29,0x0e,0x00,0x80,0x20,0x0d,0x8c,0x60,0x83,0xc2,0x0b,0x26,0xf8,0x84,0x0e,0x00,0x80,0x08,0x0d,0xd0,0xa4,0x1b,0x4b,0x19,0x27,0x30,0x1c,0x0e,0x00,0x80,0x20,0x0d,0x27,0x3d,0x90,0xa9,0x98,0x53,0x12,0x43,0x0e,0x00,0x80,0x20,0x0d,0xd2,0xcf,0x7f,0xff,0xed,0xd7,0xf8,0xc1,0x0e,0x00,0xa0,0x9c,0x01,0x0d,0xff,0x80,0xf4,0xf5,0x39,0x8e,0x40,0x33,0x0e,0x00,0x80,0x40,0x0d,0x6d,0xd1,0x92,0x3e,0x7b,0xb7,0x82,0xd9,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x69,0x6a,0x80,0x85,0x1a,0x8c,0x6a,0x87,0x0e,0x00,0x80,0xfa,0x01,0x0d,0x1f,0x25,0xad,0x45,0xad,0x97,0x5d,0xee,0x0d,0xf2,0x40,0x15,0xb9,0xba,0xa5,0x17,0x69,0x0d,0xec,0x94,0x02,0x39,0x5f,0xc0,0x29,0xcd,0x08,0x00,0x41,0x38,0x13,0x42,0xc2,0x93,0xb5,0x96,0x1e,0xbc,0xb4,0x07,0x2c,0x0e,0x2a,0x1b,0x15,0x1e,0x07,0x17,0x02,0x86,0x4c,0xf5,0x63,0xaf,0x0b,0x54,0x15,0x02,0x86,0x4c,0xf4,0x63,0xaf,0x0b,0x6d,0x1a,0x02,0x86,0x4c,0xf7,0x63,0xaf,0x0b,0x56,0x04,0x02,0x86,0x4c,0xea,0x63,0xaf,0x0b,0xec,0x5a,0xf7,0x85,0xa9,0xa1,0xa3,0x17,0x09,0x01,0x04,0x00,0x73,0xcd,0x00,0x31,0xcb,0x87,0xd5,0xcf,0x0a,0x00,0x68,0x72,0xe7,0xa2,0x86,0x2e,0x7d,0x1f,0x1e,0x71,0x01,0x22,0xa1,0x45,0xfa,0x54,0x15,0x01,0x81,0xcb,0xb9,0xa1,0x7b,0xe9,0x5b,0x4d,0x01,0xc3,0x95,0x4b,0x57,0xab,0xa7,0x3d,0xd2,0x08,0x00,0x54,0x1f,0x54,0xed,0x6a,0x1a,0xa1,0x88,0x08,0x00,0xec,0xeb,0xad,0x52,0xd9,0xc8,0x2c,0x3d,0x00,0x34,0xe6,0x80,0x93,0xf7,0x6e,0x73,0xc8,0x00,0x5e,0x80,0xf4,0xd8,0x72,0xa1,0xe8,0x94,0x00,0xfa,0xef,0x7e,0x96,0xa7,0x5a,0x74,0xa0,0x00,0xca,0xaf,0x76,0x5a,0xd2,0xa4,0xd0,0xf5,0x00,0x5d,0x07,0xd9,0xf6,0x72,0x79,0x8d,0x47,0x00,0x34,0xe2,0x74,0xef,0x2b,0x17,0xa6,0xca,0x00,0x53,0xd6,0x52,0x28,0xac,0xac,0x98,0x4f,0x00,0x19,0x30,0xea,0x44,0x47,0x7e,0x3a,0x7f,0x00,0xc2,0x85,0x52,0xc1,0xc3,0xf7,0x11,0xd0,0x00,0x8a,0xcb,0x54,0xc5,0xa1,0x6a,0x21,0xa8,0x00,0xdb,0x23,0x0e,0xd0,0xa3,0x21,0x23,0x6c,0x00,0x7c,0x1b,0xac,0xfe,0x19,0xde,0xf1,0x9f,0x00,0x2d,0x3e,0x69,0xc1,0xa7,0xd3,0xf3,0xec,0x00,0x1c,0x3f,0x95,0xd5,0x8f,0xd7,0x00,0xcf,0x00,0xb3,0x18,0x32,0x0d,0x7e,0xc9,0x16,0xc4,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0xe4,0x4f,0x1c,0x4f,0x47,0xc0,0x2e,0x2f,0x00,0x58,0xfc,0xaf,0xfa,0xd8,0xe0,0x4b,0x70,0x00,0xe0,0xc3,0x1e,0xde,0xc6,0x0e,0x05,0xbf,0x00,0x81,0x75,0x20,0xd6,0x48,0x16,0x3a,0x1d,0x00,0x06,0x03,0xf3,0x15,0x9d,0xb2,0xc6,0x11,0x00,0x6f,0x63,0x76,0xe7,0xba,0xbd,0xf5,0x5f,0x00,0x47,0x01,0xb4,0x1b,0x0e,0xd0,0xa6,0xcc,0x00,0xf8,0xe5,0xc9,0x85,0xb5,0x38,0xc7,0x0c,0x00,0x4e,0x0f,0xc3,0x3f,0xfb,0x49,0x27,0x9b,0x00,0x94,0xd9,0x23,0x6c,0xbe,0x7d,0x94,0xb0,0x00,0x5b,0x13,0xda,0x14,0x11,0xb3,0xda,0x93,0x00,0x07,0x60,0xad,0x3f,0xd9,0xed,0x00,0x5b,0x00,0xfe,0x76,0x52,0x86,0x2b,0xd6,0x9a,0xc1,0x00,0x9f,0xc2,0x08,0xa4,0x1f,0x18,0x34,0x40,0x00,0x00,0xfe,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfd,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x02,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
 
 typedef struct blockdemo_table_bit_writer_t { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; } blockdemo_table_bit_writer_t;
 typedef struct blockdemo_table_bit_reader_t { const uint8_t * buffer; int64_t bits,offset; } blockdemo_table_bit_reader_t;
@@ -2832,7 +3024,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_fixed_kind( uint8_t kind ) { re
 
 static SCHEMA_UNUSED int blockdemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 
@@ -2910,7 +3102,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_shape_read(const uint8_t * in,i
    return blockdemo_table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!blockdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ if(kind==12){if(!blockdemo_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
  f->max=(int64_t)v;
  return 1;
  }
@@ -2922,7 +3114,7 @@ static SCHEMA_UNUSED int blockdemo_table_message_shape_read(const uint8_t * in,i
   f->max=(int64_t)v;
   if(*at>=size)return 0;
   f->elem_kind=in[(*at)++];
-  return blockdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+  return blockdemo_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12;
  }return 1;
 }
 static SCHEMA_UNUSED int blockdemo_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,blockdemo_table_message_entry_t * e)
@@ -3143,10 +3335,9 @@ static SCHEMA_UNUSED int blockdemo_table_message_skip(blockdemo_table_message_re
  case 15:
   if(!blockdemo_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && blockdemo_table_message_skip_deeper(r,entry));
- case 12:case 33:
-  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,e->max)))return 0;
-  if(e->kind==12 && !blockdemo_table_bit_align_read(&r->bits))return 0;
-  return blockdemo_table_message_skip_run(r,n,e->kind==12?8:16);
+ case 12:
+  if(!blockdemo_table_bit_get(&r->bits,&n,blockdemo_table_bits_required(0,e->max))||!blockdemo_table_bit_align_read(&r->bits))return 0;
+  return blockdemo_table_message_skip_run(r,n,8);
  case 31:
   if(!blockdemo_table_bit_align_read(&r->bits)||!blockdemo_table_bit_get(&r->bits,&n,32))return 0;
   return blockdemo_table_message_skip_run(r,n,8);
@@ -3758,6 +3949,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save( const blockdemo_rende
 static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_reader_t * r, blockdemo_render_camera_t * value )
 {
     blockdemo_render_camera_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -3765,7 +3957,8 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -3955,7 +4148,7 @@ static SCHEMA_UNUSED int blockdemo_render_camera_load_body( blockdemo_table_read
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -4365,6 +4558,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save( const blockdemo_render_
 static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader_t * r, blockdemo_render_ship_t * value )
 {
     blockdemo_render_ship_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -4372,7 +4566,8 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -4667,7 +4862,7 @@ static SCHEMA_UNUSED int blockdemo_render_ship_load_body( blockdemo_table_reader
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -5176,6 +5371,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save( const blockdemo_rende
 static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_reader_t * r, blockdemo_render_turret_t * value )
 {
     blockdemo_render_turret_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -5183,7 +5379,8 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xb51afb05cd34709full: /* rotation */
@@ -5501,7 +5698,7 @@ static SCHEMA_UNUSED int blockdemo_render_turret_load_body( blockdemo_table_read
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -5955,6 +6152,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save( const blockdemo_rend
 static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_reader_t * r, blockdemo_render_missile_t * value )
 {
     blockdemo_render_missile_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -5962,7 +6160,8 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -6161,7 +6360,7 @@ static SCHEMA_UNUSED int blockdemo_render_missile_load_body( blockdemo_table_rea
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -6584,6 +6783,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save( const blockdemo
 static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_table_reader_t * r, blockdemo_render_dynamic_prop_t * value )
 {
     blockdemo_render_dynamic_prop_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -6591,7 +6791,8 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -6791,7 +6992,7 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_load_body( blockdemo_tabl
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -7219,6 +7420,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save( const blockdemo_
 static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table_reader_t * r, blockdemo_render_static_prop_t * value )
 {
     blockdemo_render_static_prop_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -7226,7 +7428,8 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -7455,7 +7658,7 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_load_body( blockdemo_table
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -7898,6 +8101,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save( const blockdem
 static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_table_reader_t * r, blockdemo_render_cosmetic_prop_t * value )
 {
     blockdemo_render_cosmetic_prop_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -7905,7 +8109,8 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -8149,7 +8354,7 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_load_body( blockdemo_tab
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -8600,6 +8805,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save( const blockdemo_render
 static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reader_t * r, blockdemo_render_laser_t * value )
 {
     blockdemo_render_laser_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -8607,7 +8813,8 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xee5d97ad45ad251full: /* start */
@@ -8781,7 +8988,7 @@ static SCHEMA_UNUSED int blockdemo_render_laser_load_body( blockdemo_table_reade
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -9192,6 +9399,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save( const blockdemo_re
 static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_reader_t * r, blockdemo_render_explosion_t * value )
 {
     blockdemo_render_explosion_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -9199,7 +9407,8 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0x4cbf3a26fca1d74aull: /* position */
@@ -9420,7 +9629,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_body( blockdemo_table_r
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -10334,6 +10543,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save( const blockdemo_render
 static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reader_t * r, blockdemo_render_frame_t * value )
 {
     blockdemo_render_frame_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -10341,7 +10551,8 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xbb62c62c9808ea37ull: /* version */
@@ -10408,6 +10619,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10434,6 +10646,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->cameras_count;tail<(uint32_t)previous_count && tail<1;tail++) {
                          blockdemo_render_camera_reset(&value->cameras[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10448,6 +10661,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10474,6 +10688,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->ships_count;tail<(uint32_t)previous_count && tail<4096;tail++) {
                          blockdemo_render_ship_reset(&value->ships[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10488,6 +10703,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10514,6 +10730,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->turrets_count;tail<(uint32_t)previous_count && tail<1024;tail++) {
                          blockdemo_render_turret_reset(&value->turrets[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10528,6 +10745,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10554,6 +10772,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->missiles_count;tail<(uint32_t)previous_count && tail<4096;tail++) {
                          blockdemo_render_missile_reset(&value->missiles[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10568,6 +10787,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10594,6 +10814,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->dynamic_props_count;tail<(uint32_t)previous_count && tail<4096;tail++) {
                          blockdemo_render_dynamic_prop_reset(&value->dynamic_props[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10608,6 +10829,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10634,6 +10856,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->static_props_count;tail<(uint32_t)previous_count && tail<20000;tail++) {
                          blockdemo_render_static_prop_reset(&value->static_props[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10648,6 +10871,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10674,6 +10898,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->cosmetic_props_count;tail<(uint32_t)previous_count && tail<8192;tail++) {
                          blockdemo_render_cosmetic_prop_reset(&value->cosmetic_props[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10688,6 +10913,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10714,6 +10940,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->lasers_count;tail<(uint32_t)previous_count && tail<32000;tail++) {
                          blockdemo_render_laser_reset(&value->lasers[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
@@ -10728,6 +10955,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                 }
                 blockdemo_table_reader_t sub;
                 if ( !blockdemo_table_reader_span( r, &sub ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
                     uint8_t elem_kind; uint64_t count, kept, i;
@@ -10754,13 +10982,14 @@ static SCHEMA_UNUSED int blockdemo_render_frame_load_body( blockdemo_table_reade
                         { uint32_t tail; for (tail=(uint32_t)value->explosions_count;tail<(uint32_t)previous_count && tail<32000;tail++) {
                          blockdemo_render_explosion_reset(&value->explosions[tail]);
                         } }
+                        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
                 break;
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -11283,6 +11512,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save( const blockdemo_rend
 static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_reader_t * r, blockdemo_render_vector3_t * value )
 {
     blockdemo_render_vector3_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -11290,7 +11520,8 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xaf63f54c86021707ull: /* x */
@@ -11427,7 +11658,7 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_load_body( blockdemo_table_rea
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -11741,6 +11972,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save( const blockdemo_r
 static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_reader_t * r, blockdemo_render_quaternion_t * value )
 {
     blockdemo_render_quaternion_reset( value );
+    uint8_t seen_ref[512]; memset( seen_ref, 0, sizeof( seen_ref ) );
     for ( ;; )
     {
         uint64_t ref, id; uint8_t kind;
@@ -11748,7 +11980,8 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
         if ( ref == 0 ) { return 1; }
         if ( ref > r->id_count || !blockdemo_table_reader_has( r, 1 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
         id = blockdemo_table_reader_id_at( r, ref ); kind = blockdemo_table_reader_get8( r );
-        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( id == 0xffffffffffffffffull || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+        if ( ref <= 4096 ) { if ( seen_ref[(ref-1)>>3] & (uint8_t)(1u << ((ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; } seen_ref[(ref-1)>>3] |= (uint8_t)(1u << ((ref-1) & 7)); }
         switch ( id )
         {
             case 0xaf63f54c86021707ull: /* x */
@@ -11929,7 +12162,7 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_load_body( blockdemo_table_
             }
             default:
                 r->report->unknown++;
-                if ( !blockdemo_table_reader_skip( r, kind ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+                if ( !blockdemo_table_reader_skip_checked( r, kind, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
                 break;
         }
     }
@@ -12658,15 +12891,26 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_camera_f
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_camera_fixed_plan[] = {
-    { 0u, 0u, 72u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 60u, 60u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 64u, 64u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 68u, 68u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_camera_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_camera_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_camera_fixed_plan_count = 11;
+static SCHEMA_UNUSED const int32_t blockdemo_render_camera_fixed_plan_guarded = 11;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_camera_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -12966,16 +13210,30 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_ship_fix
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_ship_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
-    { 79u, 79u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_target_lock */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 68u, 68u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 72u, 72u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 76u, 76u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 77u, 77u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 78u, 78u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 79u, 79u, 2u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* has_target_lock */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_ship_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t blockdemo_render_ship_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t blockdemo_render_ship_fixed_plan_count = 15;
+static SCHEMA_UNUSED const int32_t blockdemo_render_ship_fixed_plan_guarded = 15;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_ship_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -13271,16 +13529,27 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_turret_f
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_turret_fixed_plan[] = {
-    { 0u, 0u, 58u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
-    { 58u, 58u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* has_target_lock */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 44u, 44u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 48u, 48u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 52u, 52u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 56u, 56u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 57u, 57u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 58u, 58u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_BOOL, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 0 }, /* has_target_lock */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_turret_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t blockdemo_render_turret_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t blockdemo_render_turret_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t blockdemo_render_turret_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_turret_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -13582,15 +13851,27 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_missile_
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_missile_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 68u, 68u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 69u, 69u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 70u, 70u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_missile_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_missile_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_missile_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t blockdemo_render_missile_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_missile_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -13894,15 +14175,27 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_dynamic_
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_dynamic_prop_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 68u, 68u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 69u, 69u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 70u, 70u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_dynamic_prop_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_dynamic_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_dynamic_prop_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t blockdemo_render_dynamic_prop_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_dynamic_prop_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -14206,15 +14499,27 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_static_p
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_static_prop_fixed_plan[] = {
-    { 0u, 0u, 78u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 72u, 72u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 76u, 76u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 77u, 77u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_static_prop_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_static_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_static_prop_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t blockdemo_render_static_prop_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_static_prop_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -14520,15 +14825,28 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_cosmetic
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_cosmetic_prop_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 72u, 72u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 76u, 76u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 77u, 77u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 78u, 78u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_cosmetic_prop_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_cosmetic_prop_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_cosmetic_prop_fixed_plan_count = 13;
+static SCHEMA_UNUSED const int32_t blockdemo_render_cosmetic_prop_fixed_plan_guarded = 13;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_cosmetic_prop_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -14826,15 +15144,25 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_laser_fi
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_laser_fixed_plan[] = {
-    { 0u, 0u, 62u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 60u, 60u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 61u, 61u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_laser_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_laser_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_laser_fixed_plan_count = 10;
+static SCHEMA_UNUSED const int32_t blockdemo_render_laser_fixed_plan_guarded = 10;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_laser_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };
@@ -15136,15 +15464,27 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_explosio
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
    destination in it to this compiler's own ABI. A bool field and a present
-   flag land through kTableFixedBool (byte != 0), so a forged 0x02 is the
-   language's own true and not a bool holding 2 (fix 2). UNGUARDED ENTRIES
+   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
+   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   UNGUARDED ENTRIES
    FIRST, then the arms: the entries that are nearly all of a plan never
    test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_explosion_fixed_plan[] = {
-    { 0u, 0u, 74u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0 }, /* x */
+    { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 16u, 16u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 24u, 24u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 32u, 32u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 40u, 40u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 48u, 48u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 56u, 56u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
+    { 64u, 64u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 68u, 68u, 4u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* x */
+    { 72u, 72u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
+    { 73u, 73u, 1u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* x */
 };
-static SCHEMA_UNUSED const int32_t blockdemo_render_explosion_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t blockdemo_render_explosion_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t blockdemo_render_explosion_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t blockdemo_render_explosion_fixed_plan_guarded = 12;
 static SCHEMA_UNUSED const blockdemo_table_fixed_guard_link_t blockdemo_render_explosion_fixed_guards[] = {
     { 0u, 0u, 0 }, /* placeholder: no chain points into an empty pool */
 };

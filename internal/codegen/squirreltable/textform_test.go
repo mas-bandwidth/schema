@@ -23,8 +23,7 @@ import (
 
 // textFormDocumentSchema is the Document contract of test/conformance/textform
 // (contract.json) as Go's oracle declares it (internal/codegen/gotable
-// textform_test.go textFormDocumentBody), field for field, `wide wstring(4)`
-// included. Four keys meet the compiler through the json attribute, as Go's
+// textform_test.go textFormDocumentBody), field for field. Four keys meet the compiler through the json attribute, as Go's
 // do.
 const textFormDocumentSchema = `
 package probe
@@ -53,7 +52,6 @@ fixed table Document {
  nodes [..3]Node
  pairs [2]int32
  optional ?[..4]int32
- wide wstring(4)
  blob bytes(4) | json = "bytes"
  low int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727, json = "signed"
  high uint128 | json = "unsigned"
@@ -291,8 +289,7 @@ func TestSquirrelDocumentVectors(t *testing.T) {
 	p.WriteString(documentPrelude)
 	lit := func(s string) string { return squirrel.StringLit([]byte(s)) }
 
-	// TestDocumentVectors: the positives, the kinds vector's astral wide
-	// pair included
+	// TestDocumentVectors: the positives, the kinds vector included
 	kinds := vector("kinds.input.sexp")
 	positives := map[string][]byte{
 		"roadmap": vector("roadmap.input.sexp"),

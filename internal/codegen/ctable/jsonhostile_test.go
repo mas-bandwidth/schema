@@ -10,7 +10,6 @@ func TestCJsonHostileTextRefusals(t *testing.T) {
 table Probe
 {
     name  string(8)
-    wide  wstring(8)
     blob  *string
     rules [..4]string(8)
     names map[string(8)]int32
@@ -38,7 +37,6 @@ int main(void)
     static const Case cases[] = {
         /* text_holds_zero (§16.3): U+0000 in any text-storage target refuses */
         {"zero-string", "{\"name\": \"a\\u0000b\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
-        {"zero-wstring", "{\"wide\": \"a\\u0000b\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-blob", "{\"blob\": \"a\\u0000b\"}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-text-list", "{\"rules\": [\"a\\u0000b\"]}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
         {"zero-map-key", "{\"names\": {\"a\\u0000b\": 1}}", 0, 0, 0, SCHEMA_TABLE_REFUSE_WIRE_DAMAGED},
@@ -96,7 +94,6 @@ int main(void)
         CHECK(!r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_OK);
         root = probe_builder_root(&b);
         CHECK(root->name_length == 4 && memcmp(root->name, "\xf0\x9d\x84\x9e", 4) == 0);
-        CHECK(root->wide_length == 2 && root->wide[0] == 0xd834 && root->wide[1] == 0xdd1e);
         probe_builder_shutdown(&b);
 
         /* 2. Lone lead surrogate followed by escape \uD800\u0041 -> refuses whole load */
@@ -106,7 +103,7 @@ int main(void)
         CHECK(!probe_from_json(&b, lone_lead_json, (int64_t)strlen(lone_lead_json), &r));
         CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
         root = probe_builder_root(&b);
-        CHECK(root->name_length == 0 && root->wide_length == 0);
+        CHECK(root->name_length == 0);
         probe_builder_shutdown(&b);
 
         /* 3. Lone trail surrogate \uDC00 -> refuses whole load */
@@ -116,7 +113,7 @@ int main(void)
         CHECK(!probe_from_json(&b, lone_trail_json, (int64_t)strlen(lone_trail_json), &r));
         CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
         root = probe_builder_root(&b);
-        CHECK(root->name_length == 0 && root->wide_length == 0);
+        CHECK(root->name_length == 0);
         probe_builder_shutdown(&b);
 
         /* 4. Inverted surrogates \uDD1E\uD834 -> refuses whole load */
@@ -126,7 +123,7 @@ int main(void)
         CHECK(!probe_from_json(&b, inverted_json, (int64_t)strlen(inverted_json), &r));
         CHECK(r.refused && r.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
         root = probe_builder_root(&b);
-        CHECK(root->name_length == 0 && root->wide_length == 0);
+        CHECK(root->name_length == 0);
         probe_builder_shutdown(&b);
     }
 

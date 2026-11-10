@@ -769,7 +769,6 @@ final class TableWireReader {
       case 16:
       case 31:
       case 32:
-      case 33:
         final sl = readLeb();
         if (sl == null) return false;
         if (!has(sl)) return false;
@@ -1251,6 +1250,290 @@ final class TableWireReader {
     }
     return false;
   }
+
+  // _wireLeb reads one LEB128 value at off in buf: (value, next), or
+  // null when it runs past the buffer.
+  (int, int)? _wireLeb(Uint8List buf, int off) {
+    var v = 0;
+    var shift = 0;
+    var i = off;
+    while (i < buf.length && shift < 63) {
+      final b = buf[i];
+      i++;
+      v |= (b & 0x7F) << shift;
+      if (b & 0x80 == 0) return (v, i);
+      shift += 7;
+    }
+    return null;
+  }
+
+  // _wireScalar checks one fixed-width payload's content rules that the
+  // wire alone decides: a bool byte is 0 or 1 and a float is finite
+  // (internal/tablewire/wirecheck.go scalar).
+  bool _wireScalar(Uint8List b, int kind) {
+    switch (kind) {
+      case 1:
+        return b.isEmpty || b[0] <= 1;
+      case 10:
+        return b.length < 4 || (readU32(b, 0) & 0x7f800000) != 0x7f800000;
+      case 11:
+        return b.length < 8 || (readU64(b, 0) & 0x7ff0000000000000) != 0x7ff0000000000000;
+    }
+    return true;
+  }
+
+  // _wirePayload walks one payload of kind at off in buf, adding every
+  // kind-17 index it meets to out; it answers the offset past the payload,
+  // or -1 when the framing cannot be walked.
+  int _wirePayload(Uint8List buf, int off, int kind, List<int> out, int depth) {
+    switch (kind) {
+      case 1:
+      case 2:
+      case 6:
+      case 20:
+      case 25:
+        return off + 1 <= buf.length && _wireScalar(buf.sublist(off, off + 1), kind) ? off + 1 : -1;
+      case 3:
+      case 7:
+      case 21:
+      case 26:
+        return off + 2 <= buf.length ? off + 2 : -1;
+      case 4:
+      case 8:
+      case 10:
+      case 22:
+      case 27:
+        return off + 4 <= buf.length && _wireScalar(buf.sublist(off, off + 4), kind) ? off + 4 : -1;
+      case 5:
+      case 9:
+      case 11:
+      case 23:
+      case 28:
+      case 36:
+        return off + 8 <= buf.length && _wireScalar(buf.sublist(off, off + 8), kind) ? off + 8 : -1;
+      case 18:
+      case 19:
+      case 24:
+      case 29:
+        return off + 16 <= buf.length ? off + 16 : -1;
+      case 17:
+        final p = _wireLeb(buf, off);
+        if (p == null) return -1;
+        out.add(p.$1);
+        return p.$2;
+      case 30:
+        final p = _wireLeb(buf, off);
+        return p == null ? -1 : p.$2;
+      case 15:
+        final arm = _wireLeb(buf, off);
+        if (arm == null || arm.$1 > entryCount) return -1;
+        if (arm.$1 == 0) return arm.$2;
+        if (arm.$2 >= buf.length) return -1;
+        final akind = buf[arm.$2];
+        final alen = _wireLeb(buf, arm.$2 + 1);
+        if (alen == null || alen.$1 > buf.length - alen.$2) return -1;
+        final end = alen.$2 + alen.$1;
+        return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
+      case 12:
+      case 13:
+      case 14:
+      case 16:
+      case 31:
+      case 32:
+        final p = _wireLeb(buf, off);
+        if (p == null || p.$1 > buf.length - p.$2) return -1;
+        final end = p.$2 + p.$1;
+        return _wireContent(buf.sublist(p.$2, end), kind, out, depth) ? end : -1;
+    }
+    return -1;
+  }
+
+  // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
+  // exactly as _wirePayload framed it.
+  bool _wireContent(Uint8List b, int kind, List<int> out, int depth) {
+    switch (kind) {
+      case 12:
+        return _lebValid(b, 0, b.length);
+      case 31:
+      case 32:
+        return kind != 32 || b.isEmpty;
+      case 13:
+        return depth < 64 && _wireBody(b, false, out, depth + 1);
+      case 14:
+        if (depth >= 64 || b.length < 2) return false;
+        final head = _wireLeb(b, 1);
+        if (head == null) return false;
+        var off = head.$2;
+        for (var i = 0; i < head.$1; i++) {
+          off = _wirePayload(b, off, b[0], out, depth + 1);
+          if (off < 0) return false;
+        }
+        return off == b.length;
+      case 16:
+        if (depth >= 64 || b.length < 2) return false;
+        final head = _wireLeb(b, 1);
+        if (head == null) return false;
+        var off = head.$2;
+        final seenKeys = <int>{};
+        for (var i = 0; i < head.$1; i++) {
+          final key = _wireLeb(b, off);
+          if (key == null || key.$1 == 0 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
+          final len = _wireLeb(b, key.$2);
+          if (len == null || len.$1 > b.length - len.$2) return false;
+          if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
+          off = len.$2 + len.$1;
+        }
+        return off == b.length;
+      case 17:
+      case 30:
+      case 15:
+        return _wirePayload(b, 0, kind, out, depth) == b.length;
+    }
+    return _wirePayload(b, 0, kind, out, depth) == b.length;
+  }
+
+  // _wireBody walks one body to its terminator, adding every kind-17 index
+  // to out. The root body's node-table field is skipped, not walked.
+  bool _wireBody(Uint8List buf, bool root, List<int> out, int depth) {
+    var off = 0;
+    // A repeated field id in one body is damage (internal/tablewire/
+    // wirecheck.go body). The root body is exempt here: its own load
+    // already refuses a repeat, and this walk must not outlive that
+    // refusal. Nested and record bodies a load only skips are not.
+    final seenIds = <int>{};
+    while (true) {
+      final ref = _wireLeb(buf, off);
+      if (ref == null) return false;
+      off = ref.$2;
+      if (ref.$1 == 0) return off == buf.length;
+      final id = refToId[ref.$1];
+      if (id == null || (!root && !seenIds.add(id)) || off >= buf.length) return false;
+      final kind = buf[off];
+      off++;
+      if (id == _kBuildVersionId || id == _kVocabularyId) return false;
+      if (id == _kNodeTableId) {
+        // The node table's reserved id rides only in the root body, under
+        // kind 12 (internal/tablewire/wirecheck.go body).
+        if (!root || kind != 12) return false;
+        final len = _wireLeb(buf, off);
+        if (len == null || len.$1 > buf.length - len.$2) return false;
+        off = len.$2 + len.$1;
+        continue;
+      }
+      off = _wirePayload(buf, off, kind, out, depth);
+      if (off < 0) return false;
+    }
+  }
+
+  // wireUnreachedNode is unreachedNode judged on the wire alone
+  // (internal/tablewire/wirecheck.go graph): every kind-17 payload in the
+  // root body and in every record body is an edge, in a field this reader
+  // declares or in one it only skips, and a placed record — table, blob or
+  // unknown — that no edge out of the root reaches is damage. A body the
+  // walk cannot frame contributes no edges; the load's own checks have
+  // already refused such a wire.
+  // _wireGraph is the wire-alone pointer graph (internal/tablewire/
+  // wirecheck.go graph): children[0] holds the root body's kind-17 indices,
+  // children[k + 1] record k's, in wire order. Null when the root body
+  // cannot be framed; a record body that cannot be framed contributes the
+  // edges its walk met before the damage.
+  List<List<int>>? _wireGraph() {
+    final bodyEnd = data.length - (entryCount * 8 + 8);
+    if (bodyEnd < 1 || bodyEnd > data.length) return null;
+    final children = <List<int>>[];
+    final rootEdges = <int>[];
+    if (!_wireBody(data.sublist(1, bodyEnd), true, rootEdges, 0)) return null;
+    children.add(rootEdges);
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final out = <int>[];
+      final typeId = nodeTypes[rec];
+      if (typeId != _kStringBlobId && typeId != _kBytesBlobId) {
+        _wireBody(nodes[rec], false, out, 0);
+      }
+      children.add(out);
+    }
+    return children;
+  }
+
+  bool wireUnreachedNode() {
+    if (nodes.isEmpty) return false;
+    final children = _wireGraph();
+    if (children == null) return unreachedNode();
+    final seen = <int>{1};
+    final stack = <int>[1];
+    while (stack.isNotEmpty) {
+      final node = stack.removeLast();
+      final out = node >= 1 && node <= children.length ? children[node - 1] : const <int>[];
+      for (final index in out) {
+        if (index == 0 || index > nodes.length + 1) continue;
+        if (seen.add(index)) stack.add(index);
+      }
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      if (!seen.contains(rec + 2)) return true;
+    }
+    return false;
+  }
+
+  // wireBlobShared reports whether one blob record is named from two
+  // slots anywhere on the wire (internal/tablewire/wirecheck.go graph;
+  // docs/SPEC-TABLES.md §2.5): a blob is owned by one slot, and the slot
+  // that shares it may ride in a field this reader only skips.
+  bool wireBlobShared() {
+    if (nodes.isEmpty) return false;
+    final children = _wireGraph();
+    if (children == null) return false;
+    final names = <int, int>{};
+    for (final out in children) {
+      for (final index in out) {
+        if (index == 0) continue;
+        names[index] = (names[index] ?? 0) + 1;
+      }
+    }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final typeId = nodeTypes[rec];
+      if ((typeId == _kStringBlobId || typeId == _kBytesBlobId) && (names[rec + 2] ?? 0) > 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // wireBadPointerIndex reports whether any kind-17 payload on the wire
+  // names a node past the node table (internal/tablewire/wirecheck.go
+  // graph): an index may name null, the root, or one placed record, in a
+  // field this reader declares or in one it only skips alike.
+  bool wireBadPointerIndex() {
+    final children = _wireGraph();
+    if (children == null) return false;
+    for (final out in children) {
+      for (final index in out) {
+        if (index < 0 || index > nodes.length + 1) return true;
+      }
+    }
+    return false;
+  }
+
+  // wireFramingBad reports whether the wire-alone framing walk
+  // (internal/tablewire/wirecheck.go checkBody) cannot frame the root body
+  // or any placed record body whole: a payload that does not end where its
+  // length says, bytes left inside an array, keyed or union arm after its
+  // elements, or a body whose terminator is not its last byte are damage
+  // (docs/SPEC-TABLES.md §4), in fields this reader declares and in fields
+  // it only skips alike.
+  bool wireFramingBad() {
+    if (entryCount == 0 || data.isEmpty || data[0] != 1) return false;
+    final bodyEnd = data.length - (entryCount * 8 + 8);
+    if (bodyEnd < 1 || bodyEnd > data.length) return false;
+    final sink = <int>[];
+    if (!_wireBody(data.sublist(1, bodyEnd), true, sink, 0)) return true;
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final typeId = nodeTypes[rec];
+      if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
+      if (!_wireBody(nodes[rec], false, sink, 0)) return true;
+    }
+    return false;
+  }
 }
 
 // _kindWidens reports whether a payload kind is a smaller kind on the same
@@ -1539,7 +1822,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 12:
     case 31:
     case 32:
-    case 33:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
       final out = <int>[];
@@ -1695,7 +1977,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 12:
     case 31:
     case 32:
-    case 33:
       final start = c.at;
       var len = 0;
       var shift = 0;
@@ -1961,9 +2242,8 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
   return out;
 }
 
-// _wideValid reports whether a run of UTF-16 code units is well-formed: every
-// high surrogate followed by a low one, no low surrogate alone, no NUL
-// (docs/SPEC-TABLES.md §3, kind 33).
+// _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
+// every high surrogate followed by a low one, no low surrogate alone, no NUL.
 bool _wideValid(List<int> u) {
   for (var i = 0; i < u.length; i++) {
     final c = u[i];
@@ -3841,6 +4121,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
             arr.pos = arr.pos + elen;
             v.entities.add(e);
           }
+          if (arr.pos != arr.limit) { r.report.refuse('wire_damaged'); }
           r.pos = end;
         }
         break;
@@ -3871,6 +4152,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
             arr.pos = arr.pos + elen;
             v.stats.add(e);
           }
+          if (arr.pos != arr.limit) { r.report.refuse('wire_damaged'); }
           r.pos = end;
         }
         break;
@@ -3922,6 +4204,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           if (take > arr.limit - arr.pos) take = arr.limit - arr.pos;
           if (take < keep) r.report.refuse('wire_damaged');
           v.payload = latin1.decode(arr.data.sublist(arr.pos, arr.pos + take));
+          if (arr.pos + take != arr.limit) { r.report.refuse('wire_damaged'); }
           r.pos = end;
         }
         break;
@@ -4344,6 +4627,10 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
     return TableEntity();
   }
   if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }
+  if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
+  if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
+  if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableEntity();
   return v;
 }
@@ -4506,6 +4793,10 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
     return TableStat();
   }
   if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }
+  if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
+  if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
+  if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableStat();
   return v;
 }
@@ -4656,6 +4947,10 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
     return TableMixed();
   }
   if (r.trailingReached()) { r.report.refuse('wire_damaged'); }
+  if (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }
+  if (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }
+  if (r.wireBlobShared()) { r.report.refuse('blob_shared'); }
+  if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableMixed();
   return v;
 }
@@ -4982,7 +5277,7 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 }
 
 // _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
-// place the read stores text: a string(N) or wstring(N) value, a *string
+// place the read stores text: a string(N) value, a *string
 // value, a text-list element, a map key. A stored string that decodes to
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
@@ -5899,19 +6194,6 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
     }
   }
   r.refuse('kind_mismatch');
-  return def;
-}
-
-// _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// past its bound in CODE UNITS refuses the whole load.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
-  if (val is! String) {
-    r.refuse('kind_mismatch');
-    return def;
-  }
-  val = _jsonText(val);
-  if (val.length <= bound) return val;
-  r.refuse('length_over_bound');
   return def;
 }
 

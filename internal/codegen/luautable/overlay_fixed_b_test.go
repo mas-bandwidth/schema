@@ -14,7 +14,6 @@ var luauFixedBOverlayRows = []string{
 	"port/luau/fixed/flags-values",
 	"port/luau/fixed/enum-values",
 	"port/luau/fixed/utf8-values",
-	"port/luau/fixed/utf16-values",
 	"port/luau/fixed/byte-buffers",
 	"port/luau/fixed/nested-types",
 	"port/luau/fixed/nested-fixed-tables",
@@ -29,7 +28,7 @@ var (
 	luauTestFuncRx     = regexp.MustCompile(`(?m)^func\s+([A-Za-z0-9_]+)\s*\(`)
 )
 
-// TestLuauOverlayFixedBRowsAreEvidenced guards the ten group B overlay rows:
+// TestLuauOverlayFixedBRowsAreEvidenced guards the nine group B overlay rows:
 // each must be present in docs/roadmap-evidence/luau.sexp, be :done, carry a
 // full forty-hex :tested-revision, and cite test functions that exist in the
 // package's test sources. It reads files only.

@@ -19,7 +19,7 @@ func (g *tableGen) nativeColumns(f *ir.Field) string {
 	if f.Type.Optional {
 		present = pieces[len(pieces)-1].Offset
 	}
-	if !f.Type.TextUnbounded() && !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes)) {
+	if !f.Type.TextUnbounded() && !f.IsList() && !f.IsMap() && (f.CountedOnWire() || !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes)) {
 		count = pieces[1].Offset
 	}
 	element := pieces[0].Size
@@ -117,8 +117,6 @@ const tableNativeSource = `
         }
         if (f.Kind == 12 && !f.TextList)
         { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
-        if (f.Kind == 33)
-        { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, f.GetChars(value)[i], 2); } return true; }
         int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
         if (f.GetBuffer != null)
         { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }

@@ -4,7 +4,7 @@
 # THE CORPUS is every table schema the Dart generate targets read: the
 # directories named by `./bin/schema generate --lang dart` in make/dart.mk
 # (tables/examples, pointers, blobs, lists, maps, messages, backend, stream,
-# vocab, vocab9, scalars, block, blockhome, arms, and examples-wide), plus
+# vocab, vocab9, scalars, block, blockhome, arms), plus
 # the populated feature witnesses used by the shared saved-vector corpus. It is
 # generated into build/nightly-fuzz/gen and the harness reads a registry built
 # from those files, so the list and the corpus cannot drift apart.
@@ -60,7 +60,6 @@ DART_NIGHTLY_FUZZ_UNITS := \
 	m1:test/tables/M1.schema \
 	m2:test/tables/M2.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
-	wide:examples-wide
 
 .PHONY: schema-dart-nightly-fuzz-corpus
 schema-dart-nightly-fuzz-corpus: bin/schema

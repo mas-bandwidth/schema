@@ -63,9 +63,6 @@ func (gooseTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage)
 			return nil, err
 		}
 	}
-	if err := refuseWideText(u, "goose"); err != nil {
-		return nil, err
-	}
 	if err := refuseUnported(u, "goose"); err != nil {
 		return nil, err
 	}

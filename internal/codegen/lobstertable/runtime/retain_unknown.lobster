@@ -100,7 +100,7 @@ def res_skip_payload(c:Cursor, kind:int) -> bool:
             return false
         c.off += w
         return true
-    if kind == 12 or kind == 31 or kind == 32 or kind == 33:
+    if kind == 12 or kind == 31 or kind == 32:
         let n, ok = cur_leb(c)
         if not ok or n < 0 or not cur_has(c, n):
             return false

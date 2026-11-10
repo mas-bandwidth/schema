@@ -9,7 +9,6 @@ func TestStoredTextZeroRefusalJavaScript(t *testing.T) {
 table Child { name string(2) }
 table Root {
  name string(2)
- wide wstring(2)
  blob *string
  children []Child
  names map[string(2)]int32
@@ -20,7 +19,6 @@ table Root {
 	jsDiscardRun(t, u, nil, `
 const bad = [
  ['{"name":"ab\\u0000"}', "Root.name"],
- ['{"wide":"ab\\u0000"}', "Root.wide"],
  ['{"blob":"\\u0000"}', "Root.blob"],
  ['{"children":[{"name":"ab\\u0000"}]}', "Child.name"],
  ['{"names":{"long\\u0000":1}}', "Root.names"],

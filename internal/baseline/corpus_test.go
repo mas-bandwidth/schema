@@ -47,7 +47,10 @@ func TestCorpusBaselinesAreCurrent(t *testing.T) {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
 			live := baseline.Render(u)
+			// the history and the retired-names ledger are the FILE's own, carried
+			// forward by `--update` exactly as here (file.go), never rendered
 			live.History = committedFile.History
+			live.Retired = committedFile.Retired
 			if live.Text() != string(want) {
 				t.Errorf("%s is stale — regenerate it deliberately:\n  ./bin/schema tables-baseline --update --reason \"...\" %s\n--- committed ---\n%s\n--- current ---\n%s",
 					path, dir, want, live.Text())
@@ -60,7 +63,7 @@ func TestCorpusBaselinesAreCurrent(t *testing.T) {
 // (docs/SPEC-TABLES.md §3.4), by table name. They are NOT baseline findings:
 // they say that a fixed table's record body is large, which is a design
 // remark about a declaration and not a lossy edit. The corpus carries two on
-// purpose — the wide-text table of §2.8 and the arms corpus's ToolMessage —
+// purpose — the wide-extents table of §3 and the arms corpus's ToolMessage —
 // and pinning them BY NAME rather than tolerating a count is what keeps a
 // THIRD one, or a baseline warning, from arriving unnoticed.
 var expectedFixedSizeNotes = map[string]string{

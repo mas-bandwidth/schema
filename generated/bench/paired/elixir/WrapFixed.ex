@@ -328,7 +328,7 @@ defmodule Bench.WrapFixed do
     # first and owns the ragged tail, so a `rest` that is not a whole number
     # of records passes this and the split reports `malformed`.
     # A CONTENT VIOLATION IN THE USED UNITS REFUSES THE WHOLE READ BY NAME
-    # (§4.5 fix 11): `R.text`, `R.wtext` and the compiled plan's text op all
+    # (§4.5 fix 11): `R.text` and the compiled plan's text op both
     # THROW `{:refuse, :text_ill_formed}`, and this is where the uniform
     # refusal is caught, with no destination byte landed and every counter
     # left at zero.
@@ -338,6 +338,7 @@ defmodule Bench.WrapFixed do
         {values, report} =
           Enum.map_reduce(bodies, report, fn body, report ->
             {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
+            report = R.forged_check(report)
             {value, c, m} = fixed_table_fixed_decode(image, 0, false)
             {value, R.damage_check(R.range_check(report, c), m)}
           end)

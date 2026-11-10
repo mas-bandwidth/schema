@@ -14,15 +14,15 @@ import (
 // eight-byte tag). The forged TEXT LENGTH has a real fixture beside it, in
 // fixedversioning_test.go's `string_grow_forged_length` probe.
 
-// TestFixedTextCapIsTheSpanInUnits: §5.2 TEXT says `span := min(me.size,
-// te.size) - 4` and `cap := span / unit`. The READER's own bound is the wrong
+// TestFixedTextCapIsTheSpan: §5.2 TEXT says `span := min(me.size, te.size) -
+// 4` and `cap := span`. The READER's own bound is the wrong
 // number — under it a length between the writer's bound and the reader's passes
 // the clamp, lands as the length, and reads bytes the entry never copied.
-func TestFixedTextCapIsTheSpanInUnits(t *testing.T) {
-	if !strings.Contains(fixedRuntimeBody, "aux: bytes.checked_div(unit).unwrap_or(0),") {
-		t.Error("the text entry's cap is not the SPAN's, in units (§5.2 TEXT)")
+func TestFixedTextCapIsTheSpan(t *testing.T) {
+	if !strings.Contains(fixedRuntimeBody, "aux: bytes,") {
+		t.Error("the text entry's cap is not the SPAN's (§5.2 TEXT)")
 	}
-	if strings.Contains(fixedRuntimeBody, "aux: me.size.saturating_sub(4).checked_div(unit)") {
+	if strings.Contains(fixedRuntimeBody, "aux: me.size.saturating_sub(4),") {
 		t.Error("the text entry's cap is still the READER's bound (§5.2 TEXT)")
 	}
 }

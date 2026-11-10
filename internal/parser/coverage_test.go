@@ -109,14 +109,12 @@ type T
     e float64
     f bits(3)
     g string(64)
-    h wstring(16)
     i bytes(32)
     j string
     k SomeName
     l *SomeTable
     m *bytes
     n *string
-    o *wstring
     p int128
     q uint128
 }
@@ -133,29 +131,29 @@ type T
 		if s := sc(1); s.Kind != ast.ScalarFixed || s.Signed {
 			t.Errorf("b: want unsigned fixed, got %+v", s)
 		}
-		for i, k := range []ast.ScalarKind{ast.ScalarBool, ast.ScalarFloat32, ast.ScalarFloat64, ast.ScalarBits, ast.ScalarString, ast.ScalarWString, ast.ScalarBytes} {
+		for i, k := range []ast.ScalarKind{ast.ScalarBool, ast.ScalarFloat32, ast.ScalarFloat64, ast.ScalarBits, ast.ScalarString, ast.ScalarBytes} {
 			if s := sc(2 + i); s.Kind != k {
 				t.Errorf("field %d: want kind %v, got %+v", 2+i, k, s)
 			}
 		}
-		if s := sc(9); s.Kind != ast.ScalarString || !s.Unbounded {
+		if s := sc(8); s.Kind != ast.ScalarString || !s.Unbounded {
 			t.Errorf("j: want unbounded string, got %+v", s)
 		}
-		if s := sc(10); s.Kind != ast.ScalarNamed || s.Name != "SomeName" {
+		if s := sc(9); s.Kind != ast.ScalarNamed || s.Name != "SomeName" {
 			t.Errorf("k: want a named type, got %+v", s)
 		}
-		if s := sc(11); !s.Pointer || s.Kind != ast.ScalarNamed || s.Name != "SomeTable" {
+		if s := sc(10); !s.Pointer || s.Kind != ast.ScalarNamed || s.Name != "SomeTable" {
 			t.Errorf("l: want a pointer to SomeTable, got %+v", s)
 		}
-		for i, k := range []ast.ScalarKind{ast.ScalarBytes, ast.ScalarString, ast.ScalarWString} {
-			if s := sc(12 + i); !s.Pointer || s.Kind != k {
-				t.Errorf("pointer field %d: want kind %v, got %+v", 12+i, k, s)
+		for i, k := range []ast.ScalarKind{ast.ScalarBytes, ast.ScalarString} {
+			if s := sc(11 + i); !s.Pointer || s.Kind != k {
+				t.Errorf("pointer field %d: want kind %v, got %+v", 11+i, k, s)
 			}
 		}
-		if s := sc(15); s.Width != 128 || !s.Signed {
+		if s := sc(13); s.Width != 128 || !s.Signed {
 			t.Errorf("p: want int128, got %+v", s)
 		}
-		if s := sc(16); s.Width != 128 || s.Signed {
+		if s := sc(14); s.Width != 128 || s.Signed {
 			t.Errorf("q: want uint128, got %+v", s)
 		}
 	})

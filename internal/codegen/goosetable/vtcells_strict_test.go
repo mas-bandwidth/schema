@@ -61,7 +61,7 @@ union Choice {
     xs      [..4]int32
     leaf    *Leaf
     spot    Spot
-    caption wstring(8)
+    caption string(8)
 }
 
 table Root {
@@ -70,7 +70,7 @@ table Root {
     renamed int32 | was = "former"
     wide    int128 | min = -100000000000000000000, max = 100000000000000000000
     text    string(16)
-    caption wstring(16)
+    caption string(16)
     mood    Slot = beta
     keyed   [Slot]int32
     xs      []int32

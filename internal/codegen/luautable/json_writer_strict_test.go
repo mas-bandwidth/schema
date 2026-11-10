@@ -46,7 +46,6 @@ table Root
     f float32 | min = 0, max = 1, resolution = 0.5
     g float32
     s string(8)
-    w wstring(8)
     y bytes(4)
     xs [..3]int32
     fs [2]int32
@@ -268,12 +267,6 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				func(inst *tabletext.Instance) { strictFindField(inst, "s").Cell.Str = []byte{0xff} },
 			},
 			{
-				"wstring-unpaired-surrogate",
-				`{"w": "a"}`,
-				"v.W = buffer.fromstring(string.char(0, 0xd8)); v.WLength = 1",
-				func(inst *tabletext.Instance) { strictFindField(inst, "w").Cell.Units = []uint16{0xd800} },
-			},
-			{
 				"string-holds-zero",
 				"{\"s\": \"a\\u0000b\"}",
 				"v.S = buffer.fromstring(\"a\" .. string.char(0) .. \"b\"); v.SLength = 3",
@@ -283,12 +276,6 @@ func TestLuauJsonWriterIsStrict(t *testing.T) {
 				"string-past-bound",
 				`{"s": "123456789"}`,
 				"v.S = buffer.fromstring(\"123456789\"); v.SLength = 9",
-				nil,
-			},
-			{
-				"wstring-holds-zero",
-				`{"w": "\u0000"}`,
-				"v.W = buffer.fromstring(string.char(0, 0)); v.WLength = 1",
 				nil,
 			},
 			{

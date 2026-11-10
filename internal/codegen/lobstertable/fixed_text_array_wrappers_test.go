@@ -23,7 +23,6 @@ enum Key { First, Second }
 type Leaf {
     text string(8)
     data bytes(4)
-    wide wstring(3)
 }
 fixed table Root {
     fixed_values [2]Leaf
@@ -31,7 +30,7 @@ fixed table Root {
     keyed_values [Key]Leaf
 }
 `)
-	input := []byte(`{"fixed_values":[{"text":"ab","data":"AQI=","wide":"λ"},{"text":"cd","data":"/wA=","wide":"🙂"}],"counted_values":[{"text":"ef","data":"AAM=","wide":"Z"}],"keyed_values":{"Second":{"text":"λb","data":"BAX/","wide":"Qλ"}}}`)
+	input := []byte(`{"fixed_values":[{"text":"ab","data":"AQI="},{"text":"cd","data":"/wA="}],"counted_values":[{"text":"ef","data":"AAM="}],"keyed_values":{"Second":{"text":"λb","data":"BAX/"}}}`)
 	m := tabletext.NewModel(g.u)
 	value := m.New(m.Lookup("Root"))
 	var report tabletext.Report
@@ -70,7 +69,7 @@ print("pass")
 
 func TestLobsterDirectTextScalarArraysRemainRefused(t *testing.T) {
 	t.Parallel()
-	for _, scalar := range []string{"string(8)", "bytes(4)", "wstring(3)"} {
+	for _, scalar := range []string{"string(8)", "bytes(4)"} {
 		for _, shape := range []string{"[2]", "[..2]", "[Key]"} {
 			t.Run(shape+scalar, func(t *testing.T) {
 				path := filepath.Join(t.TempDir(), "Direct.schema")

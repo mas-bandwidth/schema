@@ -117,7 +117,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
   if !ok || ref>uint64(c.ids) { return 0,c.fail(TableRefuseWireDamaged) }
  case 15:
   return c.union(r)
- case 12, 13, 14, 16, 31, 32, 33:
+ case 12, 13, 14, 16, 31, 32:
   sub,ok:=r.Body()
   if !ok || !c.framed(sub,kind) { return 0,c.fail(TableRefuseWireDamaged) }
  default:
@@ -136,8 +136,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
  switch kind {
  case 12:
   return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
- case 33:
-  return tableWireUtf16Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
  case 31:
   return true
  case 32:
@@ -233,20 +231,6 @@ func (c *tableWireCheck) record(at int64) bool {
   return tableUTF8Valid(body.Buffer) || c.fail(TableRefuseWireDamaged)
  }
  return c.framed(body,13)
-}
-
-func tableWireUtf16Valid(data []byte) bool {
- if len(data)&1!=0 { return false }
- for i:=0;i<len(data);i+=2 {
-  u:=binary.LittleEndian.Uint16(data[i:])
-  if u==0 || u>=0xdc00 && u<=0xdfff { return false }
-  if u>=0xd800 && u<=0xdbff {
-   i+=2
-   if i>=len(data) { return false }
-   if v:=binary.LittleEndian.Uint16(data[i:]); v<0xdc00 || v>0xdfff { return false }
-  }
- }
- return true
 }
 
 // tableWireVerify holds every wire-alone condition over an opened file

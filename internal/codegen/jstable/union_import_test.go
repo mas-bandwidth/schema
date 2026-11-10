@@ -161,8 +161,6 @@ var jsGenerateLine = regexp.MustCompile(`generate --lang js --out \S+ (.+)$`)
 // checked-in source it is made from. A build/ input missing here fails the
 // test rather than leaving its unions out.
 var jsUnionDerived = map[string]string{
-	// make/checks/packet-text.mk: cp examples-wide/WideText.schema
-	"build/packet-wide/source/WideText.schema": "examples-wide/WideText.schema",
 	// make/js.mk tables-js-runtime-home: tables/examples plus a one-field AaaRow table
 	"build/runtime-home-js/src": "tables/examples",
 }
@@ -291,8 +289,8 @@ func jsExpandFilterOut(t *testing.T, line string) string {
 }
 
 // jsViewCorpusInputs is the source of every $(VIEW_CORPUS) unit the view leg
-// generates for js (make/js.mk tables-js-view): tables/<dir>, examples-wide for
-// `wide`, less the units JS_VIEW_REFUSED names.
+// generates for js (make/js.mk tables-js-view): tables/<dir>, less the units
+// JS_VIEW_REFUSED names.
 func jsViewCorpusInputs(t *testing.T) []string {
 	t.Helper()
 	makefile, err := os.ReadFile(repoPath("Makefile"))
@@ -315,10 +313,6 @@ func jsViewCorpusInputs(t *testing.T) []string {
 	for _, entry := range viewlisting.CorpusEntries(string(makefile)) {
 		dir, _, _ := strings.Cut(entry, ":")
 		if refused[dir] {
-			continue
-		}
-		if dir == "wide" {
-			out = append(out, "examples-wide")
 			continue
 		}
 		out = append(out, "tables/"+dir)

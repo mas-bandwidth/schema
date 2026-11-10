@@ -54,7 +54,6 @@ class FieldDescriptor:
     array:string = ""
     bound:int = 0
     min:int = 0
-    wide:bool = false
     f32:bool = false
     franged:bool = false
     flo:float = 0.0
@@ -88,6 +87,9 @@ class TableDescriptor:
     id:int
     table:bool
     fixed:bool
+    // Public root forms; nested values traverse under the enclosing root.
+    json_form:bool = true
+    cook_form:bool = true
     variable:bool
     integrity:bool = false
     place_tables:[string]

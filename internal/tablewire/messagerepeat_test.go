@@ -40,7 +40,7 @@ fixed table Root
     by     [Mode]int32
     arm    Arm
     arms   [..2]Arm
-    wtext  wstring(4)
+    wtext  string(16)
     bi     bits(9)
     wide   int128 | min = -1000000000000000000000, max = 1000000000000000000000
     q      fixed(8, 8) | min = -100, max = 100

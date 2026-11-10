@@ -525,8 +525,8 @@ fixed table Plain
 }
 `
 
-const integrityMessagePlainGolden = "0200813e000020070000"
-const integrityMessageLedgerGolden = "0200813e00002007000078f2be34"
+const integrityMessagePlainGolden = "0200411f0000d0010000"
+const integrityMessageLedgerGolden = "0200411f0000d001000022c51159"
 
 const messageDriver = `#include <stdio.h>
 #include <string.h>

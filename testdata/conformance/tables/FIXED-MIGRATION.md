@@ -46,11 +46,6 @@ Each new positive wire is encoded from the existing complete canonical JSON and 
 | m1_save | `testdata/wire/tables/m1_save.bin` | `testdata/conformance/tables/wire/m1_save.bin` | previous_form_m1_save |
 | m2_close | `testdata/wire/tables/m2_close.bin` | `testdata/conformance/tables/wire/m2_close.bin` | previous_form_m2_close |
 | m2_open | `testdata/wire/tables/m2_open.bin` | `testdata/conformance/tables/wire/m2_open.bin` | previous_form_m2_open |
-| wide_empty | `testdata/wire/tables/wide_empty.bin` | `testdata/conformance/tables/wire/wide_empty.bin` | previous_form_wide_empty |
-| wide_title | `testdata/wire/tables/wide_title.bin` | `testdata/conformance/tables/wire/wide_title.bin` | previous_form_wide_title |
-| wide_sites | `testdata/wire/tables/wide_sites.bin` | `testdata/conformance/tables/wire/wide_sites.bin` | previous_form_wide_sites |
-| wide_narrow_arm | `testdata/wire/tables/wide_narrow_arm.bin` | `testdata/conformance/tables/wire/wide_narrow_arm.bin` | previous_form_wide_narrow_arm |
-| wide_stamp | `testdata/wire/tables/wide_stamp.bin` | `testdata/conformance/tables/wire/wide_stamp.bin` | previous_form_wide_stamp |
 | scalars_full | `testdata/wire/tables/scalars_full.bin` | `testdata/conformance/tables/wire/scalars_full.bin` | previous_form_scalars_full |
 | scalars_default | `testdata/wire/tables/scalars_default.bin` | `testdata/conformance/tables/wire/scalars_default.bin` | previous_form_scalars_default |
 | scalars_edges | `testdata/wire/tables/scalars_edges.bin` | `testdata/conformance/tables/wire/scalars_edges.bin` | previous_form_scalars_edges |

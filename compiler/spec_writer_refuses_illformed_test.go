@@ -1,9 +1,8 @@
 // TestSpecTextWriterRefusesIllFormedText pins docs/SPEC-TABLES.md §16.3's
-// writer rule for text that is not text, and the §16.2 wstring row that cites
-// it: a narrow field's ill-formed UTF-8 and a wide field's unpaired surrogate
-// are refused `invalid_value`, never replaced with U+FFFD, and every reader
-// refuses ill-formed text by name. The retired replacement unit is a stale
-// sentence the page must not state.
+// writer rule for text that is not text: a field's ill-formed UTF-8 is refused
+// `invalid_value`, never replaced with U+FFFD, and every reader refuses
+// ill-formed text by name. The retired replacement unit is a stale sentence
+// the page must not state. Wide text is retired (SPEC.md §4.12).
 package compiler
 
 import (
@@ -18,8 +17,6 @@ func TestSpecTextWriterRefusesIllFormedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := string(data)
-	mapping := specTablesSection(t, page,
-		"### 16.2 The mapping, field kind by field kind", "### 16.3 ")
 	writer := specTablesSection(t, page,
 		"### 16.3 What the writer refuses", "### 16.4 ")
 
@@ -34,7 +31,7 @@ func TestSpecTextWriterRefusesIllFormedText(t *testing.T) {
 			text: writer,
 			wants: []string{
 				"THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS",
-				"the writer REFUSES them",
+				"the writer REFUSES it",
 				"`invalid_value`, naming the field, and nothing is replaced",
 				"the READ REFUSES IT BY NAME at every string site",
 				"`string_not_utf8: <key>` or `string_lone_surrogate: <key>`",
@@ -44,18 +41,6 @@ func TestSpecTextWriterRefusesIllFormedText(t *testing.T) {
 				"A MAXIMAL SUBPART is the unit of that replacement",
 				"one per maximal subpart",
 				"one `U+FFFD` per ill-formed unit",
-			},
-		},
-		{
-			row:  "§16.2 the wstring row that cites §16.3",
-			text: mapping,
-			wants: []string{
-				"ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`",
-				"the writer refuses it `invalid_value` (§16.3)",
-			},
-			stales: []string{
-				"§16.3's maximal-subpart rule writes it as `U+FFFD`",
-				"and §16.3 writes it as `U+FFFD`",
 			},
 		},
 	}
