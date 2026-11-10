@@ -4,14 +4,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
-	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestWireFuzzAllTargetJavaScript pins the JavaScript wire-fuzz target to the
@@ -1290,7 +1290,7 @@ func TestWireFuzzEmptyMessageNamesTheRefusalJavaScript(t *testing.T) {
 	}
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	fullInst := model.New(root)
@@ -1393,7 +1393,7 @@ func TestWireFuzzMessageSaveMatchesTheOracleJavaScript(t *testing.T) {
 	}
 	var vocabulary tablewire.Vocabulary
 	var announced tabletext.Report
-	if err := vocabulary.AnnounceRead(ir.TableAnnouncement(u), &announced); err != nil {
+	if err := vocabulary.AnnounceRead(tablewire.Announce(u), &announced); err != nil {
 		t.Fatal(err)
 	}
 	inst := model.New(root)

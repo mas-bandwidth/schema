@@ -23,6 +23,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirreltable"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -456,7 +457,7 @@ func runMessageStrict(t *testing.T, rows []messageStrictRow, control [2]string) 
 	var script strings.Builder
 	fmt.Fprintf(&script, "local I=dofile(\"inputs.nut\",true);local T=dofile(\"schema_module.nut\",true).require(%q);\n", squirreltable.ModuleName(u))
 	for _, row := range rows {
-		v := &messageStrictVocab{u: u, entries: ir.TableVocabulary(u)}
+		v := &messageStrictVocab{u: u, entries: tablewire.MessageVocabulary(u)}
 		if row.peer != nil {
 			row.peer(v)
 		}

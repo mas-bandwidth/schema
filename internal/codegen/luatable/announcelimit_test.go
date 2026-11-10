@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -27,7 +28,7 @@ func TestLuaAnnouncementLimitCheckedBeforeCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 	announce := readFile(t, filepath.Join(repo, "internal", "ci", "hostilecorpus", "corpus", "inputs", "announcement.bin"))
-	vocabBytes := ir.TableVocabularyBytes(ir.TableVocabulary(unit))
+	vocabBytes := ir.TableVocabularyBytes(tablewire.MessageVocabulary(unit))
 	if len(vocabBytes) < 2 {
 		t.Fatal("the examples unit announces no vocabulary")
 	}

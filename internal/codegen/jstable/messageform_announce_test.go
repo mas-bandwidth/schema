@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -84,7 +85,7 @@ func TestMessageFormAnnounceJavaScript(t *testing.T) {
 			t.Run(uc.name, func(t *testing.T) {
 				t.Parallel()
 				u := loadUnit(t, uc.path)
-				entries := ir.TableVocabulary(u)
+				entries := tablewire.MessageVocabulary(u)
 				var want strings.Builder
 				want.WriteString("const want = [\n")
 				for _, e := range entries {
@@ -126,7 +127,7 @@ if (v.Count !== %[1]d) { fail("resolved " + v.Count + " entries, the unit's clos
 		// (docs/SPEC-TABLES.md §3.3)
 		node := jsNode(t)
 		u := loadUnit(t, units[0].path)
-		n := len(ir.TableVocabulary(u))
+		n := len(tablewire.MessageVocabulary(u))
 		probe := fmt.Sprintf(`
 const data = new Uint8Array(readFileSync("./ann.bin"));
 const v = new TableVocabulary();

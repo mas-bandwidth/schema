@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -71,7 +72,7 @@ func emitMessagePackage(g *goose.Gen) error {
 	if len(structs) == 0 {
 		return nil
 	}
-	vocabulary := ir.TableVocabulary(g.Unit)
+	vocabulary := tablewire.MessageVocabulary(g.Unit)
 	bits := ir.TableMessageRefBits(len(vocabulary))
 	g.Pf("// THE UNIT'S MESSAGE VOCABULARY (docs/SPEC-TABLES.md §3.3): %d entries, %d-bit references.\n", len(vocabulary), bits)
 	g.Declare(msgRefBits)
@@ -83,7 +84,7 @@ func emitMessagePackage(g *goose.Gen) error {
 	}
 	g.Pf("// The announcement: the form-1 file carrying the build version and the vocabulary.\n")
 	g.Declare("MessageAnnouncement")
-	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n\n", fixedGooseBytes(ir.TableAnnouncement(g.Unit)))
+	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n\n", fixedGooseBytes(tablewire.Announce(g.Unit)))
 	return nil
 }
 
@@ -142,7 +143,7 @@ func emitMessageFormPart(g *goose.Gen) error {
 	}
 	g.Import("message")
 	g.Import(PackageModule(g.Unit, "message"))
-	e := &msgEmit{g: g, fx: &fixedEmit{g: g}, slots: ir.TableVocabularySlots(g.Unit)}
+	e := &msgEmit{g: g, fx: &fixedEmit{g: g}, slots: tablewire.MessageVocabularySlots(g.Unit)}
 	var mine []string
 	for _, t := range g.File.Tables {
 		if structs[t.Name] != nil {

@@ -408,8 +408,8 @@ func gooseMsgParse(t *testing.T, out string) gooseMsgResult {
 // announcement: the values the bytes carry.
 var gooseEncodeMu sync.Mutex
 
-// gooseEncodeMessages encodes insts under ir.TableVocabulary(m.Unit), the
-// untrimmed vocabulary that ir.TableAnnouncement(m.Unit) and the Goose leg
+// gooseEncodeMessages encodes insts under tablewire.MessageVocabulary(m.Unit), the
+// untrimmed vocabulary that tablewire.Announce(m.Unit) and the Goose leg
 // announce.
 func gooseEncodeMessages(m *tabletext.Model, insts []*tabletext.Instance) ([]byte, error) {
 	if len(insts) == 0 {
@@ -699,7 +699,7 @@ func TestGooseMessageFormAgreesWithTheReference(t *testing.T) {
 					t.Fatalf("the save refused %s with its floats made finite", refused)
 				}
 			}
-			insts := gooseGoDecode(t, u, v.root, ir.TableAnnouncement(u), batch, n)
+			insts := gooseGoDecode(t, u, v.root, tablewire.Announce(u), batch, n)
 			want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 			if err != nil {
 				t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -802,7 +802,7 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	insts := gooseGoDecode(t, u, "Shapes", ir.TableAnnouncement(u), batch, len(values))
+	insts := gooseGoDecode(t, u, "Shapes", tablewire.Announce(u), batch, len(values))
 	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -928,7 +928,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	insts := gooseGoDecode(t, u, "SimState", ir.TableAnnouncement(u), batch, len(values))
+	insts := gooseGoDecode(t, u, "SimState", tablewire.Announce(u), batch, len(values))
 	want, err := gooseEncodeMessages(tabletext.NewModel(u), insts)
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
@@ -953,7 +953,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	}
 	var vocab tablewire.Vocabulary
 	var arep tabletext.Report
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &arep); err != nil {
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &arep); err != nil {
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)

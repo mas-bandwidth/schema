@@ -123,7 +123,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 	}
 	if message {
 		r.vocabulary = &tablewire.Vocabulary{}
-		if err := r.vocabulary.AnnounceRead(ir.TableAnnouncement(unit), &tabletext.Report{}); err != nil {
+		if err := r.vocabulary.AnnounceRead(tablewire.Announce(unit), &tabletext.Report{}); err != nil {
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
 	}

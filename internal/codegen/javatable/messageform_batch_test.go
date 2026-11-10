@@ -116,7 +116,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 			var insts []*tabletext.Instance
 			var body strings.Builder
 			var names []string
-			announce := ir.TableAnnouncement(u)
+			announce := tablewire.Announce(u)
 			for _, name := range instanceNames {
 				raw, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", name+".json"))
 				if err != nil {
@@ -162,7 +162,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 				}
 				insts = append(insts, inst)
 			}
-			announce := ir.TableAnnouncement(u)
+			announce := tablewire.Announce(u)
 			var body strings.Builder
 			var names []string
 			for i, inst := range insts {
@@ -209,7 +209,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the oracle did not encode the older batch: %v", err)
 		}
-		announce := ir.TableAnnouncement(older)
+		announce := tablewire.Announce(older)
 		decode := func(t *testing.T, newer *ir.Unit) ([]*tabletext.Instance, tabletext.Report, bool) {
 			mn := tabletext.NewModel(newer)
 			v := &tablewire.Vocabulary{}

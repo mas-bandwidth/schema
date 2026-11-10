@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -292,7 +293,7 @@ func expectedMessageBody(t *testing.T, u *ir.Unit, st *ir.Struct, jsonPath strin
 	if err := dec.Decode(&obj); err != nil {
 		t.Fatalf("the pinned instance text %s is not an object: %v", jsonPath, err)
 	}
-	slots := ir.TableVocabularySlots(u)
+	slots := tablewire.MessageVocabularySlots(u)
 	return "[" + expectedStructBody(t, u, slots, st, obj) + "]"
 }
 

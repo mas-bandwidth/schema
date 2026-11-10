@@ -50,7 +50,7 @@ func vocabularyOf(t *testing.T, unit *ir.Unit) *tablewire.Vocabulary {
 	t.Helper()
 	var v tablewire.Vocabulary
 	var report tabletext.Report
-	if err := v.AnnounceRead(ir.TableAnnouncement(unit), &report); err != nil || !v.Announced() {
+	if err := v.AnnounceRead(tablewire.Announce(unit), &report); err != nil || !v.Announced() {
 		t.Fatalf("the unit's own announcement was refused: %v %+v", err, report)
 	}
 	return &v
@@ -893,7 +893,7 @@ func bytesContain(hay, needle []byte) bool {
 // recovers any value but the four.
 func TestTheBasesTwoEncodings(t *testing.T) {
 	model, v := basesUnit(t)
-	announcement := ir.TableAnnouncement(model.Unit)
+	announcement := tablewire.Announce(model.Unit)
 	if pinned := wireBytes(t, "testdata/wire/tables/bases_conn.bin"); string(pinned) != string(announcement) {
 		t.Errorf("the bases announcement differs from the pinned bases_conn at byte %d", firstDifference(pinned, announcement))
 	}

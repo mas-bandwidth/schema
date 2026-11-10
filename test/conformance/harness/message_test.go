@@ -122,7 +122,7 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 	for _, c := range m.Connections {
 		unit, vocabulary := announced(t, u, c)
 		data := wireBytes(t, c.Wire)
-		want := ir.TableAnnouncement(unit)
+		want := tablewire.Announce(unit)
 		if string(want) != string(data) {
 			t.Errorf("%s: the committed announcement is %d bytes and the unit derives %d, first difference at byte %d — run: make update-goldens",
 				c.Key, len(data), len(want), firstDifference(data, want))
@@ -137,8 +137,9 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 				c.Key, vocabulary.BuildVersion(), ir.BuildVersion(unit))
 		}
 		// THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
-		// VOCABULARY: slot 1 is the first entry of the closure, and the
-		// node-table id takes exactly one slot
+		// VOCABULARY: slot 1 is the first entry of the message closure, and
+		// the node-table id takes no slot, because no message body carries a
+		// pointer
 		entries := vocabulary.Entries()
 		if len(entries) == 0 || entries[0].Id == ir.TableBuildVersionWireId || entries[0].Id == ir.TableMessageVocabularyWireId {
 			t.Errorf("%s: slot 1 is not the first entry of the closure", c.Key)
@@ -159,62 +160,46 @@ func TestTheAnnouncementIsTheUnitsOwn(t *testing.T) {
 			}
 			seen[e.Key()] = i
 		}
-		if nodeTable != 1 {
-			t.Errorf("%s: the node-table id takes %d slots, not one", c.Key, nodeTable)
+		if nodeTable != 0 {
+			t.Errorf("%s: the node-table id takes %d slots, not none", c.Key, nodeTable)
 		}
 	}
 }
 
-// TestTheTailIsUnconditional holds §3.3's stated choice: a unit with no
-// pointer announces the reserved node-table id and the three blob type ids all
-// the same, so an ordinary edit only ever grows the tail at its END and never
-// moves a slot a generated field header carries as a literal.
-func TestTheTailIsUnconditional(t *testing.T) {
+// TestTheVocabularyIsTheMessageClosure holds §3.3: the announcement carries
+// the MESSAGE CLOSURE's entries and nothing else. The reserved node-table id,
+// the three blob type ids and every table's name id take no slot, because no
+// body of the message form can carry them, and the entries are exactly the
+// ones the Go reference writes against, in its order.
+func TestTheVocabularyIsTheMessageClosure(t *testing.T) {
 	m, _, u := corpus(t)
 	for _, c := range m.Connections {
-		unit, err := u.get(c.Unit)
-		if err != nil {
-			t.Fatal(err)
+		unit, vocabulary := announced(t, u, c)
+		want := tablewire.MessageVocabulary(unit)
+		entries := vocabulary.Entries()
+		if len(entries) != len(want) {
+			t.Errorf("%s: the announcement carries %d entries and the message closure %d", c.Key, len(entries), len(want))
+			continue
 		}
-		entries := ir.TableVocabulary(unit)
-		var tables []uint64
-		for name := range ir.TableClosure(unit) {
-			// A MAP'S GENERATED ENTRY IS NOT A TABLE OF THE DECLARATION'S and
-			// its name is on no wire, so the tail never names it (§2.8, §20.2).
-			// The vocabulary skips it by `MapEntryOf`, and so does this: no
-			// connection unit carried a map until the retain rows landed one.
-			if st := unit.Tables[name]; st != nil && st.MapEntryOf != "" {
-				continue
-			}
-			if unit.Tables[name] != nil {
-				// the id is the table's WIRE name, so a `was` rename moves no slot
-				tables = append(tables, ir.TableWireId(unit.Tables[name].WireName()))
+		for i := range want {
+			if entries[i].Key() != want[i].Key() {
+				t.Errorf("%s: slot %d is %s and the message closure's is %s", c.Key, i+1, entries[i].Key(), want[i].Key())
 			}
 		}
-		// the tail is the last 4 + one-per-table entries, in the fixed order
-		want := len(tables) + 4
-		if len(entries) < want {
-			t.Fatalf("%s: %d entries cannot hold a tail of %d", c.Key, len(entries), want)
+		untouched := map[uint64]string{
+			ir.TableNodeWireId:   "the node-table id",
+			ir.BytesWireTypeId:   "the bytes type id",
+			ir.StringWireTypeId:  "the string type id",
+			ir.WstringWireTypeId: "the wstring type id",
 		}
-		tail := entries[len(entries)-want:]
-		if tail[0].Id != ir.TableNodeWireId || tail[1].Id != ir.BytesWireTypeId ||
-			tail[2].Id != ir.StringWireTypeId || tail[3].Id != ir.WstringWireTypeId {
-			t.Errorf("%s: the tail does not open with the node-table id and bytes, string, wstring", c.Key)
-		}
-		for i, e := range tail {
-			if e.Kind != 0 {
-				t.Errorf("%s: tail entry %d is announced at kind %d, not 0", c.Key, i, e.Kind)
+		for name, st := range unit.Tables {
+			if st.MapEntryOf == "" {
+				untouched[ir.TableWireId(st.WireName())] = "the name id of table " + name
 			}
 		}
-		// and the table name ids beyond them are the projection's sorted
-		// record order, which is what makes the tail grow only at its end
-		have := map[uint64]bool{}
-		for _, e := range tail[4:] {
-			have[e.Id] = true
-		}
-		for _, id := range tables {
-			if !have[id] {
-				t.Errorf("%s: the tail names no table id %016x", c.Key, id)
+		for i, e := range entries {
+			if what, bad := untouched[e.Id]; bad && e.Kind == 0 {
+				t.Errorf("%s: slot %d carries %s, which no message body can carry", c.Key, i+1, what)
 			}
 		}
 	}

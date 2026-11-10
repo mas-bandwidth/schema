@@ -11,7 +11,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestJavaScriptIntegrityConstruct(t *testing.T) {
@@ -77,7 +76,7 @@ func TestJavaScriptIntegrityConstruct(t *testing.T) {
 		PlainFixed   string   `json:"plainFixed"`
 		Message      string   `json:"message"`
 		Announcement string   `json:"announcement"`
-	}{variable, jsIntegrityFixedGolden, jsIntegrityPlainFixedGolden, hex.EncodeToString(message), hex.EncodeToString(ir.TableAnnouncement(u))}
+	}{variable, jsIntegrityFixedGolden, jsIntegrityPlainFixedGolden, hex.EncodeToString(message), hex.EncodeToString(tablewire.Announce(u))}
 	out := runJSConstructProbe(t, files, runtimeHome(u)+"Variable.js", jsIntegrityDriver, spec)
 	if !strings.Contains(out, "INTEGRITY OK\n") {
 		t.Fatalf("missing native integrity proof: %s", out)

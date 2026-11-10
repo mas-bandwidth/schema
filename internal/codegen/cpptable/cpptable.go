@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -1979,7 +1980,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	// for the unit: every id the closure can put on a wire, and the slot the
 	// compiler settled for it. A generated field header carries the slot as a
 	// literal beside the id.
-	slots := ir.TableVocabularySlots(u)
+	slots := tablewire.MessageVocabularySlots(u)
 	// THE ID VOCABULARY'S ORDINALS (docs/SPEC-TABLES.md §3), derived once for
 	// the unit beside the message form's slots: every id a generated header
 	// can name, and the index it takes in the ascending set TableIds's

@@ -4,6 +4,7 @@ package compiler
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -93,7 +94,7 @@ func (c *Compiler) PackMessages(u *ir.Unit, trees []MessageTree) ([]byte, []stri
 // §3.3): an ordinary form 1 file whose body carries the BUILD VERSION and the
 // VOCABULARY under the two reserved ids, and whose trailer is those two ids.
 // Every byte of it is settled by the compiler.
-func (c *Compiler) Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
+func (c *Compiler) Announce(u *ir.Unit) []byte { return tablewire.Announce(u) }
 
 // DescribeAnnouncement prints an announcement's vocabulary decoded, one line
 // an entry with its slot, its id, the name this unit's closure gives it, its

@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -36,11 +37,11 @@ func (g *fixedModule) emitMessageAnnouncement() {
 	g.pf("%s", dartTableAnnouncementConstant(g.unit))
 }
 
-// dartTableAnnouncementConstant renders ir.TableAnnouncement(u) as a Dart
+// dartTableAnnouncementConstant renders tablewire.Announce(u) as a Dart
 // constant, the same way the reference legs emit it: a const byte list and its
 // length. `final` rather than `const` because Uint8List is not a const type.
 func dartTableAnnouncementConstant(u *ir.Unit) string {
-	b := ir.TableAnnouncement(u)
+	b := tablewire.Announce(u)
 	var out strings.Builder
 	out.WriteString("/// THE ANNOUNCEMENT: the unit's id table, settled byte for byte by the\n")
 	out.WriteString("/// compiler. It is an ordinary form-`1` file whose body carries the build\n")

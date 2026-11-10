@@ -24,13 +24,14 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // messageSlot answers the 1-based vocabulary slot an entry rides under, the
 // writer's half of the reference a body spends on a field (§3.3).
 func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
 		if e.Key() == v.Key() {
 			return i + 1
 		}
@@ -41,7 +42,7 @@ func (g *fixedModule) messageSlot(e ir.TableVocabularyEntry) int {
 // messageNameSlot answers the slot of a NAME entry — a kind-0 entry under an
 // enum variant's or a reserved id's wire name (§3.3: a variant rides by NAME).
 func (g *fixedModule) messageNameSlot(id uint64) int {
-	for i, v := range ir.TableVocabulary(g.unit) {
+	for i, v := range tablewire.MessageVocabulary(g.unit) {
 		if v.Id == id && v.Kind == 0 {
 			return i + 1
 		}
@@ -54,7 +55,7 @@ func (g *fixedModule) messageNameSlot(id uint64) int {
 func (g *fixedModule) emitMessageBatchRuntime() {
 	runtime := dartMessageBatchRuntime
 	usesFloat32, usesFloat64 := false, false
-	for _, entry := range ir.TableVocabulary(g.unit) {
+	for _, entry := range tablewire.MessageVocabulary(g.unit) {
 		usesFloat32 = usesFloat32 || entry.Kind == ir.TableKindF32
 		usesFloat64 = usesFloat64 || entry.Kind == ir.TableKindF64
 		for shape := &entry.Shape; shape != nil; shape = shape.Inner {
@@ -75,7 +76,7 @@ func (g *fixedModule) emitMessageBatchRuntime() {
 		runtime = strings.Replace(runtime, "class TableBitWriter {\n", "class TableBitWriter {\n"+cells, 1)
 	}
 	g.pf("%s", runtime)
-	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(ir.TableVocabulary(g.unit))))
+	g.pf("const int tableMessageRefBits = %d;\n", ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.unit))))
 	g.pf("const int tableMessageBatchMax = 256;\n\n")
 	// THE THREE IDS THE LANGUAGE HOLDS BACK (docs/SPEC-TABLES.md §3.1, §3.3,
 	// §5) are malformed anywhere but their own transport, and the rule

@@ -128,7 +128,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 			}
 			insts = append(insts, inst)
 		}
-		announce := ir.TableAnnouncement(u)
+		announce := tablewire.Announce(u)
 		var body strings.Builder
 		var names []string
 		for i, inst := range insts {
@@ -182,7 +182,7 @@ func TestMessageFormBatchRust(t *testing.T) {
 		if err != nil {
 			t.Fatalf("the oracle did not encode the older batch: %v", err)
 		}
-		announce := ir.TableAnnouncement(older)
+		announce := tablewire.Announce(older)
 		v := &tablewire.Vocabulary{}
 		var arep tabletext.Report
 		if err := v.AnnounceRead(announce, &arep); err != nil {

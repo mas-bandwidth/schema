@@ -87,7 +87,7 @@ func TestMessageMalformedOverflagDart(t *testing.T) {
 // (references ride least significant bit first, as the bit reader reads them).
 func nodeRefMutant(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
-	entries := ir.TableVocabulary(u)
+	entries := tablewire.MessageVocabulary(u)
 	slot := uint64(0)
 	for i, e := range entries {
 		if e.Id == ir.TableNodeWireId {
@@ -127,7 +127,7 @@ func agreeOnMessageMutant(t *testing.T, unitPath, root string, mutant []byte) {
 		t.Fatalf("unit %s declares no table %s", unitPath, root)
 	}
 	vocab := &tablewire.Vocabulary{}
-	if err := vocab.AnnounceRead(ir.TableAnnouncement(u), &tabletext.Report{}); err != nil {
+	if err := vocab.AnnounceRead(tablewire.Announce(u), &tabletext.Report{}); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
 	bodies, _ := tablewire.MessageCount(mutant, vocab)

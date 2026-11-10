@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -29,12 +30,12 @@ func MessageRoot(st *ir.Struct) bool {
 func emitMessageForm(g *lobster.Gen) error {
 	u := g.Unit
 	reach := messageClosure(u)
-	slots := ir.TableVocabularySlots(u)
+	slots := tablewire.MessageVocabularySlots(u)
 	base := g.File.Base
 	g.Import("message")
 	g.Pf("// %sMessageUnit — the unit's announcement and build version, the message\n", base)
 	g.Pf("// form's compile-time constants (docs/SPEC-TABLES.md §3.3)\n")
-	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(ir.TableAnnouncement(u)),
+	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(tablewire.Announce(u)),
 		lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(u))))
 	var structs []*ir.Struct
 	for _, st := range g.File.Tables {
