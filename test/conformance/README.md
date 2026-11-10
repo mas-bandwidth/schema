@@ -207,9 +207,9 @@ a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.
 
 **The packet writer has its own surface**, `write-refusal-packet`: one packet
-type carries a ranged integer and a fixed raw value, a counted array, a text
-length, an enum ordinal and a union tag, and each refused value sits beside the
-lawful value at the same boundary. The Go leg generates and executes the packet
+type carries a ranged integer and a fixed raw value, a `bits(N)` value, a
+counted array, a text length, an enum ordinal and a union tag, and each
+refused value sits beside the lawful value at the same boundary. The Go leg generates and executes the packet
 writer (test/conformance/harness/writerefusal_packet_test.go), and its negative
 control removes one check from a copy of the emitter and requires the surface to
 go red.

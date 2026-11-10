@@ -24,8 +24,8 @@ import (
 )
 
 // writeRefusalPacketSchema is the smallest unit that reaches every refused
-// row: a ranged integer and a fixed raw value, a counted array, a text length,
-// an enum ordinal and a union tag, with the storage-less const and reserved
+// row: a ranged integer and a fixed raw value, a bits(N) value, a counted
+// array, a text length, an enum ordinal and a union tag, with the storage-less const and reserved
 // items the writer emits beside them.
 const writeRefusalPacketSchema = `package refusal
 
@@ -104,6 +104,10 @@ func TestWriteRefusalPacket(t *testing.T) {
 	writeRefusalPacketWrote(t, "fixed-max", &RefusalPacket{Fixedval: 8 << 16})
 	writeRefusalPacketRefused(t, "fixed-low", &RefusalPacket{Fixedval: -9 << 16})
 	writeRefusalPacketWrote(t, "fixed-min", &RefusalPacket{Fixedval: -8 << 16})
+
+	// row 2: a bits(N) value wider than N bits, and the widest that fits.
+	writeRefusalPacketRefused(t, "bits-wide", &RefusalPacket{Channel: 64})
+	writeRefusalPacketWrote(t, "bits-max", &RefusalPacket{Channel: 63})
 
 	// row 3: a counted array's used count, off both ends and at both.
 	writeRefusalPacketRefused(t, "count-high", &RefusalPacket{ItemsCount: 5})

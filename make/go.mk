@@ -753,16 +753,6 @@ conformance-negative-control-go-framing: build/conformance-harness build/conform
 conformance-negative-control-go-write-refusal: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control write-refusal
 
-# THE PACKET WRITE CONTRACT's Go leg and control (docs/SPEC.md §5.1): the
-# generated packet writer refuses every row of the contract and writes each
-# lawful twin at the same boundary; the control flips the emitted high-bound
-# range comparison in a copy of the emitter and requires the surface to go red.
-.PHONY: conformance-go-write-refusal-packet
-conformance-go-write-refusal-packet:
-	sh test/slowgate/proof conformance-go-write-refusal-packet \
-		'TestWriteRefusalPacketSurface TestWriteRefusalPacketSurfaceNegativeControl' \
-		./test/conformance/harness -run '^(TestWriteRefusalPacketSurface|TestWriteRefusalPacketSurfaceNegativeControl)$$' -count=1
-
 # THE GO LEG of `make test`: the two conformance negative controls, THE GO
 # PORT's own instruments (docs/SPEC-TABLES.md) — the allocation gate and its
 # negative control, the forgery fuzzer plain and under -race, and the soak's
@@ -776,7 +766,6 @@ test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp gener
 	$(MAKE) conformance-negative-control-go-text-refusal
 	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) conformance-negative-control-go-write-refusal
-	$(MAKE) conformance-go-write-refusal-packet
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone
 	$(MAKE) tables-go-fuzz

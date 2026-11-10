@@ -2582,9 +2582,9 @@ answers from its ordinary build. Each leg carries negative controls,
 code and require that surface to go red while `wire` (or `message`) stays green.
 The fifth surface, `write-refusal-packet`, drives a packet `Write` over one type
 that carries the same refused values — a ranged integer and a fixed raw value, a
-counted array, a text length, an enum ordinal and a union tag — starting with
-the Go leg; its negative control removes one check from a copy of the emitter
-and requires that surface to go red.
+`bits(N)` value, a counted array, a text length, an enum ordinal and a union
+tag — starting with the Go leg; its negative control removes one check from a
+copy of the emitter and requires that surface to go red.
 
 ## 6. Generated code
 
