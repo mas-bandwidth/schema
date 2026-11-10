@@ -137,9 +137,9 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
-tables-goose-damage: toolchain-goose
+tables-goose-damage: goose-toolchain-ready
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
-tables-goose-damage-negative-control: toolchain-goose
+tables-goose-damage-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
 
@@ -147,8 +147,8 @@ test-goose: tables-goose-damage tables-goose-damage-negative-control
 # (--builder) and retaining (--builder --retain) arms agree with the Go engine
 # on every mutant's strict read verdict and canonical write-back bytes.
 .PHONY: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
-tables-goose-wire-fuzz-verdict: toolchain-goose
+tables-goose-wire-fuzz-verdict: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipe$$'
-tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose
+tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control

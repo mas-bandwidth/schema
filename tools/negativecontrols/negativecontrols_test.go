@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -1138,5 +1139,228 @@ func TestGoRustAndMessageFormNegativeControlGroupsFitTheTwoMinuteCap(t *testing.
 	}
 	if got := groupOf["conformance-negative-control-go-message"]; len(got) != 1 || got[0] != "go-message" {
 		t.Errorf("target conformance-negative-control-go-message is in %v; want only go-message", got)
+	}
+}
+
+// gooseInstallLine is the line every Goose control that runs the pinned
+// compiler must carry, or reach through goose-toolchain-ready: install the pin
+// when it is missing, then probe.
+const gooseInstallLine = `test -x "$(GOOSE)" || $(MAKE) dist-goose`
+
+// gooseRule holds one make rule parsed out of a goose makefile: its
+// prerequisites and its recipe text.
+type gooseRule struct {
+	prereqs []string
+	recipe   string
+}
+
+// logicalLines joins backslash-continued lines into single logical lines, the
+// way make reads them.
+func logicalLines(body string) []string {
+	var out []string
+	var buf string
+	cont := false
+	for _, raw := range strings.SplitSeq(body, "\n") {
+		more := strings.HasSuffix(raw, "\\")
+		text := raw
+		if more {
+			text = strings.TrimSuffix(text, "\\")
+		}
+		if cont {
+			buf += " " + strings.TrimSpace(text)
+		} else {
+			buf = text
+		}
+		if more {
+			cont = true
+		} else {
+			cont = false
+			out = append(out, buf)
+		}
+	}
+	if cont {
+		out = append(out, buf)
+	}
+	return out
+}
+
+// gooseRulePrereqs reads the prerequisite list off a rule head's right side,
+// skipping the pattern of a static pattern rule (`targets: pattern: prereqs`).
+func gooseRulePrereqs(rest string) []string {
+	if i := ruleColon(rest); i >= 0 {
+		rest = rest[i+1:]
+	}
+	return strings.Fields(strings.TrimSpace(rest))
+}
+
+// gooseRules parses one makefile into the rules it defines, keyed by target
+// name. Only rule heads contribute; `.PHONY` declarations, assignments, comment
+// lines and `define` bodies are skipped, and recipe lines attach to the most
+// recent rule head.
+func gooseRules(body string) (map[string]gooseRule, error) {
+	rules := map[string]gooseRule{}
+	var cur []string
+	inDefine := false
+	for _, ln := range logicalLines(body) {
+		trimmed := strings.TrimSpace(ln)
+		if inDefine {
+			if strings.HasPrefix(trimmed, "endef") {
+				inDefine = false
+			}
+			continue
+		}
+		if strings.HasPrefix(trimmed, "define ") {
+			inDefine = true
+			continue
+		}
+		if strings.HasPrefix(ln, "\t") {
+			for _, name := range cur {
+				r := rules[name]
+				r.recipe += ln + "\n"
+				rules[name] = r
+			}
+			continue
+		}
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		colon := ruleColon(trimmed)
+		if colon < 0 {
+			cur = nil
+			continue
+		}
+		head := strings.TrimSpace(trimmed[:colon])
+		if strings.ContainsAny(head, "=") {
+			cur = nil
+			continue
+		}
+		names := strings.Fields(head)
+		if len(names) == 1 && names[0] == ".PHONY" {
+			cur = nil
+			continue
+		}
+		prereqs := gooseRulePrereqs(trimmed[colon+1:])
+		cur = cur[:0]
+		for _, name := range names {
+			r := rules[name]
+			r.prereqs = prereqs
+			rules[name] = r
+			cur = append(cur, name)
+		}
+	}
+	return rules, nil
+}
+
+// gooseClosure walks a target's prerequisite closure and reports whether the
+// rules it reaches run the pinned GOOSE, install the pin (an install line in a
+// recipe, or goose-toolchain-ready among the prerequisites), and depend on bare
+// toolchain-goose, which only probes and never installs.
+func gooseClosure(rules map[string]gooseRule, start string) (usesGoose, installs, hasBareToolchain bool) {
+	seen := map[string]bool{}
+	stack := []string{start}
+	for len(stack) > 0 {
+		name := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		r, ok := rules[name]
+		if !ok {
+			continue
+		}
+		if strings.Contains(r.recipe, "$(GOOSE)") {
+			usesGoose = true
+		}
+		if strings.Contains(r.recipe, gooseInstallLine) {
+			installs = true
+		}
+		for _, p := range r.prereqs {
+			switch p {
+			case "goose-toolchain-ready":
+				installs = true
+			case "toolchain-goose":
+				hasBareToolchain = true
+			}
+			stack = append(stack, p)
+		}
+	}
+	return
+}
+
+// TestGooseControlsInstallThePin holds every Goose control in the plan to the
+// rule that a control which runs the pinned compiler must install it itself.
+// Bare toolchain-goose only probes the pin, so a control that depends on it
+// dies on a runner whose dist/ holds no Goose before it can run (the goose-wire-
+// verdict target did exactly that). Every control must either carry the install
+// line, reach goose-toolchain-ready, or not run the compiler at all.
+func TestGooseControlsInstallThePin(t *testing.T) {
+	t.Parallel()
+	root := testRoot(t)
+
+	files, err := filepath.Glob(filepath.Join(root, "make", "goose*.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	rules := map[string]gooseRule{}
+	for _, f := range files {
+		body, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := gooseRules(string(body))
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		for k, v := range got {
+			rules[k] = v
+		}
+	}
+
+	m, err := loadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := map[string]bool{}
+	for _, g := range m.Groups {
+		for _, tgt := range g.Targets {
+			planned[tgt] = true
+		}
+	}
+
+	var targets []string
+	for tgt := range planned {
+		if _, ok := rules[tgt]; ok {
+			targets = append(targets, tgt)
+		}
+	}
+	sort.Strings(targets)
+	if len(targets) == 0 {
+		t.Fatal("no Goose control targets in the plan are defined in make/goose*.mk: this test would pass over an empty set")
+	}
+
+	for _, tgt := range targets {
+		uses, installs, bare := gooseClosure(rules, tgt)
+		if bare {
+			t.Errorf("goose control %s depends on bare toolchain-goose, which only probes the pinned GOOSE: on a runner whose dist/ holds no Goose the job dies before the control runs", tgt)
+		}
+		if uses && !installs {
+			t.Errorf("goose control %s runs the pinned GOOSE but installs it neither in its recipe (test -x \"$(GOOSE)\" || $(MAKE) dist-goose) nor through the goose-toolchain-ready prerequisite", tgt)
+		}
+	}
+
+	// The negative control: the same check over an in-test copy of the verdict
+	// target with the old prerequisite must fail as a bare toolchain dependency.
+	const oldVerdict = ".PHONY: tables-goose-wire-fuzz-verdict-negative-control\n" +
+		"tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose\n" +
+		"\tSCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'\n"
+	negRules, err := gooseRules(oldVerdict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, bare := gooseClosure(negRules, "tables-goose-wire-fuzz-verdict-negative-control")
+	if !bare {
+		t.Error("PLANTED: the verdict control with the old prerequisite (toolchain-goose) must be caught as a bare toolchain dependency")
 	}
 }
