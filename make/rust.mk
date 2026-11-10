@@ -1207,19 +1207,20 @@ tables-rust-retain-negative-control:
 # to the old reader — a decoded U+0000 never flags the string, and the string's
 # bytes decode lossily to U+FFFD — through a `go test -overlay` of
 # internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
-# TestJsonHostileTextRefusalsRust must go red on EXACTLY its nine refusal rows
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY its ten refusal rows
 # the plant breaks (zero-string, zero-blob, zero-map-key, illformed-inside,
-# illformed-truncated, illformed-unknown-value, illformed-object-key,
-# illformed-map-key, str-entry-zero), and its rows that are not the event (a
-# skipped zero, a zero object key, a `\u0001`, a well-formed text past its
-# bound, a lone surrogate) must stay green: a control that reddened those
-# would localise nothing. Five refusal rows stay refused under the plant too,
-# by a strict rule the plant leaves standing, so they are not the event
-# either: text past its bound refuses whole (no clamp), so
-# zero-map-key-over-bound, illformed-at-bound and illformed-surrogate-bytes
-# (whose U+FFFD spelling runs past string(8)) refuse; a lone surrogate
-# refuses (zero-after-lone-lead); and "1\u0000" is no integer key
-# (zero-integer-map-key).
+# illformed-truncated, illformed-surrogate-bytes, illformed-unknown-value,
+# illformed-object-key, illformed-map-key, str-entry-zero), and its rows that
+# are not the event (a skipped zero, a zero object key, a `\u0001`, a
+# well-formed text past its bound, a lone surrogate) must stay green: a control
+# that reddened those would localise nothing. Four refusal rows stay refused
+# under the plant too, by a strict rule the plant leaves standing, so they are
+# not the event either: text past its bound refuses whole (no clamp), so
+# zero-map-key-over-bound and illformed-at-bound refuse — whose lossy spelling
+# runs past string(8) only when the invalid bytes each become U+FFFD, which is
+# why illformed-surrogate-bytes (one U+FFFD, inside string(8)) is the event; a
+# lone surrogate refuses (zero-after-lone-lead); and "1\u0000" is no integer
+# key (zero-integer-map-key).
 tables-rust-json-hostile-negative-control:
 	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
 	@sed -e 's|self.zero [|]= cp == 0;|/* SABOTAGED */|' \
@@ -1235,14 +1236,14 @@ tables-rust-json-hostile-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
 		cat build/rust-json-hostile-control/log; exit 1; \
 	fi
-	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 9 || \
-		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the nine refusal rows"; \
+	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 10 || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the ten refusal rows"; \
 		  cat build/rust-json-hostile-control/log; exit 1; }
-	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape|zero-map-key-over-bound|zero-integer-map-key|zero-after-lone-lead|illformed-at-bound|illformed-surrogate-bytes):' build/rust-json-hostile-control/log || \
+	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape|zero-map-key-over-bound|zero-integer-map-key|zero-after-lone-lead|illformed-at-bound):' build/rust-json-hostile-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
 	@grep -m1 'MISMATCH illformed-object-key:' build/rust-json-hostile-control/log
 	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
-	@echo "rust json-hostile negative control: the old reader turns exactly the nine §16.3 refusal rows RED"
+	@echo "rust json-hostile negative control: the old reader turns exactly the ten §16.3 refusal rows RED"
 
 # THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
 # the generated guard gate is taken out of the numbering, the save and the
