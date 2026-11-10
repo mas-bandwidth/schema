@@ -2862,6 +2862,10 @@
     {
       "target": "roadmap-check-negative-control",
       "reason": "the roadmap gate's drift control (tools/roadmap/roadmap.mk): it needs SBCL and full git history for $(ROADMAP_BASE), which the shared negative-control rows on hosted ubuntu-latest runners neither install nor clone, so running it there would refuse at the missing tool before the control ran. It runs in its own gate, .github/workflows/roadmap.yml's `roadmap` job, which fetches full history and checks that sbcl is present before running `make roadmap-check-negative-control` beside the roadmap-check and roadmap-test gates on the fleet runner, on every push to main and on every pull request that touches the roadmap files."
+    },
+    {
+      "target": "python-table-core-negative-control",
+      "reason": "the Python table core's form-byte control (make/python.mk) runs the pinned interpreter probe, which needs make dist-python's two interpreters and mypy; the shared negative-control rows do not install that toolchain, so the control refuses there by name. It runs beside test-python, whose prerequisites build the pins, and the leg owns the gate."
     }
   ]
 }

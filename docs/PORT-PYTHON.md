@@ -286,6 +286,48 @@ per unit, named for the unit's package:
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
 | `test/conformance/python/` | the conformance driver and `ci.json` |
 
+## THE TABLE FRAME
+
+The table core (P5/P6, cut so the other table cards run beside it) emits a
+generated class per table and per map entry, each with its descriptor
+(SPEC-TABLES §8.1), and one runtime under `<package>/_schema/`.
+
+- **One module per field kind.** `_schema/kinds.py` is the dispatch table;
+  `kind_bool.py`, `kind_int.py`, `kind_table.py` and `kind_pointer.py` register
+  the kinds this cut carries. A later card adds its module and one registration
+  line, never an edit to the body walk. `kind_unsupported.py` is the named
+  placeholder for a construct whose descriptor exists but whose codec has not
+  landed; a read or write that reaches it refuses by name.
+- **The frame is form 1.** `load_table`, `save_table` and `measure_table` carry
+  the whole value or raise `Refused`, validate a write before writing a byte
+  and raise `InvalidValue`, write the flat node table for `*T`, and fill a
+  `LoadReport` on success only. `Measure` runs the same walk into a counting
+  sink, so measure and save agree by construction.
+- **The descriptor is the shape.** This cut keeps the descriptor walk for both
+  load and save: the generated class carries data, and the runtime's one body
+  walk dispatches through `_schema/kinds.py`. The straight-line generated shape
+  is not emitted here, and the fleet bench that would choose between the two
+  (D1) is owed before this paragraph can record numbers. When it runs, the two
+  shapes are the generated save/load pair over the same table and the
+  descriptor walk the runtime already has, on the pinned interpreters, and the
+  faster is kept with its numbers written here.
+- **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
+  by-value tables and `*T` pointers to tables, for both the fixed and the
+  variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
+  with table arms have descriptors in this cut and refuse by name through
+  `kind_unsupported.py` until their cards land.
+- **A packet-typed field is refused by name.** A table field whose type is a
+  packet `type` reaches `refusePacketValues` and is refused naming the field
+  and the type, until P4 carries packet types into tables.
+
+### Bench
+
+No fleet sitting has been recorded for this cut yet. The worker host that
+assembled it has no pinned interpreters under `dist/` (the build needs the
+python.org tarballs), so `make dist-python` and every gate that runs the pins
+refuse by name rather than skipping. The numbers, and the choice between the
+two shapes they justify, remain owed; the descriptor walk is the shape built.
+
 ## IDENTIFIERS
 
 Fields keep the schema's spelling (`max_players`), and types, tables and

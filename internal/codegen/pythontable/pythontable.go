@@ -1,0 +1,460 @@
+// Package pythontable emits the Python target's TABLE SURFACE
+// (docs/SPEC-TABLES.md; the design is docs/PORT-PYTHON.md): one generated
+// class per table, with the descriptor a generic walk reads, and the form-1
+// runtime that loads, saves and measures the fixed and variable classes.
+//
+// The runtime lives under the generated package's _schema directory, one
+// module per field kind beside one dispatch table (runtime/_schema/kinds.py),
+// so a later card adds a kind module and one registration line rather than
+// editing the body walk. A field whose type is a packet type is refused by
+// name until the packet layer carries it.
+package pythontable
+
+import (
+	"embed"
+	"fmt"
+	"io/fs"
+	"math/big"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/python"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// RuntimeDir is the runtime subpackage's name inside every generated package.
+const RuntimeDir = python.RuntimeDir
+
+//go:embed all:runtime/_schema
+var runtimeFS embed.FS
+
+// Generate returns the generated package's files for a unit that declares at
+// least one table. A table-free unit generates nothing here; the packet layer
+// owns its files.
+func Generate(u *ir.Unit) (map[string][]byte, error) {
+	if len(u.Tables) == 0 {
+		return map[string][]byte{}, nil
+	}
+	if err := python.CheckNames(u); err != nil {
+		return nil, err
+	}
+	if err := refusePacketValues(u); err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	byFile := tableFiles(u)
+	bases := make([]string, 0, len(byFile))
+	for base := range byFile {
+		bases = append(bases, base)
+	}
+	sort.Strings(bases)
+	for _, base := range bases {
+		out[path.Join(u.Package, base+".py")] = []byte(emitModule(u, base, byFile[base]))
+	}
+	out[path.Join(u.Package, "__init__.py")] = []byte(packageInit(u, bases, byFile))
+	out[path.Join(u.Package, "py.typed")] = []byte{}
+	runtime, err := Runtime()
+	if err != nil {
+		return nil, err
+	}
+	for rel, data := range runtime {
+		out[path.Join(u.Package, rel)] = data
+	}
+	return out, nil
+}
+
+// Runtime returns the runtime files keyed by their path inside a generated
+// package (_schema/__init__.py, _schema/load.py, ...).
+func Runtime() (map[string][]byte, error) {
+	out := map[string][]byte{}
+	err := fs.WalkDir(runtimeFS, "runtime", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := runtimeFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		out[strings.TrimPrefix(p, "runtime/")] = data
+		return nil
+	})
+	return out, err
+}
+
+// refusePacketValues refuses the first field whose type is a packet type, by
+// name, until the packet layer lands (docs/PORT-PYTHON.md, THE CARD MAP: P4).
+func refusePacketValues(u *ir.Unit) error {
+	names := make([]string, 0, len(u.Tables))
+	for name := range ir.TableClosure(u) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		st := closureMember(u, name)
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			if ref, ok := f.Type.Ref.(*ir.Struct); ok && !ref.IsTable {
+				return fmt.Errorf("python: %s.%s names the packet type %s, and the Python target does not carry packet types yet (docs/PORT-PYTHON.md, THE CARD MAP: P4 the packet wire)", st.Name, f.Name, ref.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func closureMember(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
+// tableFiles groups the closure's tables by the schema file that declares
+// them. A generated map entry or text element rides in its holder's module.
+func tableFiles(u *ir.Unit) map[string][]*ir.Struct {
+	byFile := map[string][]*ir.Struct{}
+	seen := map[string]bool{}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			byFile[f.Base] = append(byFile[f.Base], st)
+			seen[st.Name] = true
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && ir.TableClosure(u)[st.Name] {
+				byFile[f.Base] = append(byFile[f.Base], st)
+				seen[st.Name] = true
+			}
+		}
+	}
+	var orphans []*ir.Struct
+	names := make([]string, 0, len(ir.TableClosure(u)))
+	for name := range ir.TableClosure(u) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		if st := closureMember(u, name); st != nil {
+			orphans = append(orphans, st)
+		}
+	}
+	if len(orphans) > 0 {
+		byFile[moduleBase(u)] = append(byFile[moduleBase(u)], orphans...)
+	}
+	return byFile
+}
+
+func moduleBase(u *ir.Unit) string {
+	if u.Package == "" {
+		return "Tables"
+	}
+	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "Tables"
+}
+
+func emitModule(u *ir.Unit, base string, tables []*ir.Struct) string {
+	sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", base)
+	fmt.Fprintf(&b, "\"\"\"%s.schema: the generated table classes and their descriptors.\"\"\"\n\n", base)
+	b.WriteString("from typing import ClassVar, Self\n\n")
+	b.WriteString("from ._schema import LoadReport\n")
+	b.WriteString("from ._schema.descriptor import FieldDesc, TableDesc, new_by_name, register\n")
+	b.WriteString("from ._schema.load import load_table\n")
+	b.WriteString("from ._schema.save import measure_table, save_table\n\n\n")
+	for _, st := range tables {
+		emitTable(&b, u, st)
+	}
+	return b.String()
+}
+
+func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
+	name := st.Name
+	fmt.Fprintf(b, "class %s:\n", name)
+	fmt.Fprintf(b, "    \"\"\"The table %s.\"\"\"\n\n", name)
+	slots := make([]string, 0, len(st.Fields))
+	for _, f := range st.Fields {
+		slots = append(slots, strconv.Quote(f.Name))
+	}
+	fmt.Fprintf(b, "    __slots__ = (%s", strings.Join(slots, ", "))
+	if len(slots) == 1 {
+		b.WriteString(",")
+	}
+	b.WriteString(")\n\n")
+	for _, f := range st.Fields {
+		fmt.Fprintf(b, "    %s: %s\n", f.Name, pythonType(f))
+	}
+	b.WriteString("\n    descriptor: ClassVar[TableDesc]\n\n")
+	b.WriteString("    def __init__(self) -> None:\n")
+	if len(st.Fields) == 0 {
+		b.WriteString("        pass\n")
+	} else {
+		for _, f := range st.Fields {
+			fmt.Fprintf(b, "        self.%s = %s\n", f.Name, defaultExpr(f))
+		}
+	}
+	b.WriteString("\n    def __eq__(self, other: object) -> bool:\n")
+	fmt.Fprintf(b, "        if not isinstance(other, %s):\n", name)
+	b.WriteString("            return False\n")
+	if len(st.Fields) == 0 {
+		b.WriteString("        return True\n")
+	} else {
+		parts := make([]string, 0, len(st.Fields))
+		for _, f := range st.Fields {
+			parts = append(parts, fmt.Sprintf("self.%s == other.%s", f.Name, f.Name))
+		}
+		fmt.Fprintf(b, "        return bool(%s)\n", strings.Join(parts, " and "))
+	}
+	b.WriteString("\n    def __repr__(self) -> str:\n")
+	if len(st.Fields) == 0 {
+		fmt.Fprintf(b, "        return %q\n", name+"()")
+	} else {
+		parts := make([]string, 0, len(st.Fields))
+		for _, f := range st.Fields {
+			parts = append(parts, fmt.Sprintf("%s={self.%s!r}", f.Name, f.Name))
+		}
+		fmt.Fprintf(b, "        return f\"%s(%s)\"\n", name, strings.Join(parts, ", "))
+	}
+	b.WriteString("\n    @classmethod\n")
+	b.WriteString("    def load(cls, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> Self:\n")
+	b.WriteString("        return load_table(cls, data, report)\n")
+	b.WriteString("\n    def save(self) -> bytes:\n")
+	b.WriteString("        return save_table(self)\n")
+	b.WriteString("\n    def measure(self) -> int:\n")
+	b.WriteString("        return measure_table(self)\n\n\n")
+	fmt.Fprintf(b, "%s.descriptor = TableDesc(\n", name)
+	fmt.Fprintf(b, "    name=%s,\n", strconv.Quote(name))
+	fmt.Fprintf(b, "    type_id=%s,\n", hex64(ir.TableWireId(st.WireName())))
+	fmt.Fprintf(b, "    variable=%s,\n", pyBool(ir.VariableTables(u)[name]))
+	fmt.Fprintf(b, "    fields=(\n")
+	for ordinal, f := range st.Fields {
+		lo, hi := intRange(f)
+		fmt.Fprintf(b, "        FieldDesc(\n")
+		fmt.Fprintf(b, "            name=%s,\n", strconv.Quote(f.Name))
+		fmt.Fprintf(b, "            field_id=%s,\n", hex64(ir.TableFieldWireId(f)))
+		fmt.Fprintf(b, "            kind=%d,\n", ir.TableWireFieldKind(f))
+		fmt.Fprintf(b, "            codec=%s,\n", strconv.Quote(codecOf(f)))
+		fmt.Fprintf(b, "            ordinal=%d,\n", ordinal)
+		fmt.Fprintf(b, "            lo=%s,\n", lo)
+		fmt.Fprintf(b, "            hi=%s,\n", hi)
+		fmt.Fprintf(b, "            target=%s,\n", strconv.Quote(targetName(f)))
+		fmt.Fprintf(b, "            pointer=%s,\n", pyBool(f.Type.Pointer))
+		fmt.Fprintf(b, "            optional=%s,\n", pyBool(f.Type.Optional))
+		fmt.Fprintf(b, "            array=%s,\n", pyBool(f.Array != ir.ArrayNone))
+		fmt.Fprintf(b, "            bound=%d,\n", f.ArrayBound)
+		fmt.Fprintf(b, "            key_enum=%s,\n", strconv.Quote(f.KeyEnum))
+		fmt.Fprintf(b, "            default=%s,\n", descriptorDefault(f))
+		fmt.Fprintf(b, "        ),\n")
+	}
+	if len(st.Fields) == 1 {
+		b.WriteString("    ),\n")
+	} else {
+		b.WriteString("    ),\n")
+	}
+	b.WriteString(")\n")
+	fmt.Fprintf(b, "register(%s)\n\n\n", name)
+}
+
+func packageInit(u *ir.Unit, bases []string, byFile map[string][]*ir.Struct) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
+	fmt.Fprintf(&b, "\"\"\"The schema unit %s.\"\"\"\n\n", u.Package)
+	b.WriteString("from typing import Final\n\n")
+	b.WriteString("from ._schema import InvalidValue, LoadReport, Refused\n")
+	names := []string{"InvalidValue", "LoadReport", "PROTOCOL_ID", "Refused"}
+	for _, base := range bases {
+		fmt.Fprintf(&b, "from . import %s\n", base)
+		names = append(names, base)
+		tables := append([]*ir.Struct(nil), byFile[base]...)
+		sort.Slice(tables, func(i, j int) bool { return tables[i].Name < tables[j].Name })
+		if len(tables) > 0 {
+			classes := make([]string, 0, len(tables))
+			for _, st := range tables {
+				classes = append(classes, st.Name)
+				names = append(names, st.Name)
+			}
+			fmt.Fprintf(&b, "from .%s import %s\n", base, strings.Join(classes, ", "))
+		}
+	}
+	fmt.Fprintf(&b, "\nPROTOCOL_ID: Final = 0x%016x\n\n", u.ProtocolId)
+	sort.Strings(names)
+	b.WriteString("__all__ = [\n")
+	for _, n := range names {
+		fmt.Fprintf(&b, "    %q,\n", n)
+	}
+	b.WriteString("]\n")
+	return b.String()
+}
+
+func codecOf(f *ir.Field) string {
+	if f.Type.Pointer {
+		if f.Type.Blob() {
+			return "unsupported"
+		}
+		if _, ok := f.Type.Ref.(*ir.Struct); ok {
+			return "pointer"
+		}
+		return "unsupported"
+	}
+	if f.Array != ir.ArrayNone || f.IsMap() || f.KeyEnum != "" || f.Type.Optional {
+		return "unsupported"
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed, ir.TBits:
+		return "int"
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+			return "table"
+		}
+	}
+	return "unsupported"
+}
+
+func targetName(f *ir.Field) string {
+	if ref, ok := f.Type.Ref.(*ir.Struct); ok {
+		return ref.Name
+	}
+	return ""
+}
+
+func pythonType(f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional {
+		return "object | None"
+	}
+	if f.IsMap() {
+		return "dict[object, object]"
+	}
+	if f.Array != ir.ArrayNone {
+		return "list[object]"
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return "bool"
+	case ir.TInt, ir.TFixed, ir.TBits, ir.TFloat32, ir.TFloat64:
+		return "int | float"
+	case ir.TString:
+		return "str"
+	case ir.TBytes:
+		return "bytes"
+	case ir.TNamed:
+		if ref, ok := f.Type.Ref.(*ir.Struct); ok && ref.IsTable {
+			return "object"
+		}
+		return "int"
+	}
+	return "object"
+}
+
+func defaultExpr(f *ir.Field) string {
+	if f.Type.Pointer || f.Type.Optional {
+		return "None"
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return pyBool(f.HasDefault && f.DefBool)
+	case ir.TInt, ir.TFixed, ir.TBits:
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt.String()
+		}
+		return "0"
+	case ir.TFloat32, ir.TFloat64:
+		if f.HasDefault {
+			return strconv.FormatFloat(f.DefFloat, 'g', -1, 64)
+		}
+		return "0.0"
+	case ir.TString:
+		return strconv.Quote(string(f.DefBytes))
+	case ir.TBytes:
+		return "b" + goBytesLiteral(f.DefBytes)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ref.IsTable {
+				return fmt.Sprintf("new_by_name(%q)", ref.Name)
+			}
+			return "0"
+		}
+		return "0"
+	}
+	switch {
+	case f.IsMap():
+		return "{}"
+	case f.Array != ir.ArrayNone:
+		return "[]"
+	}
+	return "None"
+}
+
+func descriptorDefault(f *ir.Field) string {
+	switch codecOf(f) {
+	case "bool":
+		return pyBool(f.HasDefault && f.DefBool)
+	case "int":
+		if f.HasDefault && f.DefInt != nil {
+			return f.DefInt.String()
+		}
+		return "0"
+	}
+	return "None"
+}
+
+func intRange(f *ir.Field) (lo, hi string) {
+	switch f.Type.Kind {
+	case ir.TFixed:
+		if l, h, ok := ir.TableRawRange(f); ok {
+			return l.String(), h.String()
+		}
+	case ir.TInt:
+		if f.HasIntRange && f.IntMin != nil && f.IntMax != nil {
+			return f.IntMin.String(), f.IntMax.String()
+		}
+	case ir.TBits:
+		return "0", new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)).String()
+	}
+	return widthRange(f.Type.Width, f.Type.Signed)
+}
+
+// widthRange is the storage width's own range, the fallback when a declaration
+// names no bounds.
+func widthRange(width int, signed bool) (string, string) {
+	bits := width
+	if bits <= 0 {
+		bits = 64
+	}
+	one := big.NewInt(1)
+	if signed {
+		lo := new(big.Int).Neg(new(big.Int).Lsh(one, uint(bits-1)))
+		hi := new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits-1)), one)
+		return lo.String(), hi.String()
+	}
+	hi := new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
+	return "0", hi.String()
+}
+
+func pyBool(v bool) string {
+	if v {
+		return "True"
+	}
+	return "False"
+}
+
+func hex64(v uint64) string { return fmt.Sprintf("0x%016x", v) }
+
+func goBytesLiteral(data []byte) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, c := range data {
+		fmt.Fprintf(&b, "\\x%02x", c)
+	}
+	b.WriteByte('"')
+	return b.String()
+}
