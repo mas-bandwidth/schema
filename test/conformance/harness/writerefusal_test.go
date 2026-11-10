@@ -72,6 +72,34 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 	}
 }
 
+func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
+	t.Parallel()
+	root := conformanceRoot(t)
+	m, err := ReadManifest(filepath.Join(root, defaultManifest), filepath.Join(root, defaultJSONDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instances := make(map[string]bool, len(m.Instances))
+	for _, inst := range m.Instances {
+		instances[filepath.Clean(inst.Wire)] = true
+	}
+	previousForms := make(map[string]string)
+	for _, report := range m.Reports {
+		if strings.HasPrefix(report.Name, "previous_form_") {
+			previousForms[filepath.Clean(report.Wire)] = report.Name
+		}
+	}
+	for _, wr := range m.WriteRefusals {
+		wire := filepath.Clean(wr.Wire)
+		if !instances[wire] {
+			t.Errorf("%s: write-refusal wire %q is not an instance file", wr.Name, wr.Wire)
+		}
+		if name, previous := previousForms[wire]; previous {
+			t.Errorf("%s: write-refusal wire %q is previous-form report %s", wr.Name, wr.Wire, name)
+		}
+	}
+}
+
 // writeRefusalAnswer loads one row's wire, applies its one mutation, and runs
 // the writer the row's form names. A writer refusal is `refused`; a complete
 // write is `wrote`; a value the row asks for that the instance cannot hold is
@@ -107,7 +135,7 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 	}
 	inst := model.New(def)
 	var report tabletext.Report
-	if ok, err := tablewire.DecodeVariable(model, inst, wire, &report); !ok || err != nil {
+	if ok, err := tablewire.Decode(model, inst, wire, &report); !ok || err != nil {
 		return "", fmt.Errorf("%s: the wire did not load: %v %+v", wr.Name, err, report)
 	}
 	held, err := mutateWriteRefusal(model, inst, wr.Path, wr.Kind, wr.Value)
