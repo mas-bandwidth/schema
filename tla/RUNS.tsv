@@ -50,3 +50,5 @@ MCFixedBatchLandDuringDecode.cfg	FixedBatch	counterexample	OneVerdict	248	204	4	
 MCFixedBatchCommitShort.cfg	FixedBatch	counterexample	OneVerdict	282	228	5	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	0c84909becb22c4d46c10f5f276dd6f81e194ec41f4378f539934cda53baa3c0
 MCFixedBatchStrideOff.cfg	FixedBatch	counterexample	ReadsValueBytes	248	204	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	70723217f4c5ab918bf58c00c46a0c78acd8f2e3ce763e05f9dbb8a824631452
 MCFixedBatchNoTailCheck.cfg	FixedBatch	counterexample	OneVerdict	242	242	4	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	49285a778ba97d52f943e355e8cacec6a3e45d2fd942bef1a8c98c03850590a7
+MCWireAlign.cfg	WireAlign	exhaustive	-	917546	677886	6	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	fd1bb319223d06259f725267404e48548c8d55ef4e58de0263427c9552fee684
+MCWireAlignVariableAsFixed.cfg	WireAlign	counterexample	AlignedWhereMarked	153801	144277	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)	8349d2e71f0bc9f03abea228d606b60ecbc0cf393e192877d787f80b881382bf
