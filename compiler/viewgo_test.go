@@ -33,10 +33,10 @@ func TestGoUnitViewCorpus(t *testing.T) {
 		}
 		t.Run(path, func(t *testing.T) {
 			c := New()
-			source := "../tables/" + path
 			if path == "wide" {
-				source = "../examples-wide"
+				t.Skip("the wide-text unit is retired")
 			}
+			source := "../tables/" + path
 			paths, err := filepath.Glob(source + "/*.schema")
 			if err != nil {
 				t.Fatal(err)

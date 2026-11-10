@@ -804,7 +804,6 @@ defmodule Driver do
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
-    "widedemo" => "wide",
     "widelist" => "widelistdemo"
   }
 

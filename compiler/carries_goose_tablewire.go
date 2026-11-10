@@ -2,8 +2,6 @@
 
 package compiler
 
-import "slices"
-
 // THE GOOSE TABLE WIRE's carries (docs/PORT-GOOSE.md, THE CARRIES PATTERN):
 // form 1, the 64-bit id-table wire (docs/SPEC-TABLES.md §3), is one
 // descriptor-driven walk each way in internal/codegen/goosetable/runtime
@@ -41,11 +39,4 @@ func init() {
 	stringTargets = append(stringTargets, "goose")
 	valueDefaultTargets = append(valueDefaultTargets, "goose")
 	wasRowTargets = append(wasRowTargets, "goose")
-	tableWideTextTargets["goose"] = true
-	tableWideTextNames = append(tableWideTextNames, "Goose")
-	// table wide text needs the packet registration too (refuseWideText): the
-	// packet surface may have registered it already from its own file
-	if !slices.Contains(wideTextTargets, "goose") {
-		registerWideTextCarrier("goose")
-	}
 }

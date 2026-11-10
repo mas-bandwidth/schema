@@ -546,7 +546,7 @@ static SCHEMA_UNUSED int bench_table_reader_skip( bench_table_reader_t * r, uint
             if ( !bench_table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
             /* fall through */
-        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+        case 12: case 13: case 14: case 16: case 31: case 32:
             if ( !bench_table_reader_leb( r, &n ) || !bench_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;
         default: return 0;
@@ -570,25 +570,6 @@ static SCHEMA_UNUSED int bench_table_skip_utf8( const uint8_t * p, uint64_t n )
     }
     return 1;
 }
-static SCHEMA_UNUSED int bench_table_skip_utf16( const uint8_t * p, uint64_t n )
-{
-    uint64_t i;
-    if ( n & 1 ) { return 0; }
-    for ( i = 0; i < n; i += 2 )
-    {
-        uint32_t u = (uint32_t) p[i] | ((uint32_t) p[i+1] << 8);
-        if ( u == 0 || ( u >= 0xdc00 && u <= 0xdfff ) ) { return 0; }
-        if ( u >= 0xd800 && u <= 0xdbff )
-        {
-            uint32_t v;
-            i += 2;
-            if ( i >= n ) { return 0; }
-            v = (uint32_t) p[i] | ((uint32_t) p[i+1] << 8);
-            if ( v < 0xdc00 || v > 0xdfff ) { return 0; }
-        }
-    }
-    return 1;
-}
 static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8_t kind, int64_t nodes, int depth );
 static SCHEMA_UNUSED int64_t bench_table_skip_body( bench_table_reader_t r, int64_t nodes, int depth, int root );
 static SCHEMA_UNUSED int bench_table_skip_array( bench_table_reader_t * sub, int keyed, int64_t nodes, int depth );
@@ -597,7 +578,6 @@ static SCHEMA_UNUSED int bench_table_skip_framed( bench_table_reader_t sub, uint
     switch ( kind )
     {
         case 12: return bench_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
-        case 33: return bench_table_skip_utf16( sub.buffer, (uint64_t) sub.size );
         case 31: return 1;
         case 32: return sub.size == 0;
         case 13: return bench_table_skip_body( sub, nodes, depth, 0 ) == sub.size;
@@ -696,7 +676,7 @@ static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8
             if ( !bench_table_reader_span( r, &arm ) ) { return 0; }
             return bench_table_skip_framed( arm, arm_kind, nodes, depth + 1 );
         }
-        case 12: case 13: case 14: case 16: case 31: case 32: case 33:
+        case 12: case 13: case 14: case 16: case 31: case 32:
         {
             bench_table_reader_t sub;
             if ( !bench_table_reader_span( r, &sub ) ) { return 0; }
@@ -869,7 +849,6 @@ enum
 enum
 {
     BENCH_K_TABLE_FIXED_TEXT_UTF8  = 1,
-    BENCH_K_TABLE_FIXED_TEXT_WIDE  = 2,
     BENCH_K_TABLE_FIXED_TEXT_BYTES = 3
 };
 
@@ -928,9 +907,8 @@ enum
     SCHEMA_BENCH_TABLE_LAYOUT_NEWER = 18,
     SCHEMA_BENCH_TABLE_LAYOUT_UNSUPPORTED = 19,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
-       string(N)'s used bytes that are not well-formed UTF-8 — or a
-       wstring(N)'s used units that are not paired UTF-16 — refuse the read by
-       name, the verdict the packet reader gives, this form having no L to
+       string(N)'s used bytes that are not well-formed UTF-8 refuse the read
+       by name, the verdict the packet reader gives, this form having no L to
        continue past. Nothing is decoded and no counter moves. */
     SCHEMA_BENCH_TABLE_TEXT_ILL_FORMED = 20
 };
@@ -1306,21 +1284,18 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void bench_table_fixed_apply( con
         }
         case BENCH_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( p->meta == BENCH_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
-            const uint32_t cap = p->size / unit;
+            const uint32_t cap = p->size;
             int32_t v = (int32_t) bench_table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*out_of_range)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*out_of_range)++; }
             memcpy( dst + p->dst, &v, 4 );
-            bench_table_fixed_copy_le( dst + p->aux, src + p->src + 4, p->size, (uint8_t) unit );
+            bench_table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
             if ( p->meta != BENCH_K_TABLE_FIXED_TEXT_BYTES )
             {
                 /* the used length terminates the buffer, whose storage is one
-                   unit longer than the bound for exactly this. A store, not a
+                   byte longer than the bound for exactly this. A store, not a
                    call: memset of a runtime length is a call. */
-                uint8_t * end = dst + p->aux + (uint32_t) v * unit;
-                end[0] = 0;
-                if ( unit == 2 ) { end[1] = 0; }
+                dst[p->aux + (uint32_t) v] = 0;
             }
             break;
         }
@@ -1540,10 +1515,9 @@ static SCHEMA_UNUSED void bench_table_fixed_entry_lands( const bench_table_fixed
         case BENCH_K_TABLE_FIXED_COUNT: lands[1] = e->dst + 4u; break;
         case BENCH_K_TABLE_FIXED_TEXT:
         {
-            const uint32_t unit = ( e->meta == BENCH_K_TABLE_FIXED_TEXT_WIDE ) ? 2u : 1u;
             lands[1] = e->dst + 4u;
             lands[2] = e->aux;
-            lands[3] = e->aux + e->size + ( e->meta == BENCH_K_TABLE_FIXED_TEXT_BYTES ? 0u : unit );
+            lands[3] = e->aux + e->size + ( e->meta == BENCH_K_TABLE_FIXED_TEXT_BYTES ? 0u : 1u );
             break;
         }
         case BENCH_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
@@ -1780,14 +1754,14 @@ static SCHEMA_UNUSED int bench_table_fixed_leaf_size( uint8_t kind, uint32_t siz
 static SCHEMA_UNUSED int bench_table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
-   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
-   reserved: neither is a kind a declaration spells, so neither is ever an
-   entry's kind. */
+   the no-payload variant 32, and the ONE kind this form's layout adds, the
+   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   reserved: none is a kind a declaration spells, so none is ever an entry's
+   kind. */
 static SCHEMA_UNUSED int bench_table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
-    return kind == 32u || kind == 33u || kind == 35u;
+    return kind == 32u || kind == 35u;
 }
 
 /* table_fixed_check_entry validates the subtree rooted at i and answers how
@@ -1889,12 +1863,6 @@ static SCHEMA_UNUSED int32_t bench_table_fixed_check_entry( bench_table_fixed_ch
         {
             if ( e.children != 0u ) { bench_table_fixed_fail( c, SCHEMA_BENCH_TABLE_LAYOUT_KIND_INVALID ); return 0; }
             if ( e.size < 4u ) { bench_table_fixed_fail( c, SCHEMA_BENCH_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
-            break;
-        }
-        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
-        {
-            if ( e.children != 0u ) { bench_table_fixed_fail( c, SCHEMA_BENCH_TABLE_LAYOUT_KIND_INVALID ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { bench_table_fixed_fail( c, SCHEMA_BENCH_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
             break;
         }
         /* Every kind of the closed set is either a leaf above or a case here,
@@ -2367,7 +2335,7 @@ static SCHEMA_UNUSED void bench_table_fixed_compile_entry( bench_table_fixed_com
                 bench_table_fixed_push( c, e );
                 break;
             }
-            case 12: case 33: /* text */
+            case 12: /* text */
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 bench_table_fixed_entry_t e = bench_table_fixed_entry_zero();
@@ -2909,11 +2877,6 @@ static SCHEMA_UNUSED void bench_table_cook_put128(uint8_t * at,uint64_t lo,uint6
 }
 static SCHEMA_UNUSED void bench_table_cook_bytes(uint8_t * at,const void * source,int64_t used,int64_t capacity)
 { if(used>0) { memcpy(at,source,(size_t)(used<capacity ? used : capacity)); } }
-static SCHEMA_UNUSED void bench_table_cook_units(uint8_t * at,const uint16_t * source,int64_t used,int64_t capacity,int order)
-{
-    int64_t i, count=used<capacity ? used : capacity;
-    for(i=0;i<count;i++) { bench_table_cook_put(at+i*2,source[i],2,order); }
-}
 static SCHEMA_UNUSED void bench_table_cook_header(uint8_t * raw,uint64_t version,int64_t bytes,int64_t count,int64_t align,int order)
 {
     bench_table_cook_put(raw,bench_table_cook_magic,8,order); bench_table_cook_put(raw+8,version,8,order);
@@ -3089,7 +3052,7 @@ static SCHEMA_UNUSED int bench_table_message_fixed_kind( uint8_t kind ) { return
 
 static SCHEMA_UNUSED int bench_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
 }
 
 
@@ -3167,7 +3130,7 @@ static SCHEMA_UNUSED int bench_table_message_shape_read(const uint8_t * in,int64
    return bench_table_message_quantization(f->qmin,f->qmax,f->qres,&f->qdelta,&f->qcount,&f->value_bits);
   }return 0;
  }
- if(kind==12||kind==33){if(!bench_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
+ if(kind==12){if(!bench_table_message_leb(in,size,at,&v)||v>INT32_MAX)return 0;
  f->max=(int64_t)v;
  return 1;
  }
@@ -3179,7 +3142,7 @@ static SCHEMA_UNUSED int bench_table_message_shape_read(const uint8_t * in,int64
   f->max=(int64_t)v;
   if(*at>=size)return 0;
   f->elem_kind=in[(*at)++];
-  return bench_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12&&f->elem_kind!=33;
+  return bench_table_message_known_kind(f->elem_kind)&&f->elem_kind!=12;
  }return 1;
 }
 static SCHEMA_UNUSED int bench_table_message_entry_read(const uint8_t * in,int64_t size,int64_t * at,bench_table_message_entry_t * e)
@@ -3400,10 +3363,9 @@ static SCHEMA_UNUSED int bench_table_message_skip(bench_table_message_reader_t *
  case 15:
   if(!bench_table_message_ref(r,&entry,0))return 0;
   return entry==NULL || (entry->kind!=0 && bench_table_message_skip_deeper(r,entry));
- case 12:case 33:
-  if(!bench_table_bit_get(&r->bits,&n,bench_table_bits_required(0,e->max)))return 0;
-  if(e->kind==12 && !bench_table_bit_align_read(&r->bits))return 0;
-  return bench_table_message_skip_run(r,n,e->kind==12?8:16);
+ case 12:
+  if(!bench_table_bit_get(&r->bits,&n,bench_table_bits_required(0,e->max))||!bench_table_bit_align_read(&r->bits))return 0;
+  return bench_table_message_skip_run(r,n,8);
  case 31:
   if(!bench_table_bit_align_read(&r->bits)||!bench_table_bit_get(&r->bits,&n,32))return 0;
   return bench_table_message_skip_run(r,n,8);

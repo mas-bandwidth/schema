@@ -1185,25 +1185,6 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tblr2, Cfg, CfgRow, cfg_cook_write, cfg_fixed_save, cfg_fixed_measure);
                 Some($body)
             }
-            // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
-            // SPEC.md §4.12): widedemo's fixed roots ride the variable form
-            // (§2.2), so Caption carries the kind at every site the wire has
-            // (its own field, a `type` it reaches, an element and a union arm)
-            // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
-            ("widedemo", "Caption") => {
-                #[allow(unused_imports, unused_variables)]
-                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_to_json_checked as $to_json};
-                #[allow(unused_variables)]
-                let $save = fixed_save_from_variable!(widedemo, Caption, CaptionRow, caption_cook_write, caption_fixed_save, caption_fixed_measure);
-                Some($body)
-            }
-            ("widedemo", "Stamp") => {
-                #[allow(unused_imports, unused_variables)]
-                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_to_json_checked as $to_json};
-                #[allow(unused_variables)]
-                let $save = fixed_save_from_variable!(widedemo, Stamp, StampRow, stamp_cook_write, stamp_fixed_save, stamp_fixed_measure);
-                Some($body)
-            }
             ("mapdemo", "Text") => {
                 #[allow(unused_imports)]
                 use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
@@ -1315,8 +1296,6 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("vocabdemo", "Wide09") => fixed_read!(vocabdemo, wide09_fixed_load, wide09_fixed_save, wide09_fixed_measure, Wide09Row, data),
         ("vocab9demo", "Wide00") => fixed_read!(vocab9demo, wide00_fixed_load, wide00_fixed_save, wide00_fixed_measure, Wide00Row, data),
         ("vocab9demo", "Wide19") => fixed_read!(vocab9demo, wide19_fixed_load, wide19_fixed_save, wide19_fixed_measure, Wide19Row, data),
-        ("widedemo", "Caption") => fixed_read!(widedemo, caption_fixed_load, caption_fixed_save, caption_fixed_measure, CaptionRow, data),
-        ("widedemo", "Stamp") => fixed_read!(widedemo, stamp_fixed_load, stamp_fixed_save, stamp_fixed_measure, StampRow, data),
         _ => return None,
     })
 }
@@ -1637,10 +1616,6 @@ fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {
             Ok(_) => fail("61 FF 62 read as UTF-8"),
             Err(_) => Damage::NotHeld,
         },
-        Some(("wide", "label")) if value.is::<widedemo::Stamp>() => {
-            value.downcast_mut::<widedemo::Stamp>().unwrap().label = vec![0x61, 0xd800, 0x62];
-            Damage::Placed
-        }
         _ => fail(&format!("damage {damage:?} names no text field this driver reaches")),
     }
 }

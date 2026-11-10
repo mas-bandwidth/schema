@@ -337,30 +337,16 @@ fn cook_ref(c: CookCtx&, at: i64, wire: i64) -> bool {
 }
 
 // cook_text writes a text or `bytes` buffer piece and its used length: the
-// used bytes (a wstring's code units, each in the cook's order), then the zero
-// tail the extent already holds.
+// used bytes, then the zero tail the extent already holds.
 fn cook_text(c: CookCtx&, s: i64, d: const FieldDesc&, col: const CookCol&, at: i64) -> bool {
-    if cook_rode(c, s) { return cook_text_put(c, cook_view(c, s), d.wide, col, at); }
-    // a wstring takes no specified default (SPEC §4.12), so an absent one is
-    // empty; a `string(N)` or `bytes(N)` is its declared default's bytes
-    if !d.has_def || d.wide { return cook_text_put(c, c.data[0..0], d.wide, col, at); }
-    return cook_text_put(c, d.def_s, d.wide, col, at);
+    if cook_rode(c, s) { return cook_text_put(c, cook_view(c, s), col, at); }
+    if !d.has_def { return cook_text_put(c, c.data[0..0], col, at); }
+    return cook_text_put(c, d.def_s, col, at);
 }
 
-fn cook_text_put(c: CookCtx&, v: const u8[:], wide: bool, col: const CookCol&, at: i64) -> bool {
+fn cook_text_put(c: CookCtx&, v: const u8[:], col: const CookCol&, at: i64) -> bool {
     let n = v.len;
     if n > col.size { return cook_refuse(c); }
-    if wide {
-        var k: i64 = 0;
-        while k < n / 2 {
-            let lo: u64 = v[2 * k];
-            let hi: u64 = v[2 * k + 1];
-            cook_put_at(c, at + col.off + 2 * k, lo | (hi << 8), 2);
-            k += 1;
-        }
-        cook_put_at(c, at + col.len_off, (n / 2) as! u64, 4);
-        return true;
-    }
     cook_put_bytes(c.region, at + col.off, v);
     cook_put_at(c, at + col.len_off, n as! u64, 4);
     return true;

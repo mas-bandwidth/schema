@@ -69,7 +69,7 @@ int main( void )
     n = fixed_ut1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut1_bytes(), "UT1 save" );
     fixed_ut1_read_own( g_buffer, n );
-    fixed_ut1_shared_lane_control( g_buffer, n );
+    fixed_ut2_shared_lane_control();
     fixed_skip( "fixed_ut2_read_ut1 (the guard and flavour lanes compiled from a stranger's layout)", LineageHarness ); /* fixed_ut2_read_ut1( g_buffer, n ); */
 
     n = fixed_fx1_write_out_of_range( g_buffer, BufferBytes );

@@ -5,7 +5,6 @@
 # loads it after make/moo.mk, whose MOO_ANALYZE and toolchain-moo it uses.
 #
 # THE GATE. moo-analyze --mode=strict over EVERY unit of the schema corpus the
-# Makefile's generate targets read (examples, examples128, examples-wide, the
 # SCHEMAS_TABLES* directories, the bench corpus units one at a time, and each
 # file of test/packet-* and test/tables), generated through the moo leg, and
 # the vendored serialize.moo runtime once: no error and NO LINT WARNING.

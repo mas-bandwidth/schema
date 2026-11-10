@@ -43,12 +43,6 @@ text-refusal)
     # narrow writer, U+FFFD in widedemo's wide one
     source=$(grep -l 'out.invalid = true // not text: the write refuses' build/tables-generated-go/examples/*TableJson.go)
     sed 's|out.invalid = true // not text: the write refuses|out.put(c) // SABOTAGED: written, not refused|' "$source" > "$out/source.gotext"
-    source2=$(grep -l 'out.invalid = true // not text: the write refuses' build/tables-generated-go/wide/*TableJson.go)
-    perl -0pe 's|\t\t\tout.invalid = true\n\t\t\tcontinue\n|\t\t\tcode = 0xfffd // SABOTAGED: replaced, not refused\n|' "$source2" > "$out/source2.gotext"
-    if cmp -s "$source2" "$out/source2.gotext"; then
-        echo "negative control patched nothing: $mode ($source2)" >&2
-        exit 1
-    fi
     ;;
 write-refusal)
     # the variable and fixed writers' ranged-scalar check removed from a copy

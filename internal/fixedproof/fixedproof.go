@@ -631,23 +631,6 @@ fixed table T { s string(8) }
     value[1].s_length = 5;
 `,
 		},
-		// 16. utf16-values
-		{
-			ID: "utf16-values",
-			Schema: `package probe
-fixed table T { w wstring(4) }
-`,
-			Root:  "T",
-			Body:  12,
-			Count: 2,
-			CppSetup: `
-    value[1].w[0] = 0x0041;
-    value[1].w[1] = 0x03b1;
-    value[1].w[2] = 0xd83d;
-    value[1].w[3] = 0xde00;
-    value[1].w_length = 4;
-`,
-		},
 		// 17. byte-buffers
 		{
 			ID: "byte-buffers",
@@ -1600,7 +1583,6 @@ var fixedCorpusVectors = []corpusVector{
 	{"fx2", "test/tables/FX2.schema", "FxRoot", "fx2.bin"},
 	{"p1", "test/tables/P1.schema", "Chain", "p1.bin"},
 	{"p3", "test/tables/P3.schema", "Chain", "p3.bin"},
-	{"fxw", "test/tables/FXW.schema", "FxWide", "fxw.bin"},
 }
 
 func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {

@@ -183,7 +183,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 		if f.Array == ir.ArrayNone {
 			def = model.FieldDefaultCell(f)
 		}
-		if cell.I != def.I || cell.U != def.U || cell.B != def.B || cell.F != def.F || !bytes.Equal(cell.Str, def.Str) || !slices.Equal(cell.Units, def.Units) {
+		if cell.I != def.I || cell.U != def.U || cell.B != def.B || cell.F != def.F || !bytes.Equal(cell.Str, def.Str) {
 			populated = true
 		}
 		if cell.Wide != nil && (def.Wide == nil || cell.Wide.Cmp(def.Wide) != 0) || cell.Wide == nil && def.Wide != nil && def.Wide.Sign() != 0 {
@@ -286,7 +286,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 			// content. Missing-required refusal remains a native obligation.
 			if f.Required {
 				def := model.FieldDefaultCell(f)
-				if fv.Cell.I != def.I || fv.Cell.U != def.U || fv.Cell.B != def.B || fv.Cell.F != def.F || !bytes.Equal(fv.Cell.Str, def.Str) || !slices.Equal(fv.Cell.Units, def.Units) {
+				if fv.Cell.I != def.I || fv.Cell.U != def.U || fv.Cell.B != def.B || fv.Cell.F != def.F || !bytes.Equal(fv.Cell.Str, def.Str) {
 					active["required"] = true
 				}
 			}

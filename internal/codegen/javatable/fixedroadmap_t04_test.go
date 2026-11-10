@@ -369,14 +369,13 @@ fixed table T
 func t04C4(t *testing.T) {
 	runtime := t04Runtime()
 	t04Has(t, runtime, "textIllFormed", "C4 the named refusal exists")
-	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) { report.refuse(Reason.textIllFormed); return; }", "C4 the compiled text op refuses by name")
+	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v)) { report.refuse(Reason.textIllFormed); return; }", "C4 the compiled text op refuses by name")
 	t04Has(t, runtime, "if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) { return false; }", "C4 over-range UTF-8 (a code point past U+10FFFF) refuses by name")
 	out, err := Generate(unitFrom(t, `package probe
 
 fixed table T
 {
     label string(8)
-    wide  wstring(8)
 }
 `))
 	if err != nil {
@@ -384,52 +383,23 @@ fixed table T
 	}
 	surface := t04Surface(t, out)
 	t04Has(t, surface, "if (!TableFixed.textOk(TableFixed.textUtf8, b, at + 4, v.labelLength)) { r.refuse(TableFixed.Reason.textIllFormed); return; }", "C4 a byte string refuses by name")
-	t04Has(t, surface, "if (!TableFixed.textOk(TableFixed.textWide, b, at + 16, v.wideLength * 2)) { r.refuse(TableFixed.Reason.textIllFormed); return; }", "C4 a wide string refuses by name")
-}
-
-// ---- java/C5 ---------------------------------------------------------------
-
-// t04C5 holds java/C5: a wstring(N) rides in UTF-16 CODE UNITS — the length is
-// in code units, the reader decodes two bytes a unit, and a lone or unpaired
-// surrogate is damage.
-func t04C5(t *testing.T) {
-	runtime := t04Runtime()
-	for _, want := range []string{
-		"final int unit = (p.meta == textWide) ? 2 : 1;",
-		"if (flavour == textWide) {",
-		"if (u >= 0xD800 && u <= 0xDBFF) {",
-		"else if (u >= 0xDC00 && u <= 0xDFFF) {",
-	} {
-		t04Has(t, runtime, want, "C5 wide text code units")
-	}
-	out, err := Generate(unitFrom(t, `package probe
-
-fixed table T
-{
-    wide wstring(8)
-}
-`))
-	if err != nil {
-		t.Fatalf("C5: Generate: %v", err)
-	}
-	t04Has(t, t04Surface(t, out), "(char) TableFixed.get16(", "C5 the wide field reads two bytes a unit")
 }
 
 // ---- java/R24 --------------------------------------------------------------
 
 // t04R24 holds java/R24 to all three clauses: ill-formed text in the USED units
-// refuses by name (`textIllFormed`); the length is counted in BYTES with the
-// clamp in UNITS; and slack is unspecified on read and not a refusal.
+// refuses by name (`textIllFormed`); the length and its clamp are counted in
+// BYTES; and slack is unspecified on read and not a refusal.
 func t04R24(t *testing.T) {
 	runtime := t04Runtime()
 	// (1) the used units alone refuse by name.
 	t04Has(t, runtime, "report.refuse(Reason.textIllFormed)", "R24 ill-formed text refuses by name")
 	t04Has(t, runtime, "cp > 0x10FFFF", "R24 ill-formed text past U+10FFFF is a refusal, not a default")
-	// (2) the length is in bytes, the clamp in units: cap is size / unit.
-	t04Has(t, runtime, "final int cap = p.size / unit;", "R24 the clamp is in units")
-	// (3) slack is unspecified: the content check holds the USED units (v * unit)
-	// and never the declared bound p.size.
-	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v * unit)) {", "R24 the content check holds the used units and not the slack")
+	// (2) the length is in bytes and the clamp is the writer's span.
+	t04Has(t, runtime, "final int cap = p.size;", "R24 the clamp is the writer's span")
+	// (3) slack is unspecified: the content check holds the USED bytes (v) and
+	// never the declared bound p.size.
+	t04Has(t, runtime, "if (!textOk(p.meta, src, srcAt + p.src + 4, v)) {", "R24 the content check holds the used units and not the slack")
 }
 
 // ---- the card's test -------------------------------------------------------
@@ -448,7 +418,6 @@ func TestFixedRoadmapJavaT04Evolution(t *testing.T) {
 		{id: "java/R18", check: t04R18},
 		{id: "java/C3", check: t04C3},
 		{id: "java/C4", check: t04C4},
-		{id: "java/C5", check: t04C5},
 		{id: "java/R24", check: t04R24},
 	}
 	for _, task := range tasks {

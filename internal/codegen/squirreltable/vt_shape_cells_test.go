@@ -83,7 +83,7 @@ table Root
     bigfp fixed(48, 16) | min = -1000, max = 1000
     i128v int128 = -250 | min = -5000000000, max = 5000000000
     u128v uint128
-    wideText wstring(32)
+    wideText string(32)
     title string(32) = "hi" | was = "name"
     data bytes(4) = "ab"
     caps Caps = { Jump }

@@ -168,8 +168,6 @@ func fixedFieldBytes(f *ir.Field) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:
@@ -227,8 +225,6 @@ func fixedFieldBytesAt(f *ir.Field, depth int) int64 {
 		payload = fixedCountBytes + f.ArrayBound*fixedElementBytesAt(f, depth)
 	case f.Type.Kind == ir.TString:
 		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
 	case f.Type.Kind == ir.TBytes:
 		payload = fixedCountBytes + f.Type.Size
 	default:

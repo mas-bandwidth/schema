@@ -198,7 +198,7 @@ fn msg_wide_kind(k: u8) -> bool { k == 18 || k == 19 || k == 24 || k == 29 }
 fn msg_signed_kind(k: u8) -> bool { (k >= 2 && k <= 5) || (k >= 20 && k <= 23) }
 
 // msg_known_kind is §3's closed set and the 0 of a name.
-fn msg_known_kind(k: u8) -> bool { k <= 33 }
+fn msg_known_kind(k: u8) -> bool { k <= 32 }
 
 // msg_kind_bits is the widest RANGED value a kind carries, its own storage
 // width: a width above it is a hostile width on the announcement.
@@ -294,7 +294,7 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
         }
         return false;
     }
-    if kind == 12 || kind == 33 {
+    if kind == 12 {
         let n, next, ok = leb_at(w, at, w.len);
         if !ok || n > 0x7FFFFFFF { return false; }
         at = next;
@@ -315,8 +315,8 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
         if at >= w.len { return false; }
         e.elem = w[at];
         at += 1;
-        // an element kind of 12 or 33 is refused at the announcement (§3.3)
-        if !msg_known_kind(e.elem) || e.elem == 12 || e.elem == 33 { return false; }
+        // an element kind of 12 is refused at the announcement (§3.3)
+        if !msg_known_kind(e.elem) || e.elem == 12 { return false; }
         var sub = MsgEntry { .. };
         if !msg_shape(w, at, e.elem, sub, v, store) { return false; }
         if store {
@@ -352,7 +352,7 @@ fn msg_file_skip(data: const u8[:], off: i64&, end: i64, kind: u8) -> bool {
         if ok { off = next; }
         return ok;
     }
-    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 || kind == 33 {
+    if kind == 12 || kind == 13 || kind == 14 || kind == 16 || kind == 31 || kind == 32 {
         let n, next, ok = leb_at(data, off, end);
         if !ok || n > (end - next) as! u64 { return false; }
         off = next + (n as! i64);
@@ -838,11 +838,6 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
         if !r.ok || !msg_align_read(r) { return false; }
         return msg_skip_run(r, n, 8);
     }
-    if kind == 33 {
-        let n = msg_get(r, msg_bits_required(0, max));
-        if !r.ok { return false; }
-        return msg_skip_run(r, n, 16);
-    }
     if kind == 31 {
         if !msg_align_read(r) { return false; }
         let n = msg_get(r, 32);
@@ -1018,16 +1013,6 @@ fn msg_text_len(r: MsgReader&, e: i64) -> i64 {
     }
     let n = msg_get(r, width) as! i64;
     if !r.ok || !msg_align_read(r) || !msg_has(r, n * 8) {
-        r.ok = false;
-        return 0;
-    }
-    return n;
-}
-
-// msg_wide_len is a wstring's length (no align); its units must be there.
-fn msg_wide_len(r: MsgReader&, e: i64) -> i64 {
-    let n = msg_get(r, msg_bits_required(0, r.voc.entries[e].max)) as! i64;
-    if !r.ok || !msg_has(r, n * 16) {
         r.ok = false;
         return 0;
     }

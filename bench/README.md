@@ -333,10 +333,9 @@ No bench reads them.
 bench_mixed's definition is `bench/corpus/Bench.schema`, and its weighting
 law — integers carry at least 90% of the wire bits — is a GATE:
 `bench/corpus/budget_test.go` computes the share from the schema and fails the
-build below the floor, printing the full bit accounting. Two serialize.h
-operations are named as NOT expressible in schema v1 rather than silently
-skipped: `serialize_wstring` and `serialize_int_relative`, both deferred with
-their wire already decided (SPEC §4.10).
+build below the floor, printing the full bit accounting. One serialize.h
+operation is named as NOT expressible in schema rather than silently skipped:
+`serialize_int_relative`, deferred with its wire already decided (SPEC §4.10).
 
 bench_mixed is measured through the GENERATED code (`generated/bench/<lang>`)
 in every runner, per the #170 profiling doctrine: generated best case, the
@@ -415,10 +414,9 @@ inside the §2.8 tie band and so reported as a tie
 (`bench/results/2026-09-07-arm64-studio-c-read-guard-pass.csv`, seven
 interleaved rounds, window OK, control delta 0.5%, twin gate OK).
 
-Two further rows — `bench_string` and `bench_wstring` — are DEFINED in
-BENCH-STANDARD §1.8 (measure-first, issue #64) and not yet implemented in
-these runners; the definitions land ahead of any further string/wstring
-optimization, and the rows themselves land as their own additive change
+A further row — `bench_string` — is DEFINED in BENCH-STANDARD §1.8
+(measure-first, issue #64) and not yet implemented in these runners; the
+definition lands ahead of any further string optimization, and the rows themselves land as their own additive change
 (corpus type, goldens, runner rows, new corpus_id).
 
 The js leg carries the Bench-corpus shape through the FLAT generated tier

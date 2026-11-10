@@ -76,7 +76,6 @@ few bits it rides in.
 | a type `T` | `T`, a nested table | `New<T>()` |
 | a union `U` (§4.8) | `U` = `{ Type: number, <Arm>: <arm value>... }`; `M.UType` is the tag table (`None`, arms from 1, `Max`; no `Count`) | `Type = 0`, every payload arm pre-allocated; a payload-free arm has no slot |
 | `string(N)`, `bytes(N)` | a `buffer` of N bytes and `<Name>Length: number` beside it (SPEC §4.7) | `buffer.create(N)`, the default's bytes written in, length set |
-| `wstring(N)` (§4.12) | a `buffer` of 2N bytes holding UTF-16LE code units, and `<Name>Length` in code units | `buffer.create(2N)` |
 | `[N]uint8` | a `buffer` of N bytes, 0-based — the bulk path's own type | `buffer.create(N)` |
 | `[N]T`, `[E]T` (enum-keyed: key k at index k), any other element | a 1-based array `{T}` of exactly N elements | `table.create(N, zero)` for scalars, `_Rt.array(N, New<T>)` for tables and 128-bit values |
 | `[..N]T`, `[A..N]T` | the same array of N, and `<Name>Count: number` beside it | the count born at A (SPEC §4.6) |
@@ -164,17 +163,11 @@ no table is allocated per field.
 which would insert padding the wire does not have anywhere else. Elsewhere
 it is N 8-bit groups.
 
-**`wstring(N)` is composed from primitives** (SPEC §4.12; format 2.0 has no
-wide-string call): the length over `bits_required(0, N)`, then each code unit
-as a 32-bit group; the reader refuses a group above `0xFFFF`, a zero group
-and every unpaired surrogate, the writer a zero unit. Storage is UTF-16
-code units, no transcode. A string, bytes or wstring read writes nothing
-past the used length (§5's tail rule).
+A string or bytes read writes nothing past the used length (§5's tail rule).
 
 **The gates** (`make/luau-packet.mk`, riding `test-luau`): `packet-utf8-luau`
-and `packet-wide-luau` answer the shared harness `build/packet-text/harness`
-against the C++ oracle, every corpus row and every bit flip; the wide gate
-adds `--contracts`; `packet-defaults-luau` holds the eight C++ pins of
+answers the shared harness `build/packet-text/harness`
+against the C++ oracle, every corpus row and every bit flip; `packet-defaults-luau` holds the eight C++ pins of
 `testdata/wire/packet-defaults`; `luau-ludicrous` writes `examples128` against
 the C++-pinned goldens. Each has a negative control in the `luau` group of
 `make/negative-controls.json`. The harness speaks stdin and the interpreter

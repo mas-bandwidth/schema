@@ -41,7 +41,6 @@
 
 #include "TablesTable.h"
 #include "WideTable.h"
-#include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
@@ -373,12 +372,6 @@ static const Codec codecs[] = {
     FIXED( "vocabdemo", vocabdemo, Wide09 ),
     FIXED( "vocab9demo", vocab9demo, Wide00 ),
     FIXED( "vocab9demo", vocab9demo, Wide19 ),
-    // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): the seeds that carry the
-    // kind at a field, at a `type` a table reaches, at an element and at a
-    // union arm, so the ill-formed-wide-text and odd-`L` passes have all four
-    // sites to plant at (§4.2)
-    FIXED( "widedemo", wide, Caption ),
-    FIXED( "widedemo", wide, Stamp ),
     VARIABLE( "mapdemo", mapdemo, Cells ),
     VARIABLE( "mapdemo", mapdemo, Chunks ),
     VARIABLE( "mapdemo", mapdemo, Crews ),

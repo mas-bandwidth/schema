@@ -63,11 +63,11 @@ func cookWritableField(u *ir.Unit, f *ir.Field, seen map[string]bool) (bool, str
 	case t.TextUnbounded():
 		return false, "unbounded text (a blob node)"
 	}
-	if (t.Kind == ir.TString || t.Kind == ir.TWString || t.Kind == ir.TBytes) && (f.Array != ir.ArrayNone || f.KeyEnum != "") {
+	if (t.Kind == ir.TString || t.Kind == ir.TBytes) && (f.Array != ir.ArrayNone || f.KeyEnum != "") {
 		return false, "an array of text"
 	}
 	switch t.Kind {
-	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TBits, ir.TString, ir.TWString, ir.TBytes, ir.TInt, ir.TFixed:
+	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TBits, ir.TString, ir.TBytes, ir.TInt, ir.TFixed:
 		return true, ""
 	case ir.TNamed:
 		switch r := t.Ref.(type) {
@@ -179,12 +179,6 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 		w.pl(1, "%s::cook_put(b, at + %d, %sLength as! u64, 4, big);", rt, pieces[1].Offset, src)
 		w.pl(1, "%s::cook_put_bytes(b, at + %d, %s[0..%sLength as! i64]);", rt, pieces[0].Offset, src, src)
 		w.cl(1, "if %s { %sLength = %s::cook_loaded_text(data, vals, %s, %s); }", ride, dst, rt, slot, dst)
-	case t.Kind == ir.TWString:
-		bound := t.Size
-		w.pl(1, "if %sLength < 0 || %sLength > %d { return false; }", src, src, bound)
-		w.pl(1, "%s::cook_put(b, at + %d, %sLength as! u64, 4, big);", rt, pieces[1].Offset, src)
-		w.pl(1, "%s::cook_put_wtext(b, at + %d, %s[0..%sLength as! i64], big);", rt, pieces[0].Offset, src, src)
-		w.cl(1, "if %s { %sLength = %s::cook_loaded_wtext(data, vals, %s, %s); }", ride, dst, rt, slot, dst)
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
 		facts := ir.BlockFieldOf(w.u, f, offset, false)
 		if f.Array == ir.ArrayCounted {
@@ -327,12 +321,6 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, %sLength as! u64, 4, big);", rt, at, armOffset+pieces[1].Offset, a)
 			w.pl(ind+1, "%s::cook_put_bytes(b, at + %s, %s[0..%sLength as! i64]);", rt, off, a, a)
 			w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %s.%sLength = %s::cook_loaded_text(data, vals, %s, %s.%s); }", rt, payload, dst, arm, rt, payload, dst, arm)
-		case af.Type.Kind == ir.TWString:
-			a := src + "." + arm
-			w.pl(ind+1, "if %sLength < 0 || %sLength > %d { return false; }", a, a, af.Type.Size)
-			w.pl(ind+1, "%s::cook_put(b, at + %s + %d, %sLength as! u64, 4, big);", rt, at, armOffset+pieces[1].Offset, a)
-			w.pl(ind+1, "%s::cook_put_wtext(b, at + %s, %s[0..%sLength as! i64], big);", rt, off, a, a)
-			w.cl(ind+1, "if %s::cook_loaded_rode(vals, %s) { %s.%sLength = %s::cook_loaded_wtext(data, vals, %s, %s.%s); }", rt, payload, dst, arm, rt, payload, dst, arm)
 		case af.Array != ir.ArrayNone || af.KeyEnum != "":
 			a, d := src+"."+arm, dst+"."+arm
 			facts := ir.BlockFieldOf(w.u, &af, 0, false)
@@ -578,7 +566,7 @@ func (cl *cookLayout) col(f *ir.Field, offset int64) string {
 		c.eext = cookFieldHasExtent(u, &elem)
 		cl.elem(&c, &elem)
 	case f.Type.TextUnbounded():
-	case !f.Type.Pointer && f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes):
+	case !f.Type.Pointer && f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
 		c.lenOff = pieces[1].Offset
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
 		c.stride = cookElementBytes(u, f)

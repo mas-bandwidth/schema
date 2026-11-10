@@ -225,7 +225,7 @@ func TestLuauTextListElementsFromTheTextWriteBack(t *testing.T) {
 func TestLuauTextListElementsFromTheTextNegativeControl(t *testing.T) {
 	t.Parallel()
 	planted := featurePatched(t, "schema_json.luau", [][2]string{{
-		"      if e.shape == \"string\" and not e.wide then\n        -- a text list element",
+		"      if e.shape == \"string\" then\n        -- a text list element",
 		"      if false then\n        -- a text list element",
 	}})
 	want, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json-hostile", "text-total-at.value.json"))

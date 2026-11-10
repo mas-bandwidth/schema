@@ -123,14 +123,14 @@ local function elemLayout(fd: any): Layout
 		local u = unionLayout(fd.t)
 		return { size = u.size, align = u.align }
 	end
-	if s == "ptr" or s == "sblob" or s == "bblob" or s == "text" or (s == "str" and (fd.bound or 0) == 0 and not fd.wide) then
+	if s == "ptr" or s == "sblob" or s == "bblob" or s == "text" or (s == "str" and (fd.bound or 0) == 0) then
 		return { size = 8, align = 8 }
 	end
 	if s == "str" then
 		-- a text list element is its element record (docs/SPEC-TABLES.md
 		-- §2.13): the buffer and the int32 used length, as ir.FieldPieces lays
 		-- them out
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		return { size = align_up(((fd.bound or 0) + 1) * w, 4) + 4, align = 4 }
 	end
 	if s == "bytes" then
@@ -157,7 +157,7 @@ local function layoutField(fd: any, offset: number): { start: number, size: numb
 	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
 		add(8, 8)
 	elseif s == "str" then
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		add(((fd.bound or 0) + 1) * w, w)
 		add(4, 4)
 	elseif s == "bytes" then
@@ -274,7 +274,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 	end
 	local s = fd.s
 	-- an unbounded text list element rides as str with no bound (§2.13.1)
-	if s == "str" and (fd.bound or 0) == 0 and not fd.wide then s = "text" end
+	if s == "str" and (fd.bound or 0) == 0 then s = "text" end
 	if s == "bool" then return buffer.readu8(ctx.b, at) ~= 0 end
 	if s == "int" then return i_at(ctx.b, at, intWidth(fd), fd.signed == true) end
 	if s == "flags" then return buffer.readinteger(ctx.b, at) end
@@ -290,15 +290,10 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 		return as_number(i_at(ctx.b, at, w, false))
 	end
 	if s == "str" then
-		local w = if fd.wide then 2 else 1
+		local w = 1
 		local lenAt = align_up(at + ((fd.bound or 0) + 1) * w, 4)
 		local n = buffer.readi32(ctx.b, lenAt)
 		if n < 0 then n = 0 end
-		if fd.wide then
-			local out = buffer.create(n * 2)
-			buffer.copy(out, 0, ctx.b, at, n * 2)
-			return out
-		end
 		local out = buffer.create(n)
 		buffer.copy(out, 0, ctx.b, at, n)
 		return out
@@ -453,8 +448,7 @@ function putField(value: any, fd: any, got: any)
 		end
 		buffer.fill(dst, 0, 0)
 		buffer.copy(dst, 0, got, 0, buffer.len(got))
-		local units = if fd.s == "str" and fd.wide then buffer.len(got) // 2 else buffer.len(got)
-		value[fd.slot .. "Length"] = units
+		value[fd.slot .. "Length"] = buffer.len(got)
 		return
 	end
 	value[fd.slot] = got
@@ -631,7 +625,7 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 	-- zero for the empty string. textBlob answers the blob's offset and length
 	-- (0, 0 for a null slot), or nil when it leaves the node's extent.
 	local function isText(fd: any): boolean
-		return fd.s == "text" or (fd.s == "str" and (fd.bound or 0) == 0 and not fd.wide)
+		return fd.s == "text" or (fd.s == "str" and (fd.bound or 0) == 0)
 	end
 	local function textBlob(at: number): (number?, number)
 		local delta = buffer.readinteger(b, data + at)
@@ -699,8 +693,7 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 		if isText(fd) then return textSlot(at) end
 		if shape == "ptr" or shape == "sblob" or shape == "bblob" then return ref(at, fd) end
 		if shape == "str" then
-			local width = if fd.wide then 2 else 1
-			return companion(align_up(at + (fd.bound + 1) * width, 4), fd.bound)
+			return companion(align_up(at + (fd.bound + 1), 4), fd.bound)
 		end
 		if shape == "bytes" then return companion(align_up(at + fd.bound, 4), fd.bound) end
 		if shape == "float" then

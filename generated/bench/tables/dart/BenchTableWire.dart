@@ -769,7 +769,6 @@ final class TableWireReader {
       case 16:
       case 31:
       case 32:
-      case 33:
         final sl = readLeb();
         if (sl == null) return false;
         if (!has(sl)) return false;
@@ -1283,26 +1282,6 @@ final class TableWireReader {
     return true;
   }
 
-  // _wireWideValid reports whether wide text is well-formed UTF-16 with no
-  // zero unit (internal/tablewire/wirecheck.go wideValid).
-  bool _wireWideValid(Uint8List b) {
-    if (b.length.isOdd) return false;
-    final n = b.length ~/ 2;
-    for (var i = 0; i < n; i++) {
-      final u = b[i * 2] | (b[i * 2 + 1] << 8);
-      if (u == 0) return false;
-      if (u >= 0xD800 && u <= 0xDBFF) {
-        if (i + 1 >= n) return false;
-        final low = b[(i + 1) * 2] | (b[(i + 1) * 2 + 1] << 8);
-        if (low < 0xDC00 || low > 0xDFFF) return false;
-        i++;
-      } else if (u >= 0xDC00 && u <= 0xDFFF) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   // _wirePayload walks one payload of kind at off in buf, adding every
   // kind-17 index it meets to out; it answers the offset past the payload,
   // or -1 when the framing cannot be walked.
@@ -1361,7 +1340,6 @@ final class TableWireReader {
       case 16:
       case 31:
       case 32:
-      case 33:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 > buf.length - p.$2) return -1;
         final end = p.$2 + p.$1;
@@ -1370,14 +1348,12 @@ final class TableWireReader {
     return -1;
   }
 
-  // _wireContent walks the length-bounded content of kinds 12-16 and 31-33
+  // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
   // exactly as _wirePayload framed it.
   bool _wireContent(Uint8List b, int kind, List<int> out, int depth) {
     switch (kind) {
       case 12:
         return _lebValid(b, 0, b.length);
-      case 33:
-        return _wireWideValid(b);
       case 31:
       case 32:
         return kind != 32 || b.isEmpty;
@@ -1846,7 +1822,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
     case 12:
     case 31:
     case 32:
-    case 33:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
       final out = <int>[];
@@ -2002,7 +1977,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
     case 12:
     case 31:
     case 32:
-    case 33:
       final start = c.at;
       var len = 0;
       var shift = 0;
@@ -2268,9 +2242,8 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
   return out;
 }
 
-// _wideValid reports whether a run of UTF-16 code units is well-formed: every
-// high surrogate followed by a low one, no low surrogate alone, no NUL
-// (docs/SPEC-TABLES.md §3, kind 33).
+// _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
+// every high surrogate followed by a low one, no low surrogate alone, no NUL.
 bool _wideValid(List<int> u) {
   for (var i = 0; i < u.length; i++) {
     final c = u[i];
@@ -5304,7 +5277,7 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 }
 
 // _jsonText is the ZERO RULE (§16.3, text_holds_zero), one helper for every
-// place the read stores text: a string(N) or wstring(N) value, a *string
+// place the read stores text: a string(N) value, a *string
 // value, a text-list element, a map key. A stored string that decodes to
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
@@ -6221,19 +6194,6 @@ Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
     }
   }
   r.refuse('kind_mismatch');
-  return def;
-}
-
-// _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
-// past its bound in CODE UNITS refuses the whole load.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
-  if (val is! String) {
-    r.refuse('kind_mismatch');
-    return def;
-  }
-  val = _jsonText(val);
-  if (val.length <= bound) return val;
-  r.refuse('length_over_bound');
   return def;
 }
 

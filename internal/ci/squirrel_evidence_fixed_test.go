@@ -20,7 +20,7 @@ const (
 )
 
 // squirrelFixedCutRows are the eight fixed rows the strict-only cut rewrites.
-// They are not part of the 49-row suite: each is proved under the strict read
+// They are not part of the 48-row suite: each is proved under the strict read
 // by its own test in a strict-proof file, and a :done row must cite exactly
 // that test (squirrelFixedCutEvidence); a row not yet proved is absent.
 var squirrelFixedCutRows = []string{
@@ -60,7 +60,7 @@ var squirrelFixedCutEvidence = map[string][]string{
 }
 
 // TestSquirrelEvidenceFixedRows verifies docs/roadmap-evidence/fixed-squirrel.sexp:
-// one row per fixed-proof case (49), each citing its own Values and
+// one row per fixed-proof case (48), each citing its own Values and
 // NegativeControl subtest of the suite file, with a 40-hex tested revision and
 // a note; and each strict-cut row that is present citing exactly its own
 // strict-proof test, which the cited file defines.
@@ -140,12 +140,12 @@ func validateSquirrelFixedOverlay(root, overlay string) error {
 	for _, c := range fixedproof.Cases() {
 		suiteRows[c.ID] = true
 	}
-	if len(suiteRows) != 49 {
-		return fmt.Errorf("fixed proof suite has %d rows, want 49", len(suiteRows))
+	if len(suiteRows) != 48 {
+		return fmt.Errorf("fixed proof suite has %d rows, want 48", len(suiteRows))
 	}
 	for _, cut := range squirrelFixedCutRows {
 		if suiteRows[cut] {
-			return fmt.Errorf("cut row %s is part of the 49-row suite", cut)
+			return fmt.Errorf("cut row %s is part of the 48-row suite", cut)
 		}
 	}
 
@@ -178,7 +178,7 @@ func validateSquirrelFixedOverlay(root, overlay string) error {
 	for id := range rows {
 		row, ok := strings.CutPrefix(id, squirrelFixedIDPrefix)
 		if !ok || (!suiteRows[row] && !cutRows[row]) {
-			return fmt.Errorf("overlay row %s is neither one of the 49 suite rows nor a strict-cut row", id)
+			return fmt.Errorf("overlay row %s is neither one of the 48 suite rows nor a strict-cut row", id)
 		}
 	}
 

@@ -126,9 +126,6 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		g.emitTextWords(expr, f.Type.Size, ind+"\t", "tableUTF8Word", false)
 		g.pf("%s\tif z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUTF8Valid(%s[:n]) {\n%s\t\treturn false\n%s\t}\n%s}\n", ind, expr, ind, ind, ind)
 		g.pf("%sw.Put(uint64(%sLength),%d);w.Raw(%s[:%sLength])\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
-	case f.Type.Kind == ir.TWString:
-		g.pf("%sif !tableUtf16UnitsValid(%s[:%sLength]) { return false }\n", ind, expr, expr)
-		g.pf("%sw.Put(uint64(%sLength),%d);for i := range int32(%sLength) {w.Put(uint64(%s[i]),16)}\n", ind, expr, ir.TableMessageCountBits(entry.Shape), expr, expr)
 	case isStructRef(f.Type):
 		g.pf("%sif !%sSaveMessageBody(w,&%s){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):

@@ -160,7 +160,6 @@ var jsVersionRows = []jsVersionRow{
   if (back[0].pick.alpha.y !== 55) {
     fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
   }`},
-	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------

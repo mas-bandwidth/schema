@@ -15,7 +15,6 @@ static partial class Program
         public int ItemsCount = 2;
         public byte[] Text = new byte[128];
         public int TextLength = 0;
-        public char[] Wide = { 'A', '\u03bb' };
         public uint[] Keys = { 0, 9 };
     }
 
@@ -60,10 +59,6 @@ static partial class Program
                 GetCount = o => ((PayloadRoot)o).TextLength, GetBuffer = o => ((PayloadRoot)o).Text
             },
             new V1.TableFieldInfo {
-                Name = "wide", Id = FieldId("wide"), Kind = 33, Counted = true,
-                ArrayBound = 2, GetCount = o => 2, GetChars = o => ((PayloadRoot)o).Wide
-            },
-            new V1.TableFieldInfo {
                 Name = "keys", Id = FieldId("keys"), Kind = 4, IsArray = true, ArrayBound = 2,
                 GetRaw = (o, i) => ((PayloadRoot)o).Keys[i],
                 KeyName = key => key == 1 ? "Red" : "Blue",
@@ -96,9 +91,9 @@ static partial class Program
         return Fixture(Join(
             new byte[] { 1,13,1,0,2,14 }, Var((ulong)items.Length), items,
             new byte[] { 4,12 }, Var((ulong)text.Length), text,
-            new byte[] { 5,33,4,65,0,187,3,6,16 }, Var((ulong)keys.Length), keys,
-            new byte[] { 8,4 }, U32(7), new byte[] { 0 }),
-            "child", "items", "value", "text", "wide", "keys", "Blue", "tail");
+            new byte[] { 5,16 }, Var((ulong)keys.Length), keys,
+            new byte[] { 7,4 }, U32(7), new byte[] { 0 }),
+            "child", "items", "value", "text", "keys", "Blue", "tail");
     }
 
     static void CheckPayloadRootRefusal(PayloadRoot value, V1.TableTypeInfo type, byte[] buffer, ulong[] ids)
@@ -157,7 +152,7 @@ static partial class Program
             value.TextLength = value.Text.Length + 1;
             CheckPayloadRootRefusal(value, type, refused, ids);
             value.TextLength = 0;
-            CheckPayloadRootRefusal(value, type, refused, new ulong[7]);
+            CheckPayloadRootRefusal(value, type, refused, new ulong[6]);
         }
     }
 }

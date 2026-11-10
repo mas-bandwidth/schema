@@ -98,7 +98,7 @@ func TestMessageFormBatchJava(t *testing.T) {
 
 	// 2. THE CONSTRUCTS NO MANIFEST ROW REACHES, against the Go codec:
 	// `tables/messages` (`unit messagedemo`) and every scalar kind and packing
-	// the fixed form carries, text, bytes and wide text, fixed and counted
+	// the fixed form carries, text, bytes, fixed and counted
 	// arrays, a nested type, an enum array, and a union with a table arm, a
 	// scalar arm, an enum arm and a payload-free arm.
 	t.Run("oracle_constructs", func(t *testing.T) {
@@ -622,7 +622,6 @@ fixed table Probe
     moods [3]Mood
     label string(12)
     blob  bytes(6)
-    wide  wstring(5)
     small [4]int16
     many  [..5]uint32
     spot  Spot
@@ -641,7 +640,7 @@ var messageBatchProbeTexts = []string{
   "r32": -1000, "ru64": 900000, "i128v": -5000000000, "u128v": 340282366920938463463374607431768211455,
   "b3": 7, "caps": ["Jump", "Fly"], "flag": true, "f32v": 3.25, "cf": 0.37, "f64v": -1e-300,
   "mood": "Sleepy", "moods": ["Calm", "None", "Angry"], "label": "héllo wörl",
-  "blob": "AQIDBAUG", "wide": "wïde", "small": [-1, 0, 127, -32768],
+  "blob": "AQIDBAUG", "small": [-1, 0, 127, -32768],
   "many": [1, 2, 3, 4, 5], "spot": {"x": -4, "y": 9},
   "spots": [{"x": 1, "y": 2}, {"x": 0, "y": 3}], "pair": [{"x": 5, "y": 3}, {"x": -5, "y": 0}],
   "pick": {"leaf": {"id": 77, "name": "leafy"}},

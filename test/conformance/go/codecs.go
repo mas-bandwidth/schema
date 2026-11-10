@@ -21,7 +21,6 @@ import (
 	tblscalars2 "tblscalars2"
 	"vocab9demo"
 	"vocabdemo"
-	widedemo "widedemo"
 	"widelistdemo"
 
 	"featurewitnesses"
@@ -727,13 +726,6 @@ var codecTable = []codec{
 	}),
 
 	row("messagedemo", "ToolMessage", messagedemo.ToolMessageReset, messagedemo.ToolMessageLoad, messagedemo.ToolMessageMeasure, messagedemo.ToolMessageSave, messagedemo.ToolMessageFromJSON, messagedemo.ToolMessageToJSONMeasure, messagedemo.ToolMessageToJSON, messagedemo.ToolMessageCookMeasure, messagedemo.ToolMessageCookFrom, func(r *messagedemo.TableReport) report {
-		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-	}),
-
-	row("widedemo", "Caption", widedemo.CaptionReset, widedemo.CaptionLoad, widedemo.CaptionMeasure, widedemo.CaptionSave, widedemo.CaptionFromJSON, widedemo.CaptionToJSONMeasure, widedemo.CaptionToJSON, widedemo.CaptionCookMeasure, widedemo.CaptionCookFrom, func(r *widedemo.TableReport) report {
-		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-	}),
-	row("widedemo", "Stamp", widedemo.StampReset, widedemo.StampLoad, widedemo.StampMeasure, widedemo.StampSave, widedemo.StampFromJSON, widedemo.StampToJSONMeasure, widedemo.StampToJSON, widedemo.StampCookMeasure, widedemo.StampCookFrom, func(r *widedemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

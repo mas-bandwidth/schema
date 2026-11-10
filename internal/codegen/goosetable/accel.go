@@ -115,7 +115,7 @@ func accelSlotOf(f *ir.Field, width int64) (accelSlot, bool) {
 	rt := goose.RuntimeNamespace
 	kind := ir.TableScalarKind(f)
 	switch {
-	case f.Type.Pointer, accelIsUnion(f), accelRef(f) != nil, f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
+	case f.Type.Pointer, accelIsUnion(f), accelRef(f) != nil, f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		return accelSlot{}, false
 	case kind == ir.TableKindBool:
 		return accelSlot{"bool", rt + "::accel_u8(%[1]s, %[2]s) != 0", rt + "::accel_put(%[1]s, %[2]s, if %[3]s { 1 } else { 0 }, 1)"}, true
@@ -247,8 +247,6 @@ func describeSlot(f *ir.Field) string {
 		return "pointer"
 	case accelIsUnion(f):
 		return "union"
-	case f.Type.Kind == ir.TWString:
-		return "wstring"
 	}
 	return "slot"
 }

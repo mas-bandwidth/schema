@@ -199,7 +199,7 @@ WRITE(T, w, value):
 An empty body writes nothing: presence is the payload (SPEC §4.6). A write of trusted in-range
 values always produces the bytes. Buffer overrun is caller error (`ASSERT`). Out-of-range values,
 a count past its bound, a length past `N`, a union tag past `Max`, and an interior 0x00 in a
-`string`/`wstring` on write are **writer contracts**: `ASSERT` in debug, gone in release wherever
+`string` on write are **writer contracts**: `ASSERT` in debug, gone in release wherever
 the language has that idiom, every-build only in Go and Elixir (SPEC §5). What a release build
 writes from a broken contract is defined but unspecified. **No write-side check is a substitute
 for the reader.**
@@ -271,7 +271,6 @@ PUT_RANGED(w, value, min, max):
 | a nested `type` | `WRITE` of that type, in place |
 | a `union` | §2.6 |
 | `string(N)` / `bytes(N)` | `PUT_RANGED(w, length, 0, N)` then `PUT_BYTES(w, buf, length)`. `string`: `ASSERT` no 0x00 in the used bytes. `bytes`: no interior-null assert. Length 0 is a legal empty payload; `PUT_BYTES` still aligns |
-| `wstring(N)` | `PUT_RANGED(w, length, 0, N)` then **one 32-bit group per code unit, and no align anywhere**. `ASSERT` no zero code unit among the used units. Surrogate pairing is **not** checked on write; a unit above `0xFFFF` cannot be stored |
 
 ### 2.5 Compressed float (write)
 
@@ -331,7 +330,7 @@ An empty union (`Max = 0`) holds only `None` and costs zero bits.
 
 Reads validate **everything**, in every build, in all nine targets (SPEC §5): ranges, enum
 bounds, union tags, alignment padding, constants, reserved bits, counts, lengths, interior
-nulls, UTF-8, UTF-16 well-formedness, and buffer exhaustion. A value that controls iteration is
+nulls, UTF-8, and buffer exhaustion. A value that controls iteration is
 never used before it has been bounded. **Reject, never clamp.**
 
 ```
@@ -372,7 +371,7 @@ defaults. The wire stays a pure function of the encodings.
 **The tail rule:** elements past a used count and bytes past a used length are **not rewritten**.
 A union's unselected arms are not rewritten. A reused object keeps prior tail data. **One
 stated exception:** in C and C++, a successful `string(N)` read writes the zero byte at index
-`length`, and a successful `wstring(N)` read writes the zero unit at index `length`. Nothing
+`length`. Nothing
 else past a used length or used count is written, in any target.
 
 ### 3.2 GET_RANGED
@@ -417,7 +416,6 @@ because the internal align contributes zero bits.
 | a `union` | §3.5 |
 | `bytes(N)` | `length := GET_RANGED(r, 0, N)` then `GET_BYTES`. No UTF-8 rule, no interior-null rule |
 | `string(N)` | `length := GET_RANGED(r, 0, N)` then `GET_BYTES`. Then **interior null** over the used bytes, then **UTF-8** over the used bytes (Unicode Table 3-7). Either `REFUSE`. Then the C terminator at `[length]` in C and C++ only |
-| `wstring(N)` | §3.6 |
 
 ### 3.4 Compressed float (read)
 
@@ -452,26 +450,7 @@ Construction runs on **every** selection, including when the tag repeats. Unsele
 unspecified. Consumers read the selected arm only. An empty union reads as `None` and consumes
 no bits.
 
-### 3.6 `wstring(N)` (read)
-
-Length in `[0, N]`, then one 32-bit group per code unit, **no align**. The length is bounded
-before the loop, so it never drives a copy it has not been bounded for. In one pass over the
-groups:
-
-1. `GET_BITS(r, 32)` — exhaustion mid-group `REFUSE`.
-2. `group == 0` or `group > 0xFFFF`: `REFUSE` (interior null in code-unit terms; not a code unit).
-3. Surrogate pairing: a high surrogate (`0xD800..0xDBFF`) sets `expect_low`; the next group must
-   be a low surrogate (`0xDC00..0xDFFF`). A low without a high, a high not followed by a low, and
-   a high as the **final** group all `REFUSE`. Well-formed pairs are valid.
-4. Store `u16(group)` at index `i`.
-
-After the loop, if `expect_low` still holds, `REFUSE`. Then the C terminator at `[length]` in C
-and C++ only.
-
-**What no reader enforces:** noncharacters (`0xFFFF` included), normalisation, case folding,
-code-point count. A reader that adds a check here is as wrong as one that drops a check above.
-
-### 3.7 `string(N)` content
+### 3.6 `string(N)` content
 
 Used bytes only, never the unused tail.
 
@@ -491,7 +470,7 @@ payloads use `bytes(N)`.
 
 `MaxBits` is the longest path through the type: branches take the larger side, counted arrays
 and text take their bound, each `align` and each `string`/`bytes` alignment point costs a
-worst-case **7** bits of pad. `wstring` has no padding term: `bits_required(0, N) + 32*N`.
+worst-case **7** bits of pad.
 A union is tag bits plus the largest arm; `None` and a void arm cost the tag only.
 
 ```
@@ -518,8 +497,8 @@ split (SPEC §5). A counted array's count and a union's tag are writer contracts
 other range: debug-only where the language has the idiom, every-build only in Go and Elixir.
 The read refuses the same numbers in every build, in all nine.
 
-Text well-formedness is **not** a write-side contract. UTF-8 in `string(N)` and UTF-16 in
-`wstring(N)` are read-side refusals in every target, so the guarantee rests on the reader
+Text well-formedness is **not** a write-side contract. UTF-8 in `string(N)` is a read-side
+refusal in every target, so the guarantee rests on the reader
 rather than on a write-side check some targets carry and others do not.
 
 ## 6. The oracle fixtures
@@ -533,12 +512,12 @@ come back. **Do not re-pin a golden under an unchanged schema** — that is stop
 | 1 | **The paired runner's packet fixtures.** `bench/corpus/Bench.schema` is the sole definition of `BenchMixed`. `testdata/wire/bench_mixed.bin` is the canonical packet golden; `testdata/wire/bench_mixed.bits` is its logical bit count. `bench/corpus/variants/bench_mixed.variants.bin` is 64 records, whole rotations, **the first record identical to the golden**. `test/bench/paired_main.cpp` reads those packet bytes, decodes each once, and requires that a table load/save round-trip rewritten onto the packet wire reproduce the original packet bytes. There is no second field list. This is the corpus the paired runner already times |
 | 2 | **The rest of the packet wire goldens**, produced by generated C++ and pinned beside their `.bits` counts: `testdata/wire/bench_packet.bin`, `bench_ints.bin`, `bench_bits.bin`, `real_packet.bin` (the all-defaults `RealPacket`), `chat.bin`, `clauses.bin`, `joins.bin`, `inputpacket.bin`, `testdata.bin`, `probe_header.bin`, `probebits.bin`, `probearray.bin`, `probecollider.bin`, `compressed_probe.bin`, `degenerate.bin`, `degenerate_probe.bin`, `unsigned_probe.bin`, `rigidbody_at_rest.bin`, `rigidbody_moving.bin`, `shipcreate_flags.bin`, `ludicrous_state.bin`, `ludicrous_state_untargeted.bin`. **Read a file and write it back; the bytes and the bit count must be identical** |
 | 3 | **`testdata/wire/packet-defaults/`** — `sample-defaults`, `sample-empty`, `sample-short`, `zero-count`, `conditional-on`, `conditional-off`, `choice-sample`, `batch-defaults`. Defaults initialize storage and do not elide fields on this wire |
-| 4 | **Classic serialize's shared corpora**, the twins SPEC §4.3 names: `serialize/conformance/string.txt` (a `string(15)` field, 4-bit length, thirteen refusals and their accepting twins), `wstring.txt` (a `wstring(7)` field; the row's own golden is `wstring-worked-example`), plus `bits.txt`, `bool.txt`, `bytes.txt`, `int.txt`, `int64.txt`, `int128.txt`, `uint128.txt`, `float.txt`, `double.txt`, `compressed_float.txt`, `fixed.txt`, `align.txt`. Gate 3: generated C++ byte-identical to the hand-written twin, each decoding the other |
+| 4 | **Classic serialize's shared corpora**, the twins SPEC §4.3 names: `serialize/conformance/string.txt` (a `string(15)` field, 4-bit length, thirteen refusals and their accepting twins), plus `bits.txt`, `bool.txt`, `bytes.txt`, `int.txt`, `int64.txt`, `int128.txt`, `uint128.txt`, `float.txt`, `double.txt`, `compressed_float.txt`, `fixed.txt`, `align.txt`. Gate 3: generated C++ byte-identical to the hand-written twin, each decoding the other |
 | 5 | **Selected-arm construction.** `examples/ArmDefaults.schema`: seven-bit independent packet oracle, byte `0x51` — arm `first`, zero used entries, marker `5`. Write the byte and the bit count, then read it twice. `make packet-arm-defaults-negative-controls` restores zero-only selection and requires the selected-payload default assertion to fail |
-| 6 | **The packet check suites**, C++ the oracle, every other port a negative control: `make packet-void`, `make packet-defaults`, `make packet-text` / `packet-wide-nine` (UTF-8 and `wstring(N)`), `make packet-wire-nine` |
-| 7 | **The negative controls, one per named refusal**: const mismatch; reserved nonzero; align nonzero; ranged offset above the span; count outside `[Min, N]`; length outside `[0, N]`; interior 0x00 in `string`/`wstring`; malformed UTF-8 (the thirteen vectors); `wstring` group above `0xFFFF`, unpaired surrogates, interior zero group; union tag above the count; compressed-float integer above `steps`; exhaustion mid-field. **Each refuses, nothing further decoded.** A validation nobody watched fail is a validation nobody has |
+| 6 | **The packet check suites**, C++ the oracle, every other port a negative control: `make packet-void`, `make packet-defaults`, `make packet-text` (UTF-8), `make packet-wire-nine` |
+| 7 | **The negative controls, one per named refusal**: const mismatch; reserved nonzero; align nonzero; ranged offset above the span; count outside `[Min, N]`; length outside `[0, N]`; interior 0x00 in `string`; malformed UTF-8 (the thirteen vectors); union tag above the count; compressed-float integer above `steps`; exhaustion mid-field. **Each refuses, nothing further decoded.** A validation nobody watched fail is a validation nobody has |
 | 8 | **Bit-flip sweeps over valid packets** (SPEC §7.2 gate 5), under a sanitizer: every generated reader agrees on accept/reject, and on the decoded value when accepted. Exhaustion, a broken const, and a hostile count are three answers, never a fourth |
-| 9 | **The examples corpus** as the language's proving ground: `examples/Wire.schema` (const, reserved, align, bits at 9/33/64, compressed float, nested `if`, counted `[1..8]`, union), `Types.schema`, `Enums.schema`, `Clauses.schema`, `Joins.schema`, `Degenerate.schema`, `ArmDefaults.schema`, `Render.schema`, `examples128/Ludicrous.schema`, `examples-wide/WideText.schema`. Gate 1 pins generated source; gate 7 pins the bytes |
+| 9 | **The examples corpus** as the language's proving ground: `examples/Wire.schema` (const, reserved, align, bits at 9/33/64, compressed float, nested `if`, counted `[1..8]`, union), `Types.schema`, `Enums.schema`, `Clauses.schema`, `Joins.schema`, `Degenerate.schema`, `ArmDefaults.schema`, `Render.schema`, `examples128/Ludicrous.schema`. Gate 1 pins generated source; gate 7 pins the bytes |
 
 The `.bits` file is a decimal logical bit count, one integer, newline. The `.bin` file is
 `CEIL8(bits)` bytes. Both are the oracle. Matching the bytes and missing the bit count is still
@@ -565,7 +544,6 @@ are the work.
 | `string(N)` length + align + bytes | `chat` | golden | | | | | | | | |
 | `string(N)` UTF-8 + interior null | `serialize/conformance/string.txt`, `packet-text` | | | | | | | | | |
 | `bytes(N)` | `serialize/conformance/bytes.txt`; `Block` in `Wire.schema` | | | | | | | | | |
-| `wstring(N)` groups, no align | `wstring.txt`, `packet-wide-nine` | | | | | | | | | |
 | enum with `\| max` headroom | `probearray` (`Weapon`) | golden | | | | | | | | |
 | `flags` | `shipcreate_flags`, `ProbeFlags` | golden | | | | | | | | |
 | union tag + selected arm, None, void | `probecollider`, `packet-void`, `ArmDefaults` `0x51` | golden | | | | | | | | |

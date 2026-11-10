@@ -317,12 +317,6 @@ def active_retain_tail() -> RetainTail?:
         return nil
     return retain_tails[length(retain_tails) - 1]
 
-def save_wide_bytes(units:[int]) -> string:
-    var out = zeros(length(units) * 2)
-    for(units) u, i:
-        out = write_int16_le(out, i * 2, u & 0xffff)
-    return out
-
 // save_wide_raw writes a 128-bit value's two's-complement lanes, low lane
 // first, at the kind's width (docs/SPEC-TABLES.md §3).
 def save_wide_raw(o:SaveOut, w:Int128, width:int):
@@ -456,8 +450,6 @@ def save_element(e:SaveEncoder, w:SaveOut, d:FieldDescriptor, kind:int, v:Value)
             so_leb(w, 0)
         else:
             save_arm_header(e, w, d, v)
-    elif kind == 33:
-        so_bytes(w, save_wide_bytes(v.units))
     elif kind_wide(kind):
         save_wide_raw(w, v.w, kind_width(kind))
     else:
@@ -500,10 +492,7 @@ def save_arm_payload(e:SaveEncoder, arm:FieldDescriptor, v:Value) -> SaveOut:
         if b:
             so_bytes(w, b)
     elif arm.s == "str":
-        if arm.wide:
-            so_bytes(w, save_wide_bytes(c.units))
-        else:
-            so_bytes(w, c.s)
+        so_bytes(w, c.s)
     elif arm.s == "bytes":
         so_u8(w, 6)
         so_leb(w, length(c.s))
@@ -699,15 +688,6 @@ def encode_field(e:SaveEncoder, w:SaveOut, sl:Slot) -> void:
         so_bytes(body, sl.cell.s)
         so_leb(w, body.n)
         so_bytes(w, so_take(body))
-        return
-    if f.s == "str" and f.wide:
-        if length(sl.cell.units) == 0 and not f.required:
-            return
-        so_leb(w, sid_ref(e.ids, f.id))
-        so_u8(w, 33)
-        let b = save_wide_bytes(sl.cell.units)
-        so_leb(w, length(b))
-        so_bytes(w, b)
         return
     if f.s == "str" or f.s == "text":
         if sl.cell.s == f.def_str and not f.required:

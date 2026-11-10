@@ -188,37 +188,10 @@ local wireKind = function(d) {
   if (d.shape == "tab") return 13;
   if (d.shape == "ptr" || d.shape == "sblob" || d.shape == "bblob") return 17;
   if (d.shape == "str") return 12;
-  if (d.shape == "wstr") return 33;
   if (d.shape == "bytes") return 14;
   if (d.shape == "arr") return d.kind == 16 ? 16 : 14;
   if (d.shape == "enum") return 30;
   return d.kind;
-};
-
-// WIDE TEXT'S PAYLOAD (docs/SPEC-TABLES.md §3; kind 33): the code units two
-// bytes each little-endian, framed by the caller. Save checks the USED LENGTH
-// and nothing about the content (SPEC.md §4.12): ill-formed text is a
-// read-side verdict. A slot that is not a code unit at all, an integer in
-// [0, 0xFFFF], is not wide text storage and refuses the save.
-local wideFits = function(val, bound) {
-  if (typeof val != "array" || val.len() > bound) return false;
-  foreach (u in val) if (typeof u != "integer" || u < 0 || u > 0xFFFF) return false;
-  return true;
-};
-// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the sum of the elements'
-// byte lengths, an absent `?string` element counting zero, is past the
-// declared total. Save and Measure refuse such a value with nothing written.
-local textTotalPast = function(d, val) {
-  local sum = 0;
-  foreach (rec in val) {
-    if (rec == null || (d.textlist == 2 && !rec.ValuePresent)) continue;
-    sum += rec.Value.len();
-    if (sum > d.total) return true;
-  }
-  return false;
-};
-local wideUnits = function(w, val) {
-  foreach (u in val) { wu8(w, u); wu8(w, u >> 8); }
 };
 
 local hexBytes = function(b) {
@@ -659,11 +632,6 @@ writeBare = function(T, d, val, w, ids, nodes, root, holder = null, key = null) 
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
-  if (shape == "wstr") {
-    if (!wideFits(val, d.bound)) return false;
-    wideUnits(w, val);
-    return true;
-  }
   if (shape == "bytes") {
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
@@ -754,15 +722,6 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
-    return true;
-  }
-  if (shape == "wstr") {
-    // the empty value is the default wide text takes (SPEC §4.12), so it elides
-    if (!always && typeof val == "array" && val.len() == 0) return true;
-    if (!wideFits(val, d.bound)) return false;
-    wleb(w, idsRef(ids, d.id)); wu8(w, 33);
-    wleb(w, val.len() * 2);
-    wideUnits(w, val);
     return true;
   }
   if (shape == "bytes") {
@@ -870,14 +829,6 @@ fixedWritePayload = function(T, owner, fname, fd, val, out, off) {
     if (val.len() > fd.bound) return false;
     putFixedU(out, off, 4, val.len());
     for (local i = 0; i < val.len(); i++) out[off + 4 + i] = val[i] & 0xff;
-    return true;
-  }
-  if (fd.shape == "wstr") {
-    if (!wideFits(val, fd.bound)) return false;
-    putFixedU(out, off, 4, val.len());
-    for (local i = 0; i < val.len(); i++) {
-      putFixedU(out, off + 4 + 2 * i, 2, val[i]);
-    }
     return true;
   }
   return fixedWriteElement(T, owner, fname, fd, val, out, off);

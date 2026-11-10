@@ -68,7 +68,7 @@ table Root | was = "OldRoot"
     wide32 int64
     blob *bytes
     note *string
-    title wstring(4)
+    title string(4)
     spots [..3]Spot
     leaves []*Leaf
     head *Leaf
@@ -456,7 +456,7 @@ public static class VtCellsProgram
     static bool TitleIs(Root v, string s)
     {
         if (v.TitleLength != s.Length) { return false; }
-        for (int i = 0; i < s.Length; i++) { if (v.Title[i] != s[i]) { return false; } }
+        for (int i = 0; i < s.Length; i++) { if (v.Title[i] != (byte)s[i]) { return false; } }
         return true;
     }
 
@@ -507,8 +507,8 @@ public static class VtCellsProgram
         r.Wide32 = 6;
         r.Blob = new TableBlob(new byte[] { 1, 2, 3 });
         r.Note = new TableBlob(Encoding.UTF8.GetBytes("yo"));
-        r.Title[0] = 'a';
-        r.Title[1] = 'b';
+        r.Title[0] = (byte)'a';
+        r.Title[1] = (byte)'b';
         r.TitleLength = 2;
         r.Spots[0].X = 4;
         r.Spots[0].Y = 5;

@@ -160,7 +160,6 @@ func strictJSONScan(b []byte) error {
 const storageStrictSchema = `package probe
 fixed table Root {
 	s string(8)
-	w wstring(8)
 	f float64
 	g float32
 	b bytes(4)

@@ -722,19 +722,7 @@ public final class TableCookWrite {
             }
             return;
         }
-        if (f.storage == TableCookStorage.WSTRING) {
-            char[] units = (char[]) v;
-            int used = units == null ? 0 : units.length;
-            if (used > f.arrayBound || (units != null && !TableVariable.wideValid(units))) {
-                throw new IllegalArgumentException("wide text value");
-            }
-            // Count and encode Java's UTF-16 units directly, preserving surrogate pairs.
-            // The plan validates before writing; the zeroed region supplies the terminator.
-            for (int i = 0; i < used; i++) {
-                put(out, order, dest + 2L * i, units[i], 2);
-            }
-            put(out, order, at + f.countOffset, used, 4);
-        } else if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
+        if (f.storage == TableCookStorage.STRING || f.storage == TableCookStorage.BYTES) {
             byte[] bytes =
                     v instanceof String
                             ? ((String) v).getBytes(java.nio.charset.StandardCharsets.UTF_8)

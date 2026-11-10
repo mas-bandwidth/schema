@@ -59,8 +59,6 @@ export const fixedRoots = [
   ["vocabdemo", "Wide09", "vocab/VocabTable.js"],
   ["vocab9demo", "Wide00", "vocab9/Vocab9Table.js"],
   ["vocab9demo", "Wide19", "vocab9/Vocab9Table.js"],
-  ["widedemo", "Caption", "wide/CaptionTable.js"],
-  ["widedemo", "Stamp", "wide/CaptionTable.js"],
 ];
 
 export function isFixedRoot(unit, root) {
@@ -111,7 +109,6 @@ function scalarToVar(f, v, where) {
 }
 
 function textToVar(f, bytes, n, where) {
-  if (f.kind === 33) { return String.fromCharCode(...bytes.subarray(0, n)); }
   try { return utf8.decode(bytes.subarray(0, n)); } catch { bad(where, "a string that is not UTF-8"); }
 }
 
@@ -122,7 +119,7 @@ export function toVar(t, fx, where) {
     if (f.optional && !fx[prop(fx, f, "Present", w)]) { out[f.name] = null; continue; }
     const p = prop(fx, f, "", w);
     const val = fx[p];
-    if (f.kind === 12 || f.kind === 33) {
+    if (f.kind === 12) {
       out[f.name] = textToVar(f, val, fx[prop(fx, f, "Length", w)], w);
     } else if (f.isArray && f.shape === "value") {
       // bytes(N): its storage and its length
@@ -172,13 +169,7 @@ function scalarToFixed(f, v, slot, where) {
 }
 
 function textToFixed(f, s, bytes, where) {
-  let units;
-  if (f.kind === 33) {
-    units = new Uint16Array(s.length);
-    for (let i = 0; i < s.length; i++) { units[i] = s.charCodeAt(i); }
-  } else {
-    units = utf8Out.encode(s);
-  }
+  const units = utf8Out.encode(s);
   if (units.length > bytes.length) { bad(where, "a string over its bound"); }
   bytes.fill(0);
   bytes.set(units);
@@ -195,7 +186,7 @@ export function toFixed(t, vv, fx, where) {
       if (!fx[present]) { continue; }
     }
     const p = prop(fx, f, "", w);
-    if (f.kind === 12 || f.kind === 33) {
+    if (f.kind === 12) {
       fx[prop(fx, f, "Length", w)] = textToFixed(f, val, fx[p], w);
     } else if (f.isArray && f.shape === "value") {
       if (val.length > fx[p].length) { bad(w, "bytes over their bound"); }
@@ -285,7 +276,7 @@ function arrayFramesWhole(wire) {
       }
       const w = scalarWidth(k);
       if (w > 0) { at += w; continue; }
-      if (k === 12 || k === 16 || k === 31 || k === 32 || k === 33) {
+      if (k === 12 || k === 16 || k === 31 || k === 32) {
         let L; [L, at] = leb(at, lim); at += L; continue;
       }
       if (k === 15) {

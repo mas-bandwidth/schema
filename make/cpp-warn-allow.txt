@@ -528,10 +528,6 @@ build/tables-generated/vnum/VNEW_unknown_censusBlock.cpp old-style-cast
 build/tables-generated/vnum/VNEW_unknown_censusBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/vnum/VNEW_unknown_censusTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/vnum/VNEW_unknown_censusTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/tables-generated/vnum/VNEW_wstring_growBlock.cpp old-style-cast
-build/tables-generated/vnum/VNEW_wstring_growBlock.h allocator-wrappers,cast-align,old-style-cast,padded
-build/tables-generated/vnum/VNEW_wstring_growTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/vnum/VNEW_wstring_growTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/vnum/VOLD_array_bounded_growBlock.cpp old-style-cast
 build/tables-generated/vnum/VOLD_array_bounded_growBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/vnum/VOLD_array_bounded_growTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
@@ -612,10 +608,6 @@ build/tables-generated/vnum/VOLD_unknown_censusBlock.cpp old-style-cast
 build/tables-generated/vnum/VOLD_unknown_censusBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/vnum/VOLD_unknown_censusTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/vnum/VOLD_unknown_censusTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/tables-generated/vnum/VOLD_wstring_growBlock.cpp old-style-cast
-build/tables-generated/vnum/VOLD_wstring_growBlock.h allocator-wrappers,cast-align,old-style-cast,padded
-build/tables-generated/vnum/VOLD_wstring_growTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/vnum/VOLD_wstring_growTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
 build/tables-generated/vnum/Vbra_lineage_mergeView.h padded
 build/tables-generated/vnum/Vbrb_lineage_mergeView.h padded
 build/tables-generated/vnum/Vmid_floorView.h padded
@@ -639,7 +631,6 @@ build/tables-generated/vnum/Vnew_range_widenView.h padded
 build/tables-generated/vnum/Vnew_string_growView.h padded
 build/tables-generated/vnum/Vnew_uint_widenView.h padded
 build/tables-generated/vnum/Vnew_unknown_censusView.h padded
-build/tables-generated/vnum/Vnew_wstring_growView.h padded
 build/tables-generated/vnum/Vold_array_bounded_growView.h padded
 build/tables-generated/vnum/Vold_array_elem_widenView.h padded
 build/tables-generated/vnum/Vold_array_fixed_growView.h padded
@@ -660,7 +651,6 @@ build/tables-generated/vnum/Vold_range_widenView.h padded
 build/tables-generated/vnum/Vold_string_growView.h padded
 build/tables-generated/vnum/Vold_uint_widenView.h padded
 build/tables-generated/vnum/Vold_unknown_censusView.h padded
-build/tables-generated/vnum/Vold_wstring_growView.h padded
 build/tables-generated/vocab/VocabBlock.cpp old-style-cast
 build/tables-generated/vocab/VocabBlock.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/vocab/VocabTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros

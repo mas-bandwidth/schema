@@ -37,7 +37,7 @@ func typedLeaf(f *ir.Field, guarded bool) string {
 			return ""
 		}
 		return "string"
-	case ir.TWString, ir.TBytes, ir.TNamed:
+	case ir.TBytes, ir.TNamed:
 		return ""
 	}
 	if (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Width == 128 {

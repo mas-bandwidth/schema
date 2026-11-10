@@ -272,21 +272,6 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 		fv.Cell.Str = append([]byte(nil), text...)
 		fv.Count = int(used)
 		return ""
-	case f.Type.Kind == ir.TWString:
-		if w.kind != ir.TableKindWstring {
-			return FixedReasonKindMismatch
-		}
-		used := int32(binary.LittleEndian.Uint32(b))
-		if used < 0 || int64(used)*2 > w.size-4 || int64(used) > f.Type.Size {
-			return FixedReasonLengthOverBound
-		}
-		units := wideUnits(b[4 : 4+2*used])
-		if !wideValid(units) {
-			return FixedReasonTextIllFormed
-		}
-		fv.Cell.Units = units
-		fv.Count = int(used)
-		return ""
 	}
 	return d.element(w, b, f, &fv.Cell)
 }

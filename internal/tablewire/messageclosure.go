@@ -80,7 +80,7 @@ func MessageClosure(u *ir.Unit) map[string]bool {
 // MessageVocabulary is the vocabulary the announcement carries: the entries
 // of [ir.TableVocabulary] the MESSAGE CLOSURE can put on the wire, in the
 // same cook-projection order, and nothing else. A variable table's fields,
-// every table's name id, the reserved node-table id, the three blob type
+// every table's name id, the reserved node-table id, the two blob type
 // ids, and an enum variant or union arm that only a variable table reaches
 // take no slot, because no body can carry them. A field or an arm whose
 // wire id equals a reached variant name takes none either: the id match

@@ -477,11 +477,11 @@ func TestLobsterFixedRowArrayBounds(t *testing.T) {
 func TestLobsterFixedRowText(t *testing.T) {
 	slowtest.Gate(t, rowsGate)
 	t.Parallel()
-	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    s string(4)\n    w wstring(4)\n}\n")
+	u := fixedproof.ParseCheckUnit(t, "package probe\nfixed table T\n{\n    s string(4)\n}\n")
 	clean := rowSave(t, u, "T", "r[0].S = \"ab\"\nr[0].SLength = 2\nr[0].W = \"\\x41\\x00\\x42\\x00\"\nr[0].WLength = 2\n", 1)
-	body := len(clean) - 20
+	body := len(clean) - 8
 	if body != rowBody(clean, rowEntry(t, u, "T").Record, 0) {
-		t.Fatalf("the record body is not the last 20 bytes")
+		t.Fatalf("the record body is not the last 8 bytes")
 	}
 	cut := func(f func(b []byte)) []byte { b := cloneRow(clean); f(b); return b }
 	cases := []struct {
@@ -494,9 +494,6 @@ func TestLobsterFixedRowText(t *testing.T) {
 		{"C4 0xff in the used bytes", cut(func(b []byte) { b[body+4] = 0xff }), "refused text_ill_formed"},
 		{"C4 a zero in the used bytes", cut(func(b []byte) { b[body+5] = 0 }), "refused text_ill_formed"},
 		{"R24 0xff in the slack", cut(func(b []byte) { b[body+6], b[body+7] = 0xff, 0xff }), "ok 1 u0 w0"},
-		{"C5 an unpaired surrogate", cut(func(b []byte) { b[body+12], b[body+13] = 0x00, 0xd8 }), "refused text_ill_formed"},
-		{"C5 a wide length past the capacity", cut(func(b []byte) { b[body+8] = 5 }), "refused length_over_bound"},
-		{"R24 a lone surrogate in the wide slack", cut(func(b []byte) { b[body+16], b[body+17] = 0x00, 0xd8 }), "ok 1 u0 w0"},
 	}
 	for _, c := range cases {
 		if got := rowLoad(t, u, "T", nil, c.file, nil).head(); got != c.want {

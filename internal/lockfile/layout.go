@@ -222,13 +222,6 @@ func checkPostChildren(e layoutEntry, sum uint64, widest, firstSize, secondSize,
 		if e.size < 4 {
 			return "layout_size_mismatch"
 		}
-	case 33: // wstring(N): length + 2N bytes, size >= 4 and size-4 even, no children
-		if e.children != 0 {
-			return "layout_kind_invalid"
-		}
-		if e.size < 4 || (e.size-4)%2 != 0 {
-			return "layout_size_mismatch"
-		}
 	default:
 		return "layout_kind_unknown"
 	}
@@ -239,7 +232,7 @@ func layoutKindKnown(kind uint8) bool {
 	if kind >= 1 && kind <= 30 {
 		return true
 	}
-	return kind == 32 || kind == 33 || kind == 35
+	return kind == 32 || kind == 35
 }
 
 func layoutOrdinalWidth(n uint32) bool {

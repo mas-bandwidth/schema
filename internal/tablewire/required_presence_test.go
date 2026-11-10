@@ -108,7 +108,7 @@ union Choice { number int32 }
 table ReqEmpty { plain int32 }
 table ReqScalar { value int32 | required }
 table ReqText { value string(8) | required }
-table ReqWide { value wstring(8) | required }
+table ReqWide { value string(16) | required }
 table ReqBytes { value bytes(8) | required }
 table ReqFixedArray { value [2]int32 | required }
 table ReqCountedArray { value [..2]int32 | required }

@@ -16,10 +16,9 @@ package jstable
 // defined` and no direct text, bytes or array arm round-tripped. An optional arm
 // is refused by name at the gate (§2.6, §3.4) and is not this card's.
 //
-// The js/W16, js/R28, utf16-values/js/valid-data and js/C5 leaves sit on the
-// same cells but belong to the-guard-chain-answers-the-outer-tag and
-// wide-text-in-table-closures-for-the-four-remaining-legs cards: no subtest, no
-// code and no overlay edit for them here.
+// The js/W16 and js/R28 leaves sit on the same cells but belong to the
+// the-guard-chain-answers-the-outer-tag card: no subtest, no code and no
+// overlay edit for them here.
 
 import (
 	"bytes"

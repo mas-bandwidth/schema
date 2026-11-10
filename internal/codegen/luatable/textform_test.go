@@ -44,7 +44,6 @@ table Document {
  nodes [..3]Node
  pairs [2]int32
  optional ?[..4]int32
- wide wstring(4)
  blob bytes(4) | json = "bytes"
  real float32 | json = "float"
  time timestamp

@@ -40,7 +40,6 @@ var lobsterFixedRows = []string{
 	"flags-values",
 	"enum-values",
 	"utf8-values",
-	"utf16-values",
 	"byte-buffers",
 	"nested-types",
 	"nested-fixed-tables",

@@ -1311,40 +1311,6 @@ local function writeString(w: Out, s: string)
 	put(w, "\"")
 end
 
--- writeWString: a wide field's UTF-16 code units back to UTF-8; a pair is one
--- code point, a zero unit \u0000, and an unpaired surrogate a value no text
--- spells: the writer refuses it invalid_value (§16.3, §16.14 W0), as writeString
-local function writeWString(w: Out, b: buffer, units: number)
-	put(w, "\"")
-	local i = 0
-	while i < units do
-		local code = buffer.readu16(b, i * 2)
-		if code >= 0xD800 and code <= 0xDBFF and i + 1 < units then
-			local low = buffer.readu16(b, i * 2 + 2)
-			if low >= 0xDC00 and low <= 0xDFFF then
-				code = 0x10000 + (code - 0xD800) * 1024 + (low - 0xDC00)
-				i += 1
-			end
-		end
-		if code >= 0xD800 and code <= 0xDFFF then
-			if w.err == nil then
-				w.err = "invalid_value: an unpaired surrogate in a wide text field has no JSON spelling (docs/SPEC-TABLES.md §16.3)"
-			end
-			code = 0xFFFD
-		end
-		local short = SHORT_ESCAPE[code]
-		if short ~= nil then
-			put(w, short)
-		elseif code < 0x20 then
-			put(w, controlEscape(code))
-		else
-			put(w, utf8Encode(code))
-		end
-		i += 1
-	end
-	put(w, "\"")
-end
-
 local BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local B64VALUE: { number } = table.create(256, -1)
 for i = 1, 64 do
@@ -1696,54 +1662,6 @@ end
 
 local function scanStored(r: Reader, capacity: number): (string, boolean, boolean)
 	return scanText(r, capacity, true)
-end
-
--- scanWString(r, capacity): one JSON string as UTF-16 code units, appended
--- one code point at a time so a bound never splits a pair
-local function scanWString(r: Reader, capacity: number): ({ number }, boolean, boolean)
-	if peek(r) ~= 34 then
-		r.bad = true
-		return {}, false, false
-	end
-	r.pos += 1
-	local out: { number } = {}
-	local overBound = false
-	while true do
-		local unit, done = scanUnit(r)
-		if done then
-			break
-		end
-		if unit == nil then
-			return {}, false, false
-		end
-		local c = string.byte(unit, 1) :: number
-		local code
-		if #unit == 1 then
-			code = c
-		elseif #unit == 2 then
-			code = (c % 32) * 64 + (string.byte(unit, 2) :: number) % 64
-		elseif #unit == 3 then
-			code = (c % 16) * 4096 + ((string.byte(unit, 2) :: number) % 64) * 64 + (string.byte(unit, 3) :: number) % 64
-		else
-			code = (c % 8) * 262144 + ((string.byte(unit, 2) :: number) % 64) * 4096 + ((string.byte(unit, 3) :: number) % 64) * 64 + (string.byte(unit, 4) :: number) % 64
-		end
-		if code == 0 then
-			r.zero = true
-			r.bad = true
-			return {}, false, false
-		end
-		local need = if code < 0x10000 then 1 else 2
-		if overBound or (capacity >= 0 and #out + need > capacity) then
-			overBound = true
-		elseif need == 1 then
-			table.insert(out, code)
-		else
-			local rest = code - 0x10000
-			table.insert(out, 0xD800 + rest // 1024)
-			table.insert(out, 0xDC00 + rest % 1024)
-		end
-	end
-	return out, overBound, true
 end
 
 -- walkNumber: the cursor over ONE RFC 8259 number, and whether it was
@@ -2127,9 +2045,6 @@ local function zeroOf(e: any, list: boolean): any
 	elseif s == "float" then
 		return if e.f32 then 0 else WIDE_ZERO.U64
 	elseif s == "str" then
-		if e.wide then
-			return buffer.create(2 * e.bound)
-		end
 		return ""
 	elseif s == "text" then
 		return if list then false else nil
@@ -2690,21 +2605,6 @@ local function readBase64Into(r: Reader, b: buffer, bound: number): (boolean, nu
 	return true, n
 end
 
-local function readWStringInto(r: Reader, b: buffer, bound: number): (boolean, number)
-	local units, overBound, ok = scanWString(r, bound)
-	if not ok then
-		return false, 0
-	end
-	if overBound then
-		r.report.outOfRange += 1
-	end
-	buffer.fill(b, 0, 0)
-	for i, u in units do
-		buffer.writeu16(b, (i - 1) * 2, u)
-	end
-	return true, #units
-end
-
 local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 	if peek(r) ~= 91 then
 		r.bad = true
@@ -3205,14 +3105,6 @@ readField = function(r: Reader, d: any, fd: any, rec: any, depth: number): boole
 	elseif s == "ptr" then
 		return readPointerCell(r, rec, slot, fd.t, depth, nil)
 	elseif s == "str" then
-		if fd.wide then
-			local ok, n = readWStringInto(r, rec[slot], fd.bound)
-			if not ok then
-				return false
-			end
-			rec[slot .. "Length"] = n
-			return true
-		end
 		local out, overBound, ok = scanStored(r, fd.bound)
 		if not ok then
 			return false
@@ -3848,11 +3740,7 @@ writeField = function(w: W, d: any, fd: any, rec: any, depth: number): boolean
 		writeBase64(w :: any, v, buffer.len(v))
 		return true
 	elseif s == "str" then
-		if fd.wide then
-			writeWString(w :: any, v, rec[fd.slot .. "Length"])
-		else
-			writeString(w :: any, v)
-		end
+		writeString(w :: any, v)
 		return true
 	elseif s == "text" then
 		writeString(w :: any, v or "")

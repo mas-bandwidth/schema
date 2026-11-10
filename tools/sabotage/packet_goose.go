@@ -9,11 +9,6 @@ func init() {
 		old: `w.Pf("%sguard serialize_valid_utf8(%s[0..%s]) else {`,
 		new: `/* SABOTAGED */ w.Pf("%sguard true || serialize_valid_utf8(%s[0..%s]) else {`,
 	}}
-	// SPEC §4.12: the read's surrogate pairing.
-	sabotages["packet-wide-goose-pairing"] = []edit{{
-		old: `w.Pf("%s    guard low%s == %s else { %s } // an unpaired surrogate (SPEC §4.12)\n", ind, g, el, failRange)`,
-		new: `w.Pf("%s    guard true || low%s == %s else { %s } // SABOTAGED\n", ind, g, el, failRange)`,
-	}}
 	// SPEC §4.2: the constructor's byte default, its length kept.
 	sabotages["packet-defaults-goose-constructor-bytes"] = []edit{{
 		old: `out = append(out, Slot{Name: name, Type: fmt.Sprintf("%s[%d]", unit, size), Init: init, Comment:`,

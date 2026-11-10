@@ -886,13 +886,19 @@ func (p *parser) parseScalar() ast.ScalarType {
 		return ast.ScalarType{Kind: ast.ScalarFloat64, Pos: t.Pos}
 	case scanner.KwBits, scanner.KwString, scanner.KwWString, scanner.KwBytes:
 		p.advance()
-		if t.Kind == scanner.KwString && p.kind() != scanner.LParen {
+		if (t.Kind == scanner.KwString || t.Kind == scanner.KwWString) && p.kind() != scanner.LParen {
 			// `rules []string`, `map[string]V` — a bare `string` is UNBOUNDED
 			// text (docs/SPEC-TABLES.md §2.13.1). It is recorded, not refused:
 			// where it may stand (a text-list element, a map key, in a plain
 			// table) is the CHECKER's business, so every other placement gets
-			// a diagnostic naming its route rather than a parse error.
-			return ast.ScalarType{Kind: ast.ScalarString, Unbounded: true, Pos: t.Pos}
+			// a diagnostic naming its route rather than a parse error. A bare
+			// `wstring` is recorded the same way; the checker refuses it by
+			// name.
+			kind := ast.ScalarString
+			if t.Kind == scanner.KwWString {
+				kind = ast.ScalarWString
+			}
+			return ast.ScalarType{Kind: kind, Unbounded: true, Pos: t.Pos}
 		}
 		p.expect(scanner.LParen, "(")
 		arg := p.parseExpr()

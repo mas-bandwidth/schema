@@ -27,11 +27,6 @@ func (t elixirTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, err
 // elixirtable opens no file and a build ships a reader for every layout the lock
 // records.
 func (elixirTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	// Packet wide text is carried, and table kind 33 too: elixir is in
-	// tableWideTextTargets (compiler/widetext.go, docs/SPEC-TABLES.md §3).
-	if err := refuseWideText(u, "elixir"); err != nil {
-		return nil, err
-	}
 	// refuseUnported, split per construct. This target registers as a carrier
 	// of maps (§2.8), optional arrays (§2.3), table arms and arrays of unions
 	// (§2.6) in init below, so those refusals pass by registration; the calls
@@ -154,7 +149,6 @@ func init() {
 	// The append IS the registration (target_go.go, target_java.go and
 	// target_rust.go register the same way): refuseWasRows reads this list.
 	wasRowTargets = append(wasRowTargets, "elixir")
-	registerWideTextCarrier("elixir")
 	registerListCarrier("elixir")
 	registerMapCarrier("elixir")
 	registerOptionalArrayCarrier("elixir")

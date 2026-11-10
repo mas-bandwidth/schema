@@ -1483,7 +1483,7 @@ func SharedRuntimeFiles() (map[string][]byte, error) {
 // the home <Package>Table.go and the home's <Package>TableMessage.go, where the
 // MESSAGE form's runtime lives. A declaration is shared only when every probe's
 // runtime files carry it byte-for-byte. Together they switch on every conditional the runtime emitter
-// has: fixed-only and variable units, containers, wide text, float64, keyed
+// has: fixed-only and variable units, containers, float64, keyed
 // arrays and unions.
 var sharedProbes = []string{
 	"package probe\nfixed table A { n int32 }\n",
@@ -1520,8 +1520,6 @@ table Root { numbers []int32
  pairs map[uint8]Child
  slots [Key]Child }
 `,
-	"package probe\nfixed table W { words wstring(8) }\n",
-	"package probe\ntable W { words wstring(8)\n n float64 }\n",
 	`package probe
 fixed table IntegrityChild | integrity = "crc32c" { n int32 = 7 }
 table ArrayOnly | json = "array" { items [..2]string(8) | total = 8 }

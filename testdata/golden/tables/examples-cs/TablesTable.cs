@@ -2776,14 +2776,6 @@ namespace Tabledemo
             }
         }
 
-        private static void RootConfigFixedSetChars(RootConfig t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void RootConfigFixedResetSlot(RootConfig t, uint slot)
         {
             switch (slot)
@@ -3207,8 +3199,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -3217,14 +3208,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             RootConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                RootConfigFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                RootConfigFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            RootConfigFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -4037,14 +4021,6 @@ namespace Tabledemo
             }
         }
 
-        private static void WeaponConfigFixedSetChars(WeaponConfig t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void WeaponConfigFixedResetSlot(WeaponConfig t, uint slot)
         {
             switch (slot)
@@ -4168,8 +4144,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -4178,14 +4153,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             WeaponConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                WeaponConfigFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                WeaponConfigFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            WeaponConfigFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -4797,14 +4765,6 @@ namespace Tabledemo
             }
         }
 
-        private static void LoadoutConfigFixedSetChars(LoadoutConfig t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void LoadoutConfigFixedResetSlot(LoadoutConfig t, uint slot)
         {
             switch (slot)
@@ -4966,8 +4926,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -4976,14 +4935,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             LoadoutConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                LoadoutConfigFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                LoadoutConfigFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            LoadoutConfigFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:
@@ -5727,14 +5679,6 @@ namespace Tabledemo
             }
         }
 
-        private static void ProfileConfigFixedSetChars(ProfileConfig t, uint slot, ReadOnlySpan<byte> b, int l)
-        {
-            switch (slot)
-            {
-                default: break;
-            }
-        }
-
         private static void ProfileConfigFixedResetSlot(ProfileConfig t, uint slot)
         {
             switch (slot)
@@ -5910,8 +5854,7 @@ namespace Tabledemo
                         }
                     case TableFixedWire.Text:
                         {
-                            uint unit = (p.Meta == TableFixedWire.TextWide) ? 2u : 1u;
-                            uint cap = p.Size / unit;
+                            uint cap = p.Size;
                             int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                             if (v < 0 || (uint)v > cap) { return "length_over_bound"; }
                             ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
@@ -5920,14 +5863,7 @@ namespace Tabledemo
                                 return "text_ill_formed";
                             }
                             ProfileConfigFixedSetRaw(dst, p.Dst, (ulong)(uint)v, report);
-                            if (p.Meta == TableFixedWire.TextWide)
-                            {
-                                ProfileConfigFixedSetChars(dst, p.Aux, textBytes, v);
-                            }
-                            else
-                            {
-                                ProfileConfigFixedSetBytes(dst, p.Aux, textBytes, v);
-                            }
+                            ProfileConfigFixedSetBytes(dst, p.Aux, textBytes, v);
                             break;
                         }
                     case TableFixedWire.Ordinal:

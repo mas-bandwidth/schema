@@ -77,8 +77,6 @@ func TestUnboundedTextRefusals(t *testing.T) {
 			"package t\nfixed table F {\n    name string\n}\n"},
 		{"a fixed table unbounded list", "fixed table F: field rules is a text list ([..N]string), and a text list is a VARIABLE-table construct",
 			"package t\nfixed table F {\n    rules [..4]string\n}\n"},
-		{"wstring stays bounded", "expected (",
-			"package t\ntable T {\n    xs []wstring\n}\n"},
 		{"bytes stays bounded", "expected (",
 			"package t\ntable T {\n    xs []bytes\n}\n"},
 		{"*string list stays a follow-on", "an array of byte buffers is a named follow-on",

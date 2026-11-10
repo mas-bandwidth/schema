@@ -171,7 +171,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			var condition strings.Builder
 			fmt.Fprintf(&condition, "kind==%d", expected)
 			widenKinds := []int{}
-			for k := 1; k <= 33; k++ {
+			for k := 1; k <= 32; k++ {
 				if ir.TableKindWidens(k, expected) {
 					fmt.Fprintf(&condition, "||kind==%d", k)
 					widenKinds = append(widenKinds, k)
@@ -186,7 +186,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 				fmt.Fprintf(&b, "        if(kind!=%d&&((body.limit-body.off)!=%s)){report.damaged=true;return v;}\n", expected, widthExpr)
 			}
 			b.WriteString("        TableVariable.Reader r=TableVariable.fieldPayload(body,kind);\n")
-			directText := one.Array == ir.ArrayNone && (one.Type.Kind == ir.TString || one.Type.Kind == ir.TWString) && !one.Type.Pointer
+			directText := one.Array == ir.ArrayNone && (one.Type.Kind == ir.TString) && !one.Type.Pointer
 			if directText {
 				b.WriteString("TableVariable.Report parentReport=report;report=new TableVariable.Report();TableVariable.Reader textReader=new TableVariable.Reader(r.buf,r.ids,report);textReader.off=r.off;textReader.limit=r.limit;r=textReader;\n")
 			}

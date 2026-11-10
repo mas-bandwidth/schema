@@ -52,7 +52,7 @@ func viewDartArmBound(f *ir.Field) int64 {
 		return 0
 	case f.Array != ir.ArrayNone:
 		return f.ArrayBound
-	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString:
 		return f.Type.Size
 	default:
 		return 0
@@ -89,8 +89,6 @@ func viewDartElementSize(f *ir.Field) string {
 	switch f.Type.Kind {
 	case ir.TString, ir.TBytes:
 		return "1"
-	case ir.TWString:
-		return "2"
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {

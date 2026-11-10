@@ -1101,6 +1101,15 @@ func liveMatchesRetired(live *Unit, r Retired) bool {
 func retirements(base, live *Unit, date string) []Retired {
 	var out []Retired
 	for _, bt := range base.Tables {
+		// A MAP'S GENERATED ENTRY declares nothing: its `key` and `value` are the
+		// map's own shape under the two ids every entry shares, so retiring them
+		// would refuse every other map in the unit. The holder's map field is the
+		// declaration, and its own entry is the ledger's record of the removal.
+		// An entry is the one table whose projection name carries a dot
+		// (docs/SPEC-TABLES.md §2.8, §18.1); a declared name never does.
+		if strings.Contains(bt.Name, ".") {
+			continue
+		}
 		lt := findTable(live, bt.Name)
 		ids := map[uint64]bool{}
 		if lt != nil {

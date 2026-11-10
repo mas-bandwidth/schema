@@ -81,17 +81,6 @@ local function utf8_seq(s: string, i: number): number
   return want
 end
 
-local function utf8_decode(s: string): number
-  local c = s:byte(1)
-  if c < 0x80 then return c end
-  local code, at
-  if c < 0xe0 then code, at = band(c, 0x1f), 2
-  elseif c < 0xf0 then code, at = band(c, 0x0f), 3
-  else code, at = band(c, 0x07), 4 end
-  for i = 2, at do code = bor(lshift(code, 6), band(s:byte(i), 0x3f)) end
-  return code
-end
-
 ----------------------------------------------------------------------------
 -- the reader (§16.2)
 ----------------------------------------------------------------------------
@@ -250,39 +239,6 @@ local function scan_string(inp: Input, cap: number, store: boolean?): (string?, 
   return table.concat(out), clamped, true
 end
 
--- ONE JSON string into UTF-16 code units, clamped at cap units (§16.2);
--- store says it is bound for text storage, so a U+0000 refuses (§16.3)
-local function scan_wstring(inp: Input, cap: number, store: boolean?): ({ number }?, boolean, boolean)
-  if peek(inp) ~= '"' then inp.bad = true; return nil, false, false end
-  inp.p = inp.p + 1
-  local out, n, clamped = {}, 0, false
-  while true do
-    local unit, done, ok = scan_unit(inp)
-    if not ok then return nil, false, false end
-    if done then break end
-    local code = utf8_decode(unit :: string) -- ok and not done: a unit
-    if store and code == 0 then
-      inp.zero = true
-      inp.bad = true
-      return nil, false, false
-    end
-    local units
-    if code < 0x10000 then
-      units = { code }
-    else
-      local rest = code - 0x10000
-      units = { 0xd800 + (rshift(rest, 10)), 0xdc00 + (band(rest, 0x3ff)) }
-    end
-    if clamped or (cap >= 0 and n + #units > cap) then
-      clamped = true
-    else
-      for i = 1, #units do out[#out + 1] = units[i] end
-      n = n + #units
-    end
-  end
-  return out, clamped, true
-end
-
 -- ONE RFC 8259 number; the token kept for conversion
 local function scan_number(inp: Input): string?
   space(inp)
@@ -438,7 +394,6 @@ local function walk_elem(T: any, e: any): any
   if s == "flags" then return 0 end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
-  if s == "wstring" then return {} end
   if s == "enum" then return false end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return false end
   if s == "table" then return walk_default(T, T.Tables[e.target]) end
@@ -480,8 +435,6 @@ walk_default = function(T: any, desc: any): any
         out[name] = def ~= nil and def or 0.0
       elseif s == "string" or s == "bytes" then
         out[name] = def ~= nil and def or ""
-      elseif s == "wstring" then
-        out[name] = {}
       elseif s == "enum" then
         out[name] = walk_enum_name(fd, def or 0)
       elseif s == "flags" then
@@ -504,7 +457,7 @@ end
 local function shape_of(T: any, d: any): string
   local s = d.shape
   if s == "bool" then return 'b' end
-  if s == "string" or s == "wstring" or s == "bytes" then return 's' end
+  if s == "string" or s == "bytes" then return 's' end
   if s == "string_blob" or s == "bytes_blob" then return 's' end
   if s == "enum" then return 's' end
   -- a timestamp's text is a JSON STRING, never the count's number (§16.2)
@@ -1546,12 +1499,6 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     if clamped then report.clamped = report.clamped + 1 end
     holder[key] = out
     return true
-  elseif s == "wstring" then
-    local out, clamped, ok = scan_wstring(inp, d.bound, true)
-    if not ok then return false end
-    if clamped then report.clamped = report.clamped + 1 end
-    holder[key] = out
-    return true
   elseif s == "bytes" then
     local out = read_base64(inp, d.bound, report)
     if out == nil then return false end
@@ -1882,27 +1829,6 @@ local function narrow_text_ok(s: string, bound: number): boolean
   return true
 end
 
--- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
--- (the units the wire's kind 33 and the strict reader refuse).
-local function wide_text_ok(units: { number }, bound: number): boolean
-  if bound >= 0 and #units > bound then refuse_reason = "out_of_range"; return false end
-  local i = 1
-  while i <= #units do
-    local u = units[i]
-    if u == 0 then refuse_reason = "text_holds_zero"; return false end
-    if u >= 0xd800 and u <= 0xdbff then
-      local low = units[i + 1]
-      if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "invalid_value"; return false end
-      i = i + 2
-    elseif u >= 0xdc00 and u <= 0xdfff then
-      refuse_reason = "invalid_value"; return false
-    else
-      i = i + 1
-    end
-  end
-  return true
-end
-
 local function int_cmp(a: any, b: any): number
   if typeof(a) == "integer" and typeof(b) == "integer" then
     if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 end
@@ -2006,38 +1932,6 @@ local function write_string(w: any, s: string)
       if width < 0 then w.invalid = true; i = i + 1 -- not text: the write refuses (§16.14 W0)
       else raw(w, s:sub(i, i + width - 1)); i = i + width end
     end
-  end
-  put(w, '"')
-end
-
-local function write_wstring(w: any, units: { number })
-  local hex = "0123456789abcdef"
-  put(w, '"')
-  local i = 1
-  while i <= #units do
-    local code = units[i]
-    if code >= 0xd800 and code <= 0xdbff and i + 1 <= #units then
-      local low = units[i + 1]
-      if low >= 0xdc00 and low <= 0xdfff then
-        code = 0x10000 + (lshift((code - 0xd800), 10)) + (low - 0xdc00)
-        i = i + 1
-      end
-    end
-    -- an unpaired surrogate is not text: the write refuses (§16.14 W0)
-    if code >= 0xd800 and code <= 0xdfff then w.invalid = true
-    elseif code == 34 then raw(w, '\\"')
-    elseif code == 92 then raw(w, '\\\\')
-    elseif code == 8 then raw(w, '\\b')
-    elseif code == 12 then raw(w, '\\f')
-    elseif code == 10 then raw(w, '\\n')
-    elseif code == 13 then raw(w, '\\r')
-    elseif code == 9 then raw(w, '\\t')
-    elseif code < 0x20 then
-      raw(w, "\\u00" .. hex:sub((rshift(code, 4)) + 1, (rshift(code, 4)) + 1) .. hex:sub((band(code, 0xf)) + 1, (band(code, 0xf)) + 1))
-    else
-      raw(w, utf8_encode(code))
-    end
-    i = i + 1
   end
   put(w, '"')
 end
@@ -2527,11 +2421,6 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     if not narrow_text_ok(text, d.bound or -1) then return false end
     write_string(w, text)
     return true
-  elseif s == "wstring" then
-    local units = val or {}
-    if not wide_text_ok(units, d.bound or -1) then return false end
-    write_wstring(w, units)
-    return true
   elseif s == "bytes" then
     local data = val or ""
     if d.bound ~= nil and d.bound >= 0 and #data > d.bound then refuse_reason = "out_of_range"; return false end
@@ -2725,9 +2614,9 @@ adapt_field = function(fd: any, owner: any): any
     end
   elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
   elseif s == "str" then
-    o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+    o.shape = "string"; o.bound = fd.bound
     -- an unbounded text list element rides as str with no bound (§2.13.1)
-    if not fd.wide and (fd.bound or 0) == 0 then o.bound = -1 end
+    if (fd.bound or 0) == 0 then o.bound = -1 end
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
   elseif s == "enum" then
@@ -2748,7 +2637,6 @@ adapt_field = function(fd: any, owner: any): any
     o.elem_kind = fd.ek
     o.str_elem = fd.e ~= nil and (fd.e.s == "str")
     o.opt_text = fd.optText == true
-    o.wide_elem = fd.e ~= nil and fd.e.wide == true
     if o.elem.shape == "int" then
       local names = flag_names(owner, fd)
       if names ~= nil then o.elem.shape = "flags"; o.elem.variants = names end
@@ -2802,19 +2690,6 @@ local function from_string(s: any, capacity: number?): buffer
   return b
 end
 
-local function wide_units(s: string): { number }
-  local out = {}
-  local b = from_string(s)
-  for i = 0, math.floor(#s / 2) - 1 do out[i + 1] = buffer.readu16(b, i * 2) end
-  return out
-end
-
-local function wide_bytes(units: { number }): string
-  local b = buffer.create(#units * 2)
-  for i, u in units do buffer.writeu16(b, (i - 1) * 2, u) end
-  return buffer.readstring(b, 0, #units * 2)
-end
-
 local function enum_name(fd: any, n: any): string
   local i = typeof(n) == "number" and n or 0
   if i == 0 then return "None" end
@@ -2838,12 +2713,7 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
   elseif s == "int" then
     return x
   elseif s == "string" then
-    if fd.wide then
-      return from_string(wide_bytes(x or {}), (#x or 0) * 2)
-    end
     return from_string(x or "", fd.bound and fd.bound >= 0 and fd.bound or #(x or ""))
-  elseif s == "wstring" then
-    return from_string(wide_bytes(x or {}), (#x or 0) * 2)
   elseif s == "bytes" then return from_string(x or "", fd.bound)
   elseif s == "string_blob" or s == "bytes_blob" then
     if x == nil or x == false then return nil end
@@ -2889,7 +2759,7 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
       if xi == nil and e.shape ~= "table" and e.shape ~= "union" and e.shape ~= "array" and e.shape ~= "map" then
         xi = zero_elem(A, e)
       end
-      if e.shape == "string" and not e.wide then
+      if e.shape == "string" then
         -- a text list element is its bytes at their own length: it has no
         -- Length companion to say where padding would end (§2.13)
         out[i] = from_string(xi or "")
@@ -2946,11 +2816,6 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   elseif s == "string" then
     if x == nil then return "" end
     return to_string(x, memo.len[x])
-  elseif s == "wstring" then
-    -- a wstring's Length counts UTF-16 code units, two bytes each (§16.2, the
-    -- wstring(N) row; docs/PORT-LUAU.md, THE TYPE MAPPING)
-    local n = memo.len[x]
-    return wide_units(to_string(x, n ~= nil and n * 2 or nil))
   elseif s == "string_blob" or s == "bytes_blob" then
     -- a loaded blob is its own node (§3.1, §16.7): it crosses as a box, one per
     -- Luau buffer, so two empty blobs stay two nodes and one buffer named

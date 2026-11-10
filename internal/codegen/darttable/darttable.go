@@ -117,17 +117,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// at its kind's width (§7.6), and §3.4's fixed form lays both out by the
 	// constant-size table. So a wide unit loses only the block form.
 	wide := ir.TableWideFields(u)
-	// AND WIDE TEXT STANDS THE BLOCK FORM DOWN. `wstring(N)` rides a table
-	// under kind 33 (docs/SPEC-TABLES.md §3), which the block row has not been
-	// taught here. The COOKED node carries it (§7.2's char16_t[N+1] and the
-	// used length in code units, written by the variable cook writer), and
-	// §3.4's fixed form lays it out at its bound.
-	text := ir.TableWideTextFields(u)
 	out := map[string][]byte{}
 	{
 		blocks := declaredBlocks(u)
 		var err error
-		if len(wide) == 0 && len(text) == 0 {
+		if len(wide) == 0 {
 			out, err = generateBlockFiles(u, blocks)
 			if err != nil {
 				return nil, err
@@ -136,7 +130,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		// A unit with no BLOCK form has nowhere to hang a cursor or the
 		// build version, so the cook emits both itself.
 		cookBlocks := blocks
-		if len(wide) > 0 || len(text) > 0 {
+		if len(wide) > 0 {
 			cookBlocks = &ir.BlockUnit{}
 		}
 		cooks, err := generateCookFiles(u, cookBlocks)
@@ -167,14 +161,6 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// The §8 unit registry is a separate, optional Dart library: a card
 	// reader may inspect every declaration, not only the wire closure.
 	maps.Copy(out, generateUnitViewFiles(u))
-	// WIDE TEXT with no fixed form to lay it out in has nothing left to
-	// emit, so it is refused whole and by name. The wide SCALARS no longer
-	// refuse the unit: the variable cook writer carries them (above, §7.6).
-	if len(fixed) == 0 && len(text) > 0 {
-		return nil, fmt.Errorf("the Dart table backend carries wstring(N) on the FIXED form and on no other — %s "+
-			"(docs/SPEC-TABLES.md §3, §3.4): this unit's tables take no fixed form, so there is nothing here to lay it out in",
-			strings.Join(text, ", "))
-	}
 	return out, nil
 }
 

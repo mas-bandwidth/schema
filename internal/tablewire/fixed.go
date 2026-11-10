@@ -179,14 +179,6 @@ func encodeFixedPayload(m *tabletext.Model, b []byte, fv *tabletext.Field) error
 		}
 		binary.LittleEndian.PutUint32(b, uint32(len(fv.Cell.Str)))
 		copy(b[4:], fv.Cell.Str)
-	case f.Type.Kind == ir.TWString:
-		if int64(len(fv.Cell.Units)) > f.Type.Size {
-			return fmt.Errorf("field %s: %d units past its capacity of %d, and save refuses it (docs/SPEC-TABLES.md §3.4)", f.Name, len(fv.Cell.Units), f.Type.Size)
-		}
-		binary.LittleEndian.PutUint32(b, uint32(len(fv.Cell.Units)))
-		for i, u := range fv.Cell.Units {
-			binary.LittleEndian.PutUint16(b[4+2*i:], u)
-		}
 	default:
 		return encodeFixedElement(m, b, f, &fv.Cell)
 	}
@@ -438,17 +430,6 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 			return FixedReasonTextIllFormed
 		}
 		fv.Cell.Str = append([]byte(nil), text...)
-		fv.Count = int(used)
-	case f.Type.Kind == ir.TWString:
-		used := int32(binary.LittleEndian.Uint32(b))
-		if used < 0 || int64(used) > f.Type.Size {
-			return FixedReasonLengthOverBound
-		}
-		units := wideUnits(b[4 : 4+2*used])
-		if !wideValid(units) {
-			return FixedReasonTextIllFormed
-		}
-		fv.Cell.Units = units
 		fv.Count = int(used)
 	default:
 		return d.element(b, f, &fv.Cell, false)

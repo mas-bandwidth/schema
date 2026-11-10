@@ -203,7 +203,7 @@ _T.TableMixedDescriptor = _schema_tables.table({
 		{ id = 0xee639cad45b1994ci, name = "stats", slot = "Stats", json = "stats", o = 11, k = 14, s = "arr", array = "counted", bound = 80, min = 0, ek = 13, e = { s = "tab", t = "TableStat" } },
 		{ id = 3329809749115557776i, name = "game_event", slot = "GameEvent", json = "game_event", o = 12, k = 15, s = "union", t = "TableEvent" },
 		{ id = 6294288958393922979i, name = "loadout", slot = "Loadout", json = "loadout", o = 13, k = 14, s = "arr", array = "fixed", bound = 4, min = 0, ek = 6, e = { s = "int", kw = 1, signed = false, dom = "number" } },
-		{ id = 1415871171432867950i, name = "player_name", slot = "PlayerName", json = "player_name", o = 14, k = 12, s = "str", bound = 15, wide = false, def = "" },
+		{ id = 1415871171432867950i, name = "player_name", slot = "PlayerName", json = "player_name", o = 14, k = 12, s = "str", bound = 15, def = "" },
 		{ id = 0xcfb8a9d063b5e9e5i, name = "payload", slot = "Payload", json = "payload", o = 15, k = 14, s = "bytes", bound = 16, ek = 6, def = "" },
 		{ id = 0xdbaf7be5e24296c9i, name = "aim_x", slot = "AimX", json = "aim_x", o = 16, k = 10, s = "float", f32 = true, lo = -1.0, hi = 1.0, res = 0.01, def = 0 },
 		{ id = 0xdbaf7ae5e2429516i, name = "aim_y", slot = "AimY", json = "aim_y", o = 17, k = 10, s = "float", f32 = true, lo = -1.0, hi = 1.0, res = 0.01, def = 0 },
