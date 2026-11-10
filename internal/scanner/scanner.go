@@ -240,6 +240,22 @@ func (s *state) scanDoc() (Token, bool) {
 		s.advance() // the marker
 		start := s.off
 		for s.off < len(s.src) && s.peek() != '\n' {
+			switch c := s.peek(); {
+			case c == '\r' && s.peekAt(1) != '\n':
+				s.errf(s.pos(), "a carriage return inside a /// doc line must be immediately followed by a newline — some target compilers treat a bare \\r as a line end; remove it (SPEC §4.1)")
+			case c == 0xE2 && s.peekAt(1) == 0x80 && s.peekAt(2) == 0xA8:
+				s.errf(s.pos(), "the Unicode line separator U+2028 inside a /// doc line ends the comment line for some target compilers; remove it (SPEC §4.1)")
+				s.advance()
+				s.advance()
+				s.advance()
+				continue
+			case c == 0xE2 && s.peekAt(1) == 0x80 && s.peekAt(2) == 0xA9:
+				s.errf(s.pos(), "the Unicode paragraph separator U+2029 inside a /// doc line ends the comment line for some target compilers; remove it (SPEC §4.1)")
+				s.advance()
+				s.advance()
+				s.advance()
+				continue
+			}
 			s.advance()
 		}
 		text := strings.TrimRight(string(s.src[start:s.off]), " \t\r")
