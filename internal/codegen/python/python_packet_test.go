@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -667,3 +668,56 @@ func repoRoot(t *testing.T) string {
 }
 
 var _ = slices.Contains[[]string, string]
+
+// TestPythonBranchReadLocalsAreUnique: the read of an if/else binds each
+// temporary once, across both arms and past the branch. Python has function
+// scope, so a local reused for a Ref[bool] in one arm and a Ref[int] after the
+// branch is one variable to mypy with two types.
+func TestPythonBranchReadLocalsAreUnique(t *testing.T) {
+	t.Parallel()
+	src := t.TempDir()
+	schema := `package branch
+
+type Branchy
+{
+    active bool
+    if active
+    {
+        yes bool
+    }
+    else
+    {
+        no int16
+    }
+    tail int8
+}
+`
+	if err := os.WriteFile(filepath.Join(src, "Branch.schema"), []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := loadPythonUnit(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files[u.Package+"/Branch.py"])
+	at := strings.Index(text, "    def _s_read(")
+	if at < 0 {
+		t.Fatalf("the generated type has no reader:\n%s", text)
+	}
+	body := text[at:]
+	if next := strings.Index(body[1:], "\n    def "); next >= 0 {
+		body = body[:next+1]
+	}
+	uses := regexp.MustCompile(`_s_v\d+ = Ref\(`).FindAllString(body, -1)
+	if len(uses) < 4 {
+		t.Fatalf("the reader binds %d temporaries, want at least four:\n%s", len(uses), body)
+	}
+	seen := map[string]bool{}
+	for _, use := range uses {
+		if seen[use] {
+			t.Errorf("the reader binds %s twice, so two paths would type one Python local differently:\n%s", use, body)
+		}
+		seen[use] = true
+	}
+}

@@ -406,11 +406,13 @@ func (m *pyModule) readItems(c *emitCtx, items []ir.Item) {
 			inner := *c
 			inner.indent += "    "
 			m.readItems(&inner, item.Then)
+			c.locals = inner.locals
 			m.zeroItems(&inner, item.Else)
 			c.line("else:")
 			other := *c
 			other.indent += "    "
 			m.readItems(&other, item.Else)
+			c.locals = other.locals
 			m.zeroItems(&other, item.Then)
 		}
 	}
@@ -430,11 +432,13 @@ func (m *pyModule) writeItems(c *emitCtx, items []ir.Item) {
 			inner := *c
 			inner.indent += "    "
 			m.writeItems(&inner, item.Then)
+			c.locals = inner.locals
 			if item.Else != nil {
 				c.line("else:")
 				other := *c
 				other.indent += "    "
 				m.writeItems(&other, item.Else)
+				c.locals = other.locals
 			}
 		}
 	}
@@ -454,11 +458,13 @@ func (m *pyModule) validateItems(c *emitCtx, items []ir.Item) {
 			inner := *c
 			inner.indent += "    "
 			m.validateItems(&inner, item.Then)
+			c.locals = inner.locals
 			if item.Else != nil {
 				c.line("else:")
 				other := *c
 				other.indent += "    "
 				m.validateItems(&other, item.Else)
+				c.locals = other.locals
 			}
 		}
 	}
