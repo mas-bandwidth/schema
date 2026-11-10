@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // specInPlaceMarker is the one line of docs/SPEC-TABLES.md §3.4 that lists the
@@ -134,6 +135,8 @@ func TestSpecInPlaceListHasAGuard(t *testing.T) {
 // named refusals. Every read must agree on n, on every report field, on the
 // value, and on the bytes the value saves back to.
 func TestJSFixedInPlaceEqualsSharedPath(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	if !specInPlaceLanguages(t)["javascript"] {
 		t.Skip("docs/SPEC-TABLES.md §3.4 does not list javascript: there is no in-place path to compare")

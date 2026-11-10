@@ -45,6 +45,7 @@ func base64PaddingUnit(t *testing.T) *ir.Unit {
 // condition counted.
 func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit)")
 	u := base64PaddingUnit(t)
 	model := tabletext.NewModel(u)
 	st := model.Lookup("Blob")

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -67,6 +68,8 @@ func writeModuleDir(t *testing.T, dir string, files map[string][]byte) []string 
 // runProbe writes probe.exs beside the generated modules and runs it with the
 // leg's own toolchain, returning the combined output.
 func runProbe(t *testing.T, elixirBin, dir string, names []string, probe string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, "probe.exs"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)

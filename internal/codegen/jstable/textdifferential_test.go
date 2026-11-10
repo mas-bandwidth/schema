@@ -33,6 +33,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -128,6 +129,8 @@ const (
 // non-nil error when any instance differs, so the negative control asserts on
 // the same output the row itself produces.
 func runJSTextDifferential(t *testing.T, edit func(map[string][]byte)) ([]byte, error) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	node := jsNode(t)
 	u := unitFrom(t, jsTextDifferentialSchema)

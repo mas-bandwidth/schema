@@ -11,6 +11,7 @@ package javatable
 // three records of the same endpoint owe the same one, never 3 and never >=.
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,8 @@ import (
 )
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := corpusDir(t)
 	file := filepath.Join(corpus, "many_unknown_census.bin")
 	if _, err := os.Stat(file); err != nil {

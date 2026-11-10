@@ -12,6 +12,7 @@ import (
 	"math/big"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -21,10 +22,10 @@ func init() {
 
 // emitMessageForm writes the unit's announcement, its length, the reference
 // width and the entry count into every table module (docs/SPEC-TABLES.md §3.3,
-// "The announcement"). The bytes are ir.TableAnnouncement, the same bytes every
+// "The announcement"). The bytes are tablewire.Announce, the same bytes every
 // other backend emits and the manifest's `connection` rows pin.
 func emitMessageForm(g *luau.Gen) error {
-	ann := ir.TableAnnouncement(g.Unit)
+	ann := tablewire.Announce(g.Unit)
 	g.Pf("-- the message form's announcement, form byte 2 (docs/SPEC-TABLES.md §3.3):\n")
 	g.Pf("-- an ordinary form-1 file carrying the build version and the vocabulary.\n")
 	g.Pf("%s.TableMessageAnnouncement = (function()\n", g.Self)
@@ -40,8 +41,8 @@ func emitMessageForm(g *luau.Gen) error {
 	g.Pf("\tfor i = 1, #v do buffer.writeu8(b, i - 1, v[i]) end\n")
 	g.Pf("\treturn b\nend)()\n")
 	g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
-	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(ir.TableVocabulary(g.Unit))))
-	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(ir.TableVocabulary(g.Unit)))
+	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.Unit))))
+	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(tablewire.MessageVocabulary(g.Unit)))
 	g.Pf("%s.TableMessageBuildVersion = %s\n\n", g.Self, luau.IntegerLit(new(big.Int).SetUint64(ir.BuildVersion(g.Unit))))
 	return nil
 }

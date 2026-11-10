@@ -38,6 +38,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -112,6 +113,7 @@ func carryCLISources(t *testing.T, root, dir string) []string {
 // import of an internal package fails here, by name.
 func goBuild(t *testing.T, dir, binPath string) {
 	t.Helper()
+	slowtest.Gate(t, "go build and the compiled schema binary")
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

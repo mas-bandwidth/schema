@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -23,6 +24,8 @@ import (
 // reads the wire clean, and none when it reads damage (§4, DAMAGE DISCARDS THE
 // WHOLE LOAD).
 func TestListSaveLoadMeasureCoversFramingJavaScript(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	node := jsNode(t)
 

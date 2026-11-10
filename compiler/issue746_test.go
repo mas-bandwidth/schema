@@ -25,6 +25,7 @@ package compiler
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,6 +67,8 @@ int main()
 `
 
 func TestIssue746Base64WriterInt32MaxUBSan(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	if os.Getenv("SCHEMA_CERTIFY_INT32_MAX") != "1" {
 		t.Skip("certify tier: set SCHEMA_CERTIFY_INT32_MAX=1 (2 GiB in, ~2.8 GiB out; `make tables-cpp-release` does)")
 	}

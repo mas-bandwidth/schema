@@ -2,6 +2,7 @@ package cstable
 
 import (
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,8 @@ import (
 // field of ONE endpoint, so the census is 1 however many records carry it — 3 is the
 // divergence this gate exists to catch.
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	corpus := csFixedCorpus(t)
 	dir := t.TempDir()
 

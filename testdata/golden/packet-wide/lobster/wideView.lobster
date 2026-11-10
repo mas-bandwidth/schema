@@ -17,6 +17,8 @@ let WideSevenDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xb156735d4202eea7, // FNV-1a 64 of WideSeven (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -36,6 +38,8 @@ let WideFourDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0xb414da849b404a3a, // FNV-1a 64 of WideFour (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -55,6 +59,8 @@ let NarrowFifteenDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x62d26c29ac22b423, // FNV-1a 64 of NarrowFifteen (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -74,6 +80,8 @@ let WideInteropDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x16c9cfd7d42575e7, // FNV-1a 64 of WideInterop (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,

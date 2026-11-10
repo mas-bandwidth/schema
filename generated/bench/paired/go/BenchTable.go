@@ -4811,6 +4811,9 @@ func MixedEntityLoad(value *MixedEntity, data []byte, report *TableReport) bool 
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !MixedEntityLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		MixedEntityReset(value)
 		return false
@@ -5036,6 +5039,9 @@ func MixedStatLoad(value *MixedStat, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !MixedStatLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		MixedStatReset(value)
 		return false
@@ -5364,6 +5370,9 @@ func MixedHitEventLoad(value *MixedHitEvent, data []byte, report *TableReport) b
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !MixedHitEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		MixedHitEventReset(value)
 		return false
@@ -5606,6 +5615,9 @@ func MixedChatEventLoad(value *MixedChatEvent, data []byte, report *TableReport)
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !MixedChatEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		MixedChatEventReset(value)
 		return false
@@ -5848,6 +5860,9 @@ func MixedPickupEventLoad(value *MixedPickupEvent, data []byte, report *TableRep
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !MixedPickupEventLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		MixedPickupEventReset(value)
 		return false
@@ -7504,6 +7519,9 @@ func BenchMixedLoad(value *BenchMixed, data []byte, report *TableReport) bool {
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !BenchMixedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
+		if verdict == TableOpenOk {
+			read.Verdict = TableOpenDamaged
+		}
 		tableRefused(read)
 		BenchMixedReset(value)
 		return false

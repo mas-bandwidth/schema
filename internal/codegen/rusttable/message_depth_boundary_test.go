@@ -13,6 +13,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -150,7 +151,7 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 		},
 	}
 	refBits := ir.TableMessageRefBits(len(entries))
-	unitRefBits := ir.TableMessageRefBits(len(ir.TableVocabulary(u)))
+	unitRefBits := ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u)))
 	if refBits != 3 || unitRefBits != 3 {
 		t.Fatalf("refBits=%d unitRefBits=%d, want 3", refBits, unitRefBits)
 	}

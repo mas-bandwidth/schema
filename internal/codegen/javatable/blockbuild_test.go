@@ -8,12 +8,15 @@ import (
 	"testing"
 
 	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestBlockBuildAndCookWriteJava pins the producer entries of the two
 // accelerators (docs/SPEC-TABLES.md §19.1 and §7.6). The runtime subtests
 // below exercise the committed C++ block images and schema cook bytes.
 func TestBlockBuildAndCookWriteJava(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	files, err := Generate(unitFromDir(t, "../../../tables/block"))
 	if err != nil {
@@ -350,6 +353,8 @@ func cookWriteAbsenceIsStructural(t *testing.T) {
 // compileCookUnit writes one generated unit and the given drivers into a
 // temporary classpath and compiles them together.
 func compileCookUnit(t *testing.T, javac string, files map[string][]byte, pkg string, drivers map[string]string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	dir := t.TempDir()
 	srcDir := filepath.Join(dir, pkg)
@@ -389,6 +394,8 @@ func cookDriverSource(class, pkg, root string) string {
 // committed table wire and writes the two schema cook reference images
 // (§7.6), including the refusal paths that must not touch the output.
 func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	drivers := map[string]string{}
@@ -417,6 +424,8 @@ func cookGoldenUnit(t *testing.T, m cookManifest, u cookWriteUnit) {
 // in both orders without writing a byte. The value is graph_tree's Scene with
 // one Layer past the declared bound of `layers [..MaxLayers]Layer`.
 func cookRefusal(t *testing.T, m cookManifest) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	javac, javaBin := javaTools(t)
 	dir := compileCookUnit(t, javac, cookUnitFiles(t, "../../../tables/pointers"), "graphdemo",

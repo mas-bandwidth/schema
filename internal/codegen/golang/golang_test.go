@@ -545,6 +545,7 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 // serialize runtime beside this repository; a uint64 parameter refuses both
 // calls.
 func TestEnumNameTakesTheEnumType(t *testing.T) {
+	slowtest.Gate(t, "the Go toolchain (it compiles the generated code)")
 	files := generateGo(t, "Typed", "package typed\n\n"+
 		"enum ShipType { Fighter, Bomber, Scout }\n\n"+
 		"type Ship\n{\n    ship_type ShipType\n}\n\n"+

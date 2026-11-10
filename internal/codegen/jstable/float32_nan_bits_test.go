@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
-	"github.com/mas-bandwidth/schema/v2/ir"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
 // TestJsFloat32CellsAreBitTransparent holds the JavaScript leg to the FINITE
@@ -109,7 +109,7 @@ func jsFloatProbe(t *testing.T, sabotage func(files map[string][]byte)) ([]strin
 		sabotage(files)
 	}
 	dir := t.TempDir()
-	files["ann.bin"] = ir.TableAnnouncement(u)
+	files["ann.bin"] = tablewire.Announce(u)
 	files["probe.mjs"] = []byte(floatProbe)
 	for name, data := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {

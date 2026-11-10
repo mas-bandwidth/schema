@@ -495,6 +495,11 @@ fn fixed_table_fixed_load_records(
         }
         table_fixed_run(entries, guards, table, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
+        // DAMAGE DISCARDS THE WHOLE LOAD: a bool or present byte other than
+        // 0 or 1 on live data (FIXED-FORM-ALGORITHM §4.5); the caller resets.
+        if report.damaged {
+            return None;
+        }
         // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
         // FIRST, before the bounds pass, over the storage the run just wrote,
         // and a NaN or an infinity refuses the whole batch as

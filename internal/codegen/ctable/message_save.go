@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func (g *tableGen) messageSlot(entry ir.TableVocabularyEntry) int {
 	if g.messageSlots == nil {
-		g.messageSlots = ir.TableVocabularySlots(g.unit)
+		g.messageSlots = tablewire.MessageVocabularySlots(g.unit)
 	}
 	if slot := g.messageSlots[entry.Key()]; slot > 0 {
 		return int(slot)

@@ -38,6 +38,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // toolchain discovers the compilers and the serialize runtime headers once.
@@ -157,6 +159,7 @@ func FuzzGeneratedCompiles(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, src string) {
+		slowtest.Gate(t, "clang (the C/C++ compiler)")
 		unit := unitOf(map[string]string{"A.schema": src})
 		if unit == nil {
 			return

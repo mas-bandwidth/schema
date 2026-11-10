@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,8 @@ import (
 // values. This is the foundation the per-table load/save emitters build on; it
 // pins the runtime before any codec names it.
 func TestVariableFormRuntimeCompilesAndRoundTrips(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	files, err := Generate(unitFrom(t, `package probe

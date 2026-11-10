@@ -18,10 +18,12 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func TestElixirFixedVersioningProbesStrict(t *testing.T) {
+	slowtest.Gate(t, "elixir (the Elixir toolchain)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 
@@ -59,6 +61,7 @@ func TestElixirFixedVersioningProbesStrict(t *testing.T) {
 }
 
 func TestElixirFixedVersioningProbesStrictNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "elixir (the Elixir toolchain)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 

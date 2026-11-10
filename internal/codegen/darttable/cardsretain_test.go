@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -18,6 +19,8 @@ import (
 // vocabulary reds the test, which is the gate the card's descriptor row stands
 // on.
 func TestCardDescriptorsNameEveryField(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	u := cardsUnit(t)
@@ -154,6 +157,8 @@ func retainUnit(t *testing.T, name string) *ir.Unit {
 // retainProbe generates one side's CardsWire.dart into a temp dir, writes the
 // given probe beside it and runs it with the given args, returning the output.
 func retainProbe(t *testing.T, schema string, probe string, args ...string) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	u := retainUnit(t, schema)
 	files, err := Generate(u)
@@ -190,6 +195,8 @@ func retainProbe(t *testing.T, schema string, probe string, args ...string) stri
 // node record it rode under are the excluded classes, reported as loss and
 // never retained silently.
 func TestCardConstructsRetainUnknownFields(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	// the producer: the NEWER declaration's plain save of the populated value,
@@ -293,6 +300,8 @@ void main(List<String> args) {
 // changed. An unknown enum variant in a known field is an excluded class and
 // blocks a lossless claim.
 func TestRetentionCapacityIsALoss(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 
 	roundTrip := func(cap, idCap string) string {

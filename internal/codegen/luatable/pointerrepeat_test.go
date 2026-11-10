@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
@@ -26,6 +27,8 @@ import (
 // 148 bytes, the engine 91). The rest are the same seeds with one occurrence
 // spliced in ahead of the node table, one per way a slot can fail to resolve.
 func TestLuaPointerRepeatAgreesWithTheEngine(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")

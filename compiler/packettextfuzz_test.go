@@ -28,6 +28,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,6 +226,8 @@ func extractCppFunction(t *testing.T, source, name string) string {
 // returns its path, skipping where that leg's compiler is not installed rather
 // than failing a bare machine.
 func compilePacketTextDriver(t *testing.T, dir string, leg packetTextLeg, defect bool) string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	compiler, err := exec.LookPath(leg.compiler)
 	if err != nil {
@@ -270,6 +273,8 @@ func compilePacketTextDriver(t *testing.T, dir string, leg packetTextLeg, defect
 // leg and returns the first divergence (with the seed it came from), or the
 // count of cases when there is none.
 func runPacketTextFuzz(t *testing.T, bin string) (divergence string, cases int) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	var stdin bytes.Buffer
 	var inputs [][]byte

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // The sixteen rows. The method is the named check FixedFormChecks.cs runs
@@ -134,6 +135,7 @@ func TestCSharpFixedValidDataRowsNegativeControl(t *testing.T) {
 
 func requireValidDataSlow(t *testing.T) {
 	t.Helper()
+	slowtest.Gate(t, "dotnet (the C# toolchain)")
 	slow := os.Getenv("SCHEMA_SLOW") != ""
 	required := os.Getenv("SCHEMA_REQUIRE_CORPUS") != ""
 	if !slow && required {

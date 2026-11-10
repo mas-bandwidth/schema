@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -49,7 +50,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  A message is a bitpacked body under a vocabulary the endpoint announces once,\n")
 	b.WriteString("  before the first body and never again. The announcement is an ordinary\n")
 	b.WriteString("  form-`1` FILE whose body carries the unit's BUILD VERSION and the unit's\n")
-	b.WriteString("  whole VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
+	b.WriteString("  MESSAGE VOCABULARY, and whose trailer is those two reserved ids. It is a\n")
 	b.WriteString("  compile-time constant of the unit, so `announce/0` and `announce_measure/0`\n")
 	b.WriteString("  are the constant and its length and not a walk.\n\n")
 	b.WriteString("  `announce_read/2` resolves the vocabulary ONCE into the caller's\n")
@@ -63,8 +64,8 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  form-`2` batch of bodies against that resolved vocabulary.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
-	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
-	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
+	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
+	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(tablewire.MessageVocabulary(u)))
 	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
 	b.WriteString("end\n")
 	return []byte(b.String())

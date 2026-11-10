@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -178,6 +179,8 @@ fn main() {
 // and runs it once with rustc. It is the same shape as fixedroadmap_t09_test.go's
 // t09Run: a fixed unit grows no packet module, so `rustc` alone builds it.
 func blockProbeRun(t *testing.T, spillTo string) map[string]string {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
@@ -276,6 +279,8 @@ func goBlockBytes(t *testing.T, u *ir.Unit, counts map[string]int32) []byte {
 // reader is generated beside the probe, not build/schema_test_block: that
 // binary is the blockdemo record and has no mode that takes these bytes.
 func cppOpensRustBlock(t *testing.T, block []byte) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Helper()
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
@@ -375,6 +380,8 @@ int main(int argc, char** argv) {
 // is refused, both orders ride, what the writer wrote reads back, and the C++
 // block reader generated for this probe opens the Rust-built bytes.
 func TestBlockBuildAndCookWriteRust(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	if _, err := exec.LookPath("c++"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {

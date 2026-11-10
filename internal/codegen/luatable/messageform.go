@@ -9,6 +9,7 @@ package luatable
 
 import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -44,11 +45,11 @@ func messageRoots(u *ir.Unit) []*ir.Struct {
 func emitMessageForm(m *Module) error {
 	u := m.Unit
 	roots := messageRoots(u)
-	vocab := ir.TableVocabulary(u)
+	vocab := tablewire.MessageVocabulary(u)
 	if len(roots) == 0 {
 		return nil
 	}
-	announce := ir.TableAnnouncement(u)
+	announce := tablewire.Announce(u)
 	refBits := ir.TableMessageRefBits(len(vocab))
 	m.Printf("-- the message form (docs/SPEC-TABLES.md §3.3), byte %d: an announced\n", messageFormByte)
 	m.Printf("-- batch of bitpacked fixed-table bodies; the runtime is runtime/message.lua\n")

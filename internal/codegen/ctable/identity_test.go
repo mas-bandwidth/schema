@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,7 +56,11 @@ func tableH(t *testing.T, src string) string {
 	return ""
 }
 
-func identityCCFlags() []string {
+// identityCCFlags probes the C compiler (gnuCC runs it), so it gates first:
+// a caller evaluates it as an argument before the probe helper's own gate.
+func identityCCFlags(t testing.TB) []string {
+	t.Helper()
+	slowtest.Gate(t, "an external toolchain")
 	cc := os.Getenv("CC")
 	if cc == "" {
 		cc = "cc"
@@ -281,6 +286,8 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 }
 
 func TestIdentityHeldRoundTripAndClamp(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	runCGenerated(t, identityHeldSchema, `#include "ProbeTable.h"
 #include <stdio.h>
 #include <string.h>
@@ -327,10 +334,12 @@ int main(void)
     CHECK(loaded.label_length == 0);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }
 
 func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	runCGenerated(t, identityFlatSchema, `#include "ProbeTable.h"
 #include <stdio.h>
 #include <string.h>
@@ -366,5 +375,5 @@ int main(void)
     CHECK((int64_t)sizeof(loaded) == 8);
     return 0;
 }
-`, identityCCFlags()...)
+`, identityCCFlags(t)...)
 }

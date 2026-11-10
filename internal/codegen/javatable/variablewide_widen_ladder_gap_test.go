@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -20,6 +21,8 @@ import (
 // (docs/SPEC-TABLES.md §4). Before the fix the emitted field read counted a
 // kind_mismatch, because its widening ladder stopped at kind 9.
 func TestJavaFixWidenLadderGap(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	t.Parallel()
 	u := unitFrom(t, "package probe\nflags Perks { Shielded, Cloaked, Turbo }\ntable Root {\n    perks Perks\n}\n")
 	model := tabletext.NewModel(u)

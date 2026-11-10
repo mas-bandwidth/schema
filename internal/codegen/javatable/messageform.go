@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	javapkt "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -65,10 +66,10 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	for _, st := range roots {
 		isRoot[st.Name] = true
 	}
-	vocab := ir.TableVocabulary(u)
+	vocab := tablewire.MessageVocabulary(u)
 	refBits := ir.TableMessageRefBits(len(vocab))
 
-	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(ir.TableAnnouncement(u)), 1)
+	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(tablewire.Announce(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
 		messageRuntimeClass + ".java":      javaFile(u, "the MESSAGE FORM's batch bit stream and vocabulary walk (docs/SPEC-TABLES.md §3.3), form byte 2", tableMessageBatchSurface),

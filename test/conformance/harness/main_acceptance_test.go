@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"strings"
@@ -8,6 +9,8 @@ import (
 )
 
 func TestOriginalNineFlagCannotSilentlyWeakenAcceptance(t *testing.T) {
+	slowtest.Gate(t, "an external toolchain")
+
 	const probe = "SCHEMA_TEST_ORIGINAL_NINE_FLAG"
 	if os.Getenv(probe) == "1" {
 		os.Args = []string{"harness", "run", "--require-original-nine"}
