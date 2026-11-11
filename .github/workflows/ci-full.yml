@@ -2567,8 +2567,9 @@ jobs:
   # (the nightly tier in certify.yml, on the schedule it carries), and
   # `tools/negativecontrols` refuses a group that is in neither tier, so a
   # control cannot leave this file without landing on that one. The oldest is
-  # tables-message-form-negative-control (49 sabotage rows one submake each at
-  # 124 s, against a 120 s rule); its other blades stay here.
+  # tables-message-form-negative-control (44 sabotage rows, one submake each,
+  # four at a time; 124 s one after another against a 120 s rule, and not yet
+  # re-measured on a runner since); its other blades stay here.
   #
   # The base-* (non-C) rows that moved to nightly on runs 42556155793 and
   # 42554833739 did so because a single target, or the compile it cannot run
