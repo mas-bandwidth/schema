@@ -524,6 +524,7 @@ func (g *wireGen) emit() {
 }
 
 func (g *wireGen) emitConstants() {
+	g.pf("const int _tableBinaryMaxDepth = 128; // docs/SPEC-TABLES.md §4\n")
 	g.pf("// The RESERVED node-table id (§3.1, §5) and the *string BLOB type id\n")
 	g.pf("// (§2.5, §3.1), both as their 64-bit two's-complement Dart spelling.\n")
 	g.pf("const int _kNodeTableId = %s; // 0xFFFFFFFFFFFFFFFF\n", dartU64Literal(ir.TableNodeWireId))
@@ -1855,7 +1856,7 @@ final class TableWireReader {
         final alen = _wireLeb(buf, arm.$2 + 1);
         if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
-        return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
+        return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
       case 12:
       case 13:
       case 14:
@@ -1880,9 +1881,9 @@ final class TableWireReader {
       case 32:
         return kind != 32 || b.isEmpty;
       case 13:
-        return depth < 64 && _wireBody(b, false, out, depth + 1);
+        return depth < _tableBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _tableBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1892,7 +1893,7 @@ final class TableWireReader {
         }
         return off == b.length;
       case 16:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _tableBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
