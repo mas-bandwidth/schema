@@ -1267,7 +1267,9 @@ static partial class Program
             Array.Copy(absentBytes, present.Name, absentBytes.Length);
             present.NameLength = 6;
             present.LinkPresent = true;
-            present.Link.Value = 0x5A5A5A;
+            // in range: a present payload is held to its declaration on write
+            // (docs/SPEC.md §5.1); the tag's 0x5A bytes are what must reach the wire
+            present.Link.Value = 1000;
             Array.Fill(present.Link.Tag, (byte)0x5A);
             present.Link.TagLength = 4;
             byte[] pw = new byte[(int)P3.Schema.ChainFixedMeasure(1)];
