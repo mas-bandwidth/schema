@@ -1,0 +1,25 @@
+# POINTER-TARGET-TYPE VECTORS (docs/SPEC-TABLES.md §3.1; docs/rulings.json
+# pointer-target-type-checked). The root is Node in
+# test/pointer-target-type/reader (value uint32; next *Node), which also
+# declares Quant (q uint32). test/pointer-target-type/writer is the reader's
+# successor: it declares a type the reader does not, Extra (x uint32), and its
+# next points at it.
+#
+# Columns, tab-separated:
+#
+#   case     what the wire's one record names
+#   unit     the schema directory the root is read against, from the repo root
+#   root     the table the wire is read at
+#   file     the wire file, in this directory
+#   verdict  `read` or `refused`
+#   unknown  the report's unknown count, or `-` where the row does not pin one
+#
+# `next` naming a Node record reads; naming a Quant record (a type the reader
+# DECLARES that is not the type the slot requires) refuses, and so does naming
+# a *bytes blob record under a *Node slot; naming a record of the writer-only
+# type reads, the pointer null and one `unknown`.
+
+canonical	test/pointer-target-type/reader	Node	canonical.bin	read	0
+next-quant	test/pointer-target-type/reader	Node	next-quant.bin	refused	-
+next-bytes	test/pointer-target-type/reader	Node	next-bytes.bin	refused	-
+next-writer-only	test/pointer-target-type/reader	Node	next-writer-only.bin	read	1

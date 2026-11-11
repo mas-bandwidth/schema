@@ -325,6 +325,14 @@
         "ruled 2026-11-10: a fixed-form file holds at least one record; a record body of 65536 bytes is lawful and 65537 is not; the lock refuses two lineage entries with one hash"
       ],
       "source": "the owner's standing rule that strict wins, applied by the coordinator."
+    },
+    {
+      "id": "pointer-target-type-checked",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a pointer naming a record of a declared type that is not its target type is damage"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
     }
   ]
 }

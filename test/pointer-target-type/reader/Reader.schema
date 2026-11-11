@@ -1,0 +1,18 @@
+// The READER unit of the pointer-target-type corpus
+// (docs/SPEC-TABLES.md §3.1; docs/rulings.json pointer-target-type-checked).
+// It declares a pointered root with `next *Node` and a SECOND declared node
+// type `Quant`, which no pointer below the root targets: a wire whose `next`
+// names a Quant record names a type this reader DECLARES but that is not the
+// type the slot requires, and that is damage (a wrong-type pointer target).
+package pointertargettype
+
+table Node
+{
+    value uint32
+    next  *Node
+}
+
+table Quant
+{
+    q uint32
+}
