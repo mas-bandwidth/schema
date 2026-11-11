@@ -140,7 +140,9 @@ func init() {
 		return fixedForm(c, tblp3.ChainFixedLoad, tblp3.ChainFixedMeasure, tblp3.ChainFixedSave)
 	})
 	bind("tblr1", "Cfg", func(c codec) codec {
-		return fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		c = fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		c.variableLoad = tblr1CfgFramingLoad // framing_variable.go
+		return c
 	})
 	bind("tblr2", "Cfg", func(c codec) codec {
 		return fixedForm(c, tblr2.CfgFixedLoad, tblr2.CfgFixedMeasure, tblr2.CfgFixedSave)
