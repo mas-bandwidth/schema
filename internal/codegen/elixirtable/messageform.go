@@ -410,10 +410,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp read_float(_shape, _r), do: :malformed
 
+  # kind 12's content rule (docs/SPEC-TABLES.md §3): well-formed UTF-8 with no
+  # zero byte among the payload. Ill-formed text is damage and terminal here as
+  # it is in the file forms (§3.3).
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
-         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- String.valid?(bytes) and :binary.match(bytes, <<0>>) == :nomatch do
       {:ok, bytes, rest3}
     else
       _ -> :malformed
