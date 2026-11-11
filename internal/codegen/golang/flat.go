@@ -755,9 +755,7 @@ func (g *gen) flatFloatPiece(bits int64, bitsExpr, exponent, store string) flatP
 	return flatPiece{
 		bits: bits,
 		guard: func(ind string, idx int) {
-			g.needsMath = true
-			g.pf("%sif %s&%s == %s { // NaN and the infinities are not values of the type\n", ind, bitsExpr, exponent, exponent)
-			g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
+			g.emitWriteFiniteGuard(bitsExpr, exponent, ind)
 		},
 		emit: func(ind string, idx int) {
 			g.needsMath = true

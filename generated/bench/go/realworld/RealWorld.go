@@ -478,6 +478,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		w15 := uint32(f41 >> 3)
 		stream.SerializeBits(&w15, 17)
 	}
+	if math.Float64bits(value.F048F64)&0x7ff0000000000000 == 0x7ff0000000000000 { // NaN and the infinities are not values of the type
+		return serialize.ErrNonFiniteFloat
+	}
 	stream.SerializeFloat64(&value.F048F64)
 	fixedValue5 := int64(value.F049Ufixed)
 	stream.SerializeFixed64(&fixedValue5, 2, 14, 0, 3)
