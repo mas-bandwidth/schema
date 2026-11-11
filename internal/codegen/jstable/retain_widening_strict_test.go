@@ -235,7 +235,7 @@ func sabotageWideBlobLoad(t *testing.T, module string) {
 func sabotageUnknownNodeReach(t *testing.T, module string) {
 	t.Helper()
 	src := readModule(t, module)
-	const mark = "      if (st.reached !== undefined) { st.reached.add(idx - 2); }\n"
+	const mark = "if (st.reached !== undefined) { st.reached.add(idx - 2); }"
 	if strings.Count(src, mark) != 1 {
 		t.Fatalf("unknown kind-17 reach mark occurs %d times in %s, want 1", strings.Count(src, mark), module)
 	}

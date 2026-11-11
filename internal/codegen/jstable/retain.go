@@ -69,9 +69,6 @@ func (g *variableGen) emitRetainMember(st *ir.Struct) {
 const jsRetainRuntime = `
 // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) -----------------------------
 
-// This resolving walk shares §4's binary nesting bound.
-const TABLE_RETAIN_WALK_DEPTH = 128;
-
 // The caller owns both stores; the codec never grows either. 'bytes' is the
 // record buffer, 'ids' the retained-id entries (an id and its slot), and
 // 'used'/'count'/'idUsed' are what has been consumed of each.
@@ -123,7 +120,7 @@ function tableRetainReserved(id) { return id === 0n || id === TableNodeTableId |
 // string copy verbatim. Kind 17 (a node index) is an excluded class and returns
 // false, as does any framing the walk cannot take.
 function TableVariableRetainResolveBody(r, table, out, depth, end) {
-  if (depth > TABLE_RETAIN_WALK_DEPTH) { out.depthExceeded = true; return false; }
+  if (depth > out.depthLimit) { out.depthExceeded = true; return false; }
   // THE BODY IS ITS OWN CURSOR: a reference or length must not read past the
   // bytes its framing gave it, exactly as the reference's sub-cursor bounds it
   // (internal/tablewire retain.go walkBody).
@@ -150,7 +147,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
 // array, 15 and 30 carry a resolved reference, and every other kind copies the
 // framed bytes as they stand.
 function TableVariableRetainResolveContent(r, table, kind, out, depth, end) {
-  if (depth > TABLE_RETAIN_WALK_DEPTH) { out.depthExceeded = true; return false; }
+  if (depth > out.depthLimit) { out.depthExceeded = true; return false; }
   const rd = new TableVariableReader(r.b, r.at, end);
   let ok = false;
   switch (kind) {
@@ -204,7 +201,7 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
 }
 
 function TableVariableRetainResolve(r, table, kind, out, depth) {
-  if (depth > TABLE_RETAIN_WALK_DEPTH) { out.depthExceeded = true; return false; }
+  if (depth > out.depthLimit) { out.depthExceeded = true; return false; }
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
@@ -269,7 +266,10 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
 // is one retainLost and never 'damaged' (§6.6).
 function TableVariableRetainCapture(bytes, start, end, id, kind, table, retain, path, report) {
   const src = new TableVariableReader(bytes, start, end);
+  // The resolving walk shares §4's binary nesting bound.
+  const depthLimit = 128;
   const out = new TableVariableWriter();
+  out.depthLimit = depthLimit;
   if (!TableVariableRetainResolve(src, table, kind, out, 0) || src.at !== end) {
     if (out.depthExceeded) { report.damaged = true; }
     else { report.retainLost++; }
