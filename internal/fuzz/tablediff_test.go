@@ -649,7 +649,9 @@ func runSeedFull(t *testing.T, r *rand.Rand, seed int, sabotage, sabotageIntegri
 				unexpected = append(unexpected, fmt.Sprintf("seed %d inst %d: integrity trailer 0x%08x != crc32c 0x%08x", seed, i, got, want))
 				continue
 			}
-			engineWire = body
+			// the engine reads the sealed file whole and checks the trailer
+			// itself (docs/SPEC-TABLES.md §2.14): handing it the body alone is a
+			// file with no trailer, refused integrity_mismatch
 		}
 		legJSON, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("inst-%d.json", i)))
 		if err != nil {

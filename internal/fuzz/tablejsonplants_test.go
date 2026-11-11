@@ -271,8 +271,9 @@ func buildPlantSpecs(u *genUnit, baseJSON string, sabotage bool) []plantSpec {
 	specs = append(specs, plantSpec{name: "leading_bom", mode: "must_accept", text: "\ufeff" + baseJSON})
 	// (7) trailing data after the object
 	specs = append(specs, plantSpec{name: "trailing_data", mode: "must_refuse", text: baseJSON + " {}"})
-	// (8) a duplicate key
-	specs = append(specs, plantSpec{name: "duplicate_key_" + f0, mode: "must_accept", text: withDuplicateKey(baseJSON, f0)})
+	// (8) a duplicate key refuses the read malformed (SPEC-TABLES 16.2): no
+	// occurrence wins
+	specs = append(specs, plantSpec{name: "duplicate_key_" + f0, mode: "must_refuse", text: withDuplicateKey(baseJSON, f0)})
 	// (9) nesting of 10^6 arrays (token "__DEEP_1E6__" is expanded in the probe before timing/memstats)
 	specs = append(specs, plantSpec{name: "nested_1e6_arrays", mode: "must_refuse", text: withFieldReplaced(baseJSON, f0, `"__DEEP_1E6__"`)})
 	return specs

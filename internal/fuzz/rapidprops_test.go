@@ -684,8 +684,7 @@ var rapidFixedRoundTrip = `
 `
 
 // rapidMessageAgree is spliced into testAgree only for a fixed Root: a clean
-// message read is strict and tolerant ok, both report clean, and both give the
-// same value.
+// message reads ok, reports clean, and gives the same value as the text.
 var rapidMessageAgree = `
 		mbuf, vocab, err := rapidMessage(t, v)
 		if err != nil {
