@@ -1218,18 +1218,34 @@ func (in *tableJSONIn) space() {
             switch in.text[in.pos+1] {
             case '/':
                 in.pos += 2
+                start := in.pos
                 for in.pos < len(in.text) && in.text[in.pos] != '\n' { in.pos++ }
+                if !in.commentText(start) { return }
                 continue
             case '*':
                 in.pos += 2
+                start := in.pos
                 for in.pos+1 < len(in.text) && !(in.text[in.pos] == '*' && in.text[in.pos+1] == '/') { in.pos++ }
                 if in.pos+1 >= len(in.text) { in.bad = true; return }
+                if !in.commentText(start) { return }
                 in.pos += 2
                 continue
             }
         }
 		return
 	}
+}
+
+// commentText holds a comment's bytes, from start to the reader's position, to
+// the text rule every entry shares (docs/SPEC-TABLES.md §16.2, §16.3): well-formed
+// UTF-8 holding no NUL; otherwise the text is not JSON and the walk stops.
+func (in *tableJSONIn) commentText(start int) bool {
+	body := in.text[start:in.pos]
+	if bytes.IndexByte(body, 0) >= 0 || !utf8.Valid(body) {
+		in.bad = true
+		return false
+	}
+	return true
 }
 
 // a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
@@ -2547,7 +2563,7 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		var ignored TableReport
 		report = &ignored
 	}
-	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty, bad: bytes.IndexByte(text, 0) >= 0 || !utf8.Valid(text)}
+	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJSONReadTable(&in, value, info, 0)
