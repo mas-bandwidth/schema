@@ -357,8 +357,11 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		if shape.Inner != nil {
 			elemEntry.Shape = *shape.Inner
 		}
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-		g.emitMessageWriteElement(elem, elemEntry, expr+"[i]", ind+"  ")
+		iv := g.msgLoopVar()
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+		g.msgLoops++
+		g.emitMessageWriteElement(elem, elemEntry, expr+"["+iv+"]", ind+"  ")
+		g.msgLoops--
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
@@ -372,6 +375,17 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 	default:
 		g.emitMessageWriteScalar(f, entry, expr, ind)
 	}
+}
+
+// msgLoopVar names the loop variable at the current depth of a message body:
+// `i` at the top, then i1, i2, ... A union element's array or text arm is
+// walked INLINE inside the element's loop, and its member is reached through
+// the element's index, so an inner loop never takes the same name.
+func (g *fixedModule) msgLoopVar() string {
+	if g.msgLoops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.msgLoops)
 }
 
 func (g *fixedModule) emitMessageWriteElement(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
@@ -584,12 +598,17 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			g.pf("%sif (!r.bits.align()) { %s; }\n", aind, bad)
 		}
 		elem := messageElementField(f)
+		// a union element's array or text arm is read inline inside this
+		// loop's body, so each depth names its own index
+		iv := g.msgLoopVar()
+		g.msgLoops++
+		defer func() { g.msgLoops-- }()
 		if f.Array == ir.ArrayCounted {
 			if run := messageElementRunBits(kind, shape); run >= 0 {
 				// a FIXED-WIDTH element: keep the bound and skip the surplus in
 				// one arithmetic step, as the oracle's skipRun does (§3.3)
-				g.pf("%s  for (var i = 0; i < kept; i++) {\n", aind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+				g.pf("%s  for (var %s = 0; %s < kept; %s++) {\n", aind, iv, iv, iv)
+				g.emitMessageReadElement(elem, entry, expr+"["+iv+"]", aind+"  ")
 				g.pf("%s  }\n", aind)
 				g.pf("%s  if (kept != %s) {\n", aind, count)
 				g.pf("%s    if (!r.bits.skip((%s - kept) * %d)) { %s; }\n", aind, count, run, bad)
@@ -598,9 +617,9 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 				// a COMPLEX element has no fixed width: walk them all and read
 				// the surplus into a dropped sink, exactly as the oracle's array
 				// walk does (§3.3)
-				g.pf("%s  for (var i = 0; i < %s; i++) {\n", aind, count)
-				g.pf("%s    if (i < kept) {\n", aind)
-				g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"      ")
+				g.pf("%s  for (var %s = 0; %s < %s; %s++) {\n", aind, iv, iv, count, iv)
+				g.pf("%s    if (%s < kept) {\n", aind, iv)
+				g.emitMessageReadElement(elem, entry, expr+"["+iv+"]", aind+"      ")
 				g.pf("%s    } else {\n", aind)
 				g.emitMessageDropElement(elem, entry, aind+"      ")
 				g.pf("%s    }\n", aind)
@@ -612,8 +631,8 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 			g.pf("%s  %s = kept;\n", aind, count)
 			g.pf("%s}\n", ind)
 		} else {
-			g.pf("%sfor (var i = 0; i < %s; i++) {\n", aind, count)
-			g.emitMessageReadElement(elem, entry, expr+"[i]", aind+"  ")
+			g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", aind, iv, iv, count, iv)
+			g.emitMessageReadElement(elem, entry, expr+"["+iv+"]", aind+"  ")
 			g.pf("%s}\n", aind)
 		}
 	case f.Type.Kind == ir.TNamed:
