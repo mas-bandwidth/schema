@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 import 'dart:typed_data';
 
@@ -26,6 +26,18 @@ extension type const Weapon(int _value) implements int {
   static const Weapon laser = Weapon(1);
   static const Weapon missile = Weapon(2);
   static const Weapon railgun = Weapon(3);
+  static const Weapon flak = Weapon(4);
+  static const Weapon beam = Weapon(5);
+  static const Weapon plasma = Weapon(6);
+  static const Weapon torpedo = Weapon(7);
+  static const Weapon mine = Weapon(8);
+  static const Weapon drone = Weapon(9);
+  static const Weapon swarm = Weapon(10);
+  static const Weapon pulse = Weapon(11);
+  static const Weapon lance = Weapon(12);
+  static const Weapon comet = Weapon(13);
+  static const Weapon quake = Weapon(14);
+  static const Weapon arc = Weapon(15);
   static const int max = 15; // the exported extent (SPEC §4.2)
 }
 
@@ -41,6 +53,30 @@ String enumNameWeapon(int value) {
       return 'Missile';
     case Weapon.railgun:
       return 'Railgun';
+    case Weapon.flak:
+      return 'Flak';
+    case Weapon.beam:
+      return 'Beam';
+    case Weapon.plasma:
+      return 'Plasma';
+    case Weapon.torpedo:
+      return 'Torpedo';
+    case Weapon.mine:
+      return 'Mine';
+    case Weapon.drone:
+      return 'Drone';
+    case Weapon.swarm:
+      return 'Swarm';
+    case Weapon.pulse:
+      return 'Pulse';
+    case Weapon.lance:
+      return 'Lance';
+    case Weapon.comet:
+      return 'Comet';
+    case Weapon.quake:
+      return 'Quake';
+    case Weapon.arc:
+      return 'Arc';
     default:
       return '???';
   }
