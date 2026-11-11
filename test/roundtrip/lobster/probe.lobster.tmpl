@@ -44,6 +44,7 @@ def fixed_probe(root:string, name:string, eng:string):
             let row = [[$.Package]].New[[.Name]]()
             let rows = [ row ]
             let plan:[schema_rt.TableFixedEntry] = []
+            for([[$.Package]].[[.Name]]FixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
             let r = schema_rt.TableReport {}
             if [[$.Package]].[[.Name]]FixedLoad(rows, eng, plan, r) != 1:
                 verdict = "refused:" + r.reason
