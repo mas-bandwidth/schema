@@ -245,7 +245,7 @@ func TestSquirrelVtShapeCellsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the pinned Squirrel interpreter")
 	// both repeated-slot judges: the wire-alone check and the decode walk
 	anchors := []string{
-		`if (key in seen) return wcDamage(c);`,
+		`if (key in f.seen) return wcDamage(c);`,
 		`if (keyRef in refsSeen) { report.bodyDamaged = true; break; }`,
 	}
 	got := vtShapeSuite(t, func(src string) string {
