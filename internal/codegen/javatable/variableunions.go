@@ -241,7 +241,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			b.WriteString("        break;}\n")
 		}
 		b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
-		b.WriteString("    static Value readJson(TableJson.In in){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
+		b.WriteString("    static Value readJson(TableJson.In in,int depth){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
 			if arm.Void() {
@@ -254,7 +254,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 					shape = "(" + shape + "||in.peek()=='n')"
 				}
 				fmt.Fprintf(&b, "        if(%s){\n", shape)
-				readJsonFieldValue(&b, u, st, &one)
+				depthExpr := "depth + 1"
+				if arm.Body() {
+					depthExpr = "depth"
+				}
+				readJsonFieldValue(&b, u, st, &one, depthExpr)
 				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", i+1)
 			}
 			b.WriteString("        }else ")

@@ -2879,9 +2879,9 @@ namespace Blockdemo
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.CameraId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), (int)value.CameraType);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.TargetObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), unchecked((int)value.CameraId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), unchecked((int)value.CameraType));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.TargetObjectId));
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(68), value.Fov);
         }
 
@@ -2893,8 +2893,8 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
             BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(56), (ulong)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), (int)value.TargetObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ObjectId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), unchecked((int)value.TargetObjectId));
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(72), value.Thrust);
             b.Slice(76)[0] = unchecked((byte)value.ObjectSequence);
             b.Slice(77)[0] = (byte)value.ShipType;
@@ -2909,11 +2909,11 @@ namespace Blockdemo
         {
             if (value == null) return;
             RenderQuaternionFixedWriteBody(b, value.Rotation);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(40), (int)value.ObjectId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(44), (int)value.ParentObjectId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(48), (int)value.TurretIndex);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), (int)value.TargetObjectId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), unchecked((long)value.Flags));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(40), unchecked((int)value.ObjectId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(44), unchecked((int)value.ParentObjectId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(48), unchecked((int)value.TurretIndex));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), unchecked((int)value.TargetObjectId));
             b.Slice(56)[0] = unchecked((byte)value.ObjectSequence);
             b.Slice(57)[0] = (byte)value.Team;
             b.Slice(58)[0] = (byte)(value.HasTargetLock ? 1 : 0);
@@ -2926,8 +2926,8 @@ namespace Blockdemo
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), (long)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), unchecked((long)value.Flags));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ObjectId));
             b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
             b.Slice(69)[0] = (byte)value.MissileType;
             b.Slice(70)[0] = (byte)value.Team;
@@ -2940,8 +2940,8 @@ namespace Blockdemo
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), (long)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), unchecked((long)value.Flags));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ObjectId));
             b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
             b.Slice(69)[0] = (byte)value.PropType;
             b.Slice(70)[0] = (byte)value.Team;
@@ -2955,8 +2955,8 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.Scale);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), (long)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), (int)value.StaticPropId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), unchecked((long)value.Flags));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), unchecked((int)value.StaticPropId));
             b.Slice(76)[0] = (byte)value.PropType;
             b.Slice(77)[0] = (byte)value.Team;
         }
@@ -2969,8 +2969,8 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.Scale);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), (long)value.Flags);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), (int)value.CosmeticPropId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), unchecked((long)value.Flags));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), unchecked((int)value.CosmeticPropId));
             b.Slice(76)[0] = unchecked((byte)value.PropSequence);
             b.Slice(77)[0] = (byte)value.PropType;
             b.Slice(78)[0] = (byte)value.Team;
@@ -2984,7 +2984,7 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b, value.Start);
             RenderVector3FixedWriteBody(b.Slice(24), value.Finish);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(48), value.T);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.LaserId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), unchecked((int)value.LaserId));
             b.Slice(60)[0] = (byte)value.LaserType;
             b.Slice(61)[0] = (byte)value.Team;
         }
@@ -2997,8 +2997,8 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.T);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ExplosionId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), (int)value.ParentObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ExplosionId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), unchecked((int)value.ParentObjectId));
             b.Slice(72)[0] = (byte)value.ExplosionType;
             b.Slice(73)[0] = (byte)value.Team;
         }
@@ -3448,12 +3448,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderCameraFixedSetBytes(dst, p.Dst, wide, need);
@@ -3515,12 +3515,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderCameraFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -3780,6 +3780,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]); }
                 RenderCameraFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderCameraFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderCameraFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -3795,11 +3796,15 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -3843,11 +3848,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderShipFixedClamp(RenderShip value, TableReport report)
+        public static bool RenderShipFixedClamp(RenderShip value, TableReport report)
         {
             int clamped = 0;
             RenderShipFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderShip, the fixed form ----
@@ -4102,12 +4108,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderShipFixedSetBytes(dst, p.Dst, wide, need);
@@ -4169,12 +4175,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderShipFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -4451,6 +4457,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]); }
                 RenderShipFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderShipFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderShipFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -4466,12 +4473,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderShipFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderShipFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -4515,11 +4526,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderTurretFixedClamp(RenderTurret value, TableReport report)
+        public static bool RenderTurretFixedClamp(RenderTurret value, TableReport report)
         {
             int clamped = 0;
             RenderTurretFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderTurret, the fixed form ----
@@ -4742,12 +4754,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderTurretFixedSetBytes(dst, p.Dst, wide, need);
@@ -4809,12 +4821,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderTurretFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -5079,6 +5091,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]); }
                 RenderTurretFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderTurretFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderTurretFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -5094,12 +5107,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderTurretFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderTurretFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -5143,11 +5160,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderMissileFixedClamp(RenderMissile value, TableReport report)
+        public static bool RenderMissileFixedClamp(RenderMissile value, TableReport report)
         {
             int clamped = 0;
             RenderMissileFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderMissile, the fixed form ----
@@ -5379,12 +5397,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderMissileFixedSetBytes(dst, p.Dst, wide, need);
@@ -5446,12 +5464,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderMissileFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -5719,6 +5737,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]); }
                 RenderMissileFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderMissileFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderMissileFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -5734,12 +5753,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderMissileFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderMissileFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -5783,11 +5806,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderDynamicPropFixedClamp(RenderDynamicProp value, TableReport report)
+        public static bool RenderDynamicPropFixedClamp(RenderDynamicProp value, TableReport report)
         {
             int clamped = 0;
             RenderDynamicPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderDynamicProp, the fixed form ----
@@ -6021,12 +6045,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderDynamicPropFixedSetBytes(dst, p.Dst, wide, need);
@@ -6088,12 +6112,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderDynamicPropFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -6362,6 +6386,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]); }
                 RenderDynamicPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderDynamicPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -6377,12 +6402,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderDynamicPropFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderDynamicPropFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -6426,11 +6455,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderStaticPropFixedClamp(RenderStaticProp value, TableReport report)
+        public static bool RenderStaticPropFixedClamp(RenderStaticProp value, TableReport report)
         {
             int clamped = 0;
             RenderStaticPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderStaticProp, the fixed form ----
@@ -6665,12 +6695,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderStaticPropFixedSetBytes(dst, p.Dst, wide, need);
@@ -6732,12 +6762,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderStaticPropFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -7006,6 +7036,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]); }
                 RenderStaticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderStaticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderStaticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -7021,12 +7052,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderStaticPropFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderStaticPropFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -7070,11 +7105,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderCosmeticPropFixedClamp(RenderCosmeticProp value, TableReport report)
+        public static bool RenderCosmeticPropFixedClamp(RenderCosmeticProp value, TableReport report)
         {
             int clamped = 0;
             RenderCosmeticPropFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderCosmeticProp, the fixed form ----
@@ -7314,12 +7350,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderCosmeticPropFixedSetBytes(dst, p.Dst, wide, need);
@@ -7381,12 +7417,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderCosmeticPropFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -7657,6 +7693,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]); }
                 RenderCosmeticPropFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderCosmeticPropFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -7672,12 +7709,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderCosmeticPropFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderCosmeticPropFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -7721,11 +7762,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderLaserFixedClamp(RenderLaser value, TableReport report)
+        public static bool RenderLaserFixedClamp(RenderLaser value, TableReport report)
         {
             int clamped = 0;
             RenderLaserFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderLaser, the fixed form ----
@@ -7947,12 +7989,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderLaserFixedSetBytes(dst, p.Dst, wide, need);
@@ -8014,12 +8056,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderLaserFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -8283,6 +8325,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]); }
                 RenderLaserFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderLaserFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderLaserFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -8298,12 +8341,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderLaserFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderLaserFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -8347,11 +8394,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void RenderExplosionFixedClamp(RenderExplosion value, TableReport report)
+        public static bool RenderExplosionFixedClamp(RenderExplosion value, TableReport report)
         {
             int clamped = 0;
             RenderExplosionFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- RenderExplosion, the fixed form ----
@@ -8584,12 +8632,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RenderExplosionFixedSetBytes(dst, p.Dst, wide, need);
@@ -8651,12 +8699,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RenderExplosionFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -8924,6 +8972,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]); }
                 RenderExplosionFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, RenderExplosionFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = RenderExplosionFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -8939,12 +8988,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                RenderExplosionFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!RenderExplosionFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
