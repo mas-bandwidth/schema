@@ -610,11 +610,12 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		}
 		return true
 	case 10:
-		value := float64(*(*float32)(storage))
-		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
+		// a float32's range is compared in float32, as the binary writers compare it
+		value := *(*float32)(storage)
+		if f.HasRange && (value < float32(f.RangeMin) || value > float32(f.RangeMax)) {
 			return false
 		}
-		return tableJSONWriteFloat(out, value, true)
+		return tableJSONWriteFloat(out, float64(value), true)
 	case 11:
 		value := *(*float64)(storage)
 		if f.HasRange && (value < f.RangeMin || value > f.RangeMax) {
@@ -1640,11 +1641,17 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			// is a spelling the declaration cannot name. A NaN or an infinity
 			// never reaches this line: the text has no spelling for either
 			// and the walk above refused it as kind_mismatch.
-			if value < f.RangeMin {
-				value = f.RangeMin
+			// A float32's range is compared in float32, as the writers
+			// compare it, so a bound float32 cannot spell exactly reads clean.
+			low, high := f.RangeMin, f.RangeMax
+			if single {
+				low, high, value = float64(float32(low)), float64(float32(high)), float64(float32(value))
+			}
+			if value < low {
+				value = low
 				in.report.Refuse(TableRefuseOutOfRange, "")
-			} else if value > f.RangeMax {
-				value = f.RangeMax
+			} else if value > high {
+				value = high
 				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
 				value = 0

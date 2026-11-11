@@ -57,7 +57,8 @@ const (
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// +26: the text writer refuses a count or length outside its bound and a
 	// ranged float off its range (SPEC.md §5.1 rows 3, 4 and 10, SPEC-TABLES §16.3)
-	goOneTableLineBudget = 10033
+	// +7: a float32 range is compared in float32 by the text writer and reader, as the binary writers compare it
+	goOneTableLineBudget = 10040
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -97,7 +98,8 @@ const (
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// +26: the text writer refuses a count or length outside its bound and a
 	// ranged float off its range (SPEC.md §5.1 rows 3, 4 and 10, SPEC-TABLES §16.3)
-	goExamplesLineBudget = 60123
+	// +7: a float32 range is compared in float32 by the text writer and reader, as the binary writers compare it
+	goExamplesLineBudget = 60130
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

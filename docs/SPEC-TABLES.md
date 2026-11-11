@@ -16025,7 +16025,7 @@ written as something else.
   names** — refused by the NAME, not by a bound, so a vocabulary that
   disagrees with its own extent cannot slip through as a placeholder.
 - **A union tag outside its arm range.**
-- **A counted array's count past its `Max` or below its `Min` (or negative)**
+- **A counted array's count past its `Max` (or negative)**
   — SPEC.md §5.1 row 3, held per leg as `docs/rulings.json` `write-refusal`
   lists.
 - **A `string(N)` or `bytes(N)` length past `N` (or negative)** — SPEC.md

@@ -194,7 +194,7 @@ func textListRuntime(u *ir.Unit, s string) string {
 const textListJsonSource = `
 // tableJSONWriteTextElement writes one text-list element (docs/SPEC-TABLES.md
 // §2.13, §16.2): its string, or null for an absent ?string(M) element.
-func tableJSONWriteTextElement(out *tableJSONOut,p unsafe.Pointer,f *TableFieldInfo)bool{v:=&f.Table().Fields[0];if f.TextList==2&&tableJSONGetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1)==0{out.text("null");return true};n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}
+func tableJSONWriteTextElement(out *tableJSONOut,p unsafe.Pointer,f *TableFieldInfo)bool{v:=&f.Table().Fields[0];if f.TextList==2&&tableJSONGetRaw(unsafe.Add(p,uintptr(v.PresentOffset)),1)==0{out.text("null");return true};if !tableJSONCountInContract(p,v){return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),tableJSONCount(p,v)));return true}
 
 // tableJSONReadTextElement reads one: a string, or null where the element may be
 // absent; the caller's shape check has already counted every other JSON type.

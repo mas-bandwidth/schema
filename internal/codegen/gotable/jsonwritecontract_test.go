@@ -6,8 +6,9 @@ import "testing"
 // binary writers' write contract (docs/SPEC.md §5.1 rows 3, 4 and 10,
 // docs/SPEC-TABLES.md §16.3): a counted array's count past its bound or
 // negative, a bounded string's or bytes' length past its bound or negative,
-// and a compressed or ranged float off its range are REFUSED (-1) rather than
-// clamped or truncated. The values on the bound and at each end of the range
+// a text list element's length past its bound, and a compressed or ranged
+// float off its range are REFUSED (-1) rather than clamped or truncated; a
+// float32 range is compared in float32, as the binary writers compare it. The values on the bound and at each end of the range
 // are written and read back, so a writer that refused everything would fail.
 func TestGoJSONWriterHoldsWriteContract(t *testing.T) {
 	t.Parallel()
@@ -16,6 +17,12 @@ fixed table Contract {
     name  string(8)
     marks [..3]int32
     q     float32 | min = 0, max = 10, resolution = 0.01
+}
+table Vx {
+    names [..2]string(3)
+}
+fixed table Small {
+    tiny float32 | min = 0, max = 0.1, resolution = 0.01
 }
 `, `package probe
 import "testing"
@@ -98,6 +105,89 @@ func TestContractWriter(t *testing.T) {
 		}
 		if text, err := ContractSaveText(&v); err != nil || text == "" {
 			t.Fatalf("%s: SaveText = %q, %v, want the writer's text", c.what, text, err)
+		}
+	}
+}
+
+func TestTextListElementWriter(t *testing.T) {
+	var b VxBuilder
+	if !b.Init() {
+		t.Fatal("init")
+	}
+	defer b.Shutdown()
+	v := b.GetRoot()
+	v.NamesCount = 1
+	v.Names[0].ValueLength = 4
+	copy(v.Names[0].Value[:], "xyz")
+	if n := VxToJSONMeasure(v); n != -1 {
+		t.Fatalf("element length past N: ToJSONMeasure = %d, want the refusal -1", n)
+	}
+	var sink [4096]byte
+	if n := VxToJSON(v, sink[:]); n != -1 {
+		t.Fatalf("element length past N: ToJSON = %d, want the refusal -1", n)
+	}
+	if text, err := VxSaveText(v, &b.Arena); err == nil || text != "" {
+		t.Fatalf("element length past N: SaveText = %q, %v, want the refusal", text, err)
+	}
+	v.Names[0].ValueLength = -1
+	if n := VxToJSONMeasure(v); n != -1 {
+		t.Fatalf("negative element length: ToJSONMeasure = %d, want the refusal -1", n)
+	}
+	v.Names[0].ValueLength = 3
+	n := VxToJSONMeasure(v)
+	if n <= 0 {
+		t.Fatalf("element length on N: ToJSONMeasure = %d, want the written size", n)
+	}
+	out := make([]byte, n)
+	if got := VxToJSON(v, out); got != n {
+		t.Fatalf("element length on N: ToJSON = %d, want the measured %d", got, n)
+	}
+	var gb VxBuilder
+	if !gb.Init() {
+		t.Fatal("init")
+	}
+	defer gb.Shutdown()
+	var report TableReport
+	if !VxFromJSON(&gb, out, &report) || report.Err() != nil {
+		t.Fatalf("element length on N: FromJSON refused its own text: %+v\n%s", report, out)
+	}
+	if got := gb.GetRoot(); got.NamesCount != 1 || string(got.Names[0].Value[:got.Names[0].ValueLength]) != "xyz" {
+		t.Fatalf("element length on N: read back %+v\n%s", got, out)
+	}
+}
+
+func TestSmallRangeInFloat32(t *testing.T) {
+	for _, q := range []float32{0, 0.1} {
+		v := Small{Tiny: q}
+		n := SmallToJSONMeasure(&v)
+		if n <= 0 {
+			t.Fatalf("tiny %v: ToJSONMeasure = %d, want the written size", q, n)
+		}
+		out := make([]byte, n)
+		if got := SmallToJSON(&v, out); got != n {
+			t.Fatalf("tiny %v: ToJSON = %d, want the measured %d", q, got, n)
+		}
+		var got Small
+		var report TableReport
+		if !SmallFromJSON(&got, out, &report) || got.Tiny != q {
+			t.Fatalf("tiny %v: read back %v, %+v\n%s", q, got.Tiny, report, out)
+		}
+		if text, err := SmallSaveText(&v); err != nil || text == "" {
+			t.Fatalf("tiny %v: SaveText = %q, %v, want the writer's text", q, text, err)
+		}
+	}
+	var got Small
+	var report TableReport
+	if !SmallFromJSON(&got, []byte("{\"tiny\": 0.1}"), &report) || got.Tiny != float32(0.1) {
+		t.Fatalf("tiny 0.1 from text: read %v, %+v, want 0.1 clean", got.Tiny, report)
+	}
+	for _, q := range []float32{0.11, -0.01} {
+		v := Small{Tiny: q}
+		if n := SmallToJSONMeasure(&v); n != -1 {
+			t.Fatalf("tiny %v: ToJSONMeasure = %d, want the refusal -1", q, n)
+		}
+		if text, err := SmallSaveText(&v); err == nil || text != "" {
+			t.Fatalf("tiny %v: SaveText = %q, %v, want the refusal", q, text, err)
 		}
 	}
 }
