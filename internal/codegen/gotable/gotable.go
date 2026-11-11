@@ -121,6 +121,10 @@ type tableGen struct {
 	// Every union declaration reached by this unit's table closure has one
 	// immutable descriptor slot, shared by fields, arrays and nested arms.
 	unionArmSlot map[string]int
+
+	// msgLoops is how many array loops enclose the message writer's code
+	// inside one body function (msgLoopVar)
+	msgLoops int
 }
 
 func wireIdOrdinals(u *ir.Unit) map[uint64]int {
