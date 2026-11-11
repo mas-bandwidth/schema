@@ -219,6 +219,13 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
 // probe here does) beside a main that runs body.
 func runRustDiscardProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
 	t.Helper()
+	return runRustProbe(t, u, body)
+}
+
+// runRustProbe is runRustDiscardProbe with extra rustc flags (debug-assertions=on
+// for a probe that must reach a write-side debug_assert!).
+func runRustProbe(t *testing.T, u *ir.Unit, body string, rustcFlags ...string) (string, error) {
+	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -251,7 +258,8 @@ func runRustDiscardProbe(t *testing.T, u *ir.Unit, body string) (string, error) 
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-A", "warnings", "-o", bin, "main.rs")
+	args := append([]string{"--edition", "2024", "-O", "-A", "warnings"}, rustcFlags...)
+	build := exec.Command("rustc", append(args, "-o", bin, "main.rs")...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)

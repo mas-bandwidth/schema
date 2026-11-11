@@ -2990,11 +2990,11 @@
       "dotnet": "pin"
     },
     {
-      "name": "write-refusal-storage-release-rust",
+      "name": "write-refusal-storage-debug-rust",
       "when": "pull-request",
-      "why": "the Rust release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in --release with debug assertions off, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small cargo build.",
+      "why": "the Rust message writer's storage debug assert (docs/SPEC.md §5.1: Rust is an assert leg, and its release build carries no write-side check): TestMessageStorageDebugAssertRust builds a small generated message writer with debug assertions on and requires an over-long or negative count and length to hit the assert in measure and save, with the lawful twin at the bound written. The control takes the assert's condition out of the emitter through go test -overlay and requires that test red. One small rustc build.",
       "targets": [
-        "write-refusal-storage-release-rust-negative-control"
+        "tables-rust-message-storage-assert-negative-control"
       ],
       "rust": "stable"
     },

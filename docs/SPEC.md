@@ -2387,7 +2387,7 @@ reader refuses.
 |---|---|---|---|
 | C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
 | C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
+| Rust | 1–6 and 8 debug; 7 every build | 1–4 and 8 debug; 5–7 every build | 1–5 and 7 debug; 6 unrepresentable |
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
 | Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug |
 | Go | 1–8 every build | 1–8 every build | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |
