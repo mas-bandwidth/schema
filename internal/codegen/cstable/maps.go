@@ -117,13 +117,13 @@ const tableMapJsonSource = `
             if (c == '}') { input.Pos++; return true; }
             input.TextField = mapField;
             scoped ReadOnlySpan<byte> actual; int used;
-            if(key.Unbounded)
+            if (key.Unbounded)
             {
-                if(!DecodedStringBody(text,ref input,out actual)){return false;}
-                if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
-                used=actual.Length;
+                if (!DecodedStringBody(text, ref input, out actual)) { return false; }
+                if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
+                used = actual.Length;
             }
-            else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
+            else { if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual = spelling.Slice(0, used); }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
             input.Pos++;
             object entry = f.Table.Create();
@@ -131,7 +131,7 @@ const tableMapJsonSource = `
             if (key.Kind == 12)
             {
                 if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
-                else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                else { if (key.Unbounded) { key.EnsureCount(entry, used); } actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
             }
             else
             {
