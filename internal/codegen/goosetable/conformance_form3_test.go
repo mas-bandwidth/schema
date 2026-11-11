@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -636,7 +635,7 @@ func runGooseDriver(t *testing.T, dir string, inputs map[string][]byte, allowDri
 		}
 	}
 	line := append([]string{"run", "main.goose", "--"}, argv...)
-	cmd := exec.Command(gooseBin, line...)
+	cmd := gooserun.Command(t, gooseBin, line...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
