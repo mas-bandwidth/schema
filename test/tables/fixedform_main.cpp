@@ -959,9 +959,12 @@ static void union_text_case()
     // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
     // text op's own, and the two are read out of different lanes.
     {
-        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
-        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
-        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+        // A copy entry covers one element width, so head (4 bytes) and the
+        // union tag (1 byte) are two copies, then tail and the first arm's n:
+        // the text is entry [4].
+        check( tblut1::UtRootFixedPlan[4].op == tblut1::kTableFixedText, "two lanes: the plan's fifth entry is the text" );
+        check( tblut1::UtRootFixedPlan[4].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[4].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
 
         tblut1::UtRoot back;
         tblut1::TableReport r;
