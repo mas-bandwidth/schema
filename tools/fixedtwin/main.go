@@ -106,10 +106,11 @@ type disagreement struct {
 
 var openDisagreements = []disagreement{
 	{
-		name: "ABSENT PAYLOAD: under a clear present flag (or an inactive union arm) the reader lands the template's zeros " +
-			"the record carries, as the Go engine and the C leg do (docs/FIXED-FORM-ALGORITHM.md, the corpus manifest rule " +
-			"\"the bytes are the TEMPLATE'S ZEROS and not the declared default\"; internal/check \"value at the type's own zero\"). " +
-			"The C++ leg lands the declared defaults instead (kTableFixedPresentDefaults); the C++ leg is the one to change",
+		name: "ABSENT PAYLOAD, AWAITS THE DEAD-BYTES RULE: under a clear present flag (or an inactive union arm) the legs " +
+			"land different values. C++ lands the declared defaults (kTableFixedPresentDefaults); the Go engine and the C leg " +
+			"land the bytes the record carries. docs/SPEC-TABLES.md §3.4 says the payload is \"IGNORED on read, never a " +
+			"refusal\", which neither spelling settles. The pending standard change on dead bytes in a fixed record decides " +
+			"which leg moves; this is not yet a defect in either leg",
 		markers: []string{"kTableFixedPresentDefaults", "defaults = nullptr", ", defaults )", "payload_dst", "payload_size", "second_half"},
 	},
 	{
