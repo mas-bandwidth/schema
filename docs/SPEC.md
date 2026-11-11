@@ -1121,9 +1121,11 @@ The rules:
   namespace. The emitter writes it `::`-qualified verbatim (`::GameVec2` for
   the bare spelling, `::math::Vec2` for the qualified one), so a namespaced
   engine type needs no global alias. **`cpp_include` takes a quoted header
-  path** — the header declaring it. They go together: one without the other
-  is an error. String literals (`"..."`, no escapes) exist in the grammar for
-  attribute values only.
+  path** — the header declaring it. A `cpp_include` value is one non-empty
+  header path, with no control byte, double quote or backslash, so the
+  generated `#include "<value>"` is exactly one directive. They go together:
+  one without the other is an error. String literals (`"..."`, no escapes)
+  exist in the grammar for attribute values only.
 - **Inside the basis type's own generated header the mapping is off** —
   references there keep the basis name. The native header includes that
   header to derive from the basis; a mapped reference would be circular.
