@@ -544,6 +544,22 @@ func (g *gen) emitReadRangedFold64(lo string, bits int64, diff *big.Int, loZero 
 
 // rangeFillsBits reports whether a span of `diff` covers every value `bits`
 // wire bits can carry, which makes the headroom refusal provably vacuous.
+// emitBitsWidthGuard refuses a bits(N) value wider than N bits (SPEC §5.1):
+// the storage is uint32 or uint64, so only a field narrower than its storage
+// can hold such a value, and one as wide as its storage carries no test.
+func (g *gen) emitBitsWidthGuard(f *ir.Field, name, ind string) {
+	storage := int64(64)
+	if f.Type.Width <= 32 {
+		storage = 32
+	}
+	w := int64(f.Type.Width)
+	if w >= storage {
+		return
+	}
+	g.pf("%sif %s > %d { // a value above the bits(%d) wire width cannot ride\n", ind, name, uint64(1)<<uint(w)-1, w)
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+}
+
 func rangeFillsBits(diff *big.Int, bits int64) bool {
 	if bits >= 64 {
 		return diff.Cmp(maxUint64) == 0
@@ -835,6 +851,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsWidthGuard(f, name, ind)
 		if f.Type.Width <= 32 {
 			g.pf("%sstream.SerializeBits(&%s, %d)\n", ind, name, f.Type.Width)
 		} else {
