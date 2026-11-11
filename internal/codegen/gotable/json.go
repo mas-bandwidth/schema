@@ -2140,6 +2140,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		symbols := 0
 		pad := 0
 		malformed := false
+		nonCanonical := false
 		for _, c := range raw {
 			if malformed {
 				continue
@@ -2166,12 +2167,27 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				}
 			} else if symbols%4 == 1 {
 				malformed = true
+			} else if symbols%4 != 0 {
+				// Raw standard base64 can decode these unpadded spellings, but
+				// the table writer always emits the padded StdEncoding form.
+				nonCanonical = true
+			}
+			if !malformed && pad > 0 {
+				last := int(tableJSONBase64Decode[raw[len(raw)-pad-1]])
+				if pad == 1 && last&0x03 != 0 || pad == 2 && last&0x0f != 0 {
+					// Like StdEncoding.Strict, reject non-zero discarded pad bits.
+					nonCanonical = true
+				}
 			}
 		}
 		if malformed {
 			// a body that is not base64 is the wrong shape for the kind: the
 			// field keeps its default and the event is counted
 			in.report.Refuse(TableRefuseKindMismatch, "")
+			return true
+		}
+		if nonCanonical {
+			in.report.Refuse(TableRefuseBase64NotCanonical, "")
 			return true
 		}
 		buffer := tableJSONBytes(storage, f.ArrayBound)
