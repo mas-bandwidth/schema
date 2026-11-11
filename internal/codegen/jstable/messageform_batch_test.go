@@ -332,8 +332,8 @@ if (%[1]sSaveMessages(many, new Uint8Array(65536), wsReport) !== -1 || wsReport.
   fail("SaveMessages over 256 bodies: " + JSON.stringify(wsReport));
 }
 // "`+"`M`"+` ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME"
-// (§3.3): the count is read before any body, nothing is decoded, and the
-// returned count is the wire's M.
+// (§3.3): the count is read before any body, nothing is decoded, and a refused
+// batch returns 0.
 const three = Array.from({ length: 3 }, () => new %[1]s());
 const threeBuf = new Uint8Array(65536);
 const threeSave = {};
@@ -342,7 +342,7 @@ const threeBatch = threeBuf.subarray(0, threeN);
 const shortStorage = Array.from({ length: 2 }, () => new %[1]s());
 const shortReport = {};
 const shortCount = %[1]sLoadMessages(shortStorage, v, threeBatch, shortReport);
-if (shortCount !== 3 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Damaged) {
+if (shortCount !== 0 || shortReport.Verdict !== 1 || shortReport.Reason !== "batch_too_large" || shortReport.Damaged) {
   fail("LoadMessages above capacity: count=" + shortCount + " " + JSON.stringify(shortReport));
 }
 // "A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME" (§3.3).

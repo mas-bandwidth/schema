@@ -138,7 +138,7 @@ func Try(t testing.TB, python, dir, main string, inputs map[string][]byte) (stdo
 			t.Fatal(werr)
 		}
 	}
-	cmd := exec.Command(python, "-I", "-B", main)
+	cmd := exec.Command(python, "-W", "error", "-I", "-B", main)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

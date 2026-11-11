@@ -435,8 +435,8 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 	@sed -e 's|File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte\[0\]);|/* SABOTAGED: no per-case answer */|' \
 	     -e 's|File.WriteAllText(Path.Combine(outDir, f\[1\] + ".absent"), "blob_shared");|/* SABOTAGED: no per-case answer */|' \
 		test/conformance/cs/src/Program.cs > $(CS_ABSENT)-nc/proj/src/Program.cs
-	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both absent writes"; exit 1; }
+	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 3 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch every absent write"; exit 1; }
 	@$(DOTNET) build $(CS_ABSENT)-nc/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/build/tables-generated-cs \
 		-p:CardsGeneratedDir=$(CURDIR)/build/tables-generated-cs/cards -o $(CS_ABSENT)-nc/checker > $(CS_ABSENT)-nc/build.log 2>&1 || \
 		{ cat $(CS_ABSENT)-nc/build.log; echo "NEGATIVE CONTROL FAILED: the sabotaged driver does not compile"; exit 1; }
