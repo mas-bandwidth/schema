@@ -46,7 +46,7 @@ fn main() {
         }
         return;
     }
-    let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Vec::new() };
+    let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
     match card_load_retain(&wire, &mut retain, &mut report) {
         Some(v) => {
             println!("LOADED unknown={} retained={} retain_lost={}", report.unknown, report.retained, report.retain_lost);

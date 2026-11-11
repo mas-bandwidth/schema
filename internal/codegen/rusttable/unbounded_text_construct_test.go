@@ -48,7 +48,7 @@ func TestRustUnboundedTextNative(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert!(!r.damaged,"clean%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536),nodes:Vec::new() };let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, i, string(text), i, rustByteVector(wire), i)
+		fmt.Fprintf(&b, `{let mut r=TableReport::default();let v=root_from_json(%q,&mut r).unwrap();assert!(!r.damaged,"clean%d");assert_eq!(root_to_json(&v).trim_end(),%q,"JSON%d");let wire=vec!%s;assert_eq!(root_save_checked(&v).unwrap(),wire,"wire%d");let back=root_load(&wire,&mut TableReport::default()).unwrap();assert_eq!(root_save(&back),wire);let mut store=TableRetain{bytes:Vec::with_capacity(65536),ids:Vec::with_capacity(65536),nodes:Default::default() };let back=root_load_retain(&wire,&mut store,&mut TableReport::default()).unwrap();assert_eq!(root_save_retain(&back,&mut store,&mut TableReport::default()),wire);`, input, i, string(text), i, rustByteVector(wire), i)
 		measured, whole, refused := tablewire.FileRegionMeasure(u, u.Tables["Root"], wire)
 		if !whole || refused {
 			t.Fatal("measure", measured, whole, refused)
@@ -73,7 +73,7 @@ func TestRustUnboundedTextNative(t *testing.T) {
 		wire = append(wire, 0)
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("open"))
 		wire = binary.LittleEndian.AppendUint64(wire, 1)
-		fmt.Fprintf(&b, `{let bytes=vec!%s;let mut r=TableReport::default();assert!(root_load(&bytes,&mut r).is_none());let mut s=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Vec::new() };assert!(root_load_retain(&bytes,&mut s,&mut TableReport::default()).is_none());let _=root_load_measure(&bytes);}`, rustByteVector(wire))
+		fmt.Fprintf(&b, `{let bytes=vec!%s;let mut r=TableReport::default();assert!(root_load(&bytes,&mut r).is_none());let mut s=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };assert!(root_load_retain(&bytes,&mut s,&mut TableReport::default()).is_none());let _=root_load_measure(&bytes);}`, rustByteVector(wire))
 	}
 	fmt.Fprintf(&b, `{let mut v=Root::default();v.by_name.push(RootByNameEntry{key:%q.into(),value:9});let bytes=root_cook_write(&v,1).unwrap();assert_eq!((bytes.as_ptr() as usize)%%std::mem::align_of::<RootRow>(),0);let root=unsafe{&*(bytes.as_ptr().add(64) as *const RootRow)};assert_eq!(unsafe{root.by_name_find(%q.as_bytes())}.unwrap().value,9);assert!(unsafe{root.by_name_find(b"absent")}.is_none());}`, long, long)
 	b.WriteString(`{let mut bad=Root::default();bad.open.push(RootOpenText{value:"a\0b".into()});assert!(root_save_checked(&bad).is_err());for order in [1,2]{assert!(root_cook_write(&bad,order).is_err());}}

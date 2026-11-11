@@ -280,7 +280,7 @@ fn variable() {
         w
     };
     let retain = |wire: &[u8]| -> (Option<Loose>, TableReport) {
-        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(512), nodes: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(512), nodes: Default::default() };
         let mut report = TableReport::default();
         let got = loose_load_retain(wire, &mut store, &mut report);
         (got, report)

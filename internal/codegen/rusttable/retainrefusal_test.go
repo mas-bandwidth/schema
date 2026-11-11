@@ -35,7 +35,7 @@ func TestRetainedUnknownBeforeNonFiniteRefusalRust(t *testing.T) {
 	binary.LittleEndian.PutUint32(wire[at:at+4], 0x7fc00000)
 	body := fmt.Sprintf(`
     let wire: [u8; %d] = [%s];
-    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+    let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
     let mut report = TableReport::default();
     assert!(root_load_retain(&wire, &mut store, &mut report).is_none());
     assert!(report.refused && !report.non_finite_float.is_empty());

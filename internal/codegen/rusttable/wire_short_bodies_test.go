@@ -364,7 +364,7 @@ func runRustShortBodiesProbe(t *testing.T, edit func(string) string) (string, er
 		fmt.Fprintf(&body, `{
     let wire: &[u8] = &[%s];
     for retaining in [false, true] {
-        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(256), nodes: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::with_capacity(256), nodes: Default::default() };
         let mut report = TableReport::default();
         let value = if retaining { root_load_retain(wire, &mut store, &mut report) } else { root_load(wire, &mut report) };
         let want = %t;

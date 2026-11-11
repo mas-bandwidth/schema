@@ -96,7 +96,10 @@ func TestRustRetainedNodeIdentity(t *testing.T) {
     static DROPPED_NODE_ALLOC: DroppedNodeAlloc = DroppedNodeAlloc;
 
     const WIRE: [u8; %d] = [%s];
-    let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1 << 10), nodes: Vec::new() };
+    let mut store = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(1 << 10), nodes: Default::default() };
+    // The save looks each node's identity up by its key, never by a scan of
+    // every bound node: the store's identities are a keyed map.
+    let _: &std::collections::HashMap<u64, std::rc::Weak<dyn std::any::Any>> = &store.nodes;
     let mut report = TableReport::default();
     let mut scene = scene_load_retain(&WIRE, &mut store, &mut report).expect("the retaining load refused the graph");
     if report.unknown != 2 || report.retained != 2 {

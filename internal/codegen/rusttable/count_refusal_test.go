@@ -176,7 +176,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
                 let mut report = TableReport { unknown: 7, widened: 13,
                     retained: 23, retain_lost: 29, damaged: old_damage,
                     cycle_on_save: true, ..Default::default() };
-                let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: vec![123], nodes: Vec::new() };
+                let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: vec![123], nodes: Default::default() };
                 store.bytes.push(99);
                 let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
                 check!(result.is_none(), "%s/%d partial value");
@@ -199,7 +199,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         let wire: &[u8] = &[%s];
         for retaining in [false, true] {
             let mut report = TableReport::default();
-            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
             let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
             check!(result.is_none(), "%s twin the oracle refuses");
             check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s twin retained state");
@@ -214,7 +214,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
         for retaining in [false, true] {
             let mut report = TableReport { refused: true, reason: TableReason::CountOverExtentCap,
                 damaged: true, cycle_on_save: true, ..Default::default() };
-            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
             let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
             check!(result.is_some(), "%s prior refusal is not current control state");
             check!(report.refused && report.reason == TableReason::CountOverExtentCap &&
@@ -233,7 +233,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	fmt.Fprintf(&body, `
     for retaining in [false, true] {
         let mut report = TableReport::default();
-        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
         let wire: &[u8] = &[%s];
         let result = if retaining { map_holder_load_retain(wire, &mut store, &mut report) } else { map_holder_load(wire, &mut report) };
         check!(result.is_none(), "descending map refuses");
@@ -248,7 +248,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
 	fmt.Fprintf(&body, `
     for retaining in [false, true] {
         let mut report = TableReport::default();
-        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+        let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
         let wire: &[u8] = &[%s];
         let result = if retaining { leaf_load_retain(wire, &mut store, &mut report) } else { leaf_load(wire, &mut report) };
         check!(result.is_none() && report.reason != TableReason::CountOverExtentCap, "body-short remains damage");
@@ -288,7 +288,7 @@ func TestCountRefusalKeepsEarnedPrefixRust(t *testing.T) {
         let wire: &[u8] = &[%s];
         for retaining in [false, true] {
             let mut report = TableReport::default();
-            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Vec::new() };
+            let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
             let result = if retaining { holder_load_retain(wire, &mut store, &mut report) } else { holder_load(wire, &mut report) };
             assert!(result.is_none(), "%s refused: {:?}", report);
             assert!(store.bytes.is_empty() && store.ids.is_empty(), "%s partial retained state");

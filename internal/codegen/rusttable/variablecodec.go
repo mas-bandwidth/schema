@@ -1469,7 +1469,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]\n")
 	fmt.Fprintf(b, "fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {\n")
 	fmt.Fprintf(b, "    let (type_id, start, end) = nodes.recs[k];\n")
-	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new(), nodes: Vec::new() };\n")
+	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new(), nodes: Default::default() };\n")
 	fmt.Fprintf(b, "    let retaining = nodes.retaining;\n")
 	fmt.Fprintf(b, "    let node: Option<Rc<dyn Any>> = match type_id {\n")
 	for _, st := range targets {

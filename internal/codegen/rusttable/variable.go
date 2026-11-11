@@ -980,13 +980,14 @@ pub fn leb_skip(buf: &[u8], off: &mut usize, end: usize, kind: u8) -> bool {
 /// the retained records, 'ids' the retained ids' own list; both are the
 /// caller's, neither grows on demand, and a whole record that does not fit is
 /// dropped and counted once in the report's 'retain_lost'. 'nodes' holds the
-/// weak identity of every node whose records the store names, so a dropped
-/// node's records can never be saved into a later node that reuses its address.
+/// weak identity of every node whose records the store names, keyed by the
+/// node's address so the save finds it in one lookup, and a dropped node's
+/// records can never be saved into a later node that reuses its address.
 #[derive(Default)]
 pub struct TableRetain {
     pub bytes: Vec<u8>,
     pub ids: Vec<u64>,
-    pub nodes: Vec<(u64, Weak<dyn Any>)>,
+    pub nodes: HashMap<u64, Weak<dyn Any>>,
 }
 
 /// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
@@ -1055,17 +1056,18 @@ pub fn retain_bind_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
 /// the strong count to be one.
 pub fn retain_hold_node(retain: &mut TableRetain, node: &Rc<dyn Any>) {
     let key = Rc::as_ptr(node) as *const () as usize as u64;
-    retain.nodes.push((key, Rc::downgrade(node)));
+    retain.nodes.insert(key, Rc::downgrade(node));
 }
 
 /// retain_node_live reports whether the node being saved is the one this store
 /// bound (docs/SPEC-TABLES.md §6.6): the key must match and the weak handle must
 /// still name it. A node the caller dropped leaves no live handle, so its records
-/// are never saved into a replacement.
+/// are never saved into a replacement. The key is one lookup, so a save stays
+/// linear in the nodes it writes.
 pub fn retain_node_live(retain: &TableRetain, node: &Rc<dyn Any>) -> bool {
     let key = Rc::as_ptr(node) as *const () as usize as u64;
-    retain.nodes.iter().any(|(bound, weak)| {
-        *bound == key && weak.upgrade().is_some_and(|held| Rc::ptr_eq(&held, node))
+    retain.nodes.get(&key).is_some_and(|weak| {
+        weak.upgrade().is_some_and(|held| Rc::ptr_eq(&held, node))
     })
 }
 

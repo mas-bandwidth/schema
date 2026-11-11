@@ -56,7 +56,7 @@ func TestRustRequiredDefaultWritersNative(t *testing.T) {
 			t.Fatal(e)
 		}
 		fn := ir.RustSnake(root)
-		fmt.Fprintf(&b, `{let v=%s::default();let expected=vec!%s;assert_eq!(%s_save_checked(&v).unwrap(),expected,"required defaults %s");let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Vec::new() };assert_eq!(%s_save_retain(&v,&mut store,&mut TableReport::default()),expected);assert!(%s_load(&expected,&mut TableReport::default()).is_some());}`, root, rustByteVector(pin), fn, root, fn, fn)
+		fmt.Fprintf(&b, `{let v=%s::default();let expected=vec!%s;assert_eq!(%s_save_checked(&v).unwrap(),expected,"required defaults %s");let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096),nodes:Default::default() };assert_eq!(%s_save_retain(&v,&mut store,&mut TableReport::default()),expected);assert!(%s_load(&expected,&mut TableReport::default()).is_some());}`, root, rustByteVector(pin), fn, root, fn, fn)
 	}
 	b.WriteString(`println!("required default writers ok");`)
 	out, e := rustConstructProbe(t, u, b.String())

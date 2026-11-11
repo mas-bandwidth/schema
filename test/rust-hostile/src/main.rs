@@ -124,7 +124,7 @@ macro_rules! table_ops {
                 let mut store = $k::TableRetain {
                     bytes: Vec::with_capacity(65536.max(2 * input.len())),
                     ids: Vec::with_capacity(4096),
-                    nodes: Vec::new(),
+                    nodes: Default::default(),
                 };
                 let value = if retaining {
                     $k::$load_retain(input, &mut store, &mut report)
