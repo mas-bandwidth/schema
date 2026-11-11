@@ -13,8 +13,12 @@
 //	  the bytes must be identical"
 //	docs/FIXED-FORM-ALGORITHM.md:1705 (§8 coverage matrix)  "`?T` against a
 //	  plain nesting | `P1`/`P3`" — the go cell this file fills.
-//	docs/SPEC-TABLES.md:7194  "A field moved between `?T` and a plain nesting
-//	  is not an evolution event at all — the bytes do not move."
+//	docs/SPEC-TABLES.md "The three wires": `Chain` is a declared `fixed
+//	  table` in both P1 and P3, and every read at a fixed root answers
+//	  `previous_form` for a form-`1` file, with nothing decoded and no
+//	  counter moved. The four form-`1` chain fixtures are therefore refusal
+//	  rows under both spellings; the `?T`-against-plain-nesting law is
+//	  checked on form `3` below.
 //
 // P1 nests Link BY VALUE; P3 marks the same field `?Link` (test/tables/
 // P1.schema, P3.schema). VECTOR: the fixture pins the driver also reads —
@@ -56,11 +60,6 @@ func e5Check(ok bool, what string) {
 	}
 }
 
-func e5Silent(r1 tblp1.TableReport) bool {
-	return r1.Verdict == tblp1.TableOpenOk && !r1.Refused() &&
-		r1.Unknown == 0 && r1.Widened == 0
-}
-
 func e5Slurp(path string) []byte {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -74,7 +73,12 @@ func TestRowE5(t *testing.T) {
 	e5Failed = 0
 	const wire = "../../../../testdata/wire/tables/"
 
-	// ---- form 1 (docs/SPEC-TABLES.md:7194): the bytes do not move ----
+	// ---- form 1 at a fixed root: previous_form under BOTH spellings ----
+	// docs/SPEC-TABLES.md "The three wires": `Chain` is a declared fixed table
+	// in P1 and P3, so the plain ChainLoad refuses each form-1 fixture by
+	// name, with nothing decoded (the value is the reset value, whatever the
+	// caller's storage held) and no counter moved. The fixtures themselves
+	// still pin that `?T` and a plain nesting were one form-1 spelling.
 	chainValue := e5Slurp(wire + "chain_value.bin")
 	chainOptional := e5Slurp(wire + "chain_optional.bin")
 	chainValueEmpty := e5Slurp(wire + "chain_value_empty.bin")
@@ -84,62 +88,42 @@ func TestRowE5(t *testing.T) {
 		"the four chain fixtures under testdata/wire/tables/ are present")
 
 	e5Check(bytes.Equal(chainValue, chainOptional),
-		"P1's chain_value.bin and P3's chain_optional.bin are byte-identical (the bytes do not move)")
+		"P1's chain_value.bin and P3's chain_optional.bin are byte-identical (form 1 spelled ?T and plain nesting alike)")
 
-	// P1's plain-nested file, read under P3's ?Link: silent, and the field
-	// that rode as a plain nesting reads PRESENT.
-	v3 := tblp3.Chain{}
-	var r3 tblp3.TableReport
-	ok := tblp3.ChainLoad(&v3, chainValue, &r3)
-	e5Check(ok && e5SilentP3(r3) && v3.LinkPresent,
-		"p1_as_p3: P3 reads P1's file silently with the ?Link present")
+	var reset1 tblp1.Chain
+	tblp1.ChainReset(&reset1)
+	var reset3 tblp3.Chain
+	tblp3.ChainReset(&reset3)
+	fixtures := []struct {
+		name string
+		data []byte
+	}{
+		{"chain_value.bin", chainValue},
+		{"chain_optional.bin", chainOptional},
+		{"chain_value_empty.bin", chainValueEmpty},
+		{"chain_optional_empty.bin", chainOptionalEmpty},
+	}
+	for _, f := range fixtures {
+		e5Check(len(f.data) > 0 && f.data[0] == 1,
+			"form1/"+f.name+": the fixture is form 1")
 
-	// re-save under P3: identical bytes.
-	size := tblp3.ChainMeasure(&v3)
-	saved := make([]byte, size)
-	n := tblp3.ChainSave(&v3, saved)
-	e5Check(n == size && bytes.Equal(saved, chainValue),
-		"p1_as_p3: P3's re-save of P1's file is byte-identical")
+		v1 := tblp1.Chain{NameLength: 3}
+		v1.Link.Value = -7
+		var r1 tblp1.TableReport
+		ok := tblp1.ChainLoad(&v1, f.data, &r1)
+		e5Check(!ok && r1.Refusal == tblp1.TableRefusePreviousForm &&
+			v1 == reset1 && r1.Unknown == 0 && r1.Widened == 0 && r1.Retained == 0 && r1.RetainLost == 0,
+			"form1/"+f.name+": P1's plain load refuses previous_form, nothing decoded, no counter moved")
 
-	// P3's optional-present file, read under P1: silent, re-saved identical.
-	v1 := tblp1.Chain{}
-	var r1 tblp1.TableReport
-	ok = tblp1.ChainLoad(&v1, chainOptional, &r1)
-	size1 := tblp1.ChainMeasure(&v1)
-	saved1 := make([]byte, size1)
-	n = tblp1.ChainSave(&v1, saved1)
-	e5Check(ok && e5Silent(r1),
-		"p3_as_p1: P1 reads P3's file silently")
-	e5Check(n == size1 && bytes.Equal(saved1, chainOptional),
-		"p3_as_p1: P1's re-save of P3's file is byte-identical")
-
-	// the payload lands the same under either spelling of the seam.
-	e5Check(v3.Link.Value == v1.Link.Value &&
-		v3.Link.TagLength == v1.Link.TagLength &&
-		bytes.Equal(v3.Link.Tag[:v3.Link.TagLength], v1.Link.Tag[:v1.Link.TagLength]),
-		"the link's payload lands identically under P1's plain nesting and P3's ?Link")
-
-	// the empty pair: P1's all-default file under P3 — silent, the optional
-	// the writer never sent reads ABSENT, re-save identical (the empty end
-	// elides in both spellings); P3's present-and-default file under P1 —
-	// silent, but P1's re-save elides what a present optional writes anyway
-	// (test/conformance/c/rows/E5.c pins the same asymmetry), so no byte
-	// identity is demanded.
-	e3 := tblp3.Chain{}
-	var re3 tblp3.TableReport
-	ok = tblp3.ChainLoad(&e3, chainValueEmpty, &re3)
-	sizeE := tblp3.ChainMeasure(&e3)
-	savedE := make([]byte, sizeE)
-	n = tblp3.ChainSave(&e3, savedE)
-	e5Check(ok && e5SilentP3(re3) && !e3.LinkPresent &&
-		n == sizeE && bytes.Equal(savedE, chainValueEmpty),
-		"p1_empty_as_p3: silent, the unwritten optional reads ABSENT, re-save identical")
-
-	e1 := tblp1.Chain{}
-	var re1 tblp1.TableReport
-	ok = tblp1.ChainLoad(&e1, chainOptionalEmpty, &re1)
-	e5Check(ok && e5Silent(re1),
-		"p3_empty_as_p1: silent (identity not owed: a present optional writes a body a plain nesting elides)")
+		v3 := tblp3.Chain{NameLength: 3, LinkPresent: true}
+		v3.Link.Value = -7
+		var r3 tblp3.TableReport
+		ok = tblp3.ChainLoad(&v3, f.data, &r3)
+		e5Check(!ok && r3.Refusal == tblp3.TableRefusePreviousForm &&
+			v3 == reset3 && r3.Unknown == 0 && r3.Widened == 0 && r3.Retained == 0 && r3.RetainLost == 0,
+			"form1/"+f.name+": P3's plain load refuses previous_form, nothing decoded, no counter moved")
+	}
+	var n int64
 
 	// ---- form 3 (?T vs plain nesting are ONE BYTE APART) ----
 	// docs/FIXED-FORM-ALGORITHM.md:182 and :186-188: the optional costs the
@@ -232,9 +216,4 @@ func TestRowE5(t *testing.T) {
 	if e5Failed != 0 {
 		t.Fatalf("go/E5: %d assertion(s) red", e5Failed)
 	}
-}
-
-func e5SilentP3(r tblp3.TableReport) bool {
-	return r.Verdict == tblp3.TableOpenOk && !r.Refused() &&
-		r.Unknown == 0 && r.Widened == 0
 }
