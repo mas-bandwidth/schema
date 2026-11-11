@@ -57,6 +57,30 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	if g.fixedFileSurface(st) {
+		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): the measure is the fixed
+		// form's, so it sizes exactly what <T>Save (which writes those bytes)
+		// needs, and refuses the value <T>Save refuses (§5: a writer never
+		// sizes a value it will not write).
+		if fixedCheckNeededStruct(st, map[string]bool{}) {
+			g.pf("func %sMeasure(value *%s) int64 { if !%sFixedCheckBody(value) { return -1 }; return %sFixedMeasure(1) }\n\n", n, g.storageName(n), n, n)
+			g.pf("func %sMeasureReason(value *%s)(int64,error){if !%sFixedCheckBody(value){return -1,TableRefuseInvalidValue};return %sMeasure(value),nil}\n", n, g.storageName(n), n, n)
+		} else {
+			g.pf("func %sMeasure(_ *%s) int64 { return %sFixedMeasure(1) }\n\n", n, g.storageName(n), n)
+			g.pf("func %sMeasureReason(value *%s)(int64,error){return %sMeasure(value),nil}\n", n, g.storageName(n), n)
+		}
+		return
+	}
+	if g.fixedNoFileForm(st) {
+		reason := "TableRefuseLayoutUnsupported"
+		if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+			reason = "TableRefuseLayoutRecordTooLarge"
+		}
+		g.pf("// %s is a fixed table with NO FILE FORM (docs/SPEC-TABLES.md §3.4): its\n// file save refuses and never writes form 1.\n", n)
+		g.pf("func %sMeasure(_ *%s) int64 { return -1 }\n\n", n, g.storageName(n))
+		g.pf("func %sMeasureReason(_ *%s)(int64,error){return -1,%s}\n\n", n, g.storageName(n), reason)
+		return
+	}
 	trailer := 0
 	if st.Integrity != "" {
 		trailer = 4
@@ -157,6 +181,17 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	if g.fixedFileSurface(st) {
+		// THE PLAIN SAVE OF A FIXED TABLE WRITES FORM 3 (docs/SPEC-TABLES.md §3,
+		// "the plain `<T>Save` of a fixed table writes form 3, the bytes
+		// `<T>FixedSave` writes"): one record through the fixed writer.
+		g.pf("func %sSave(value *%s, buffer []byte) int64 { return %sFixedSave([]%s{*value}, buffer) }\n\n", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
+		return
+	}
+	if g.fixedNoFileForm(st) {
+		g.pf("func %sSave(_ *%s, _ []byte) int64 { return -1 }\n\n", st.Name, g.storageName(st.Name))
 		return
 	}
 	if st.Integrity != "" {

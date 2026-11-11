@@ -136,7 +136,12 @@ func refuseStrict(t *testing.T, name string, wire []byte, wantReason string) {
 func TestVariableLoadNamesTheRefusedForm(t *testing.T) {
 	refuseStrict(t, "form 0", []byte{0}, "newer_form")
 	refuseStrict(t, "form 2", []byte{2}, "message_form_as_file")
-	refuseStrict(t, "form 3", []byte{3}, "newer_form")
 	refuseStrict(t, "form 255", []byte{255}, "newer_form")
+	// form 3 is this fixed root's own file; a one-byte one is truncated.
+	var value Root
+	var report TableReport
+	if RootLoad(&value, []byte{TableFixedForm}, &report) || report.Err() == nil {
+		t.Fatalf("form 3: %+v", report)
+	}
 }
 `

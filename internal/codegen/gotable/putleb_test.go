@@ -34,6 +34,34 @@ const putLebWireTest = `package probe
 import ("bytes"; "encoding/binary"; "hash/fnv"; "testing")
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -87,22 +115,22 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 			want = binary.LittleEndian.AppendUint64(want, 0)
 		}
 		got := make([]byte, len(want))
-		if RootMeasure(&value) != int64(len(want)) || RootSave(&value, got) != int64(len(want)) || !bytes.Equal(got, want) {
+		if rootForm1Measure(&value) != int64(len(want)) || rootForm1Save(&value, got) != int64(len(want)) || !bytes.Equal(got, want) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, want, got)
 		}
 		var report TableReport
 		if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded.PayloadLength != n || !bytes.Equal(loaded.Payload[:n], value.Payload[:n]) {
 			t.Fatalf("length %d load differs: %+v", n, report)
 		}
-		if RootSave(&value, make([]byte, len(want)-1)) != -1 || RootSave(&value, nil) != -1 {
+		if rootForm1Save(&value, make([]byte, len(want)-1)) != -1 || rootForm1Save(&value, nil) != -1 {
 			t.Fatalf("length %d short buffer accepted", n)
 		}
 	}
 	RootReset(&value)
 	value.PayloadLength = 16384
-	wire := make([]byte, RootMeasure(&value))
+	wire := make([]byte, rootForm1Measure(&value))
 	if n := testing.AllocsPerRun(50, func() {
-		if RootMeasure(&value) != int64(len(wire)) || RootSave(&value, wire) != int64(len(wire)) {
+		if rootForm1Measure(&value) != int64(len(wire)) || rootForm1Save(&value, wire) != int64(len(wire)) {
 			panic("round trip")
 		}
 	}); n != 0 {
