@@ -32,3 +32,10 @@ the unaffected direction must pass, and the altered direction must fail on
 its exact tag-bit-count assertion. A failed read or wrong tag exits before
 that assertion. The controls are dependencies of `make test` (C++) and
 `make test-c` (C), together with the positive checks.
+
+The positive reads are strict: tag 0 (None) and a selected payload-free arm
+each cost exactly the tag bits, and a selected payload reconstructs its
+declared defaults before decoding. The controls plant the extra bit on a
+payload-free arm, so a reader or writer that spends payload bits on an arm
+without one fails the exact bit-count assertion by name; no count is relaxed
+for a runtime that reads or writes more.

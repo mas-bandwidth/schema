@@ -50,6 +50,27 @@ func TestDocLineRefusesUnicodeParagraphSeparator(t *testing.T) {
 	}
 }
 
+func TestDocLineRefusesTrailingBackslash(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, src string }{
+		{"plain", "package ok\n/// a \\\ntype T { x int32 }\n"},
+		{"spaces", "package ok\n/// a \\   \ntype T { x int32 }\n"},
+		{"crlf", "package ok\r\n/// a \\\r\ntype T { x int32 }\r\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if !hasSubstrs(errorTexts(tc.src), "backslash") {
+				t.Fatalf("a /// doc line ending in a backslash (%s) was not refused", tc.name)
+			}
+		})
+	}
+	src := "package ok\n/// a \\ in the middle is fine\ntype T { x int32 }\n"
+	if errs := errorTexts(src); len(errs) > 0 {
+		t.Fatalf("a backslash elsewhere in a /// doc line was refused: %v", errs)
+	}
+}
+
 func TestDocLineScansCRLFFileAsBefore(t *testing.T) {
 	t.Parallel()
 	src := "package ok\r\n/// a doc line\r\n/// second line\r\ntype T { x int32 }\r\n"

@@ -31,10 +31,10 @@ const tableWideJsonSource = `
         if (fraction == 0) { o.Put((byte)'0'); return; }
         while (fraction != 0)
         {
-            UInt128 low = (UInt128)(ulong)fraction * 10;
+            UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
             UInt128 high = (fraction >> 64) * 10 + (low >> 64);
             uint carry = (uint)(high >> 64);
-            fraction = (high << 64) | (ulong)low;
+            fraction = (high << 64) | unchecked((ulong)low);
             ulong digit = (ulong)(fraction >> frac);
             if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
             o.Put((byte)('0' + (int)digit)); fraction &= mask;
