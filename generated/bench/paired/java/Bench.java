@@ -265,7 +265,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchPacketBits(
             BenchPacket value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -275,7 +275,7 @@ public final class Bench {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 249 > numBits) {
+        if ((long) bitsRead + 249 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -334,7 +334,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 136 > numBits) {
+        if ((long) bitsRead + 136 > numBits) {
             return -1;
         }
         if ((bitsRead & 7) == 0) {
@@ -489,7 +489,7 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchIntsBits(BenchInts value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -498,7 +498,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 110 > numBits) {
+        if ((long) bitsRead + 110 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -653,7 +653,7 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchBitsBits(BenchBits value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -663,7 +663,7 @@ public final class Bench {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 156 > numBits) {
+        if ((long) bitsRead + 156 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -1034,7 +1034,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEntityBits(
             MixedEntity value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1043,7 +1043,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 135 > numBits) {
+        if ((long) bitsRead + 135 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
@@ -1175,7 +1175,7 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedStatBits(MixedStat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1184,7 +1184,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 18 > numBits) {
+        if ((long) bitsRead + 18 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -1283,7 +1283,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedHitEventBits(
             MixedHitEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1292,7 +1292,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 28 > numBits) {
+        if ((long) bitsRead + 28 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
@@ -1384,7 +1384,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedChatEventBits(
             MixedChatEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1393,7 +1393,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 14 > numBits) {
+        if ((long) bitsRead + 14 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1480,7 +1480,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedPickupEventBits(
             MixedPickupEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1489,7 +1489,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 18 > numBits) {
+        if ((long) bitsRead + 18 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
@@ -1612,7 +1612,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEventBits(
             MixedEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1621,7 +1621,7 @@ public final class Bench {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -2025,7 +2025,7 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchMixedBits(
             BenchMixed value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2036,7 +2036,7 @@ public final class Bench {
         long v;
         long lo;
         long hi;
-        if (bitsRead + 353 > numBits) {
+        if ((long) bitsRead + 353 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -2093,13 +2093,13 @@ public final class Bench {
             return -1; // a smuggled offset is refused
         }
         value.serverTime = (int) v;
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
         bitsRead += 3;
         value.entitiesCount = (int) (v + 1);
-        if (bitsRead + value.entitiesCount * 135L > numBits) {
+        if ((long) bitsRead + value.entitiesCount * 135L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.entitiesCount; i0++) {
@@ -2108,7 +2108,7 @@ public final class Bench {
                 return -1;
             }
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -2117,7 +2117,7 @@ public final class Bench {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.statsCount = (int) v;
-        if (bitsRead + value.statsCount * 18L > numBits) {
+        if ((long) bitsRead + value.statsCount * 18L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.statsCount; i0++) {
@@ -2130,7 +2130,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 32 > numBits) {
+        if ((long) bitsRead + 32 > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < 4; i0++) {
@@ -2138,7 +2138,7 @@ public final class Bench {
             bitsRead += 8;
             value.loadout[i0] = (byte) v;
         }
-        if (bitsRead + 4 > numBits) {
+        if ((long) bitsRead + 4 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
@@ -2148,7 +2148,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.playerNameLength * 8L > numBits) {
+        if ((long) bitsRead + value.playerNameLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.playerName, 0, value.playerNameLength);
@@ -2184,7 +2184,7 @@ public final class Bench {
                 return -1; // an interior null is content the read refuses (SPEC §4.7)
             }
         }
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -2197,12 +2197,12 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.payloadLength * 8L > numBits) {
+        if ((long) bitsRead + value.payloadLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.payload, 0, value.payloadLength);
         bitsRead += value.payloadLength * 8;
-        if (bitsRead + 370 > numBits) {
+        if ((long) bitsRead + 370 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffL;
@@ -2283,7 +2283,7 @@ public final class Bench {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 37 > numBits) {
+        if ((long) bitsRead + 37 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffL;

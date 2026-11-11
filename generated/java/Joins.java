@@ -188,7 +188,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsAgreeBits(ArmsAgree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -197,7 +197,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 24 > numBits) {
+        if ((long) bitsRead + 24 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -318,7 +318,7 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsDisagreeBits(
             ArmsDisagree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -327,7 +327,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -337,7 +337,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 11 > numBits) {
+            if ((long) bitsRead + 11 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -345,7 +345,7 @@ public final class Joins {
             value.a = v;
             value.b = 0;
         } else {
-            if (bitsRead + 3 > numBits) {
+            if ((long) bitsRead + 3 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -353,7 +353,7 @@ public final class Joins {
             value.b = v;
             value.a = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -447,7 +447,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmEmptyBits(ArmEmpty value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -456,7 +456,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -466,7 +466,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 19 > numBits) {
+            if ((long) bitsRead + 19 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffffL;
@@ -475,7 +475,7 @@ public final class Joins {
         } else {
             value.a = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -598,7 +598,7 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsNestedBits(
             ArmsNested value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -607,7 +607,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 4 > numBits) {
+        if ((long) bitsRead + 4 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -617,14 +617,14 @@ public final class Joins {
         bitsRead += 1;
         value.outer = v != 0;
         if (value.outer) {
-            if (bitsRead + 1 > numBits) {
+            if ((long) bitsRead + 1 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
             bitsRead += 1;
             value.inner = v != 0;
             if (value.inner) {
-                if (bitsRead + 29 > numBits) {
+                if ((long) bitsRead + 29 > numBits) {
                     return -1;
                 }
                 v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffffL;
@@ -632,7 +632,7 @@ public final class Joins {
                 value.x = v;
                 value.y = 0;
             } else {
-                if (bitsRead + 5 > numBits) {
+                if ((long) bitsRead + 5 > numBits) {
                     return -1;
                 }
                 v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -642,7 +642,7 @@ public final class Joins {
             }
             value.z = 0;
         } else {
-            if (bitsRead + 13 > numBits) {
+            if ((long) bitsRead + 13 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffL;
@@ -652,7 +652,7 @@ public final class Joins {
             value.x = 0;
             value.y = 0;
         }
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fL;
@@ -771,7 +771,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmAlignBits(ArmAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -780,7 +780,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -790,7 +790,7 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 3 > numBits) {
+            if ((long) bitsRead + 3 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -803,7 +803,7 @@ public final class Joins {
             if (bitsRead < 0) {
                 return -1;
             }
-            if (bitsRead + value.sLength * 8L > numBits) {
+            if ((long) bitsRead + value.sLength * 8L > numBits) {
                 return -1;
             }
             System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
@@ -841,7 +841,7 @@ public final class Joins {
             }
             value.b = 0;
         } else {
-            if (bitsRead + 10 > numBits) {
+            if ((long) bitsRead + 10 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3ffL;
@@ -850,7 +850,7 @@ public final class Joins {
             Arrays.fill(value.s, (byte) 0);
             value.sLength = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -969,7 +969,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmArrayBits(ArmArray value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -978,7 +978,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 6 > numBits) {
+        if ((long) bitsRead + 6 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -988,13 +988,13 @@ public final class Joins {
         bitsRead += 1;
         value.flag = v != 0;
         if (value.flag) {
-            if (bitsRead + 2 > numBits) {
+            if ((long) bitsRead + 2 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
             bitsRead += 2;
             value.itemsCount = (int) v;
-            if (bitsRead + value.itemsCount * 13L > numBits) {
+            if ((long) bitsRead + value.itemsCount * 13L > numBits) {
                 return -1;
             }
             for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1004,7 +1004,7 @@ public final class Joins {
             }
             value.b = 0;
         } else {
-            if (bitsRead + 9 > numBits) {
+            if ((long) bitsRead + 9 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffL;
@@ -1013,7 +1013,7 @@ public final class Joins {
             Arrays.fill(value.items, 0);
             value.itemsCount = 0;
         }
-        if (bitsRead + 7 > numBits) {
+        if ((long) bitsRead + 7 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fL;
@@ -1086,7 +1086,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readNarrowBits(Narrow value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1095,7 +1095,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1170,7 +1170,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readWideBits(Wide value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1180,7 +1180,7 @@ public final class Joins {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 37 > numBits) {
+        if ((long) bitsRead + 37 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1294,7 +1294,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readUnevenBits(Uneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1303,7 +1303,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1401,7 +1401,7 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHoldsUnevenBits(
             HoldsUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1410,7 +1410,7 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -1420,7 +1420,7 @@ public final class Joins {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 11 > numBits) {
+        if ((long) bitsRead + 11 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -1525,7 +1525,7 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArrUnevenBits(ArrUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1534,13 +1534,13 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         value.lead = v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1552,7 +1552,7 @@ public final class Joins {
                 return -1;
             }
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1686,7 +1686,7 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRegainAfterAlignBits(
             RegainAfterAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1695,19 +1695,19 @@ public final class Joins {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
         bitsRead += 5;
         value.lead = v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
         bitsRead += 2;
         value.itemsCount = (int) v;
-        if (bitsRead + value.itemsCount * 13L > numBits) {
+        if ((long) bitsRead + value.itemsCount * 13L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.itemsCount; i0++) {
@@ -1715,7 +1715,7 @@ public final class Joins {
             bitsRead += 13;
             value.items[i0] = (int) v;
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1728,7 +1728,7 @@ public final class Joins {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.sLength * 8L > numBits) {
+        if ((long) bitsRead + value.sLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.s, 0, value.sLength);
@@ -1764,7 +1764,7 @@ public final class Joins {
                 return -1; // an interior null is content the read refuses (SPEC §4.7)
             }
         }
-        if (bitsRead + 84 > numBits) {
+        if ((long) bitsRead + 84 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
