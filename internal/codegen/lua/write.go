@@ -98,7 +98,7 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
 		min := IntLiteral(big.NewInt(f.ArrayMin))
-		fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s < %s or %s > %s then return false end -- the count guards the loop (SPEC §6.3)\n",
+		fmt.Fprintf(b, "%sif math.type(%s) ~= \"integer\" or %s < %s or %s > %s then return false end -- the count guards the loop (SPEC §6.3)\n",
 			indent, count, count, min, count, bound)
 		countExpr := count
 		if f.ArrayMin != 0 {
