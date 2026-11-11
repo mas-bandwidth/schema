@@ -1,0 +1,277 @@
+/* The round-trip gate's C probe (test/roundtrip). The gate renders this
+   template over the unit's root tables, compiles it with the generated
+   sources, and runs it with the inputs directory as its argument. Every call
+   is the generated API, per root: <unit>_<root>_from_json, _to_json, _measure,
+   _save, _load, _fixed_save and _fixed_load; at a variable root the builder,
+   the region load, _load_builder and the retaining pair _load_retain and
+   _save_retain. */
+[[range .Headers]]#include "[[.]]"
+[[end]]#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static const char * inputs;
+
+static uint8_t * slurp( const char * path, int64_t * n )
+{
+    FILE * f = fopen( path, "rb" );
+    long len;
+    uint8_t * b;
+    *n = -1;
+    if ( !f ) { return NULL; }
+    fseek( f, 0, SEEK_END );
+    len = ftell( f );
+    fseek( f, 0, SEEK_SET );
+    b = (uint8_t *) malloc( (size_t) len + 1 );
+    if ( fread( b, 1, (size_t) len, f ) != (size_t) len ) { fclose( f ); free( b ); return NULL; }
+    fclose( f );
+    b[len] = 0;
+    *n = len;
+    return b;
+}
+
+static void say( const char * root, const char * name, const char * verb, const char * verdict )
+{
+    printf( "RT %s %s %s %s\n", root, name, verb, verdict );
+    fflush( stdout );
+}
+
+static void keep( const char * root, const char * name, const char * ext, const uint8_t * b, int64_t n )
+{
+    char path[2048];
+    FILE * f;
+    snprintf( path, sizeof path, "%s/out/%s/%s%s", inputs, root, name, ext );
+    f = fopen( path, "wb" );
+    if ( f ) { fwrite( b, 1, (size_t) n, f ); fclose( f ); }
+}
+
+static char verdict[256];
+
+static const char * why( const [[.Package]]_table_report_t * r )
+{
+    snprintf( verdict, sizeof verdict, "refused:refused=%d reason=%d refuse_reason=%d damage_reason=%d", r->refused, r->reason, r->refuse_reason, r->damage_reason );
+    return verdict;
+}
+
+static uint8_t * region_for( int64_t n )
+{
+    size_t size = (size_t) ( ( n > 0 ? n : 64 ) + 63 ) / 64 * 64;
+    return (uint8_t *) aligned_alloc( 64, size );
+}
+[[range .Roots]]
+static char * tj_[[.Snake]]( const [[$.Package]]_[[.Snake]]_t * v )
+{
+    int64_t n = [[$.Package]]_[[.Snake]]_to_json_measure( v );
+    char * b;
+    if ( n < 0 ) { return NULL; }
+    b = (char *) malloc( (size_t) n + 1 );
+    if ( [[$.Package]]_[[.Snake]]_to_json( v, b, n ) != n ) { free( b ); return NULL; }
+    b[n] = 0;
+    return b;
+}
+
+static const char * same_[[.Snake]]( const [[$.Package]]_[[.Snake]]_t * got, const char * want )
+{
+    char * g = tj_[[.Snake]]( got );
+    const char * out = ( g == NULL || want == NULL ) ? "refused:ToJson refuses the value" : strcmp( g, want ) == 0 ? "ok" : "diff";
+    free( g );
+    return out;
+}
+[[if eq .Class "variable"]]
+/* a load through the region: measured, then read into an aligned region */
+static const char * region_load_[[.Snake]]( const uint8_t * b, int64_t n, const char * want )
+{
+    [[$.Package]]_table_report_t r;
+    const [[$.Package]]_[[.Snake]]_t * got;
+    const char * out;
+    int64_t rn = [[$.Package]]_[[.Snake]]_load_measure( b, n );
+    uint8_t * region;
+    if ( rn < 0 ) { return "refused:load measure"; }
+    region = region_for( rn );
+    memset( &r, 0, sizeof r );
+    got = [[$.Package]]_[[.Snake]]_load( region, rn, b, n, &r );
+    out = ( got == NULL || r.refused ) ? why( &r ) : same_[[.Snake]]( got, want );
+    free( region );
+    return out;
+}
+
+static const char * builder_load_[[.Snake]]( const uint8_t * b, int64_t n, const char * want )
+{
+    [[$.Package]]_table_report_t r;
+    [[$.Package]]_[[.Snake]]_builder_t builder;
+    const char * out;
+    memset( &r, 0, sizeof r );
+    if ( ![[$.Package]]_[[.Snake]]_builder_init( &builder ) ) { return "refused:builder init"; }
+    out = ( ![[$.Package]]_[[.Snake]]_load_builder( &builder, b, n, &r ) || r.refused ) ? why( &r ) : same_[[.Snake]]( [[$.Package]]_[[.Snake]]_builder_root( &builder ), want );
+    [[$.Package]]_[[.Snake]]_builder_shutdown( &builder );
+    return out;
+}
+
+static void probe_[[.Snake]]( const char * root, const char * name, const uint8_t * text, int64_t tn, const uint8_t * eng, int64_t en )
+{
+    [[$.Package]]_table_report_t r;
+    [[$.Package]]_[[.Snake]]_builder_t builder;
+    const [[$.Package]]_[[.Snake]]_t * v;
+    char * want;
+    uint8_t * wire = NULL;
+    int64_t wn = 0;
+    memset( &r, 0, sizeof r );
+    if ( ![[$.Package]]_[[.Snake]]_builder_init( &builder ) ) { say( root, name, "fromjson", "refused:builder init" ); return; }
+    if ( ![[$.Package]]_[[.Snake]]_from_json( &builder, (const char *) text, tn, &r ) || r.refused ) { say( root, name, "fromjson", why( &r ) ); [[$.Package]]_[[.Snake]]_builder_shutdown( &builder ); return; }
+    if ( ![[$.Package]]_[[.Snake]]_builder_lock( &builder ) ) { say( root, name, "fromjson", "refused:builder lock" ); [[$.Package]]_[[.Snake]]_builder_shutdown( &builder ); return; }
+    say( root, name, "fromjson", "ok" );
+    v = [[$.Package]]_[[.Snake]]_builder_root( &builder );
+    want = tj_[[.Snake]]( v );
+    {
+        int64_t need = [[$.Package]]_[[.Snake]]_measure( NULL, v );
+        if ( need <= 0 ) { say( root, name, "save", "refused:measure" ); }
+        else
+        {
+            wire = (uint8_t *) malloc( (size_t) need );
+            wn = [[$.Package]]_[[.Snake]]_save( NULL, v, wire, need );
+            if ( wn != need ) { say( root, name, "save", "refused:save" ); free( wire ); wire = NULL; }
+            else { keep( root, name, ".save", wire, wn ); say( root, name, "save", "ok" ); }
+        }
+    }
+    if ( wire != NULL )
+    {
+        say( root, name, "load", region_load_[[.Snake]]( wire, wn, want ) );
+        say( root, name, "load.builder", builder_load_[[.Snake]]( wire, wn, want ) );
+    }
+    if ( eng != NULL )
+    {
+        say( root, name, "loadeng", region_load_[[.Snake]]( eng, en, want ) );
+        say( root, name, "load.buildereng", builder_load_[[.Snake]]( eng, en, want ) );
+    }
+    if ( wire != NULL )
+    {
+        [[$.Package]]_table_retain_t store;
+        int64_t rn = [[$.Package]]_[[.Snake]]_load_measure( wire, wn );
+        uint8_t * region = region_for( rn > 0 ? rn * 4 : 64 );
+        const [[$.Package]]_[[.Snake]]_t * got;
+        memset( &store, 0, sizeof store );
+        store.capacity = 1 << 20;
+        store.bytes = (uint8_t *) malloc( (size_t) store.capacity );
+        store.id_capacity = 1 << 16;
+        store.ids = ([[$.Package]]_table_retain_id_t *) malloc( sizeof( *store.ids ) * (size_t) store.id_capacity );
+        memset( &r, 0, sizeof r );
+        got = [[$.Package]]_[[.Snake]]_load_retain( region, rn > 0 ? rn * 4 : 64, wire, wn, &store, &r );
+        if ( got == NULL || r.refused ) { say( root, name, "retain", why( &r ) ); }
+        else
+        {
+            int64_t n = [[$.Package]]_[[.Snake]]_measure_retain( got, &store );
+            uint8_t * back = (uint8_t *) malloc( n > 0 ? (size_t) n : 1 );
+            [[$.Package]]_table_report_t sr;
+            memset( &sr, 0, sizeof sr );
+            if ( n <= 0 || [[$.Package]]_[[.Snake]]_save_retain( got, &store, back, n, &sr ) != n || sr.refused ) { say( root, name, "retain", n <= 0 ? "refused:measure retain" : why( &sr ) ); }
+            else if ( n != wn || memcmp( back, wire, (size_t) n ) != 0 ) { say( root, name, "retain", "diff" ); }
+            else { say( root, name, "retain", same_[[.Snake]]( got, want ) ); }
+            free( back );
+        }
+        free( store.bytes );
+        free( store.ids );
+        free( region );
+    }
+    if ( want == NULL ) { say( root, name, "json", "refused:ToJson refuses the value" ); }
+    else
+    {
+        [[$.Package]]_[[.Snake]]_builder_t jb;
+        memset( &r, 0, sizeof r );
+        if ( ![[$.Package]]_[[.Snake]]_builder_init( &jb ) ) { say( root, name, "json", "refused:builder init" ); }
+        else
+        {
+            if ( ![[$.Package]]_[[.Snake]]_from_json( &jb, want, (int64_t) strlen( want ), &r ) || r.refused || ![[$.Package]]_[[.Snake]]_builder_lock( &jb ) ) { say( root, name, "json", why( &r ) ); }
+            else { say( root, name, "json", same_[[.Snake]]( [[$.Package]]_[[.Snake]]_builder_root( &jb ), want ) ); }
+            [[$.Package]]_[[.Snake]]_builder_shutdown( &jb );
+        }
+    }
+    free( wire );
+    free( want );
+    [[$.Package]]_[[.Snake]]_builder_shutdown( &builder );
+}
+[[else]]
+static const char * load_[[.Snake]]( const uint8_t * b, int64_t n, const char * want )
+{
+    [[$.Package]]_table_report_t r;
+    [[$.Package]]_[[.Snake]]_t * got = ([[$.Package]]_[[.Snake]]_t *) calloc( 1, sizeof( *got ) );
+    const char * out;
+    memset( &r, 0, sizeof r );
+    out = ( ![[$.Package]]_[[.Snake]]_load( got, b, n, &r ) || r.refused ) ? why( &r ) : same_[[.Snake]]( got, want );
+    free( got );
+    return out;
+}
+
+static void probe_[[.Snake]]( const char * root, const char * name, const uint8_t * text, int64_t tn, const uint8_t * eng, int64_t en )
+{
+    [[$.Package]]_table_report_t r;
+    [[$.Package]]_[[.Snake]]_t * v = ([[$.Package]]_[[.Snake]]_t *) calloc( 1, sizeof( *v ) );
+    char * want;
+    memset( &r, 0, sizeof r );
+    if ( ![[$.Package]]_[[.Snake]]_from_json( v, (const char *) text, tn, &r ) || r.refused ) { say( root, name, "fromjson", why( &r ) ); free( v ); return; }
+    say( root, name, "fromjson", "ok" );
+    want = tj_[[.Snake]]( v );
+    {
+        int64_t need = [[$.Package]]_[[.Snake]]_measure( v );
+        if ( need <= 0 ) { say( root, name, "save", "refused:measure" ); }
+        else
+        {
+            uint8_t * w = (uint8_t *) malloc( (size_t) need );
+            int64_t got = [[$.Package]]_[[.Snake]]_save( v, w, need );
+            if ( got != need ) { say( root, name, "save", "refused:save" ); }
+            else
+            {
+                keep( root, name, ".save", w, got );
+                say( root, name, "save", "ok" );
+                say( root, name, "load", load_[[.Snake]]( w, got, want ) );
+            }
+            free( w );
+        }
+    }
+    if ( eng != NULL ) { say( root, name, "loadeng", load_[[.Snake]]( eng, en, want ) ); }
+[[if eq .Class "fixed"]]    {
+        static [[$.Package]]_table_fixed_entry_t plan[4096];
+        int64_t need = [[$.Package]]_[[.Snake]]_fixed_measure( 1 );
+        uint8_t * w = (uint8_t *) malloc( (size_t) need );
+        int64_t got = [[$.Package]]_[[.Snake]]_fixed_save( v, 1, w, need );
+        if ( got != need ) { say( root, name, "fixedsave", "refused:fixed save" ); }
+        else { keep( root, name, ".fixed", w, got ); say( root, name, "fixedsave", "ok" ); }
+        free( w );
+        if ( eng != NULL )
+        {
+            [[$.Package]]_[[.Snake]]_t * back = ([[$.Package]]_[[.Snake]]_t *) calloc( 1, sizeof( *back ) );
+            memset( &r, 0, sizeof r );
+            if ( [[$.Package]]_[[.Snake]]_fixed_load( back, 1, eng, en, plan, 4096, NULL, &r ) != 1 || r.refused ) { say( root, name, "fixedloadeng", why( &r ) ); }
+            else { say( root, name, "fixedloadeng", same_[[.Snake]]( back, want ) ); }
+            free( back );
+        }
+    }
+[[end]]    free( want );
+    free( v );
+}
+[[end]][[end]]
+int main( int argc, char ** argv )
+{
+    char path[2048], root[256], name[256], cls[64];
+    FILE * f;
+    if ( argc < 2 ) { return 2; }
+    inputs = argv[1];
+    snprintf( path, sizeof path, "%s/cases.txt", inputs );
+    f = fopen( path, "r" );
+    if ( !f ) { return 2; }
+    while ( fscanf( f, "%255s %255s %63s", root, name, cls ) == 3 )
+    {
+        int64_t tn, en;
+        uint8_t * text, * eng;
+        snprintf( path, sizeof path, "%s/samples/%s/%s.json", inputs, root, name );
+        text = slurp( path, &tn );
+        snprintf( path, sizeof path, "%s/engine/%s/%s.bin", inputs, root, name );
+        eng = slurp( path, &en );
+        if ( text == NULL ) { say( root, name, "probe", "refused:no sample text" ); }
+[[range .Roots]]        else if ( strcmp( root, "[[.Name]]" ) == 0 ) { probe_[[.Snake]]( root, name, text, tn, eng, en ); }
+[[end]]        else { say( root, name, "probe", "refused:the unit generated no such root" ); }
+        free( text );
+        free( eng );
+    }
+    fclose( f );
+    return 0;
+}

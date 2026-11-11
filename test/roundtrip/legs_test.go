@@ -107,6 +107,10 @@ var legs = []*leg{
 		name: "rust", lang: "rust", tool: "cargo (the generated Rust crate)", retain: true,
 		run: runRust,
 	},
+	{
+		name: "c", lang: "c", tool: "cc (the generated C sources)", retain: true,
+		run: runC,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -470,4 +474,22 @@ serialize = { package = "serialize-official", path = "` + sibling(t, x, "SERIALI
 	env := []string{"CARGO_TARGET_DIR=" + filepath.Join(x.repo, "build", "roundtrip-rust"), "RUSTFLAGS=-A warnings"}
 	run(t, pkg, env, tool("CARGO", "cargo"), "build", "--quiet", "--offline")
 	return run(t, pkg, nil, filepath.Join(x.repo, "build", "roundtrip-rust", "debug", "roundtripprobe"), x.in)
+}
+
+// runC compiles the rendered probe with every generated source and runs it.
+func runC(t *testing.T, x *rowEnv) []byte {
+	var headers []string
+	for _, f := range genFiles(t, x.gen, ".h") {
+		if strings.HasSuffix(f, "Table") {
+			headers = append(headers, f+".h")
+		}
+	}
+	probe := filepath.Join(x.work, "probe.c")
+	write(t, probe, renderProbe(t, x, "c", "probe.c.tmpl", map[string]any{"Headers": headers}))
+	args := []string{"-std=c11", "-O1", "-w", "-I", x.gen, "-o", filepath.Join(x.work, "probe"), probe}
+	for _, f := range genFiles(t, x.gen, ".c") {
+		args = append(args, filepath.Join(x.gen, f+".c"))
+	}
+	run(t, x.work, nil, tool("CC", "cc"), append(args, "-lm")...)
+	return run(t, x.work, nil, filepath.Join(x.work, "probe"), x.in)
 }
