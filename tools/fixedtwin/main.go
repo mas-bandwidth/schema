@@ -104,16 +104,10 @@ type disagreement struct {
 	markers []string
 }
 
-var openDisagreements = []disagreement{
-	{
-		name: "ABSENT PAYLOAD, AWAITS THE DEAD-BYTES RULE: under a clear present flag (or an inactive union arm) the legs " +
-			"land different values. C++ lands the declared defaults (kTableFixedPresentDefaults); the Go engine and the C leg " +
-			"land the bytes the record carries. docs/SPEC-TABLES.md §3.4 says the payload is \"IGNORED on read, never a " +
-			"refusal\", which neither spelling settles. The pending standard change on dead bytes in a fixed record decides " +
-			"which leg moves; this is not yet a defect in either leg",
-		markers: []string{"kTableFixedPresentDefaults", "defaults = nullptr", ", defaults )", "payload_dst", "payload_size", "second_half"},
-	},
-}
+// None is open: the absent-payload rule closed when the C leg took the
+// present-defaults entry (docs/SPEC-TABLES.md §4.4). A new one is added here
+// with its rule, its spec line and the leg that is behind.
+var openDisagreements = []disagreement{}
 
 // nameDisagreements returns the open disagreements the leftover shows, each
 // with the count of leftover lines that carry its markers.

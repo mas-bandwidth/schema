@@ -351,6 +351,9 @@ func TestCDamagedRefusalStillEmitted(t *testing.T) {
 // disagreement's marker is named with its rule, and a leftover that carries
 // none is named as nothing.
 func TestOpenDisagreementsAreNamed(t *testing.T) {
+	saved := openDisagreements
+	t.Cleanup(func() { openDisagreements = saved })
+	openDisagreements = []disagreement{{name: "ABSENT PAYLOAD (a fixture rule)", markers: []string{"kTableFixedPresentDefaults"}}}
 	named := nameDisagreements([]string{
 		"runtime:cpp:13 - kTableFixedPresentDefaults = 9;",
 	})

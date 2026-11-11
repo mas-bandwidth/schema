@@ -113,6 +113,32 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		}
 	}
 
+	// AN ABSENT OPTIONAL READS AS ITS DECLARED DEFAULTS IN BOTH LEGS
+	// (docs/SPEC-TABLES.md §4.4). Dropping the C leg's defaults copy, or
+	// sending the C present flag back through a plain bool entry, lands the
+	// record's bytes again, and the gate must say so.
+	cFaults := []struct{ name, from, to string }{
+		{
+			"the C present-defaults entry stops copying the declared defaults",
+			"if ( flag == 0 && defaults != NULL ) { table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }",
+			"",
+		},
+		{
+			"the C compiled plan lands the present flag as a plain bool",
+			"e.op = kTableFixedPresentDefaults; e.arg = arg;",
+			"e.op = kTableFixedBool; e.arg = arg;",
+		},
+	}
+	for _, fault := range cFaults {
+		if !strings.Contains(cPlain, fault.from) {
+			t.Fatalf("the real C artifact no longer carries the clause for %q", fault.name)
+		}
+		broken := strings.Replace(cPlain, fault.from, fault.to, 1)
+		if left := twinLeftoverFromPlainC(t, broken, cppSrc); len(left) == 0 {
+			t.Fatalf("a C leg that lands an absent payload's bytes passed the twin gate: %s", fault.name)
+		}
+	}
+
 	// Deleting the whole scan is not a weakened scan: nothing is left for
 	// the diff to catch, so the gate must name the absence itself.
 	deleted := stripFuncsWithPrefix(cppSrc, "inline bool TableFixedRefuseScan")

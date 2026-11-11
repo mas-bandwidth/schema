@@ -847,7 +847,7 @@ func strictCountTextScan(fn string) bool {
 var (
 	reCCounterParam = regexp.MustCompile(`int32_t \* out_of_range,\s*int32_t \* widened`)
 	reCCounterInc   = regexp.MustCompile(`\(\*out_of_range\)\+\+`)
-	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened\s*\)`)
+	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened(,\s*defaults)?\s*\)`)
 	reCCounterLocal = regexp.MustCompile(`int32_t out_of_range = 0;`)
 	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
 	reCCommaRefusal = regexp.MustCompile(`(\w+(?:\.|->)report(?:\.|->))refused\s*=\s*1\s*,\s*(\w+(?:\.|->)report(?:\.|->)refuse_reason)\s*=\s*`)
@@ -883,7 +883,7 @@ func rewriteCCounter(s string) string {
 	s = reCDamagedRefusal.ReplaceAllString(s, "")
 	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
 	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
-	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened )")
+	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened${1} )")
 	s = reCCounterLocal.ReplaceAllString(s, "int32_t oor_count = 0;")
 	s = reCCounterTest.ReplaceAllString(s, "( oor_count != 0 )")
 	s = reCCommaRefusal.ReplaceAllString(s, "${1}refused = true; $2 = ")
