@@ -178,7 +178,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.pf("  final count = tableMessageBatchOpen(vocabulary, bytes, report, r);\n")
 	g.pf("  if (count < 0) return -1;\n")
 	g.pf("  if (count > values.length) {\n")
-	g.pf("    report.Refuse('batch_too_large');\n    return count;\n  }\n")
+	g.pf("    report.Refuse('batch_too_large');\n    return 0;\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", lower)
 	// A NON-FINITE FLOAT REFUSES THE WHOLE BATCH, the tolerant read included
