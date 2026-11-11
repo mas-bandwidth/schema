@@ -2078,16 +2078,21 @@ local interpretInteger = function(tok, integral) {
   return out;
 };
 
-// a declared bound as the double the descriptors' clamp compares, then back
-// to a magnitude (read.go integerOf, bigToFloat)
-local integerOf = function(bound) {
-  local neg = bound < 0;
-  local whole = neg ? -bound : bound;
-  local mag;
-  if (whole >= 18446744073709551616.0) mag = MAXU;
-  else if (whole >= 9223372036854775808.0) mag = (whole - 9223372036854775808.0).tointeger() | MIN;
-  else mag = whole.tointeger();
-  return { mag = mag, neg = mag == 0 ? false : neg };
+// A DECLARED BOUND AS EXACT MAGNITUDE AND SIGN (read.go integerBound): the
+// descriptor's 64 bits, never a double, so a bound at or above 2^53 keeps its
+// exact value. An unsigned bound is its 64-bit pattern.
+local boundOf = function(bound, signed) {
+  if (signed && bound < 0)
+    return { mag = bound == MIN ? MIN : -bound, neg = true };
+  return { mag = bound, neg = false };
+};
+
+// compare two sign-and-magnitude integers: -1, 0 or 1
+local compareSigned = function(aNeg, aMag, bNeg, bMag) {
+  if (aNeg != bNeg) return aNeg ? -1 : 1;
+  if (aMag == bMag) return 0;
+  local less = ult(aMag, bMag);
+  return aNeg ? (less ? 1 : -1) : (less ? -1 : 1);
 };
 
 // an integer field takes any token whose VALUE is integral; a fractional
@@ -2099,20 +2104,17 @@ local placeInteger = function(d, tok, integral, report) {
   if (!num.finite || num.fractional) { report.mismatch++; return null; }
   if (num.saturated) report.oor++;
   local mag = num.mag, neg = num.neg;
-  local lo = null, hi = null;
   if (d.lo != null && typeof d.lo == "integer") {
-    lo = d.signed ? d.lo.tofloat() : utof(d.lo);
-    hi = d.signed ? d.hi.tofloat() : utof(d.hi);
+    local lo = boundOf(d.lo, d.signed), hi = boundOf(d.hi, d.signed);
+    if (compareSigned(neg, mag, lo.neg, lo.mag) < 0) {
+      mag = lo.mag; neg = lo.neg; report.oor++;
+    } else if (compareSigned(neg, mag, hi.neg, hi.mag) > 0) {
+      mag = hi.mag; neg = hi.neg; report.oor++;
+    }
   } else if (d.bits != null && d.bits > 0 && d.bits < 64) {
-    lo = 0.0;
-    hi = utof((1 << d.bits) - 1);
-  }
-  if (lo != null) {
-    local scale = neg ? -utof(mag) : utof(mag);
-    local b = null;
-    if (scale < lo) b = integerOf(lo);
-    else if (scale > hi) b = integerOf(hi);
-    if (b != null) { mag = b.mag; neg = b.neg; report.oor++; }
+    local hi = (1 << d.bits) - 1;
+    if (neg) { mag = 0; neg = false; report.oor++; }
+    else if (ult(hi, mag)) { mag = hi; report.oor++; }
   }
   local bytes = d.width;
   if (d.bits != null && d.bits > 0) bytes = d.bits <= 32 ? 4 : 8;
