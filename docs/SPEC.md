@@ -9,8 +9,8 @@ document disagree, one of them is a bug (see VERSIONING.md).
 **schema** is a small language for describing bitpacked network data, and a
 compiler — written in Go — that translates `*.schema` files into generated C,
 C++, C#, Dart, Elixir, Go, Java, JavaScript, Rust, Lobster, Lua, Luau and
-Squirrel source code. Six of the thirteen targets read and write through a
-serialize-family runtime library; the other seven carry the bit reader and
+Squirrel source code. Ten of the thirteen targets read and write through a
+serialize-family runtime library; the other three carry the bit reader and
 writer in the generated code itself and
 need nothing but their own toolchain:
 
@@ -25,10 +25,10 @@ need nothing but their own toolchain:
 | Java | none — the generated code is self-contained |
 | JavaScript | [serialize.js](https://github.com/mas-bandwidth/serialize.js) |
 | Rust | [serialize.rs](https://github.com/mas-bandwidth/serialize.rs) |
-| Lobster | none — the generated code is self-contained |
-| Lua | none — the generated code is self-contained |
-| Luau | none — the generated code is self-contained |
-| Squirrel | none — the generated code is self-contained |
+| Lobster | [serialize.lobster](https://github.com/mas-bandwidth/serialize.lobster) |
+| Lua | [serialize.lua](https://github.com/mas-bandwidth/serialize.lua) |
+| Luau | [serialize.luau](https://github.com/mas-bandwidth/serialize.luau) |
+| Squirrel | [serialize.nut](https://github.com/mas-bandwidth/serialize.nut) |
 
 The runtimes are bit-for-bit wire compatible, pinned in CI with shared golden
 bytes, and the self-contained targets are held to the same goldens. schema
