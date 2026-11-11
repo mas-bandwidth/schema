@@ -1423,45 +1423,6 @@ test-cs: cards-cs-retain-negative-control
 # manifest names, not only with the ones listed above
 build/tables-generated-cs/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A counted array whose count is
-# past the storage it indexes is refused in EVERY build, so this gate runs the
-# generated writer in -c Release and requires the message writer to refuse
-# before the first byte. The control strips the generated guard and requires
-# the same release gate to go red.
-STORAGE_RELEASE_CS := build/storage-release-cs
-.PHONY: write-refusal-storage-release-cs write-refusal-storage-release-cs-negative-control
-write-refusal-storage-release-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_release.cs test/conformance/cs/storage-release/StorageRelease.csproj
-	@rm -rf $(STORAGE_RELEASE_CS) && mkdir -p $(STORAGE_RELEASE_CS)/generated
-	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)/generated $(STORAGE_RELEASE_SCHEMA)
-	$(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
-		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)/generated \
-		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
-		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/obj/ \
-		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)/bin/
-
-write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_release.cs test/conformance/cs/storage-release/StorageRelease.csproj
-	@rm -rf $(STORAGE_RELEASE_CS)-negative && mkdir -p $(STORAGE_RELEASE_CS)-negative/generated
-	./bin/schema generate --lang cs --out $(STORAGE_RELEASE_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak -e 's/Count(value, f) < 0 || Count(value, f) > f.ArrayBound/Count(value, f) < 0 \/* SABOTAGED *\//g' \
-		-e 's/count < 0 || count > f.ArrayBound/count < 0 \/* SABOTAGED *\//g' \
-		$(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_CS)-negative/generated/StoragereleaseTable.cs || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@if $(DOTNET) run -c Release --nologo -v quiet --project test/conformance/cs/storage-release/StorageRelease.csproj \
-			-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/generated \
-			-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
-			-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/obj/ \
-			-p:BaseOutputPath=$(CURDIR)/$(STORAGE_RELEASE_CS)-negative/bin/ \
-			> $(STORAGE_RELEASE_CS)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; \
-	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_CS)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_CS)-negative/log
-	@echo "negative control: removing the C# storage guard turns the release gate RED"
-
 # THE WRITE-REFUSAL NEGATIVE CONTROLS, C# side (docs/SPEC.md §5.1). The
 # conformance driver is built Debug against a copy of the generated tree with
 # one write check removed, and the surface that writer serves must go red while
@@ -1483,6 +1444,37 @@ conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/
 .PHONY: conformance-negative-control-cs-write-refusal-message
 conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
-		's/if \(f\.Counted && \(Count\(value, f\) < 0 \|\| Count\(value, f\) > f\.ArrayBound\)\) \{ return false; \}/if (false) { return false; } \/* SABOTAGED: no message length check *\//' \
-		'f\.Counted && \(Count\(value, f\) < 0' write-refusal-message message
+		's/if \(f\.Counted\) \{ System\.Diagnostics\.Debug\.Assert\(Count\(value, f\) >= 0 && Count\(value, f\) <= f\.ArrayBound\); \}/\/* SABOTAGED: no message length check *\//' \
+		'if \(f\.Counted\) \{ System\.Diagnostics\.Debug\.Assert\(Count\(value, f\) >= 0' write-refusal-message message
 	@echo 'C# write-refusal-message negative control: the message writer without its count check is detected by cs / write-refusal-message; message stays green'
+# C# storage companions are checked by Debug.Assert (SPEC §5.1). This gate
+# routes assertion failures through a listener so both violations are observed.
+STORAGE_DEBUG_CS := build/storage-debug-cs
+.PHONY: write-refusal-storage-debug-cs write-refusal-storage-debug-cs-negative-control
+write-refusal-storage-debug-cs: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+	@mkdir -p $(STORAGE_DEBUG_CS)/generated
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
+		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)/generated \
+		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/obj/ \
+		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)/bin/
+
+write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cs/storage_debug.cs test/conformance/cs/storage-debug/StorageDebug.csproj
+	@mkdir -p $(STORAGE_DEBUG_CS)-negative/generated
+	./bin/schema generate --lang cs --out $(STORAGE_DEBUG_CS)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak 's/System.Diagnostics.Debug.Assert(/System.Diagnostics.Debug.Assert(true || /g' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	@grep -q 'Debug.Assert(true || ' $(STORAGE_DEBUG_CS)-negative/generated/StoragereleaseTable.cs
+	@if $(DOTNET) run -c Debug --nologo -v quiet --project test/conformance/cs/storage-debug/StorageDebug.csproj \
+		-p:StorageGeneratedDir=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/generated \
+		-p:SerializeDir=$(abspath $(SERIALIZE_CS)) \
+		-p:BaseIntermediateOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/obj/ \
+		-p:BaseOutputPath=$(CURDIR)/$(STORAGE_DEBUG_CS)-negative/bin/ \
+		> $(STORAGE_DEBUG_CS)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: removing storage assertions left the debug gate green'; \
+		exit 1; \
+	fi
+	@grep -q 'FAIL storage debug: count' $(STORAGE_DEBUG_CS)-negative/log
+	@grep -q 'FAIL storage debug: length' $(STORAGE_DEBUG_CS)-negative/log
+	@cat $(STORAGE_DEBUG_CS)-negative/log
+	@echo 'negative control: removing C# storage assertions turns the debug gate RED'

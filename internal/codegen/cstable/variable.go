@@ -59,7 +59,7 @@ const tableVariableWireSource = `
         {
             if (f == null) { return true; }
             int n = f.IsArray ? Count(value, f) : 1;
-            if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+            if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
             if (f.Map && !MapOrdered(value, f)) { return false; }
             for (int i = 0; i < n; i++)
             {

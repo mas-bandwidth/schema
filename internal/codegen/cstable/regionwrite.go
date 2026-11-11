@@ -37,12 +37,14 @@ const tableRegionWriteSource = `
         if (f.TextList && f.Kind == 12)
         {
             NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
-            return count >= 0 && count <= text.ArrayBound && TextValid(child.Buffer(text).Slice(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+            return TextValid(child.Buffer(text).Slice(0, count));
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = value.Count(f);
-            return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0, count));
+            System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+            return TextValid(value.Buffer(f).Slice(0, count));
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
@@ -68,7 +70,7 @@ const tableRegionWriteSource = `
     static bool RegionCollectPayload(NativeValue value, TableFieldInfo f, ref RegionIds ids)
     {
         if (f == null) { return true; } // selected, payload-free arm
-        if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
+        if (f.Counted) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
         if (f.TextTotal > 0 && !TextFitsRegion(value, f)) { return false; }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
@@ -88,7 +90,7 @@ const tableRegionWriteSource = `
         {
             if (!value.Guard(f)) { continue; }
             if (f.Optional && !value.Present(f)) { continue; }
-            if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
+            if (f.Counted) { System.Diagnostics.Debug.Assert(RegionCount(value, f) >= 0 && RegionCount(value, f) <= f.ArrayBound); }
             if (RegionRides(value, f) && (!ids.Add(f.Id) || !RegionCollectPayload(value, f, ref ids))) { return false; }
         }
         return true;

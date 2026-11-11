@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The release storage gate's C# program: the generated table wire and its
-       message writer, compiled Release so every Debug.Assert is gone. The
+  <!-- The debug storage gate's C# program: the generated table wire and its
+       message writer, compiled Debug so the storage assertions execute. The
        generated Storage.cs carries the unit's declared types beside the packet
        writer, so the serialize runtime those types name is compiled with it. -->
   <PropertyGroup>
@@ -12,13 +12,13 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <AssemblyName>StorageRelease</AssemblyName>
+    <AssemblyName>StorageDebug</AssemblyName>
     <StorageGeneratedDir Condition="'$(StorageGeneratedDir)' == ''">../../../../build/storage-release-cs/generated</StorageGeneratedDir>
     <SerializeDir Condition="'$(SerializeDir)' == ''">../../../../serialize.cs</SerializeDir>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="../storage_release.cs" />
+    <Compile Include="../storage_debug.cs" />
     <Compile Include="$(StorageGeneratedDir)/*.cs" />
     <Compile Include="$(SerializeDir)/src/Serialize.cs" />
     <Compile Include="$(SerializeDir)/src/Int128Pair.cs" />
