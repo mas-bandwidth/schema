@@ -171,8 +171,10 @@ int main()
     }
 
     // THE JSON ROWS' REFUSALS (the Go oracle's): a number element and a null
-    // in a string(M) list are kind mismatches, an element past M and the two
-    // past N are out of range. The read is strict-only, so the whole row text
+    // in a string(M) list are kind mismatches, an element past M is
+    // length_over_bound (the C++ JSON reader's string bound reason, the one
+    // test/tables/main.cpp asserts) and the two past N are out of range. The
+    // read is strict-only, so the whole row text
     // refuses, out_of_range first as Go's TableReport.Err orders the clauses,
     // and nothing of it lands; each condition alone refuses by its own name.
     {
@@ -187,7 +189,7 @@ int main()
         const Row rows[] = {
             { "{\"rules\":[\"a\",7]}", kind_mismatch, "a number element is a kind mismatch" },
             { "{\"rules\":[\"a\",null]}", kind_mismatch, "a null in a string(M) list is a kind mismatch" },
-            { "{\"rules\":[\"123456789\"]}", out_of_range, "an element past M is out of range" },
+            { "{\"rules\":[\"123456789\"]}", length_over_bound, "an element past M is length_over_bound" },
             { "{\"rules\":[\"a\",\"b\",\"c\",\"d\",\"e\"]}", out_of_range, "an element past N is out of range" },
         };
         for ( const Row & row : rows )
