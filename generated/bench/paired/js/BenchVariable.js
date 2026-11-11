@@ -1381,12 +1381,12 @@ function TableVariableLoad(c, bytes, report, retain) {
   const carried = report.damaged;
   report.damaged = false;
   const open = TableVariableOpen(bytes, report);
-  // A REFUSED form byte hands a non-variable root back at its declared
-  // defaults (§3); DAMAGE hands back nothing (§4).
+  // A REFUSED form byte and DAMAGE each hand back nothing for every root
+  // (docs/SPEC-TABLES.md §3, §4, §6.5): the verdict is the whole contract, so
+  // a read the report calls refused never yields an object.
   if (open === null) {
-    const damaged = report.damaged;
-    report.damaged = carried || damaged;
-    return c.variable || damaged ? null : c.make();
+    report.damaged = carried || report.damaged;
+    return null;
   }
   const table = open.table;
   const v = c.make();
@@ -3655,7 +3655,9 @@ class TableVariableTextIn {
       integral = false;
     }
     const n = this.p - start;
-    if (n <= 0 || n > 511) { return null; }
+    // a number is read by its value however many bytes it spans: the
+    // document's own size bounds the scan (§16.2)
+    if (n <= 0) { return null; }
     return { tok: t.slice(start, this.p), integral };
   }
   // the label: a positive integer spelled as one, no sign, fraction, exponent
@@ -3691,6 +3693,9 @@ class TableVariableTextIn {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
+    // a skipped object's keys are held to the layer's rule too: a repeated
+    // key refuses in every object of the text (§16.2, §16.12)
+    const keys = close === "}" ? new Set() : null;
     for (;;) {
       let ch = this.peek();
       if (ch === close) { this.p++; return true; }
@@ -3700,6 +3705,8 @@ class TableVariableTextIn {
         if (key === null) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
         this.p++;
+        if (keys.has(key)) { this.bad = true; return false; }
+        keys.add(key);
         if (key.length > 0 && key[0] === "&") {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
@@ -3773,6 +3780,7 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 // wrong JSON shape is skipped and counted, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new Set();
+  const seenKeys = new Set();
   for (;;) {
     let key;
     if (firstKey !== null) {
@@ -3790,12 +3798,15 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
     // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (§16.7): "&node" opens a
     // pointer's object and nothing else
     if (key.length > 0 && key[0] === "&") { inp.bad = true; return false; }
+    // every key of the object is tracked, not only the ones a field names:
+    // an unknown key repeated is a repeated key (§16.2, §16.12)
+    if (seenKeys.has(key)) { report.repeated++; }
+    seenKeys.add(key);
     const fd = c.byKey.get(key);
     if (fd === undefined) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
-      if (seen.has(fd)) { report.repeated++; }
       seen.add(fd);
       const shape = inp.shape();
       if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
@@ -3825,22 +3836,37 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   }
 }
 
-// a base64 body six bits at a time (read.go readBase64): '=' anywhere is
-// padding, a character outside the alphabet makes the body the wrong shape
-// (one kind mismatch), and past the bound the excess is oor
+// a base64 body six bits at a time (read.go readBase64): the JSON string is
+// decoded first, then standard-alphabet symbols take zero to two trailing '='
+// of the right count. A symbol after padding, a byte outside the alphabet, a
+// length that does not decode or more than two pads is the wrong shape (one
+// kind mismatch); past the bound the excess is oor.
 function TableVariableBase64Read(inp, bound, report) {
-  if (inp.peek() !== "\"") { inp.bad = true; return null; }
-  inp.p++;
-  const t = inp.t;
+  const s = inp.str();
+  if (s === null) { return null; }
+  let symbols = 0, pad = 0, bad = false;
+  for (let i = 0; i < s.length; i++) {
+    if (bad) { continue; }
+    const ch = s[i];
+    if (ch === "=") { pad++; continue; }
+    if (pad > 0) { bad = true; continue; }
+    if (TableVariableBase64.indexOf(ch) < 0) { bad = true; continue; }
+    symbols++;
+  }
+  if (!bad) {
+    if (pad > 0) {
+      if (pad > 2 || (symbols + pad) % 4 !== 0 || symbols % 4 < 2) { bad = true; }
+    } else if (symbols % 4 === 1) {
+      bad = true;
+    }
+  }
+  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
   const out = [];
-  let acc = 0, held = 0, oor = false, bad = false;
-  for (;;) {
-    if (inp.p >= t.length) { inp.bad = true; return null; }
-    const ch = t[inp.p++];
-    if (ch === "\"") { break; }
-    if (ch === "=" || bad) { continue; }
+  let acc = 0, held = 0, oor = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "=") { break; }
     const at = TableVariableBase64.indexOf(ch);
-    if (at < 0) { bad = true; continue; }
     acc = ((acc << 6) | at) & 0xffffff;
     held += 6;
     if (held >= 8) {
@@ -3848,7 +3874,6 @@ function TableVariableBase64Read(inp, bound, report) {
       if (bound < 0 || out.length < bound) { out.push((acc >> held) & 0xff); } else { oor = true; }
     }
   }
-  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
   if (oor) { report.oor++; }
   return { bad: false, bytes: new Uint8Array(out) };
 }
@@ -4036,7 +4061,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
           const s = inp.str();
           if (s === null) { return false; }
           const bit = d.vs.indexOf(s);
-          if (bit >= 0) { mask |= 1n << BigInt(bit); } else { report.unknown++; }
+          if (bit >= 0) {
+            // A FLAGS NAME TWICE IN ONE ARRAY is a repeated key (§16.2)
+            const flag = 1n << BigInt(bit);
+            if ((mask & flag) !== 0n) { inp.bad = true; return false; }
+            mask |= flag;
+          } else { report.unknown++; }
         }
         ch = inp.peek();
         if (ch === ",") { inp.p++; continue; }

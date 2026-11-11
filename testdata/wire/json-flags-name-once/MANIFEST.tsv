@@ -1,0 +1,26 @@
+# THE JSON FLAGS NAME-ONCE VECTORS (docs/SPEC-TABLES.md §16.2).
+#
+# A flags array that names one KNOWN variant twice refuses the read `malformed`,
+# as a repeated key does: a conforming writer writes each set bit's name once.
+# An unknown name keeps its treatment, skipped and counted `unknown`; this
+# corpus does not rule on an unknown name written twice, and a flags array
+# inside a value the read only SKIPS is held to the JSON grammar alone.
+#
+# Columns, tab-separated:
+#
+#   case     what the text contains
+#   unit     the schema directory the root belongs to, from the repository root
+#   root     the table the text is read at
+#   text     the JSON file, in this directory
+#   verdict  `read` or `refused`
+#   unknown  the report's unknown count, or `-` where the row does not pin one
+#
+# Root: ProfileConfig (tables/examples/Tables.schema); its flags field is
+# loadout.perks.
+
+known-name	tables/examples	ProfileConfig	known-name.json	read	0
+two-known-names	tables/examples	ProfileConfig	two-known-names.json	read	0
+known-name-twice	tables/examples	ProfileConfig	known-name-twice.json	refused	-
+known-name-twice-separated	tables/examples	ProfileConfig	known-name-twice-separated.json	refused	-
+known-name-twice-in-unknown-key	tables/examples	ProfileConfig	known-name-twice-in-unknown-key.json	read	-
+unknown-beside-known	tables/examples	ProfileConfig	unknown-beside-known.json	read	1

@@ -340,6 +340,13 @@ pub struct TableNodeReader {
     pub decoded: Vec<Option<Rc<dyn Any>>>,
 }
 
+/// THE PLAIN WALK'S NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth):
+/// the one bound every reader and every path holds over the binary forms — the
+/// root body is at depth 0, each structural payload inside it is one level
+/// deeper, depth 128 passes and 129 refuses. It is separate from the retaining
+/// walk's cap (§6.6), which this plain skip does not use.
+const BINARY_MAX_DEPTH: usize = 128;
+
 impl TableNodeReader {
     /// A storage-cap refusal is terminal but adds no malformed event (§2.9).
     pub fn refuse_count(&mut self, report: &mut TableReport) -> bool {
@@ -613,7 +620,7 @@ impl TableNodeReader {
     }
 
     pub fn note_unknown_payload(&mut self, ids: &[u64], kind: u8, payload: &[u8], depth: usize, report: &mut TableReport) {
-        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        if depth > BINARY_MAX_DEPTH { report.damaged = true; return; }
         let w = table_kind_width(kind);
         if w > 0 {
             if payload.len() != w || (kind == 1 && payload[0] > 1) { report.damaged = true; }
@@ -641,7 +648,7 @@ impl TableNodeReader {
     }
 
     pub fn note_unknown_content(&mut self, ids: &[u64], kind: u8, content: &[u8], depth: usize, report: &mut TableReport) {
-        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        if depth > BINARY_MAX_DEPTH { report.damaged = true; return; }
         let w = table_kind_width(kind);
         if w > 0 {
             if content.len() != w || (kind == 1 && content[0] > 1) { report.damaged = true; }
@@ -662,7 +669,7 @@ impl TableNodeReader {
                 self.note_unknown_pointer(index, report);
             }
             13 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH { report.damaged = true; return; }
                 let mut seen_ids: Vec<u64> = Vec::new();
                 loop {
                     let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
@@ -685,7 +692,7 @@ impl TableNodeReader {
                 }
             }
             14 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
                 if matches!(ek, 16 | 32) { report.damaged = true; return; }
                 off = 1;
@@ -700,7 +707,7 @@ impl TableNodeReader {
                 if off != content.len() { report.damaged = true; }
             }
             16 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
                 if matches!(ek, 14 | 16 | 12 | 31 | 32) { report.damaged = true; return; }
                 off = 1;
@@ -732,7 +739,7 @@ impl TableNodeReader {
                 let akind = content[off]; off += 1;
                 let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if off + (al as usize) != content.len() { report.damaged = true; return; }
-                let next_depth = if matches!(akind, 13 | 14 | 15 | 16) { depth + 1 } else { depth };
+                let next_depth = if matches!(akind, 13..=16) { depth + 1 } else { depth };
                 self.note_unknown_content(ids, akind, &content[off..], next_depth, report);
             }
             _ => { report.damaged = true; }
@@ -1177,7 +1184,7 @@ fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
 /// resolves each, and a kind outside the closed set is framing damage (§3).
 fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
     let w = |c: &mut RetainCur, n: usize| -> bool {
-        if c.off + n > c.buf.len() {
+        if c.off > c.buf.len() || n > c.buf.len() - c.off {
             return false;
         }
         c.off += n;
@@ -1191,10 +1198,10 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         18 | 19 | 24 | 29 => w(c, 16),
         12 | 31 | 32 => {
             let Some(n) = c.leb() else { return false; };
-            let n = n as usize;
-            if c.off + n > c.buf.len() {
+            if c.off > c.buf.len() || n > (c.buf.len() - c.off) as u64 {
                 return false;
             }
+            let n = n as usize;
             c.off += n;
             true
         }
@@ -1268,11 +1275,11 @@ fn retain_resolve(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
 
 fn retain_framed(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     let Some(n) = c.leb() else { *bad = true; return; };
-    let n = n as usize;
-    if c.off + n > c.buf.len() {
+    if c.off > c.buf.len() || n > (c.buf.len() - c.off) as u64 {
         *bad = true;
         return;
     }
+    let n = n as usize;
     let mut sub = RetainCur { buf: &c.buf[c.off..c.off + n], off: 0 };
     c.off += n;
     let mark = out.len();
@@ -1311,7 +1318,13 @@ fn retain_content(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
             out.push(ek);
             let Some(count) = c.leb() else { *bad = true; return; };
             out.extend_from_slice(&count.to_le_bytes());
+            // Every element costs at least one byte, so the claimed count
+            // cannot outrun the bytes the frame has left (docs/SPEC-TABLES.md §6.6).
             for _ in 0..count {
+                if c.off >= c.buf.len() {
+                    *bad = true;
+                    return;
+                }
                 if kind == 16 {
                     retain_keyed(c, ids, ek, depth, out, bad);
                 } else {
@@ -1481,7 +1494,7 @@ pub fn retain_discard_body(retain: &mut TableRetain, path: TableRetainPath) {
 }
 
 fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {
-    if c.off + 8 > c.buf.len() {
+    if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
         *bad = true;
         return 0;
     }
@@ -1535,16 +1548,17 @@ fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
 
 #[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
-    if c.off + 8 > c.buf.len() {
+    if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
         *bad = true;
         return;
     }
-    let len = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap()) as usize;
+    let len = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
-    if c.off + len > c.buf.len() {
+    if c.off > c.buf.len() || len > (c.buf.len() - c.off) as u64 {
         *bad = true;
         return;
     }
+    let len = len as usize;
     let mut sub = RetainCur { buf: &c.buf[c.off..c.off + len], off: 0 };
     c.off += len;
     let mut content = Vec::new();
@@ -1576,14 +1590,20 @@ fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
             let ek = c.buf[c.off];
             c.off += 1;
             out.push(ek);
-            if c.off + 8 > c.buf.len() {
+            if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
                 *bad = true;
                 return;
             }
             let count = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
             c.off += 8;
             leb_write(out, count);
+            // Every element costs at least one byte, so the claimed count
+            // cannot outrun the bytes the frame has left (docs/SPEC-TABLES.md §6.6).
             for _ in 0..count {
+                if c.off >= c.buf.len() {
+                    *bad = true;
+                    return;
+                }
                 if kind == 16 {
                     retain_emit_keyed(c, ids, retain, known, ek, depth, out, bad);
                 } else {
@@ -1614,7 +1634,7 @@ fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRet
 
 fn retain_emit_body(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     loop {
-        if c.off + 8 > c.buf.len() {
+        if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
             *bad = true;
             return;
         }

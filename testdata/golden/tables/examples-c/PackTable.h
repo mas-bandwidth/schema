@@ -1265,6 +1265,29 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_copy_le( uint8_t * dst, const ui
     tabledemo_table_fixed_copy_run( dst, src, size );
 }
 
+/* A STORE OF ONE PLAN OP'S VALUE INTO NATIVE STORAGE. On a little-endian host
+   the destination width's own word IS the value and stays one copy; on a
+   big-endian host the value's bytes are written most-significant first, so the
+   native word holds the value and a forced build holds the same byte image the
+   copy path writes. */
+static SCHEMA_UNUSED void tabledemo_table_fixed_store_native( uint8_t * dst, uint64_t v, uint32_t size )
+{
+    if ( tabledemo_table_fixed_big_endian_host )
+    {
+        uint32_t i;
+        for ( i = 0; i < size && i < 8; ++i ) { dst[i] = (uint8_t) ( v >> ( 8 * ( size - 1 - i ) ) ); }
+        return;
+    }
+    switch ( size )
+    {
+        case 1: { uint8_t t = (uint8_t) v; memcpy( dst, &t, 1 ); break; }
+        case 2: { uint16_t t = (uint16_t) v; memcpy( dst, &t, 2 ); break; }
+        case 4: { uint32_t t = (uint32_t) v; memcpy( dst, &t, 4 ); break; }
+        case 8: { uint64_t t = v; memcpy( dst, &t, 8 ); break; }
+        default: break;
+    }
+}
+
 /* ---- THE ONE READ LOOP -----------------------------------------------------
 
    A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -1345,7 +1368,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
                tests THIS reader's own top value — which a remapped 0 never
                trips, so the two never count the one event twice. */
             else if ( raw != 0 ) { (*out_of_range)++; }
-            memcpy( dst + p->dst, &v, p->dstsize );
+            tabledemo_table_fixed_store_native( dst + p->dst, v, p->dstsize );
             break;
         }
         case TABLEDEMO_K_TABLE_FIXED_WIDEN:
@@ -1360,7 +1383,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
                 const uint64_t top = 1ull << ( bits - 1 );
                 if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
             }
-            memcpy( dst + p->dst, &raw, p->dstsize );
+            tabledemo_table_fixed_store_native( dst + p->dst, raw, p->dstsize );
             (*widened)++;
             break;
         }
@@ -1382,7 +1405,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void tabledemo_table_fixed_ap
                bytes, and a memcpy of p->size out of the four-byte aux lane
                reads the member beside it (§4.5, §5.8 row 7). */
             const uint64_t lands = p->aux;
-            memcpy( dst + p->dst, &lands, p->size );
+            tabledemo_table_fixed_store_native( dst + p->dst, lands, p->size );
             /* AN UNGUARDED None CONST WITH dstsize = THE WRITER'S ARM COUNT:
                a tag past that set lands None (already written) and COUNTS, so
                the compiled plan counts it exactly as the identity plan's bounds
@@ -7185,7 +7208,11 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                             case 0x7d573c625719c1a5ull: slot = 2; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         tabledemo_ship_entry_load_body( &elem, &value->ships[slot] );
                         if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_ship_entry_reset(&value->ships[slot]); }
                     }
@@ -7221,7 +7248,11 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                             case 0x58c7b5d87587287cull: slot = 2; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         switch ( elem_kind )
                         {
                             case 2:
@@ -10745,7 +10776,12 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         retention=tabledemo_table_retain_index(retention,(uint32_t)(slot));
                         tabledemo_ship_entry_load_body_retain( &elem, &value->ships[slot] , retention);
@@ -10808,7 +10844,12 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                             r->report->retain_lost += retention.retain != NULL;
                             break;
                         }
-                        if ( slot < 0 ) { continue;
+                        if ( slot < 0 )
+                        {
+                            if ( !tabledemo_table_skip_framed( elem, elem_kind, ( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 ), 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                            break;
+                            }
+                            continue;
                         }
                         switch ( elem_kind )
                         {
