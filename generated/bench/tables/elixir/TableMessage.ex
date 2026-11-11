@@ -1081,11 +1081,9 @@ defmodule Benchtable.TableMessage do
   # A zero-width element leaves the cursor where it stood: kind 0, kind 32, a
   # ranged scalar whose bit width is 0, or a nested run of those. Looping on
   # the count would allocate a list in proportion to the announcement and
-  # consume no input. This reader returns the list, so zero_width_run holds an
-  # unbounded list (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) to the
-  # bits the batch still holds (internal/tablewire/messagedecode.go) before any
-  # cell is allocated. A fixed or bounded array's count is a declared capacity,
-  # not a wire claim, so it is materialized without that limit.
+  # consume no input. This reader returns the list, so zero_width_run holds
+  # every zero-width run to the bits the batch still holds
+  # (internal/tablewire/messagedecode.go) before any cell is allocated.
   defp read_elements(vocab, shape, elem, n, r, acc, depth) when is_map(elem) and n > 0 do
     case read_value(vocab, elem.kind, elem.shape, Map.get(elem, :element), r, depth) do
       {:ok, v, ^r} ->
@@ -1101,18 +1099,14 @@ defmodule Benchtable.TableMessage do
 
   defp read_elements(_vocab, _shape, _elem, n, _r, _acc, _depth) when n > 0, do: :malformed
 
-  defp zero_width_run(_vocab, shape, n, r, acc, v) do
-    # A fixed or bounded array (shape.max < 0xFFFFFFFF) declares its count in
-    # the schema, so its elements are legitimate required capacity regardless
-    # of the vocabulary's byte budget (vocab.max_bytes bounds the announcement,
-    # not an element count) or the bits the batch still holds; a valid
-    # last-field arrangement must not depend on following payload or padding.
-    # An unbounded array (shape.max == 0xFFFFFFFF, ir.TableMessageListMax) has
-    # no declared bound and is held to the bits left in the batch
-    # (internal/tablewire/messagedecode.go): an element costs at least one bit
+  defp zero_width_run(_vocab, _shape, n, r, acc, v) do
+    # The shape is the peer's announcement, whatever its minimum and maximum:
+    # a run the batch's bits cannot back is damage
+    # (internal/tablewire/messagedecode.go). An element costs at least one bit
     # (floor 1), so a count the batch cannot back is refused before any cell is
-    # allocated. The uint32 ceiling on the announced shape is untouched.
-    if shape.max == 0xFFFFFFFF and n > bits_left(r) do
+    # allocated. A run the bits back is materialized, and the uint32 ceiling on
+    # the announced shape is untouched.
+    if n > bits_left(r) do
       :malformed
     else
       {:ok, Enum.reverse(acc, List.duplicate(v, n)), r}
