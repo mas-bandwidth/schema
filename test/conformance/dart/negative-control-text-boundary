@@ -19,10 +19,10 @@ private_driver() {
     main="$target/tree/test/conformance/dart/main.dart"
     case "$variant" in
       replacement)
-        anchor='    return utf8.decode(bytes, allowMalformed: false);'
+        anchor='    final text = utf8.decode(bytes, allowMalformed: false);'
         matches=$(grep -Fxc "$anchor" "$source" || true)
         [ "$matches" = 1 ] || { echo "decoder anchor matched $matches times, want 1" >&2; exit 1; }
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
+        sed 's/final text = utf8.decode(bytes, allowMalformed: false);/final text = utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
         ;;
       reader)
         anchor='        final v = tabledemo.rootConfigFromJson(text, r);'
@@ -30,9 +30,13 @@ private_driver() {
         [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
         sed "s/final v = tabledemo.rootConfigFromJson(text, r);/final v = tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
         ;;
-      bom-preserve)
-        # Restore the decoded leading mark solely for this private control.
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return (bytes.length >= 3 \&\& bytes[0] == 0xEF \&\& bytes[1] == 0xBB \&\& bytes[2] == 0xBF ? String.fromCharCode(0xFEFF) : "") + utf8.decode(bytes, allowMalformed: false);/' "$source" > "$main"
+      bom-drop)
+        # Hand the reader the decoder's output alone, which has already
+        # dropped one leading mark, solely for this private control.
+        anchor='    if (!marked) return text;'
+        matches=$(grep -Fxc "$anchor" "$source" || true)
+        [ "$matches" = 1 ] || { echo "mark anchor matched $matches times, want 1" >&2; exit 1; }
+        sed 's/    if (!marked) return text;/    return text;/' "$source" > "$main"
         ;;
     esac
     if cmp -s "$source" "$main"; then echo "$variant changed nothing" >&2; exit 1; fi
@@ -95,8 +99,8 @@ done
 "$binary" "$out/bom/manifest" json-hostile "$out/bom/answers"
 for name in plain leading-bom; do grep -qx '0,0,0,0,0,false,read' "$out/bom/answers/$name"; done
 for name in double-bom space-bom cut-bom; do grep -qx 'refused' "$out/bom/answers/$name"; done
-private_driver bom-preserve
-mkdir -p "$out/bom/retained"
-"$binary" "$out/bom/manifest" json-hostile "$out/bom/retained"
-grep -qx 'refused' "$out/bom/retained/leading-bom"
-echo 'Dart BOM control: exactly one leading mark is skipped; preserving it changes the generated reader result'
+private_driver bom-drop
+mkdir -p "$out/bom/dropped"
+"$binary" "$out/bom/manifest" json-hostile "$out/bom/dropped"
+grep -qx '0,0,0,0,0,false,read' "$out/bom/dropped/double-bom" || { echo 'a driver that drops the mark before the reader left double-bom refused' >&2; exit 1; }
+echo 'Dart BOM control: exactly one leading mark is skipped, by the generated reader; a driver that also drops one reads double-bom'
