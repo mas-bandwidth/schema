@@ -111,6 +111,9 @@ List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
 // every other number is a _JNum.
 dynamic _jsonDecodeExact(String text) {
   final p = _JParse(text);
+  // a leading U+FEFF is a byte-order mark (docs/SPEC-TABLES.md §16.2, §16.12):
+  // skipped once at the very start, and nowhere else.
+  if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) p.i = 1;
   p.ws();
   final v = p.value(0);
   p.ws();
@@ -203,16 +206,39 @@ final class _JParse {
       i += 4;
       return null;
     }
-    final number = RegExp(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?').matchAsPrefix(s, i);
-    if (number == null) throw FormatException('unexpected character', s, i);
-    i = number.end;
+    // scan the token in ONE pass over its code units, in the grammar
+    // -?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?, so a token of any
+    // length costs bounded stack and linear time (docs/SPEC-TABLES.md §16.2)
+    final start = i;
+    if (i < s.length && s.codeUnitAt(i) == 0x2D) i++;
+    if (i >= s.length || s.codeUnitAt(i) < 0x30 || s.codeUnitAt(i) > 0x39) {
+      throw FormatException('unexpected character', s, start);
+    }
+    if (s.codeUnitAt(i) == 0x30) {
+      i++;
+    } else {
+      while (i < s.length && s.codeUnitAt(i) >= 0x30 && s.codeUnitAt(i) <= 0x39) i++;
+    }
+    if (i + 1 < s.length && s.codeUnitAt(i) == 0x2E && s.codeUnitAt(i + 1) >= 0x30 && s.codeUnitAt(i + 1) <= 0x39) {
+      i += 2;
+      while (i < s.length && s.codeUnitAt(i) >= 0x30 && s.codeUnitAt(i) <= 0x39) i++;
+    }
+    if (i < s.length && (s.codeUnitAt(i) == 0x65 || s.codeUnitAt(i) == 0x45)) {
+      var j = i + 1;
+      if (j < s.length && (s.codeUnitAt(j) == 0x2B || s.codeUnitAt(j) == 0x2D)) j++;
+      if (j < s.length && s.codeUnitAt(j) >= 0x30 && s.codeUnitAt(j) <= 0x39) {
+        j++;
+        while (j < s.length && s.codeUnitAt(j) >= 0x30 && s.codeUnitAt(j) <= 0x39) j++;
+        i = j;
+      }
+    }
     if (i < s.length) {
       final next = s.codeUnitAt(i);
       if (next != 0x2C && next != 0x5D && next != 0x7D && next != 0x20 && next != 0x09 && next != 0x0A && next != 0x0D) {
         throw FormatException('invalid JSON number', s, i);
       }
     }
-    final token = number.group(0)!;
+    final token = s.substring(start, i);
     // -0 stays a _JNum: an int has no negative zero, and a float field owes
     // the sign the token spells (§16.2)
     if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
@@ -248,6 +274,7 @@ final class _JParse {
       if (i >= s.length) throw const FormatException('unterminated string');
       final c = s.codeUnitAt(i++);
       if (c == 0x22) return b.toString();
+      if (c < 0x20) throw FormatException('control character in string', s, i - 1);
       if (c != 0x5C) {
         b.writeCharCode(c);
         continue;
@@ -674,7 +701,7 @@ func (g *wireGen) emitTextMoreDecls() {
 		for i, name := range fl.Variants {
 			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
 		}
-		g.pf("\t\t\tdefault: r.unknown++;\n")
+		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
 		g.pf("\t}\n")
 		g.pf("\treturn bits;\n")

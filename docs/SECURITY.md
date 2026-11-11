@@ -46,7 +46,13 @@ the buffer. Specifically:
 - A ranged value outside `[min, max]` that a read accepts.
 - An array count, string length or bytes length past its declared bound that is
   not refused before it drives a copy or an allocation.
-- An enum value that is not a declared variant being accepted.
+- An enum value on the **packet wire** that is not a declared variant being
+  accepted. On the table wire a variable-form enum value from a newer writer
+  reads as `None` by design (lawful version evolution,
+  [SPEC-TABLES.md](SPEC-TABLES.md) §4); the fixed form refuses an enum ordinal
+  outside the writer's set (`out_of_range`,
+  [SPEC-TABLES.md](SPEC-TABLES.md) §3.4,
+  [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §4.6).
 - A text payload that is not well formed being accepted ON THE PACKET WIRE:
   malformed UTF-8 or a zero byte in a `string(N)`. The rules are stated
   once in SPEC §4.7 and every target owes the same
