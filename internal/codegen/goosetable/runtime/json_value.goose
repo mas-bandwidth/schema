@@ -601,7 +601,7 @@ fn jw_edge(c: JvOut&, s: i64) -> i64 {
     return w;
 }
 
-// jw_view is a text, bytes or wstring slot's bytes, or its declared default.
+// jw_view is a text or bytes slot's bytes, or its declared default.
 fn jw_view(c: JvOut&, s: i64, d: FieldDesc) -> const u8[:] {
     if jv_state(c.vals, s) == ValAbsent {
         if d.has_def { return d.def_s; }
