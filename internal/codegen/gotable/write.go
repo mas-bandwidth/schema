@@ -61,7 +61,11 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	// answers the size <T>Save writes, the fixed form's one-record file, and
 	// refuses the values that Save refuses.
 	if st.FixedDeclared && g.surfaces.Fixed && g.hasFixedForm(st) {
-		g.pf("func %sMeasure(value *%s) int64 {\n if !%sFixedCheckBody(value) { return -1 }\n return %sFixedMeasure(1)\n}\n\n", n, g.storageName(n), n, n)
+		check := ""
+		if fixedCheckNeededStruct(st, map[string]bool{}) {
+			check = fmt.Sprintf(" if !%sFixedCheckBody(value) { return -1 }\n", n)
+		}
+		g.pf("func %sMeasure(value *%s) int64 {\n%s return %sFixedMeasure(1)\n}\n\n", n, g.storageName(n), check, n)
 		g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
 		return
 	}
