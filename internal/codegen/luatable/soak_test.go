@@ -13,7 +13,7 @@ import (
 
 // THE SOAK, GATED ON THE ALLOCATION COUNT (docs/PORTING.md I9). A soak that
 // gates only on heap drift cannot see a path that allocates and frees the same
-// bytes every iteration: it reads +0 forever. This one loads through ONE state
+// bytes every iteration: it reads +0 forever. This one walks through ONE state
 // into ONE value, pass after pass, and at every sample re-measures the
 // allocation COUNT of the rows that license nothing (it must be exactly zero,
 // the collector stopped over the window) and of the row that licenses a floor
@@ -22,6 +22,12 @@ import (
 // sees retention. The soak's length is a PASS COUNT, never a clock:
 // TABLES_LUA_SOAK_ITERATIONS passes, 4000 by default so a short count rides
 // `make test`, and the release act runs the long one.
+//
+// The rows ride load.loadWalk, the walk Load wraps: their fixture wires are the
+// historical form 1 a fixed root's strict read now refuses as previous_form
+// before the walk, and the walk itself still fills the caller's value. The
+// strict verdict of those roots is the conformance surfaces' (the fixed form's
+// own reader), so this gate measures allocation and would not see that refusal.
 
 const (
 	soakDefaultPasses = 4000
@@ -47,10 +53,10 @@ local rows = {
 for _, row in ipairs(rows) do
   row.wire = inputs[row[2]]
   row.report, row.state, row.into = report(), load.NewState(), T["New" .. row[1]]()
-  assert(load.Load(T, row[1], row.wire, row.report, row.state, row.into) ~= nil, row[1] .. " does not load")
+  assert(load.loadWalk(T, row[1], row.wire, row.report, row.state, row.into) ~= nil, row[1] .. " does not walk")
 end
 local function pass()
-  for _, row in ipairs(rows) do load.Load(T, row[1], row.wire, row.report, row.state, row.into) end
+  for _, row in ipairs(rows) do load.loadWalk(T, row[1], row.wire, row.report, row.state, row.into) end
 end
 collectgarbage("collect")
 for _ = 1, 20 do pass() end
@@ -69,7 +75,7 @@ while done < PASSES do
   -- each row measured by itself over the sample
   for i, row in ipairs(rows) do
     local b = collectgarbage("count")
-    for _ = 1, SAMPLE do load.Load(T, row[1], row.wire, row.report, row.state, row.into) end
+    for _ = 1, SAMPLE do load.loadWalk(T, row[1], row.wire, row.report, row.state, row.into) end
     local a = collectgarbage("count")
     local per = (a - b) * 1024 / SAMPLE
     if i <= 2 then
