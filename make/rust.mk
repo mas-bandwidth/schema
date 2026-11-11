@@ -937,9 +937,17 @@ tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp bu
 	./test/rust-agree/target/debug/rust-agree
 
 tables-rust-accessor-negative-control: bin/schema build/cook-fuzz/.stamp
+	@test -s build/cook-fuzz/Scene.cook && test -s build/cook-fuzz/Depot.cook && \
+		test -s build/cook-fuzz/Album.cook && test -s build/cook-fuzz/TreeNode.cook && \
+		test -s build/cook-fuzz/ListNode.cook || \
+		{ echo "NEGATIVE CONTROL: the cook corpus is missing (make build/cook-fuzz/.stamp)"; exit 1; }
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control accessor
 
 tables-rust-slot-negative-control: bin/schema build/cook-fuzz/.stamp
+	@test -s build/cook-fuzz/Scene.cook && test -s build/cook-fuzz/Depot.cook && \
+		test -s build/cook-fuzz/Album.cook && test -s build/cook-fuzz/TreeNode.cook && \
+		test -s build/cook-fuzz/ListNode.cook || \
+		{ echo "NEGATIVE CONTROL: the cook corpus is missing (make build/cook-fuzz/.stamp)"; exit 1; }
 	RUSTUP_BIN="$(RUSTUP_BIN)" SERIALIZE_RS="$(SERIALIZE_RS)" sh test/rust-agree/control slot
 
 test-rust: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
