@@ -3040,9 +3040,29 @@ build/schema_test_block_endian_be: build/tables-generated/.stamp test/tables/blo
 # tree, and one job made the run pay their SUM. The CI job is a matrix of one
 # row per piece, so the longest piece is the job instead of the sum.
 .PHONY: tables-big-endian-tables
-tables-big-endian-tables: build/schema_test_tables_be
+tables-big-endian-tables: build/schema_test_tables_be build/schema_test_fixed_endian build/schema_test_fixed_endian_be
 	$(BE_RUN) ./build/schema_test_tables_be
+	./build/schema_test_fixed_endian write build/fixed-endian/le.bin
+	$(BE_RUN) ./build/schema_test_fixed_endian_be check build/fixed-endian/le.bin
+	$(BE_RUN) ./build/schema_test_fixed_endian_be write build/fixed-endian/be.bin
+	./build/schema_test_fixed_endian check build/fixed-endian/be.bin
 	@echo "big-endian leg: the wire crosses the byte order"
+
+# THE C++ FIXED FORM CROSSING THE BYTE ORDER (docs/FIXED-FORM-ALGORITHM.md:
+# every integer on the wire is little-endian). One program, built for this host
+# and for s390x: a record written on either host is checked by value on the
+# other (test/tables/fixed_endian_main.cpp), so a read that lands the wire in
+# host order is red in one direction or the other.
+build/fixed-endian/.stamp: bin/schema test/tables/FixedEndian.schema
+	@mkdir -p build/fixed-endian
+	./bin/schema generate --lang cpp --out build/fixed-endian test/tables/FixedEndian.schema
+	@touch $@
+
+build/schema_test_fixed_endian: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
+
+build/schema_test_fixed_endian_be: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 .PHONY: tables-big-endian-collections
 tables-big-endian-collections: build/schema_test_maps_be build/schema_test_lists_be build/schema_test_arms_be build/schema_test_block_endian build/schema_test_block_endian_be build/schema_test_cook build/schema_test_cook_be build/cook-open/.stamp
