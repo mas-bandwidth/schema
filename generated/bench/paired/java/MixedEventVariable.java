@@ -494,7 +494,7 @@ public final class MixedEventVariable {
         b.append('}');
     }
 
-    static Value readJson(TableJson.In in) {
+    static Value readJson(TableJson.In in, int depth) {
         Value v = new Value();
         if (in.peek() != '{') {
             in.bad = true;
@@ -515,7 +515,7 @@ public final class MixedEventVariable {
         if ("hit".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedHitEventVariable.jsonReadFields(in, v.hit);
+                    MixedHitEventVariable.jsonReadFields(in, v.hit, depth + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
@@ -528,7 +528,7 @@ public final class MixedEventVariable {
         } else if ("chat".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedChatEventVariable.jsonReadFields(in, v.chat);
+                    MixedChatEventVariable.jsonReadFields(in, v.chat, depth + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
@@ -541,7 +541,7 @@ public final class MixedEventVariable {
         } else if ("pickup".equals(armName)) {
             if (in.peek() == '{') {
                 if (in.peek() == '{') {
-                    MixedPickupEventVariable.jsonReadFields(in, v.pickup);
+                    MixedPickupEventVariable.jsonReadFields(in, v.pickup, depth + 1);
                 } else {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");

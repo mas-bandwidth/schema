@@ -310,7 +310,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f3 = uint64(uint32(float32(normalizedValue*20000.0)+0.5)) & 0x7fff
+	integerValue := uint32(float32(normalizedValue*20000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 20000 {
+		integerValue = 20000
+	}
+	f3 = uint64(integerValue) & 0x7fff
 	f4 := uint64(value.F005Uint) & 0x1fff
 	f5 := uint64(int32(value.F006Int)+1513) & 0xfff
 	f6 := uint64(math.Float32bits(value.F007F32)) & 0xffffffff
@@ -411,7 +416,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue2 <= 1) {
 		normalizedValue2 = 1
 	}
-	f24 = uint64(uint32(float32(normalizedValue2*16.0)+0.5)) & 0x1f
+	integerValue2 := uint32(float32(normalizedValue2*16.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue2 > 16 {
+		integerValue2 = 16
+	}
+	f24 = uint64(integerValue2) & 0x1f
 	f25 := uint64(value.F028Bits) & 0xf
 	f26 := uint64(value.F029I64)
 	f27 := uint64(math.Float32bits(value.F030F32)) & 0xffffffff
@@ -526,7 +536,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue3 <= 1) {
 		normalizedValue3 = 1
 	}
-	f52 = uint64(uint32(float32(normalizedValue3*360.0)+0.5)) & 0x1ff
+	integerValue3 := uint32(float32(normalizedValue3*360.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue3 > 360 {
+		integerValue3 = 360
+	}
+	f52 = uint64(integerValue3) & 0x1ff
 	f53 := uint64(value.F062Uint) & 0x1ff
 	f54 := uint64(value.F063I64)
 	f55 := uint64(value.F064Uint) & 0x1ff
@@ -537,7 +552,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue4 <= 1) {
 		normalizedValue4 = 1
 	}
-	f56 = uint64(uint32(float32(normalizedValue4*60.0)+0.5)) & 0x3f
+	integerValue4 := uint32(float32(normalizedValue4*60.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue4 > 60 {
+		integerValue4 = 60
+	}
+	f56 = uint64(integerValue4) & 0x3f
 	w17 := f46 | f47<<1 | f48<<6 | f49<<11 | f50<<43
 	stream.SerializeBits64(&w17, 64)
 	w18 := f50>>21 | f51<<43 | f52<<51 | f53<<60
@@ -561,7 +581,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue5 <= 1) {
 		normalizedValue5 = 1
 	}
-	f57 = uint64(uint32(float32(normalizedValue5*800.0)+0.5)) & 0x3ff
+	integerValue5 := uint32(float32(normalizedValue5*800.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue5 > 800 {
+		integerValue5 = 800
+	}
+	f57 = uint64(integerValue5) & 0x3ff
 	f58 := uint64(0)
 	normalizedValue6 := value.F068Cf32 / 2000.0
 	if !(normalizedValue6 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -569,7 +594,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue6 <= 1) {
 		normalizedValue6 = 1
 	}
-	f58 = uint64(uint32(float32(normalizedValue6*2000.0)+0.5)) & 0x7ff
+	integerValue6 := uint32(float32(normalizedValue6*2000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue6 > 2000 {
+		integerValue6 = 2000
+	}
+	f58 = uint64(integerValue6) & 0x7ff
 	f59 := uint64(value.F069Bits) & 0x7ff
 	f60 := uint64(value.F070Uint) & 0x3
 	f61 := uint64(0)
@@ -579,7 +609,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue7 <= 1) {
 		normalizedValue7 = 1
 	}
-	f61 = uint64(uint32(float32(normalizedValue7*500.0)+0.5)) & 0x1ff
+	integerValue7 := uint32(float32(normalizedValue7*500.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue7 > 500 {
+		integerValue7 = 500
+	}
+	f61 = uint64(integerValue7) & 0x1ff
 	f62 := uint64(0)
 	normalizedValue8 := value.F072Cf32 / 100.0
 	if !(normalizedValue8 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -587,7 +622,12 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	} else if !(normalizedValue8 <= 1) {
 		normalizedValue8 = 1
 	}
-	f62 = uint64(uint32(float32(normalizedValue8*10000.0)+0.5)) & 0x3fff
+	integerValue8 := uint32(float32(normalizedValue8*10000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue8 > 10000 {
+		integerValue8 = 10000
+	}
+	f62 = uint64(integerValue8) & 0x3fff
 	f63 := uint64(int32(value.F073Int)+4) & 0xf
 	f64 := uint64(0)
 	if value.F074Bool {
