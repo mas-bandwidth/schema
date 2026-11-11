@@ -1447,11 +1447,11 @@ test-dart:
 
 # cards-dart-generate produces ONLY build/tables-generated-dart/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
+# It is a phony alias for the stamp, not a second copy of the recipe: under
+# make -j the driver and the cards test both reach the tree, and two recipes
+# would clean it under each other.
 .PHONY: cards-dart-generate
-cards-dart-generate: bin/schema
-	@rm -rf build/tables-generated-dart/cards
-	@mkdir -p build/tables-generated-dart/cards
-	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+cards-dart-generate: $(CARDS_DART_STAMP)
 
 # The stamp the driver depends on, so a cached build is not invalidated by the
 # phony regenerator above. It still cleans its owned output whenever bin/schema

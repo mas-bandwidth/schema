@@ -414,6 +414,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 		"id: conformance-c-cache",
 		"if: matrix.lang == 'c'",
 		"key: conformance-c-driver-",
+		"'test/c-tables/**'",
 		"touch build/tables-generated-c/collections.stamp",
 		"touch build/tables-generated-c/.stamp",
 		"touch build/conformance-c",
@@ -438,6 +439,35 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	}
 	if !strings.Contains(csMK, "$(CARDS_CS_STAMP): bin/schema") {
 		t.Error("make/cs.mk: the cards stamp the driver depends on has no rule")
+	}
+
+	// The phony generator is an alias for the stamp, never a second copy of
+	// its clean-and-regenerate recipe: under make -j the driver and the cards
+	// test both reach the tree, and two recipes would delete it under each
+	// other.
+	if !strings.Contains(csMK, "cards-cs-generate: $(CARDS_CS_STAMP)") {
+		t.Error("make/cs.mk: cards-cs-generate duplicates the stamp recipe instead of depending on it; make -j can run both and delete the tree under the other")
+	}
+	if strings.Count(csMK, "rm -rf build/tables-generated-cs/cards") != 1 {
+		t.Error("make/cs.mk: the cards clean-and-regenerate recipe appears more than once, so parallel targets race on the tree")
+	}
+	if !strings.Contains(dartMK, "cards-dart-generate: $(CARDS_DART_STAMP)") {
+		t.Error("make/dart.mk: cards-dart-generate duplicates the stamp recipe instead of depending on it; make -j can run both and delete the tree under the other")
+	}
+	if strings.Count(dartMK, "rm -rf build/tables-generated-dart/cards") != 1 {
+		t.Error("make/dart.mk: the cards clean-and-regenerate recipe appears more than once, so parallel targets race on the tree")
+	}
+
+	cMK := readCI(t, root, "make/c.mk")
+	sources := strings.Fields("test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c")
+	prereqs := map[string]bool{}
+	for _, p := range targetPrereqs(cMK, "build/conformance-c") {
+		prereqs[p] = true
+	}
+	for _, src := range sources {
+		if !prereqs[src] {
+			t.Errorf("make/c.mk: build/conformance-c does not list %s as a prerequisite, so a change to it keeps a cached driver", src)
+		}
 	}
 
 	cert := readCI(t, root, ".github/workflows/certify.yml")

@@ -1260,11 +1260,11 @@ test-cs: packet-finite-cs-negative-control
 
 # cards-cs-generate produces ONLY build/tables-generated-cs/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
+# It is a phony alias for the stamp, not a second copy of the recipe: under
+# make -j the driver and the cards test both reach the tree, and two recipes
+# would clean it under each other.
 .PHONY: cards-cs-generate
-cards-cs-generate: bin/schema
-	@rm -rf build/tables-generated-cs/cards
-	@mkdir -p build/tables-generated-cs/cards
-	./bin/schema generate --lang cs --out build/tables-generated-cs/cards tables/cards
+cards-cs-generate: $(CARDS_CS_STAMP)
 
 # The stamp the driver depends on, so a cached build is not invalidated by the
 # phony regenerator above. It still cleans its owned output whenever bin/schema

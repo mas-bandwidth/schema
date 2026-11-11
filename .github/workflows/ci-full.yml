@@ -1496,7 +1496,7 @@ jobs:
           path: |
             build/tables-generated-c
             build/conformance-c
-          key: conformance-c-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
+          key: conformance-c-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
 
       - name: stand cached C driver inputs newer than this checkout
         if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit == 'true'
