@@ -115,7 +115,7 @@ func TestSpecJsonBytesAreCanonicalBase64(t *testing.T) {
 			"not-base64-refused":       {"not-base64-refused.json", "refused", "-"},
 		}
 		seen := make(map[string]bool)
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue

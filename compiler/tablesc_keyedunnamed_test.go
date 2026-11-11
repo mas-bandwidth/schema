@@ -57,7 +57,7 @@ func keyedReadLeb(t *testing.T, b []byte, off int) (uint64, int) {
 	t.Helper()
 	var v uint64
 	var shift uint
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		if off+i >= len(b) {
 			t.Fatalf("truncated leb at %d", off)
 		}
@@ -113,7 +113,7 @@ func keyedParse(t *testing.T, body []byte, ids []uint64) []keyedWireField {
 		}
 		f := keyedWireField{id: ids[ref-1], elemKind: payload[0], start: start, end: off}
 		count, at := keyedReadLeb(t, payload, 1)
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			keyRef, k := keyedReadLeb(t, payload, at)
 			elemLen, e := keyedReadLeb(t, payload, k)
 			at = e
