@@ -3655,7 +3655,9 @@ class TableVariableTextIn {
       integral = false;
     }
     const n = this.p - start;
-    if (n <= 0 || n > 511) { return null; }
+    // a number is read by its value however many bytes it spans: the
+    // document's own size bounds the scan (§16.2)
+    if (n <= 0) { return null; }
     return { tok: t.slice(start, this.p), integral };
   }
   // the label: a positive integer spelled as one, no sign, fraction, exponent
