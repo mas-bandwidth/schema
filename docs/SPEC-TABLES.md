@@ -15794,6 +15794,10 @@ The writer carries its own visit bound — a cyclic structure is refused at save
 terminate — and it carries this section's depth cap, because a pointer chain
 nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-- limit name=json_max_depth value=128 -->
 `malformed`, and a write that would nest deeper returns -1 (§16.3).
+**The read's cap counts every object and array the reader walks, placed or skipped**,
+the value under an unknown key included: 128 container levels are read and 129
+refuse. The write's cap at the same number counts table and type values only
+(W2), so the two caps share a number and not a unit.
 
 **Numbers.** JSON has ONE number type, so an integer field accepts any
 token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
@@ -15866,7 +15870,14 @@ authoring files this section exists for carry them — and never written.
 bytes, and nowhere else — is skipped on read and never written (§16.12).
 
 **COMMENTS are accepted on read and NEVER written.** `//` runs to the end of
-the line **or to the END OF INPUT, whichever comes first**, so a text whose
+a LINE FEED (`0x0A`) or to the END OF INPUT, **whichever comes first**, **and a
+carriage return alone (`0x0D`) does not end it**: the bytes after a lone
+carriage return on that line are still inside the comment, and a line comment
+ended by `CR LF` ends at the `LF`. **The bytes inside a comment, line or
+block, are well-formed UTF-8 and hold no NUL (`0x00`)**: a comment holding an
+ill-formed sequence refuses the read `malformed`, with the recommended name
+`string_not_utf8` that §16.3 gives ill-formed UTF-8 at a string site, and a
+comment holding a NUL refuses it `malformed`. A text whose
 last line is a comment with no trailing newline is accepted rather than
 truncated — the canonical text ends with exactly one newline (§16.1) and a
 hand-edited one may not, and an unterminated LINE comment is not a defect the
@@ -16546,7 +16557,7 @@ keyword  = ":" name
 name     = (ASCII-letter | "_") { ASCII-letter | digit | "_" | "-" | "/" | "." }
 number   = RFC-8259-number
 string   = RFC-8259-string
-comment  = ";" { any valid UTF-8 scalar except CR or LF }
+comment  = ";" { any valid UTF-8 scalar except CR, LF or NUL }
 gap      = { SP | TAB | LF | CRLF | comment }
 ```
 
@@ -16554,7 +16565,9 @@ A list's interpretation is supplied by its expected kind: a record, sequence,
 map or union, never guessed from its first item. Thus `()` is an empty array
 at an array site, an empty record at a record site, and None at a union site.
 Strings use JSON escapes; raw newlines, invalid UTF-8 and unpaired surrogate
-escapes are refused. A semicolon inside a string is data. A comment ends at
+escapes are refused. A comment holds only well-formed UTF-8 and no NUL:
+ill-formed UTF-8 is `text_encoding`, and a NUL is `text_syntax` because it is
+outside the comment grammar. A semicolon inside a string is data. A comment ends at
 LF, CRLF or EOF; a final comment needs no newline. Bare CR, BOMs, commas,
 unquoted symbols other than the three literals, and extra top-level forms
 are `text_syntax`. There is no evaluation or include mechanism.
@@ -16985,7 +16998,10 @@ emits one.
 
 **ILL-FORMED TEXT IS REFUSED BY NAME** (§16.3): `string_not_utf8` for bytes
 that are not well-formed UTF-8, `string_lone_surrogate` for a lone or
-out-of-order surrogate escape, at every string site. A silent `U+FFFD` would
+out-of-order surrogate escape, at every string site. **The same judgment
+reaches a COMMENT's bytes, line or block (§16.2)**: an ill-formed sequence
+refuses the read `malformed` with `string_not_utf8`, and a NUL refuses it
+`malformed`. A silent `U+FFFD` would
 make two texts one value; this is the security rule, and it is not traded for
 leniency.
 
@@ -17312,14 +17328,16 @@ finds nothing and an implementation of the fixed class alone may omit it.
 d)` is the value `x` written at DEPTH `d`, and the depth is the only state the
 layout needs: the root is at depth 0, and every member or element of a
 container written at depth `d` is written at depth `d + 1`. `INDENT(d)` is `2d`
-spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`. THE DEPTH
-CAP IS 128 AND COUNTS TABLE VALUES: a table or type value (W3) written at a
-depth past 128 refuses the write, and so does the read of an object that
-deep, so a pointer chain of 128 nodes under the root writes and reads and one
-of 129 does neither. A scalar, a string or a `null` written at depth 129 nests
-nothing and is written: the last node's null `next` does not count. No other
-whitespace is ever written outside a string: no tab, no carriage return, no
-space before a `,` or a `:`, no space after a `,`.
+spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
+THE DEPTH CAP IS 128, AND ON THE WRITE IT COUNTS TABLE VALUES: a table or
+type value (W3) written at a depth past 128 refuses the write.
+THE READ'S CAP AT THE SAME NUMBER COUNTS EVERY OBJECT AND ARRAY IT WALKS,
+placed or skipped, which is a different unit (§16.2): so a pointer chain of
+128 nodes under the root writes and reads and one of 129 does neither. A
+scalar, a string or a `null` written at depth 129 nests nothing and is
+written: the last node's null `next` does not count. No other whitespace is
+ever written outside a string: no tab, no carriage return, no space before a
+`,` or a `:`, no space after a `,`.
 
 **W3. A table or type value** (a nested `type`, a by-value `table`, a pointee,
 a union's table arm, a map's value, an array element):
