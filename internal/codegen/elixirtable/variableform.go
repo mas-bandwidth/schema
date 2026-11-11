@@ -1912,6 +1912,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
+    if ends_early?(body, ids), do: throw(:wire_damaged)
+
     case entries(body, ids, desc, :nested) do
       {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
