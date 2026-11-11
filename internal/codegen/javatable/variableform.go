@@ -3750,6 +3750,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
+            java.util.Set<String> seenKey = null;
             while (true) {
                 int c = peek();
                 if (c == closing) {
@@ -3764,6 +3765,14 @@ public final class TableJson {
                     String key = scanString();
                     if (bad) {
                         return;
+                    }
+                    // A SKIPPED OBJECT'S KEYS ARE HELD TO THE SAME RULE (§16.2,
+                    // §16.12): the set is per object and holds decoded text.
+                    if (seenKey == null) {
+                        seenKey = new java.util.HashSet<>();
+                    }
+                    if (!seenKey.add(key)) {
+                        rep.refuse("text_damaged");
                     }
                     if (peek() != ':') {
                         bad = true;
@@ -5022,12 +5031,16 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	// last occurrence wins whole, and the repeat is counted BEFORE the value's
 	// shape is judged, so a repeat the walk then refuses is still a repeat.
 	fmt.Fprintf(b, "        boolean[] seenField = new boolean[%d];\n", len(st.Fields))
+	b.WriteString("        java.util.Set<String> seenKey = new java.util.HashSet<>();\n")
 	b.WriteString("        while (true) {\n")
 	b.WriteString("            int c = in.peek();\n")
 	b.WriteString("            if (c == 0) { in.bad = true; return; }\n")
 	b.WriteString("            if (c == '}') { in.p++; break; }\n")
 	b.WriteString("            String key = in.scanString();\n")
 	b.WriteString("            if (in.bad) { return; }\n")
+	b.WriteString("            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,\n")
+	b.WriteString("            // compared by decoded text (§16.2, §16.12).\n")
+	b.WriteString("            if (!seenKey.add(key)) { in.rep.refuse(\"text_damaged\"); }\n")
 	b.WriteString("            if (key != null && key.startsWith(\"&\")) { in.bad = true; return; }\n")
 	b.WriteString("            if (in.peek() != ':') { in.bad = true; return; }\n")
 	b.WriteString("            in.p++;\n")
