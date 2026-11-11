@@ -124,7 +124,12 @@ func runAnnounceCrate(t *testing.T, bin string, modules map[string][]byte, runti
 		t.Fatal(err)
 	}
 	binPath := filepath.Join(dir, bin)
-	build := exec.Command("rustc", "--edition", "2024", "-O", "-o", binPath, "main.rs")
+	args := []string{"--edition", "2024", "-O"}
+	if cc, err := exec.LookPath("cc"); err == nil {
+		args = append(args, "-C", "linker="+cc)
+	}
+	args = append(args, "-o", binPath, "main.rs")
+	build := exec.Command("rustc", args...)
 	build.Dir = dir
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the announcement probe did not build: %v\n%s", err, out)
