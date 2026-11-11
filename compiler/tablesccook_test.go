@@ -81,7 +81,8 @@ int main(void) {
  { TableRefuseReason reason=99; uint8_t unknown=2;
    CHECK(root_load_measure_ex(wire,sizeof(wire),NULL,&reason)>0 && reason==99);
    CHECK(root_load_measure_ex(&unknown,1,NULL,&reason)==-1 && reason==SCHEMA_TABLE_REFUSE_UNKNOWN_FORM);
-   reason=99;CHECK(root_load_measure_ex(NULL,0,NULL,&reason)==-1 && reason==SCHEMA_TABLE_REFUSE_UNKNOWN_FORM);
+   /* an empty file is framing damage, not a form (docs/SPEC-TABLES.md §2.14) */
+   reason=99;CHECK(root_load_measure_ex(NULL,0,NULL,&reason)==-1 && reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED);
  }
  CHECK(root_builder_init(&b));CHECK(root_load_builder(&b,wire,sizeof(wire),&report));
  root=root_builder_root(&b);ctx.arena=&b.arena;sink.worker=&b.main;sink.region=NULL;

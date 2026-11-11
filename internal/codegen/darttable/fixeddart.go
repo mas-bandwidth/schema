@@ -151,6 +151,20 @@ type fixedGen struct {
 	// cur is the record whose codec is being emitted, which names a float
 	// element copy in a non_finite_float refusal (dartFloatOwner)
 	cur *ir.Struct
+	// loops is how many array loops enclose the code being emitted inside one
+	// function: a union element's array or text arm is walked INLINE inside
+	// the element's loop, so each depth names its own variable (loopVar)
+	loops int
+}
+
+// loopVar names the loop variable at the current depth: `i` at the top of a
+// body, then i1, i2, ... so an inner loop never hides the index an outer
+// element's offset and member are written in.
+func (g *fixedGen) loopVar() string {
+	if g.loops == 0 {
+		return "i"
+	}
+	return fmt.Sprintf("i%d", g.loops)
 }
 
 func (g *fixedGen) floatOwner(f *ir.Field) string { return dartFloatOwner(g.unit, f, g.cur) }
@@ -782,16 +796,20 @@ func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr
 		// caller-owned list's view so each write remains allocation-free.
 		g.emitFloat32WordsCache()
 		g.pf("%s{\n", ind)
+		iv := g.loopVar()
 		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
-		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.pf("%s  for (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.call(ind+"    ", "", "view.setUint32",
-			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "words[i]", "Endian.little"}, ";")
+			[]string{fmt.Sprintf("%s + %s * %d", fixedOff(base, at), iv, elem), "words[" + iv + "]", "Endian.little"}, ";")
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitWriteElement(f, fmt.Sprintf("%s + %s * %d", fixedOff(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -930,25 +948,29 @@ func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, exp
 		// Reuse the caller-owned view.
 		g.emitFloat32WordsCache()
 		g.pf("%s{\n", ind)
+		iv := g.loopVar()
 		g.call(ind+"  ", "final words = ", "_fixedFloat32Words", []string{expr}, ";")
-		g.pf("%s  for (var i = 0; i < %s; i++) {\n", ind, count)
+		g.pf("%s  for (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
 		g.call(ind+"    ", "final bits = ", "view.getUint32",
-			[]string{fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), "Endian.little"}, ";")
+			[]string{fmt.Sprintf("%s + %s * %d", fixedOff(base, at), iv, elem), "Endian.little"}, ";")
 		// each element's raw bits are tested before they land (§3.3)
 		g.pf("%s    if ((bits & 0x7f800000) == 0x7f800000) {\n", ind)
 		g.pf("%s      report.refuseNonFiniteFloat('%s');\n", ind, g.floatOwner(f))
 		g.pf("%s      break;\n", ind)
 		g.pf("%s    }\n", ind)
-		g.pf("%s    words[i] = bits;\n", ind)
+		g.pf("%s    words[%s] = bits;\n", ind, iv)
 		if fixedHasClamp(f) {
-			g.emitClamp(f, expr+"[i]", ind+"    ")
+			g.emitClamp(f, expr+"["+iv+"]", ind+"    ")
 		}
 		g.pf("%s  }\n", ind)
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitDecodeElement(f, fmt.Sprintf("%s + %s * %d", fixedOff(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -1370,23 +1392,25 @@ func (g *fixedGen) emitFiniteField(f, named *ir.Field, expr, ind string) {
 }
 
 func (g *fixedGen) emitFinitePayload(f, named *ir.Field, expr, ind string) {
-	loop := func(count string) {
-		g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
-		g.emitFiniteElement(f, named, expr+"[i]", ind+"  ")
+	// a union element's array arm is walked inline: each depth its own index
+	iv := g.loopVar()
+	loop := func(cond string) {
+		g.pf("%sfor (var %s = 0; %s; %s++) {\n", ind, iv, cond, iv)
+		g.loops++
+		g.emitFiniteElement(f, named, expr+"["+iv+"]", ind+"  ")
+		g.loops--
 		g.pf("%s}\n", ind)
 	}
 	switch {
 	case f.KeyEnum != "":
-		loop(fmt.Sprintf("%d", f.KeyEnumRef.Max))
+		loop(fmt.Sprintf("%s < %d", iv, f.KeyEnumRef.Max))
 	case f.Array == ir.ArrayFixed:
-		loop(fmt.Sprintf("%d", f.ArrayBound))
+		loop(fmt.Sprintf("%s < %d", iv, f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
 		// the write asserts the count inside its bound; the walk stays
 		// inside the storage either way
 		count := fixedDartSibling(expr, "Count")
-		g.pf("%sfor (var i = 0; i < %s && i < %d; i++) {\n", ind, count, f.ArrayBound)
-		g.emitFiniteElement(f, named, expr+"[i]", ind+"  ")
-		g.pf("%s}\n", ind)
+		loop(fmt.Sprintf("%s < %s && %s < %d", iv, count, iv, f.ArrayBound))
 	default:
 		g.emitFiniteElement(f, named, expr, ind)
 	}

@@ -130,10 +130,10 @@ func fixedClassFormThreeHolds(files map[string][]byte) error {
 	if strings.Contains(load, "hd(") || strings.Contains(load, "{:ok, values") {
 		return fmt.Errorf("Point load can return part of the batch")
 	}
-	if !strings.Contains(load, "{:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}") {
+	if !strings.Contains(load, "{:ok, [], report} ->\n        {:error, :truncated, fixed_class_refused(:truncated, report)}") {
 		return fmt.Errorf("an empty fixed batch is not a refusal")
 	}
-	if !strings.Contains(load, "{:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}") {
+	if !strings.Contains(load, "{:ok, _values, report} ->\n        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}") {
 		return fmt.Errorf("a multi-record fixed batch is not a refusal")
 	}
 	return nil

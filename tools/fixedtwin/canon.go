@@ -270,6 +270,10 @@ func stripOwedC(s string) string {
 	// DELETED rather than widened and the gate holds both legs to both rows.
 	s = reOwedKnownRange.ReplaceAllString(s, "")
 	s = stripFuncsWithPrefix(s, "inline void TableFixedClampKnownRanges")
+	// The native-order load exists only for that clamp, which reads a value
+	// back out of the reader's own storage; the C leg clamps each known range
+	// by value in emitted code and needs no such load. It goes with the clamp.
+	s = stripFuncsWithPrefix(s, "inline uint64_t TableFixedLoadNative")
 	return s
 }
 
@@ -847,18 +851,31 @@ var (
 	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
 	reCCommaRefusal = regexp.MustCompile(`(\w+(?:\.|->)report(?:\.|->))refused\s*=\s*1\s*,\s*(\w+(?:\.|->)report(?:\.|->)refuse_reason)\s*=\s*`)
 	reCRefusedOne   = regexp.MustCompile(`((?:\.|->)refused)\s*=\s*1\s*;`)
-	// OWED BY BOTH LEGS (docs/FIXED-FORM-ALGORITHM.md §4.5, the 2026-11-03
-	// ruling, row 16): a bool or present byte other than 0 or 1 refuses
-	// wire_damaged in LOAD's check pass, over live data. C counts the byte as
-	// out_of_range inside Apply and C++ lands it as byte != 0 with no count;
-	// neither is the ruling. The C half is stripped here so the two legs are
-	// compared on everything else, and this rule goes when both legs refuse in
-	// the check pass.
-	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*out_of_range\)\+\+;\s*\}`)
+	// OWED BY THE C LEG, PLACEMENT ONLY (docs/FIXED-FORM-ALGORITHM.md §4.5
+	// and the §5.3 step 11 refusal table, the 2026-11-03 ruling, row 16): a
+	// bool or present byte other than 0 or 1 refuses wire_damaged in LOAD's
+	// check pass. Both legs give that verdict and both reset every record.
+	// C++ refuses in its load body's check loop, before the run and outside
+	// the slice this gate compares. C counts the byte in a third Apply
+	// counter, `damaged`, and the run turns it into the same refusal ahead of
+	// out_of_range. These rules strip only that counter's own spellings: the
+	// increment, the parameter, the address argument, the local and the
+	// refusal line. The verdict is held by TestCDamagedRefusalStillEmitted,
+	// because a stripped line cannot red the diff. This rule goes when the C
+	// leg refuses in its check pass too.
+	reOwedBoolByte    = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
+	reCDamagedParam   = regexp.MustCompile(`,\s*int32_t \* damaged\s*\)`)
+	reCDamagedArg     = regexp.MustCompile(`,\s*&damaged\s*\)`)
+	reCDamagedLocal   = regexp.MustCompile(`int32_t damaged = 0;`)
+	reCDamagedRefusal = regexp.MustCompile(`if \( damaged != 0 \) \{ report->refused = 1; report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \}\s*else `)
 )
 
 func rewriteCCounter(s string) string {
 	s = reOwedBoolByte.ReplaceAllString(s, "")
+	s = reCDamagedParam.ReplaceAllString(s, " )")
+	s = reCDamagedArg.ReplaceAllString(s, " )")
+	s = reCDamagedLocal.ReplaceAllString(s, "")
+	s = reCDamagedRefusal.ReplaceAllString(s, "")
 	s = reCCounterParam.ReplaceAllString(s, "int32_t & oor_count, int32_t & widened")
 	s = reCCounterInc.ReplaceAllString(s, "oor_count++")
 	s = reCCounterArgs.ReplaceAllString(s, "oor_count, widened )")

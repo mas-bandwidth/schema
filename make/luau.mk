@@ -61,8 +61,9 @@ test-luau: toolchain-luau tables-fixedform-corpus \
 update-goldens-luau: ;
 
 # THE STRICT TEXT READ (docs/SPEC-TABLES.md §6.5, §2.3): J.FromJson is the
-# plain name and refuses what the strict read refuses, J.FromJsonTolerant keeps
-# the recovered value, and both count a missing required field. The gate,
+# plain name and refuses what the strict read refuses, the walk read
+# J.fromJsonWalk keeps the recovered value, and both count a missing required
+# field. The gate,
 # TestLuauJsonPlainReadIsStrict, runs inside test-luau against schema-go's
 # generated FromJSON and FromJSONTolerant; its control plants the plain name
 # made tolerant and the required close removed in a scratch copy of the

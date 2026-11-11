@@ -604,6 +604,13 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 			}
 			continue
 		}
+		// a dropped piece takes its trailing blank line with it; when the kept
+		// text above it ends on a line of code (a one-line clause dropped from
+		// the end of its group), that blank line is the one the formatter keeps
+		// before the next definition, so it stays
+		if lines[k-1] == "\n" && k < len(lines) && b.Len() > 0 && !strings.HasSuffix(b.String(), "\n\n") {
+			b.WriteString("\n")
+		}
 		i = k
 	}
 	return b.String()
@@ -1888,25 +1895,25 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        :malformed ->
-          # the directory already refused a malformed record before any
-          # body was read (directory_report), so this is never taken
-          :null
-
         _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+          # a malformed record was refused at the directory before any body
+          # was read (directory_report); a record whose type this reader
+          # cannot name at all counted unknown there and keeps its index, so
+          # the pointer naming it reads null, as the engine reads it (§3.1).
+          # A record of a type the reader names, under a pointer of another
+          # type, is the kind mismatch above.
+          :null
       end
     end
   end
 
+  # a node record's body is a body (§3): a terminator that arrives before the
+  # record's L ends leaves bytes no field claims, and that is damage
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -2405,7 +2412,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
+              reader =
+                Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2656,7 +2666,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # bytes left inside a keyed array's L after its count's triples are damage
+  # (§3, §4), as at an array and a map
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -3614,9 +3629,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
@@ -6975,8 +6995,10 @@ const variableRetainSource = `
     end
   end
 
-  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, acc, report, retain, _path),
-    do: {:cont, acc, report, retain}
+  defp read_keyed_retain(_f, bin, 0, _nodes, _ids, acc, report, retain, _path) do
+    if bin != <<>>, do: throw(:wire_damaged)
+    {:cont, acc, report, retain}
+  end
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),

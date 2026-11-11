@@ -4,8 +4,8 @@
 # draws. SHRINK-ONLY: a kind observed in a file that is not listed for it
 # fails the gate, and a listed kind that no longer occurs fails until its
 # entry is deleted (a kind this clang does not know is not held against it).
-# Normally, never add an entry; fix the emitter. The one-time widelist
-# census correction below is documented in docs/PORTING.md J4.
+# Normally, never add an entry; fix the emitter. The one-time widelist and
+# features census corrections below are documented in docs/PORTING.md J4.
 #
 # Three kinds sit on the PACKET emitter's files (<Name>.h, <Name>Wire.h) and
 # are not the emitter's to clear without altering the packet wire, which Glenn's
@@ -124,6 +124,12 @@ build/tables-generated/fe2/FE2Table.cpp float-equal,nrvo,old-style-cast,padded,s
 build/tables-generated/fe2/FE2Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/fe2/FE2Wire.h covered-switch-default,switch-default
 build/tables-generated/fe2/Tblfe2View.h padded
+# One-time features inventory: these new paths instantiate existing table,
+# view and container templates. Keep the exact observed kinds; new kinds and
+# stale entries still fail. This does not change the format inventory.
+build/tables-generated/features/FeaturesTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/features/FeaturesTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/features/FeaturewitnessesView.h padded
 build/tables-generated/fg1/FG1.h covered-switch-default,padded
 build/tables-generated/fg1/FG1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/fg1/FG1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
@@ -731,30 +737,12 @@ build/tables-generated/w2/W2Block.cpp old-style-cast
 build/tables-generated/w2/W2Block.h allocator-wrappers,cast-align,old-style-cast,padded
 build/tables-generated/w2/W2Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/w2/W2Table.h allocator-wrappers,cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/tables-generated/wide/Caption.h padded
-build/tables-generated/wide/CaptionBlock.cpp old-style-cast
-build/tables-generated/wide/CaptionBlock.h allocator-wrappers,cast-align,old-style-cast,padded
-build/tables-generated/wide/CaptionTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/tables-generated/wide/CaptionTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,padded,sign-conversion,switch-default,switch-enum
-build/tables-generated/wide/WideText.h padded
-build/tables-generated/wide/WideTextTable.h comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/tables-generated/wide/WideView.cpp old-style-cast
-build/tables-generated/wide/WideView.h padded
 # One-time widelist inventory: these new paths instantiate existing table,
 # view and list templates. Keep the exact observed kinds; new kinds and
 # stale entries still fail. This does not change the format inventory.
 build/tables-generated/widelist/WidelistdemoView.h padded
 build/tables-generated/widelist/WidesTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/widelist/WidesTable.h allocator-wrappers,cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/wide-generated/Caption.h padded
-build/wide-generated/CaptionBlock.cpp old-style-cast
-build/wide-generated/CaptionBlock.h allocator-wrappers,cast-align,old-style-cast,padded
-build/wide-generated/CaptionTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
-build/wide-generated/CaptionTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,padded,sign-conversion,switch-default,switch-enum
-build/wide-generated/WideText.h padded
-build/wide-generated/WideTextTable.h comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
-build/wide-generated/WideView.cpp old-style-cast
-build/wide-generated/WideView.h padded
 generated/bench/cpp/Bench.h covered-switch-default,padded
 generated/bench/cpp/BenchWire.h covered-switch-default,switch-default
 generated/bench/cpp/RealWorld.h covered-switch-default

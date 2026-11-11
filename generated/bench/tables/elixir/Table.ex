@@ -1394,6 +1394,15 @@ defmodule Benchtable.Table do
     }
   end
 
+  # A refusal names its reason in the report (docs/SPEC-TABLES.md §4.2): the
+  # fixed form's own word when it gave one, the refusal's name otherwise.
+  defp fixed_class_refused(reason, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = report -> %{report | reason: Atom.to_string(reason)}
+      report -> report
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -1491,7 +1500,6 @@ defmodule Benchtable.Table do
   end
 
   defp fixed_class_keyed_to_table(_f, _value), do: %{}
-
 
   defp fixed_class_union_to_table(f, value) do
     case value do
@@ -1629,7 +1637,12 @@ defmodule Benchtable.Table do
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
         kept = Enum.take(elems, n)
-        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+        kept ++
+          List.duplicate(
+            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
+            max(n - length(kept), 0)
+          )
 
       _ ->
         elems
@@ -1672,9 +1685,14 @@ defmodule Benchtable.Table do
     Enum.map(Map.fetch!(f, :key_names), fn name ->
       raw =
         cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
-          true -> Map.get(item, :default)
+          Map.has_key?(value, name) ->
+            Map.get(value, name)
+
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
+            Map.get(value, String.to_atom(fixed_class_snake(name)))
+
+          true ->
+            Map.get(item, :default)
         end
 
       fixed_class_value_from_table(item, raw)
@@ -2703,46 +2721,64 @@ defmodule Benchtable.Table do
 
   def load("TableEntity", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableEntity", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_entity_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableEntity", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refused(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
   def load("TableStat", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableStat", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_stat_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableStat", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refused(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
   def load("TableMixed", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableMixed", data) when is_binary(data) do
     case Benchtable.BenchTableFixed.table_mixed_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("TableMixed", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_refused(reason, report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
@@ -2857,7 +2893,6 @@ defmodule Benchtable.Table do
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
-
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
   # verdict word beside its counters, spelled with the reference leg's
@@ -3285,25 +3320,25 @@ defmodule Benchtable.Table do
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        :malformed ->
-          # the directory already refused a malformed record before any
-          # body was read (directory_report), so this is never taken
-          :null
-
         _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+          # a malformed record was refused at the directory before any body
+          # was read (directory_report); a record whose type this reader
+          # cannot name at all counted unknown there and keeps its index, so
+          # the pointer naming it reads null, as the engine reads it (§3.1).
+          # A record of a type the reader names, under a pointer of another
+          # type, is the kind mismatch above.
+          :null
       end
     end
   end
 
+  # a node record's body is a body (§3): a terminator that arrives before the
+  # record's L ends leaves bytes no field claims, and that is damage
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
+      {:ok, fields, []} -> {desc, fields, not ends_early?(body, ids)}
       {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
@@ -3802,7 +3837,10 @@ defmodule Benchtable.Table do
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
+              reader =
+                Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -4033,7 +4071,12 @@ defmodule Benchtable.Table do
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  # bytes left inside a keyed array's L after its count's triples are damage
+  # (§3, §4), as at an array and a map
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    if bin != <<>>, do: throw(:wire_damaged)
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -4988,9 +5031,14 @@ defmodule Benchtable.Table do
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),

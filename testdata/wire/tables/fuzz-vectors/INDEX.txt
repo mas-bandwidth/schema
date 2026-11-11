@@ -344,3 +344,12 @@ id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4
 # never met the index and loaded. From mapdemo.Chunks, random #20608 of seed 2.
 map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_duplicate_pointer_past_table.bin
 
+
+# THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (§4), with nothing else in the
+# body for a reader to object to: a declared enum field twice with the same
+# value, then an unknown i32 field twice with the same value. Every reader
+# refuses the load. These are the framing battery's own bytes, pinned here
+# because the battery runs a leg's driver and the wire fuzzer runs the
+# generated reader.
+field_id_twice_same_value tblr1 Cfg testdata/wire/tables/framing/frame_repeat_same_value.bin
+unknown_id_twice_same_value tblr1 Cfg testdata/wire/tables/framing/frame_repeat_unknown_same_value.bin

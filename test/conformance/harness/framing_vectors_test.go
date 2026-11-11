@@ -346,6 +346,10 @@ var framingVectors = []framingVector{
 	{name: "frame_kind_mismatch_skips_by_wire_kind", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(1, 4), i32(0), buffHalf, b(0))},
 	// R5: a repeated id, the last occurrence winning.
 	{name: "frame_repeat_last_wins", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, b(1, 30, 9), b(0))},
+	// R5 again, with nothing else for a reader to object to: the same declared
+	// field twice with the same value, and an unknown id twice.
+	{name: "frame_repeat_same_value", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(gradeSilver, gradeSilver, b(0))},
+	{name: "frame_repeat_unknown_same_value", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(16, 4), i32(7), b(16, 4), i32(7), gradeSilver, b(0))},
 	// R6: the build-version id in a file body is malformed on that body.
 	{name: "frame_reserved_build_version_id", unit: "tblr1", root: "Cfg", ids: []string{"grade", "Silver", "build-version"}, body: cat(gradeSilver, b(3, 4), i32(0), b(0))},
 

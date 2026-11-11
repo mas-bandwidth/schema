@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -200,6 +201,9 @@ func runProbe(t *testing.T, g *generatedUnit, main string, inputs map[string][]b
 // passed to Open because the Luau table surface does not yet export it.
 func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 	t.Parallel()
+	// gated here, not only inside each probe: a run without the interpreter
+	// skips the whole comparison instead of counting none
+	slowtest.Gate(t, "the pinned Luau interpreter")
 	units, _ := readManifest(t)
 	cache := map[string]*cookUnit{}
 	compared, refused := 0, 0

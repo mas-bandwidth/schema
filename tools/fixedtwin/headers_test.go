@@ -49,11 +49,11 @@ func TestCAndCppTwinHeadersAgree(t *testing.T) {
 	cSrc, cppSrc, root := readTwinHeaders(t)
 	left := twinLeftover(t, cSrc, cppSrc, root)
 	if len(left) != 0 {
-		n := len(left)
+		full, n := left, len(left)
 		if n > 40 {
 			left = left[:40]
 		}
-		t.Fatalf("%d leftover line(s) after the twin map (first %d):\n%s", n, len(left), strings.Join(left, "\n"))
+		t.Fatalf("%s%d leftover line(s) after the twin map (first %d):\n%s", disagreementHead(full), n, len(left), strings.Join(left, "\n"))
 	}
 }
 
@@ -80,7 +80,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	if left := twinLeftoverFromPlainC(t, cPlain, cppSrc); len(left) != 0 {
-		t.Fatalf("the real artifact is not green before the fault is planted:\n%s", strings.Join(left, "\n"))
+		t.Fatalf("the real artifact is not green before the fault is planted:\n%s%s", disagreementHead(left), strings.Join(left, "\n"))
 	}
 
 	cppFaults := []struct{ name, from, to string }{

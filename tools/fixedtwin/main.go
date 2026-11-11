@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -40,6 +41,9 @@ func main() {
 		os.Exit(1)
 	}
 	if len(leftover) > 0 {
+		for _, d := range nameDisagreements(leftover) {
+			fmt.Fprintln(os.Stderr, "fixedtwin: "+d)
+		}
 		fmt.Fprintf(os.Stderr, "fixedtwin: leftover lines after the twin map (not one of the three named differences):\n")
 		for _, line := range leftover {
 			fmt.Fprintln(os.Stderr, line)
@@ -88,6 +92,48 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	leftover = append(leftover, diffLines("layout", canonicalize(cLay), canonicalize(cppLay))...)
 
 	return leftover, nil
+}
+
+// A disagreement is a rule one leg carries and the other lacks. The twin
+// map never strips one: its lines stay in the leftover, and this list only
+// names the rule so a red says which rule is open, from which spec line, and
+// which leg is behind. A disagreement leaves this list when the lagging leg
+// carries the rule and the gate goes green over it.
+type disagreement struct {
+	name    string
+	markers []string
+}
+
+var openDisagreements = []disagreement{
+	{
+		name: "ABSENT PAYLOAD, AWAITS THE DEAD-BYTES RULE: under a clear present flag (or an inactive union arm) the legs " +
+			"land different values. C++ lands the declared defaults (kTableFixedPresentDefaults); the Go engine and the C leg " +
+			"land the bytes the record carries. docs/SPEC-TABLES.md §3.4 says the payload is \"IGNORED on read, never a " +
+			"refusal\", which neither spelling settles. The pending standard change on dead bytes in a fixed record decides " +
+			"which leg moves; this is not yet a defect in either leg",
+		markers: []string{"kTableFixedPresentDefaults", "defaults = nullptr", ", defaults )", "payload_dst", "payload_size", "second_half"},
+	},
+}
+
+// nameDisagreements returns the open disagreements the leftover shows, each
+// with the count of leftover lines that carry its markers.
+func nameDisagreements(left []string) []string {
+	var out []string
+	for _, d := range openDisagreements {
+		n := 0
+		for _, line := range left {
+			for _, m := range d.markers {
+				if strings.Contains(line, m) {
+					n++
+					break
+				}
+			}
+		}
+		if n > 0 {
+			out = append(out, fmt.Sprintf("OPEN DISAGREEMENT (%d leftover line(s)): %s", n, d.name))
+		}
+	}
+	return out
 }
 
 func diffLines(section string, c, cpp []string) []string {

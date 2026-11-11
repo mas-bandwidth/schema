@@ -93,6 +93,9 @@ type fixedModule struct {
 	messageClosure []*ir.Struct
 	gen            fixedGen
 	body           strings.Builder
+	// msgLoops is how many array loops enclose the message-form code being
+	// emitted inside one body function (msgLoopVar)
+	msgLoops int
 }
 
 func (g *fixedModule) pf(format string, args ...any) { fmt.Fprintf(&g.body, format, args...) }
