@@ -306,8 +306,8 @@ var messageColdReadSabotages = map[string][]edit{
 	// it: take the refusal out and the dequantize clamps it instead, which is
 	// the ranged offset's rule reaching a kind it does not govern.
 	"message-quantized-index-above-count": {{
-		old: "\t\tcount, _, derived := ir.TableMessageQuantization(shape)\n\t\tif !derived || index > uint64(count) {\n\t\t\td.damage()\n\t\t\treturn false\n\t\t}\n",
-		new: "\t\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
+		old: "\tcount, _, derived := ir.TableMessageQuantization(shape)\n\tif !derived || index > uint64(count) {\n\t\td.damage()\n\t\treturn 0, false\n\t}\n",
+		new: "\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
 	}},
 
 	// A FAILED STRICT CHECK REFUSES THE ANNOUNCEMENT and sets no vocabulary.
