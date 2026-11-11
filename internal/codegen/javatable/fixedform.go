@@ -1132,12 +1132,14 @@ func fixedCheckElement(f *ir.Field, e string) string {
 		conds = append(conds, fmt.Sprintf("Long.compareUnsigned(%s, 0x%xL) >= 0 && Long.compareUnsigned(%s, 0x%xL) <= 0", e, ulo, e, uhi))
 	}
 	if f.Type.Kind == ir.TBits {
+		// an int meets the long mask widened by sign extension, so a negative
+		// one shows its high bits to the mask as well
 		bits := 64
 		if typ == "int" {
 			bits = 32
 		}
 		if f.Type.Width < bits {
-			conds = append(conds, fmt.Sprintf("((long) %s & 0x%xL) == 0", e, ^(uint64(1)<<uint(f.Type.Width)-1)))
+			conds = append(conds, fmt.Sprintf("(%s & 0x%xL) == 0", e, ^(uint64(1)<<uint(f.Type.Width)-1)))
 		}
 	}
 	return strings.Join(conds, " && ")

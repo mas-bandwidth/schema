@@ -46,7 +46,7 @@ public final class MixedStatFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert ((long) v.statId & 0xffffffffffffff00L) == 0;
+        assert (v.statId & 0xffffffffffffff00L) == 0;
         assert v.delta >= -512L && v.delta <= 511L;
         return true;
     }
