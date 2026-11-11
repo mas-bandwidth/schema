@@ -274,12 +274,23 @@ func constName(name string) string {
 	return ir.RustConstName(name)
 }
 
+// javaConstType is the Java primitive whose range holds v: int inside
+// int32, long beyond it — so a generated MAX_BITS/MAX_BYTES constant is
+// always a valid Java literal.
+func javaConstType(v int64) string {
+	if fitsInt32(big.NewInt(v)) {
+		return "int"
+	}
+	return "long"
+}
+
 func (g *gen) emitBounds(name, what string, maxBits int64) {
 	bits, bytes := constName(name+"MaxBits"), constName(name+"MaxBytes")
+	maxBytes := ir.MaxBytes(maxBits)
 	g.bpf("    // %s is %s (SPEC §6.1).\n", bits, what)
 	g.bpf("    // %s is rounded up to the 8-byte write-buffer granularity.\n", bytes)
-	g.bpf("    public static final int %s = %d;\n", bits, maxBits)
-	g.bpf("    public static final int %s = %d;\n\n", bytes, ir.MaxBytes(maxBits))
+	g.bpf("    public static final %s %s = %s;\n", javaConstType(maxBits), bits, javaIntLit(big.NewInt(maxBits)))
+	g.bpf("    public static final %s %s = %s;\n\n", javaConstType(maxBytes), bytes, javaIntLit(big.NewInt(maxBytes)))
 }
 
 func (g *gen) emitStructFunctions(st *ir.Struct) {
@@ -825,7 +836,7 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 			// statically byte-aligned [N]uint8 (ir.AlignedFixedByteArrays)
 			wasStored := g.stored
 			g.pf("%sif ((pos & 7) == 0) {\n", ind)
-			g.emitWriteBulk(name, fmt.Sprintf("%d", f.ArrayBound), fmt.Sprintf("%d", f.ArrayBound*8), ind+"    ")
+			g.emitWriteBulk(name, fmt.Sprintf("%d", f.ArrayBound), javaIntLit(big.NewInt(f.ArrayBound*8)), ind+"    ")
 			g.pf("%s} else {\n", ind)
 			g.stored = wasStored
 			g.emitWriteLoop(f, name, fmt.Sprintf("%d", f.ArrayBound), ind+"    ")
@@ -1159,7 +1170,7 @@ func (g *gen) emitReadItems(items []ir.Item, path, ind string, bounded bool) {
 				j++
 			}
 			if !bounded && total > 0 {
-				g.boundRead(fmt.Sprint(total), ind)
+				g.boundRead(javaIntLit(big.NewInt(total)), ind)
 			}
 			for ; i < j; i++ {
 				g.emitReadStaticItem(items[i], path, ind)
@@ -1257,7 +1268,7 @@ func (g *gen) emitReadStaticField(f *ir.Field, path, ind string) {
 			g.usesRead = true
 			g.pf("%sif ((bitsRead & 7) == 0) {\n", ind)
 			g.pf("%s    System.arraycopy(data, bitsRead >>> 3, %s, 0, %d);\n", ind, name, f.ArrayBound)
-			g.pf("%s    bitsRead += %d;\n", ind, f.ArrayBound*8)
+			g.pf("%s    bitsRead += %s;\n", ind, javaIntLit(big.NewInt(f.ArrayBound*8)))
 			g.pf("%s} else {\n", ind)
 			g.emitReadLoop(f, name, fmt.Sprint(f.ArrayBound), ind+"    ", true)
 			g.pf("%s}\n", ind)
