@@ -77,7 +77,7 @@ func TestSpecReadsRefuseNonCanonical(t *testing.T) {
 	flatPage := strings.Join(strings.Fields(page), " ")
 	for _, stale := range []string{
 		"FIRST-USE ORDER IS A WRITER'S RULE",
-		"is not part of the contract",
+		"Field ORDER within a body is not part of the contract",
 		"not part of the READ contract",
 	} {
 		mustNotState(t, "docs/SPEC-TABLES.md", flatPage, stale)
