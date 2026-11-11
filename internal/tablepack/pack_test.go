@@ -280,30 +280,41 @@ func TestHostileValueCorpus(t *testing.T) {
 		cases++
 		t.Run(name, func(t *testing.T) {
 			_, _, report, err := c.Pack(u, root, "../../"+tree)
-			// a row's counters name the conditions its tree carries:
-			// unknown, kind_mismatch, widened, clamped, duplicate. Under the
-			// one read (docs/SPEC-TABLES.md §6.5) a kind mismatch, a value
-			// out of range and a repeated key each refuse the whole pack, and
-			// only unknown and widened ride beside an accepted value
-			var unknown, mismatch, widened, clamped, duplicate int
-			if verdict != "refused" {
-				if _, err := fmt.Sscanf(verdict, "%d,%d,%d,%d,%d,false,read", &unknown, &mismatch, &widened, &clamped, &duplicate); err != nil {
+			// The verdict is the cross-language contract: `read` or `refused`
+			// (docs/rulings.json refusal-verdict-only). A legacy row may still
+			// spell the counters before it, `unknown,kind_mismatch,widened,
+			// clamped,duplicate,malformed,verdict`; only unknown and widened
+			// ride beside an accepted value, and any retired refusal counter
+			// still refuses the whole pack.
+			refused := verdict == "refused"
+			var unknown, widened int
+			counters := false
+			if !refused && verdict != "read" {
+				var mismatch, clamped, duplicate int
+				var malformed bool
+				var state string
+				if _, err := fmt.Sscanf(verdict, "%d,%d,%d,%d,%d,%t,%s", &unknown, &mismatch, &widened, &clamped, &duplicate, &malformed, &state); err != nil {
 					t.Fatalf("verdict %q: %v", verdict, err)
 				}
+				if state != "read" && state != "refused" {
+					t.Fatalf("verdict %q: %q is not a verdict", verdict, state)
+				}
+				counters = true
+				refused = malformed || state == "refused" || mismatch+clamped+duplicate > 0
 			}
-			if verdict == "refused" || mismatch+clamped+duplicate > 0 {
+			if refused {
 				if err == nil {
-					t.Fatalf("the tree packed (%+v); the row's conditions refuse it (%s)", report, verdict)
+					t.Fatalf("the tree packed (%+v); the manifest says it refuses (%s)", report, verdict)
 				}
 				return
 			}
-			if err != nil && strings.Contains(err.Error(), "string_lone_surrogate") {
-				t.Skip("layer 3 re-pins the lone-surrogate rows, which refuse malformed (§16.2): docs/plans/strict-only.md")
-			}
 			if err != nil {
-				t.Fatalf("the tree was refused; the manifest says it packs: %v", err)
+				t.Fatalf("the tree was refused; the manifest says it reads: %v", err)
 			}
-			if report.Unknown != unknown || report.Widened != widened || report.Refused {
+			if counters && (report.Unknown != unknown || report.Widened != widened) {
+				t.Fatalf("report %+v, the manifest says %s", report, verdict)
+			}
+			if report.Refused {
 				t.Fatalf("report %+v, the manifest says %s", report, verdict)
 			}
 		})
