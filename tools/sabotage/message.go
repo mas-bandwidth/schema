@@ -360,10 +360,13 @@ func init() {
 var messageTextSabotages = map[string][]edit{
 	// ILL-FORMED TEXT IS DAMAGE HERE TOO: take the check out of the oracle's
 	// message path and the variable form still refuses what the message form now
-	// stores, which is the two forms parting on the one rule they share.
+	// stores, which is the two forms parting on the one rule they share. The
+	// damaging bytes become U+FFFD so the accepted value still writes back: the
+	// differential is the READ's answer, and a writer that refuses the stored
+	// bytes would stop the run before the two answers could be compared.
 	"message-text-accepts-ill-formed": {{
 		old: "\tif f.Type.Kind == ir.TString && !textValid(raw) {\n",
-		new: "\tif false && !textValid(raw) { // SABOTAGED: the kind 12 content rule is gone\n",
+		new: "\tif f.Type.Kind == ir.TString && !textValid(raw) {\n\t\traw = []byte{ 0xEF, 0xBF, 0xBD } // SABOTAGED: ill-formed text is accepted and replaced\n\t} else if false && !textValid(raw) { // SABOTAGED: the kind 12 content rule is gone\n",
 	}},
 
 	// A CLAMP CUTS AT A CODE POINT BOUNDARY: take the cut off the boundary and
