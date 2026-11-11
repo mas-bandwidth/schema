@@ -416,6 +416,45 @@ tables-cpp-format-negative-control: bin/schema tools/sabotage/cpp_clean.go make/
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(CPP_CLEAN_CONTROL)/format/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C++ turns the format gate (clang-format) RED naming the file"
 
+# THE DEBUG STORAGE GATE (docs/SPEC.md §5.1). C++ is an assert leg: a count
+# or a string(N) length past the storage it indexes is the programmer's error,
+# held by the writer's schema_assert in a debug build and removed by NDEBUG, so
+# a release build carries no write-side check. This gate compiles the generated
+# writer WITHOUT NDEBUG and requires the message writer's Measure and Save each
+# to die on the assert, for an over-long count and an over-long length. It
+# stands alone: it builds only its own small unit. The control strips the
+# generated storage asserts and requires the same debug gate to go red; it runs
+# the gate first, so CI holds both.
+STORAGE_DEBUG_CPP := build/storage-debug-cpp
+.PHONY: write-check-storage-debug-cpp write-check-storage-debug-cpp-negative-control
+write-check-storage-debug-cpp: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/cpp/storage_debug.cpp
+	@rm -rf $(STORAGE_DEBUG_CPP) && mkdir -p $(STORAGE_DEBUG_CPP)/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_DEBUG_CPP)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(CXX) $(TABLES_CXXFLAGS) -I$(STORAGE_DEBUG_CPP)/generated \
+		test/conformance/cpp/storage_debug.cpp $(STORAGE_DEBUG_CPP)/generated/StorageTable.cpp \
+		-o $(STORAGE_DEBUG_CPP)/gate
+	./$(STORAGE_DEBUG_CPP)/gate
+
+write-check-storage-debug-cpp-negative-control: write-check-storage-debug-cpp
+	@rm -rf $(STORAGE_DEBUG_CPP)-negative && mkdir -p $(STORAGE_DEBUG_CPP)-negative/generated
+	./bin/schema generate --lang cpp --out $(STORAGE_DEBUG_CPP)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak -E 's/schema_assert\( value\.(items_count|wide_length) >= 0 && value\.(items_count|wide_length) <= 8 \); \/\/ storage invariant/(void)0; \/* SABOTAGED *\/ \/\/ storage invariant/g' \
+		$(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.h
+	@grep -q 'SABOTAGED' $(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.h || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
+	$(CXX) $(TABLES_CXXFLAGS) -I$(STORAGE_DEBUG_CPP)-negative/generated \
+		test/conformance/cpp/storage_debug.cpp $(STORAGE_DEBUG_CPP)-negative/generated/StorageTable.cpp \
+		-o $(STORAGE_DEBUG_CPP)-negative/gate
+	@if ./$(STORAGE_DEBUG_CPP)-negative/gate > $(STORAGE_DEBUG_CPP)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the debug storage gate passed with the asserts removed"; \
+		cat $(STORAGE_DEBUG_CPP)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage debug' $(STORAGE_DEBUG_CPP)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage assert"; \
+		  cat $(STORAGE_DEBUG_CPP)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage debug' $(STORAGE_DEBUG_CPP)-negative/log
+	@echo "negative control: removing the C++ storage asserts turns the debug gate RED"
+
 # THE WRITE CONTRACT'S NEGATIVE CONTROLS (docs/SPEC.md §5.1): one check is
 # removed from a copy of the generated C++ tree, the leg's driver is rebuilt
 # against the copy, and the surface that writer serves must go red while the
