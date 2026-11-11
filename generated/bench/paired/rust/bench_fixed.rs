@@ -86,7 +86,7 @@ pub fn mixed_event_fixed_scatter(b: &[u8], value: &mut MixedEventRow, report: &m
     // it lands as None and counts one held rather than selecting nothing
     // silently.
     if tag_raw > 3 {
-        report.held += 1;
+        if report.slack == 0 { report.held += 1; }
     } else {
         value.tag = tag_raw;
     }
@@ -242,7 +242,7 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
         let at = 40;
         let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
         if raw > 15 {
-            report.held += 1;
+            if report.slack == 0 { report.held += 1; }
             value.weapon = 0;
         } else {
             value.weapon = raw;
@@ -619,7 +619,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[52..56].try_into().expect("four bytes"));
         let held = raw.clamp(0, 8);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.entities_count = held;
@@ -636,7 +636,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[464..468].try_into().expect("four bytes"));
         let held = raw.clamp(0, 80);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.stats_count = held;
@@ -664,7 +664,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[1126..1130].try_into().expect("four bytes"));
         let held = raw.clamp(0, 15);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.player_name_length = held;
@@ -675,7 +675,7 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let raw = i32::from_le_bytes(b[1145..1149].try_into().expect("four bytes"));
         let held = raw.clamp(0, 16);
-        if held != raw {
+        if held != raw && report.slack == 0 {
             report.held += 1;
         }
         value.payload_length = held;
