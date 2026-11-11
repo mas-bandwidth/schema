@@ -859,6 +859,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if st.Integrity != "" {
 		fixedTrailer = " + 4"
 	}
+	// The count is a write-side input: DEBUG-ONLY BY RULE, like fixedWriteBound.
+	g.pf("    schema_assert( count >= 0 && count <= ( INT64_MAX - ( kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout )%s ) ) / ( 8 + %d ) ); /* the file size fits in int64_t */\n", n, fixedTrailer, body)
 	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d )%s;\n}\n\n", n, body, fixedTrailer)
 
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n",
