@@ -84,9 +84,10 @@ type requiredCase struct {
 }
 
 // requiredWires writes each case's wire with schema-go's own engine
-// (internal/tabletext and internal/tablewire), never by hand: a required
-// field at its default is elided by that writer, which is exactly the older
-// record the read must refuse.
+// (internal/tabletext and internal/tablewire), never by hand. That writer
+// writes a required field even at its default (§2.3), so a record that
+// omits one is written from the older shape that never declared it, which is
+// exactly the older record the read must refuse.
 func requiredWires(t *testing.T, u *ir.Unit) []requiredCase {
 	t.Helper()
 	m := tabletext.NewModel(u)
@@ -108,12 +109,16 @@ func requiredWires(t *testing.T, u *ir.Unit) []requiredCase {
 	}
 	return []requiredCase{
 		{"off", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = false })},
-		{"on-missing", "Current", build("Current", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
+		// the engine writes a required field even at its default, so the
+		// record that omits req is the older shape with the guard on
+		{"on-missing", "Current", build("Legacy", func(i *tabletext.Instance) { field(i, "active").Cell.B = true })},
 		{"on-present", "Current", build("Current", func(i *tabletext.Instance) {
 			field(i, "active").Cell.B = true
 			field(i, "req").Cell.I = 7
 		})},
-		{"exact-missing", "Exact", build("Exact", func(*tabletext.Instance) {})},
+		// the older record with no ver: the engine's writer refuses Exact at
+		// ver 0, off its range, so the record that omits it is the older shape
+		{"exact-missing", "Exact", build("OldExact", func(*tabletext.Instance) {})},
 		{"exact-present", "Exact", build("Exact", func(i *tabletext.Instance) { field(i, "ver").Cell.U = 7 })},
 		{"nested-missing", "Outer", build("OuterOld", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.I = 5 })},
 		{"nested-present", "Outer", build("Outer", func(i *tabletext.Instance) { field(i, "inner").Cell.Tab.Fields[0].Cell.U = 5 })},
