@@ -119,6 +119,10 @@ int conformance_write_refusal_set_backenddemo( const char * root, void * value, 
                                                const char * kind, const char * text );
 int conformance_write_refusal_write_backenddemo( int surface, const char * root, const void * value, const uint8_t * announcement,
                                                  int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_tblw1( const char * root, void * value, const char * path,
+                                         const char * kind, const char * text );
+int conformance_write_refusal_write_tblw1( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                           int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 /* a narrow text's storage by `length` (filled with `a`) or `bytes` (exact), and
    a wide text's by `units`: 0 for a kind or a value the storage cannot take */
 int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );

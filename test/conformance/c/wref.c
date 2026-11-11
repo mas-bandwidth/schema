@@ -35,6 +35,7 @@ static const struct
 } write_units[] = {
     { "tabledemo", conformance_write_refusal_set_tabledemo, conformance_write_refusal_write_tabledemo },
     { "backenddemo", conformance_write_refusal_set_backenddemo, conformance_write_refusal_write_backenddemo },
+    { "tblw1", conformance_write_refusal_set_tblw1, conformance_write_refusal_write_tblw1 },
 };
 
 /* The hex of a `bytes` or `units` value: two digits a byte, or four a unit. */

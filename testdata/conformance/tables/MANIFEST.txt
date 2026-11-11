@@ -1450,6 +1450,12 @@ write-refusal wref_text_wellformed tabledemo RootConfig testdata/conformance/tab
 # binary reader calls it ill-formed, so the binary writer refuses it too;
 # only the text writer below spells it `\u0000`.
 write-refusal wref_text_zero       tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin  version_note bytes 610062           refused
+# A VARIABLE ROOT: every row above names a fixed root, which a leg may save
+# through its fixed writer, so this pair holds the variable-form Save itself.
+# Fleet is a variable table; home is a Vessel held by value, whose hull is
+# `int32 | min = 0, max = 1000`.
+write-refusal wref_variable_range_high    tblw1 Fleet testdata/wire/tables/w1_fleet.bin home.hull int 1001 refused
+write-refusal wref_variable_range_high_ok tblw1 Fleet testdata/wire/tables/w1_fleet.bin home.hull int 1000 wrote
 
 # THE SAME CONTRACT THROUGH THE FIXED FORM'S FixedSave (docs/SPEC.md §5.1): the
 # row loads the fixed root's current-form instance, sets the one field, and
