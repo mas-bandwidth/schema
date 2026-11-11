@@ -674,7 +674,11 @@ luau-nightly-fuzz-replay: luau-nightly-fuzz-toolchain build/schema-luau-nightly 
 # THE NEGATIVE CONTROL (make/negative-controls.json, tools/negativecontrols):
 # a scratch copy of the generated readers has the id-table count's sign check
 # removed from schema_load.luau's open() (the bug luau-load-negative-id-count fixed:
-# a high-bit count passes the upper bound and walks past the buffer), and the
+# a high-bit count passes the upper bound and walks past the buffer), and from
+# frame(), the wire-alone framing that every read now runs before open() (the
+# plain load is the strict read since the tolerant entry points went, so a
+# plant in open() alone is refused by frame() first and the fuzzer finds
+# nothing), and the
 # coverage-guided fuzzer must find it inside LUAU_NF_NC_TIME; the found input
 # must then FAIL the replay on the same sabotaged copy. The unplanted copy
 # must stay green. The red line is kept: the plant is never in the committed
@@ -690,9 +694,11 @@ luau-nightly-fuzz-negative-control: luau-nightly-fuzz-toolchain $(LUAU_NF_HOST) 
 		&& cp $(LUAU_NF)/manifest.luau $(LUAU_NF)/seeds.luau $(LUAU_NF)/fuzz.luau $(LUAU_NF)/replay.luau $(LUAU_NF_NC)/ \
 		&& cp $(LUAU_NF)/gen-replay.sh $(LUAU_NF_NC)/
 	@planted=0; for f in $(LUAU_NF_NC)/generated/*/schema_load.luau; do \
-		if grep -q 'if count < 0 or count > math.floor' "$$f"; then \
-			perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/; s/^(local function open\b)/-- PLANTED: the id-table count sign check is removed\n$$1/m' "$$f"; \
-			planted=$$((planted + 1)); fi; done; \
+		n=$$(grep -c 'if count < 0 or count > math.floor' "$$f"); \
+		if [ "$$n" != 2 ]; then echo "negative control: $$f has $$n id-table count sign checks, want 2 (open and frame)" >&2; exit 1; fi; \
+		perl -0pi -e 's/if count < 0 or count > math\.floor/if count > math.floor/g; s/^(local function (open|frame)\b)/-- PLANTED: the id-table count sign check is removed\n$$1/mg' "$$f"; \
+		if grep -q 'if count < 0 or count > math.floor' "$$f"; then echo "negative control: a sign check survived in $$f" >&2; exit 1; fi; \
+		planted=$$((planted + 1)); done; \
 	if [ $$planted -lt 1 ]; then echo "negative control: no id-table count sign check was planted" >&2; exit 1; fi; \
 	echo "negative control: planted in $$planted generated schema_load.luau copies"
 	@set +e; \
