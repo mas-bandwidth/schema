@@ -1,0 +1,21 @@
+// wide.schema — the wide-bounds hostile-corpus vectors.
+package wide
+
+// Variable carries a bits(48), a bits(63), and three ranged 64-bit integers
+// whose bounds sit at or above 2^53.
+table Variable
+{
+    b48       bits(48)
+    b63       bits(63)
+
+    u64_bound uint64 | min = 0, max = 9007199254740992
+    i64_bound int64  | min = -9007199254740992, max = 0
+    u64_top   uint64 | max = 9223372036854775808
+}
+
+// Fixed carries the same two bits fields in the fixed form.
+fixed table Fixed
+{
+    b48 bits(48)
+    b63 bits(63)
+}
