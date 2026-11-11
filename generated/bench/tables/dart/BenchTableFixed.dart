@@ -2227,6 +2227,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     final ref = bytes[at];
     at += 1;
     if (ref == 0) {
+      if (at != bodyEnd) {
+        break;
+      }
       terminated = true;
       break;
     }
@@ -2574,16 +2577,24 @@ int tableMessageBits(int n) {
 (int, int, bool) tableMessageLeb(Uint8List bytes, int at, int end) {
   var value = 0;
   var shift = 0;
-  while (at < end && shift < 64) {
+  for (var i = 0; ; i++) {
+    if (at >= end || i >= 10) {
+      return (0, at, false);
+    }
     final b = bytes[at];
     at++;
+    if (i == 9 && b > 1) {
+      return (0, at, false);
+    }
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
+      if (i > 0 && b == 0) {
+        return (0, at, false);
+      }
       return (value, at, true);
     }
     shift += 7;
   }
-  return (0, at, false);
 }
 /// THE ANNOUNCEMENT: the unit's id table, settled byte for byte by the
 /// compiler. It is an ordinary form-`1` file whose body carries the build
