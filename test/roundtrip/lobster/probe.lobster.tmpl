@@ -36,13 +36,13 @@ def fixed_probe(root:string, name:string, eng:string):
     if eng != "":
         var verdict = "refused:the unit generated no fixed form for this root"
 [[range .Roots]][[if eq .Class "fixed"]]        if root == "[[.Name]]":
-            let rows = [New[[.Name]]()]
+            let rows = [[[$.Package]].New[[.Name]]()]
             let plan:[schema_rt.TableFixedEntry] = []
             let r = schema_rt.TableReport {}
-            if [[.Name]]FixedLoad(rows, eng, plan, r) != 1:
+            if [[$.Package]].[[.Name]]FixedLoad(rows, eng, plan, r) != 1:
                 verdict = "refused:" + r.reason
             else:
-                verdict = if [[.Name]]FixedSave(rows) == eng: "refused:no generated path from the fixed class to the record" else: "diff:FixedSave of the loaded value is not the engine bytes"
+                verdict = if [[$.Package]].[[.Name]]FixedSave(rows) == eng: "refused:no generated path from the fixed class to the record" else: "diff:FixedSave of the loaded value is not the engine bytes"
 [[end]][[end]]        say(root, name, "fixedloadeng", verdict)
 
 def load_verdict(root:string, bytes:string, want:string) -> string:
