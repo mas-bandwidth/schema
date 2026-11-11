@@ -478,7 +478,7 @@ local nodeScan = function(bytes, table, end, report) {
 // count past the int32 storage cap, §2.9) or "blob_shared"; nonFinite says a
 // float the wire carries is not finite.
 local WC_MAX_DEPTH = 128;
-local wcBody, wcPayload, wcContent;
+local wcPayload, wcContent;
 
 // canonical LEB128 at `at` inside `end`: the value with c.pos after it, or -1
 local wcLeb = function(c, at, end) {
@@ -557,47 +557,43 @@ local wcHeader = function(c, at, end) {
   return count;
 };
 
-local wcArray = function(c, at, end) {
-  local count = wcHeader(c, at, end);
-  if (count < 0) return false;
-  local ek = c.ek;
-  local off = c.pos;
-  for (local i = 0; i < count; i++) {
-    off = wcPayload(c, off, end, ek);
-    if (off < 0) return false;
-  }
-  if (off != end) return wcDamage(c);
-  return true;
-};
+// THE WALK IS ITERATIVE: each open body, array, keyed body and structural
+// union arm is a frame on an explicit work list, so the check's own call
+// depth does not grow with the wire's nesting, and the load answers a value
+// or a refusal whatever stack its caller holds (docs/PORT-SQUIRREL.md, BYTE
+// BUFFERS). A frame's `lvl` says it is one level of THE BINARY NESTING BOUND
+// (§4); the root body and a node table record are not.
+local WC_BODY = 0, WC_ARRAY = 1, WC_KEYED = 2, WC_UNION = 3;
 
-local wcKeyed = function(c, at, end) {
+// open a framed table, array, keyed or map body [at, end), one level deeper
+local wcOpen = function(c, stack, at, end, kind) {
+  // THE BINARY NESTING BOUND (§4): a framed body is one level deeper
+  if (c.depth >= WC_MAX_DEPTH) return wcDamage(c);
+  c.depth++;
+  if (kind == 13) {
+    stack.append({ t = WC_BODY, at = at, end = end, root = false, seen = {}, lvl = true });
+    return true;
+  }
   local count = wcHeader(c, at, end);
   if (count < 0) return false;
-  local ek = c.ek;
-  local off = c.pos;
-  local seen = {};
-  for (local i = 0; i < count; i++) {
-    local key = wcLeb(c, off, end);
-    if (key < 0 || key == 0 || key > c.ids.len()) return wcDamage(c);
-    if (key in seen) return wcDamage(c);
-    seen[key] <- true;
-    local n = wcLeb(c, c.pos, end);
-    if (n < 0 || n > end - c.pos) return wcDamage(c);
-    local s = c.pos;
-    off = s + n;
-    if (!wcContent(c, s, off, ek)) return false;
-  }
-  if (off != end) return wcDamage(c);
+  local f = { t = kind == 14 ? WC_ARRAY : WC_KEYED, off = c.pos, end = end,
+    ek = c.ek, left = count, seen = {}, lvl = true };
+  stack.append(f);
   return true;
 };
 
 // a union payload in place: the arm reference, and for a set arm its kind
-// byte, its L and the content L frames. A STRUCTURAL ARM IS A LEVEL (§4).
-local wcUnion = function(c, at, end) {
+// byte, its L and the content L frames. A STRUCTURAL ARM IS A LEVEL (§4), a
+// frame whose content is checked when the walk reaches it. `need` is the
+// offset the payload must end at, or -1. The new offset, or -1.
+local wcUnion = function(c, stack, at, end, need) {
   local ref = wcLeb(c, at, end);
   if (ref < 0) { wcDamage(c); return -1; }
   local next = c.pos;
-  if (ref == 0) return next;
+  if (ref == 0) {
+    if (need >= 0 && next != need) { wcDamage(c); return -1; }
+    return next;
+  }
   if (ref > c.ids.len() || next >= end) { wcDamage(c); return -1; }
   local kind = c.b[next] & 0xff;
   local n = wcLeb(c, next + 1, end);
@@ -605,17 +601,19 @@ local wcUnion = function(c, at, end) {
   local s = c.pos;
   local e = s + n;
   local structural = kind == 13 || kind == 14 || kind == 16 || kind == 15;
-  if (structural) {
-    if (c.depth >= WC_MAX_DEPTH) { wcDamage(c); return -1; }
-    c.depth++;
+  if (!structural) {
+    if (!wcContent(c, stack, s, e, kind)) return -1;
+    if (need >= 0 && e != need) { wcDamage(c); return -1; }
+    return e;
   }
-  local ok = wcContent(c, s, e, kind);
-  if (structural) c.depth--;
-  return ok ? e : -1;
+  if (c.depth >= WC_MAX_DEPTH) { wcDamage(c); return -1; }
+  c.depth++;
+  stack.append({ t = WC_UNION, s = s, e = e, kind = kind, need = need, open = false, lvl = true });
+  return e;
 };
 
 // one SELF-FRAMED payload of `kind` at `at`: the new offset, or -1
-wcPayload = function(c, at, end, kind) {
+wcPayload = function(c, stack, at, end, kind) {
   local w = kindWidth(kind);
   if (w > 0) {
     if (w > end - at) { wcDamage(c); return -1; }
@@ -634,12 +632,12 @@ wcPayload = function(c, at, end, kind) {
       return c.pos;
     }
     case 15:
-      return wcUnion(c, at, end);
+      return wcUnion(c, stack, at, end, -1);
     case 12: case 31: case 32: case 13: case 14: case 16: {
       local n = wcLeb(c, at, end);
       if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
       local s = c.pos;
-      return wcContent(c, s, s + n, kind) ? s + n : -1;
+      return wcContent(c, stack, s, s + n, kind) ? s + n : -1;
     }
   }
   wcDamage(c);
@@ -647,7 +645,7 @@ wcPayload = function(c, at, end, kind) {
 };
 
 // a payload already framed by a length, consumed exactly
-wcContent = function(c, at, end, kind) {
+wcContent = function(c, stack, at, end, kind) {
   local w = kindWidth(kind);
   if (w > 0) {
     if (end - at != w) return wcDamage(c);
@@ -656,24 +654,16 @@ wcContent = function(c, at, end, kind) {
   switch (kind) {
     case 12:
       return utf8Ok(c.b, at, end - at) ? true : wcDamage(c);
-      return true;
     case 31:
       return true; // opaque: the one kind whose meaning a reader may not know (§3)
     case 32:
       return end == at ? true : wcDamage(c);
-    case 13: case 14: case 16: {
-      // THE BINARY NESTING BOUND (§4): a framed body is one level deeper
-      if (c.depth >= WC_MAX_DEPTH) return wcDamage(c);
-      c.depth++;
-      local ok;
-      if (kind == 13) ok = wcBody(c, at, end, false);
-      else if (kind == 14) ok = wcArray(c, at, end);
-      else ok = wcKeyed(c, at, end);
-      c.depth--;
-      return ok;
-    }
-    case 17: case 30: case 15: {
-      local e = wcPayload(c, at, end, kind);
+    case 13: case 14: case 16:
+      return wcOpen(c, stack, at, end, kind);
+    case 15:
+      return wcUnion(c, stack, at, end, end) >= 0;
+    case 17: case 30: {
+      local e = wcPayload(c, stack, at, end, kind);
       if (e < 0) return false;
       return e == end ? true : wcDamage(c);
     }
@@ -681,35 +671,91 @@ wcContent = function(c, at, end, kind) {
   return wcDamage(c);
 };
 
-// one table body that ends with its terminator as its LAST byte; `root`
-// admits the node table's reserved id, whose extent is kept on c.table
-wcBody = function(c, at, end, root) {
-  local seen = {};
-  for (;;) {
-    local ref = wcLeb(c, at, end);
-    if (ref < 0) return wcDamage(c);
-    at = c.pos;
-    if (ref == 0) return at == end ? true : wcDamage(c);
-    if (ref > c.ids.len()) return wcDamage(c);
-    local id = c.ids[ref - 1];
-    if (id in seen) return wcDamage(c);
-    seen[id] <- true;
-    if (at >= end) return wcDamage(c);
-    local kind = c.b[at] & 0xff;
-    at++;
-    if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
-      if (!root || !c.announcement) return wcDamage(c);
-    } else if (id == NODE_TABLE_ID) {
-      if (!root || kind != 12) return wcDamage(c);
-      local n = wcLeb(c, at, end);
-      if (n < 0 || n > end - c.pos) return wcDamage(c);
-      c.table = [c.pos, c.pos + n];
-      at = c.pos + n;
-      continue;
+// close the top frame
+local wcClose = function(c, stack, f) {
+  stack.pop();
+  if (f.lvl) c.depth--;
+  return true;
+};
+
+// one step of the top frame: a table body's next field, an array's next
+// element, a keyed body's next entry, or a union arm's content; a frame that
+// is done closes, its end checked
+local wcStep = function(c, stack, f) {
+  switch (f.t) {
+    case WC_BODY: {
+      // one table body that ends with its terminator as its LAST byte; a
+      // root body admits the node table's reserved id, whose extent is kept
+      // on c.table
+      local end = f.end;
+      local ref = wcLeb(c, f.at, end);
+      if (ref < 0) return wcDamage(c);
+      local at = c.pos;
+      if (ref == 0) return at == end ? wcClose(c, stack, f) : wcDamage(c);
+      if (ref > c.ids.len()) return wcDamage(c);
+      local id = c.ids[ref - 1];
+      if (id in f.seen) return wcDamage(c);
+      f.seen[id] <- true;
+      if (at >= end) return wcDamage(c);
+      local kind = c.b[at] & 0xff;
+      at++;
+      if (id == BUILD_VERSION_ID || id == MESSAGE_VOCABULARY_ID) {
+        if (!f.root || !c.announcement) return wcDamage(c);
+      } else if (id == NODE_TABLE_ID) {
+        if (!f.root || kind != 12) return wcDamage(c);
+        local n = wcLeb(c, at, end);
+        if (n < 0 || n > end - c.pos) return wcDamage(c);
+        c.table = [c.pos, c.pos + n];
+        f.at = c.pos + n;
+        return true;
+      }
+      at = wcPayload(c, stack, at, end, kind);
+      if (at < 0) return false;
+      f.at = at;
+      return true;
     }
-    at = wcPayload(c, at, end, kind);
-    if (at < 0) return false;
+    case WC_ARRAY: {
+      if (f.left == 0) return f.off == f.end ? wcClose(c, stack, f) : wcDamage(c);
+      f.left--;
+      local off = wcPayload(c, stack, f.off, f.end, f.ek);
+      if (off < 0) return false;
+      f.off = off;
+      return true;
+    }
+    case WC_KEYED: {
+      if (f.left == 0) return f.off == f.end ? wcClose(c, stack, f) : wcDamage(c);
+      f.left--;
+      local end = f.end;
+      local key = wcLeb(c, f.off, end);
+      if (key < 0 || key == 0 || key > c.ids.len()) return wcDamage(c);
+      if (key in f.seen) return wcDamage(c);
+      f.seen[key] <- true;
+      local n = wcLeb(c, c.pos, end);
+      if (n < 0 || n > end - c.pos) return wcDamage(c);
+      local s = c.pos;
+      f.off = s + n;
+      return wcContent(c, stack, s, s + n, f.ek);
+    }
+    case WC_UNION: {
+      if (!f.open) {
+        f.open = true;
+        return wcContent(c, stack, f.s, f.e, f.kind);
+      }
+      if (f.need >= 0 && f.e != f.need) return wcDamage(c);
+      return wcClose(c, stack, f);
+    }
   }
+  return wcDamage(c);
+};
+
+// one table body [at, end) and everything nested in it, walked to the end;
+// `root` admits the node table's reserved id
+local wcBody = function(c, at, end, root) {
+  local stack = [{ t = WC_BODY, at = at, end = end, root = root, seen = {}, lvl = false }];
+  while (stack.len() > 0) {
+    if (!wcStep(c, stack, stack.top())) return false;
+  }
+  return true;
 };
 
 // the pointer graph: node 0 is the root, node k is record k - 1 (wire index
