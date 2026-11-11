@@ -2034,19 +2034,32 @@ static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t cou
     char what[256];
     std::snprintf( what, sizeof( what ), "W6: %s — split is in range", who );
     check( split >= 0 && split <= count, what );
+    // ONE GUARDLESS ENTRY RIDES THE SECOND HALF (fixedruntime.go): an absent
+    // optional's present-defaults entry runs AFTER the guarded arm entries of
+    // the payload it replaces, so the coalescer lays it in a third pass past
+    // every guarded entry. It is the only guardless op above the split, and it
+    // never sits below it, where it would run before the payload it replaces.
+    bool deferred_seen = false;
     for ( int32_t i = 0; i < count; ++i )
     {
         const bool guarded = plan[i].guard != tblfx1::kTableFixedNoGuard;
-        if ( i < split && guarded )
+        const bool deferred = !guarded && plan[i].op == tblfx1::kTableFixedPresentDefaults;
+        if ( i < split && ( guarded || deferred ) )
         {
-            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is below the split and carries a GUARD", who, (int) i );
+            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is below the split and carries a GUARD or is a deferred present-defaults", who, (int) i );
             check( false, what );
         }
-        if ( i >= split && !guarded )
+        if ( i >= split && !guarded && !deferred )
         {
             std::snprintf( what, sizeof( what ), "W6: %s — entry %d is above the split and carries NO guard", who, (int) i );
             check( false, what );
         }
+        if ( i >= split && guarded && deferred_seen )
+        {
+            std::snprintf( what, sizeof( what ), "W6: %s — guarded entry %d follows a guardless present-defaults entry", who, (int) i );
+            check( false, what );
+        }
+        deferred_seen = deferred_seen || ( i >= split && deferred );
     }
     // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
     // below it and the entry at it would be one entry. They are two, and this
