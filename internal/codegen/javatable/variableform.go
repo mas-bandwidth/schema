@@ -3476,6 +3476,10 @@ public final class TableJson {
                     return 0;
                 }
                 if (signed) {
+                    if (Double.isFinite(d) && d >= 9223372036854775808.0) {
+                        rep.refuse("out_of_range");
+                        return max;
+                    }
                     if (!Double.isFinite(d) || d != (double) (long) d) {
                         rep.refuse("kind_mismatch");
                         rejected = true;
