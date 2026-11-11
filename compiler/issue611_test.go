@@ -22,6 +22,7 @@ import (
 // clamp and the domain bound is the other: two clamps, and 4294967295 on the
 // field. The Go and C# walkers carried the narrow and landed 0.
 func TestIssue611JsonUnsignedOverflowLandsCeiling(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Go and .NET toolchains (they compile and run the generated packages)")
 	src := `package p
 fixed table Ship

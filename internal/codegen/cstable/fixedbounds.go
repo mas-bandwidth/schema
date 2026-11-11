@@ -69,10 +69,11 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// past the enum's top value. Straight-line, after the run, over STORAGE,\n")
 	g.pf("// so the identity plan and a plan compiled from a stranger's layout are\n")
 	g.pf("// held to the same numbers by the same pass. Every clamp COUNTS.\n")
-	g.pf("public static void %sFixedClamp(%s value, TableReport report)\n{\n", st.Name, st.Name)
+	g.pf("public static bool %sFixedClamp(%s value, TableReport report)\n{\n", st.Name, st.Name)
 	g.pf("    int clamped = 0;\n")
 	g.pf("    %sFixedClampBody(value, ref clamped);\n", st.Name)
 	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
+	g.pf("    return clamped == 0;\n")
 	g.pf("}\n\n")
 }
 
@@ -283,12 +284,13 @@ func (g *tableGen) emitFixedWriterClamp(name string, idx int, rows []fixedWriter
 	g.pf("// lane's bounds pass holds this endpoint to. The reader's range is the wider\n")
 	g.pf("// one, so clamping to it would land a value the old writer could not have\n")
 	g.pf("// written.\n")
-	g.pf("public static void %sFixedClampKnown%d(%s value, TableReport report)\n{\n", name, idx, name)
+	g.pf("public static bool %sFixedClampKnown%d(%s value, TableReport report)\n{\n", name, idx, name)
 	g.pf("    int clamped = 0;\n")
 	for _, r := range rows {
 		g.emitFixedWriterClampField(r, 4)
 	}
 	g.pf("    if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
+	g.pf("    return clamped == 0;\n")
 	g.pf("}\n\n")
 }
 
