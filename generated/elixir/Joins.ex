@@ -295,7 +295,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsAgree.t(), non_neg_integer()} | :error
   def read_arms_agree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -422,7 +422,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsDisagree.t(), non_neg_integer()} | :error
   def read_arms_disagree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -556,7 +556,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmEmpty.t(), non_neg_integer()} | :error
   def read_arm_empty_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -704,7 +704,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsNested.t(), non_neg_integer()} | :error
   def read_arms_nested_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -875,7 +875,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmAlign.t(), non_neg_integer()} | :error
   def read_arm_align_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1033,7 +1033,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmArray.t(), non_neg_integer()} | :error
   def read_arm_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1143,7 +1143,7 @@ defmodule Example.Joins do
           {:ok, Example.Narrow.t(), non_neg_integer()} | :error
   def read_narrow_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1230,7 +1230,7 @@ defmodule Example.Joins do
           {:ok, Example.Wide.t(), non_neg_integer()} | :error
   def read_wide_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1367,7 +1367,7 @@ defmodule Example.Joins do
           {:ok, Example.Uneven.t(), non_neg_integer()} | :error
   def read_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1532,7 +1532,7 @@ defmodule Example.Joins do
           {:ok, Example.HoldsUneven.t(), non_neg_integer()} | :error
   def read_holds_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1671,7 +1671,7 @@ defmodule Example.Joins do
           {:ok, Example.ArrUneven.t(), non_neg_integer()} | :error
   def read_arr_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1816,7 +1816,7 @@ defmodule Example.Joins do
   def read_regain_after_align_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

@@ -352,7 +352,7 @@ defmodule Example.Types do
           {:ok, Example.Vec3.t(), non_neg_integer()} | :error
   def read_vec3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -436,7 +436,7 @@ defmodule Example.Types do
           {:ok, Example.Quat.t(), non_neg_integer()} | :error
   def read_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -534,7 +534,7 @@ defmodule Example.Types do
           {:ok, Example.Handle.t(), non_neg_integer()} | :error
   def read_handle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -659,7 +659,7 @@ defmodule Example.Types do
   def read_quantized_position_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -793,7 +793,7 @@ defmodule Example.Types do
   def read_quantized_velocity_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -932,7 +932,7 @@ defmodule Example.Types do
   def read_quantized_rotation_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1142,7 +1142,7 @@ defmodule Example.Types do
           {:ok, Example.RigidBody.t(), non_neg_integer()} | :error
   def read_rigid_body_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1378,7 +1378,7 @@ defmodule Example.Types do
           {:ok, Example.Input.t(), non_neg_integer()} | :error
   def read_input_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1543,7 +1543,7 @@ defmodule Example.Types do
           {:ok, Example.InputPacket.t(), non_neg_integer()} | :error
   def read_input_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1868,7 +1868,7 @@ defmodule Example.Types do
           {:ok, Example.ShipCreate.t(), non_neg_integer()} | :error
   def read_ship_create_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2079,7 +2079,7 @@ defmodule Example.Types do
           {:ok, Example.ExpressionProbe.t(), non_neg_integer()} | :error
   def read_expression_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2250,7 +2250,7 @@ defmodule Example.Types do
           {:ok, Example.ExtremeProbe.t(), non_neg_integer()} | :error
   def read_extreme_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2438,7 +2438,7 @@ defmodule Example.Types do
           {:ok, Example.ExtremeRow.t(), non_neg_integer()} | :error
   def read_extreme_row_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

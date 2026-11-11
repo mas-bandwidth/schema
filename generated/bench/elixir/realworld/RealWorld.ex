@@ -1532,7 +1532,7 @@ defmodule Realworld.RealWorld do
           {:ok, Realworld.RealPacket.t(), non_neg_integer()} | :error
   def read_real_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
