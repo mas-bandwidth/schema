@@ -603,7 +603,7 @@ function _M.WriteInputPacket(stream, v)
   if math.type(v.StartFrame) ~= "integer" then return false end
   if not stream:serializeBits64({ value = v.StartFrame }, 64) then return false end -- the storage width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.InputsCount) ~= "number" or v.InputsCount < 0 or v.InputsCount > 16 then return false end
+  if math.type(v.InputsCount) ~= "integer" or v.InputsCount < 0 or v.InputsCount > 16 then return false end
   if not stream:serializeBits({ value = v.InputsCount }, 5) then return false end -- the count
   for _i = 1, v.InputsCount do
     if not _M.WriteInput(stream, v.Inputs[_i]) then return false end
