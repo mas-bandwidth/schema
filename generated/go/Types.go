@@ -39,10 +39,20 @@ func WriteVec3(stream *serialize.WriteStream, value *Vec3) error {
 	return stream.Err()
 }
 
-// ReadVec3 reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadVec3 reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
 func ReadVec3(stream *serialize.ReadStream, value *Vec3) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a Vec3
+// nested in another value is read through it.
+func (value *Vec3) read(stream *serialize.ReadStream) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
 	stream.SerializeFloat64(&value.Z)
@@ -77,10 +87,20 @@ func WriteQuat(stream *serialize.WriteStream, value *Quat) error {
 	return stream.Err()
 }
 
-// ReadQuat reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadQuat reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
 func ReadQuat(stream *serialize.ReadStream, value *Quat) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a Quat
+// nested in another value is read through it.
+func (value *Quat) read(stream *serialize.ReadStream) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
 	stream.SerializeFloat64(&value.Z)
@@ -117,10 +137,21 @@ func WriteHandle(stream *serialize.WriteStream, value *Handle) error {
 	return stream.Err()
 }
 
-// ReadHandle reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadHandle reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadHandle(stream *serialize.ReadStream, value *Handle) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// Handle nested in another value is read through it.
+func (value *Handle) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 22)
 	c0 := uint64(n0)
@@ -177,10 +208,21 @@ func WriteQuantizedPosition(stream *serialize.WriteStream, value *QuantizedPosit
 	return stream.Err()
 }
 
-// ReadQuantizedPosition reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadQuantizedPosition reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadQuantizedPosition(stream *serialize.ReadStream, value *QuantizedPosition) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// QuantizedPosition nested in another value is read through it.
+func (value *QuantizedPosition) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	n1 := uint32(0)
@@ -247,10 +289,21 @@ func WriteQuantizedVelocity(stream *serialize.WriteStream, value *QuantizedVeloc
 	return stream.Err()
 }
 
-// ReadQuantizedVelocity reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadQuantizedVelocity reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadQuantizedVelocity(stream *serialize.ReadStream, value *QuantizedVelocity) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// QuantizedVelocity nested in another value is read through it.
+func (value *QuantizedVelocity) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	n1 := uint32(0)
@@ -320,10 +373,21 @@ func WriteQuantizedRotation(stream *serialize.WriteStream, value *QuantizedRotat
 	return stream.Err()
 }
 
-// ReadQuantizedRotation reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadQuantizedRotation reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadQuantizedRotation(stream *serialize.ReadStream, value *QuantizedRotation) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// QuantizedRotation nested in another value is read through it.
+func (value *QuantizedRotation) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 48)
 	if stream.Err() != nil {
@@ -395,22 +459,33 @@ func WriteRigidBody(stream *serialize.WriteStream, value *RigidBody) error {
 	return stream.Err()
 }
 
-// ReadRigidBody reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadRigidBody reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadRigidBody(stream *serialize.ReadStream, value *RigidBody) error {
-	if err := ReadVec3(stream, &value.Position); err != nil {
+	if err := value.read(stream); err != nil {
 		return err
 	}
-	if err := ReadQuat(stream, &value.Orientation); err != nil {
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// RigidBody nested in another value is read through it.
+func (value *RigidBody) read(stream *serialize.ReadStream) error {
+	if err := value.Position.read(stream); err != nil {
+		return err
+	}
+	if err := value.Orientation.read(stream); err != nil {
 		return err
 	}
 	stream.SerializeBool(&value.AtRest)
 	if !value.AtRest {
-		if err := ReadVec3(stream, &value.LinearVelocity); err != nil {
+		if err := value.LinearVelocity.read(stream); err != nil {
 			return err
 		}
-		if err := ReadVec3(stream, &value.AngularVelocity); err != nil {
+		if err := value.AngularVelocity.read(stream); err != nil {
 			return err
 		}
 	} else {
@@ -511,10 +586,20 @@ func WriteInput(stream *serialize.WriteStream, value *Input) error {
 	return stream.Err()
 }
 
-// ReadInput reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadInput reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
 func ReadInput(stream *serialize.ReadStream, value *Input) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a Input
+// nested in another value is read through it.
+func (value *Input) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -665,10 +750,21 @@ func WriteInputPacket(stream *serialize.WriteStream, value *InputPacket) error {
 	return stream.Err()
 }
 
-// ReadInputPacket reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadInputPacket reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadInputPacket(stream *serialize.ReadStream, value *InputPacket) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// InputPacket nested in another value is read through it.
+func (value *InputPacket) read(stream *serialize.ReadStream) error {
 	rawValue := uint32(0)
 	stream.SerializeBits(&rawValue, 16)
 	value.SynchronizeSequence = uint16(rawValue)
@@ -852,10 +948,21 @@ func WriteShipCreate(stream *serialize.WriteStream, value *ShipCreate) error {
 	return stream.Err()
 }
 
-// ReadShipCreate reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadShipCreate reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadShipCreate(stream *serialize.ReadStream, value *ShipCreate) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// ShipCreate nested in another value is read through it.
+func (value *ShipCreate) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -999,10 +1106,21 @@ func WriteExpressionProbe(stream *serialize.WriteStream, value *ExpressionProbe)
 	return stream.Err()
 }
 
-// ReadExpressionProbe reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadExpressionProbe reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadExpressionProbe(stream *serialize.ReadStream, value *ExpressionProbe) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// ExpressionProbe nested in another value is read through it.
+func (value *ExpressionProbe) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 16)
 	c0 := uint64(n0)
@@ -1079,10 +1197,21 @@ func WriteExtremeProbe(stream *serialize.WriteStream, value *ExtremeProbe) error
 	return stream.Err()
 }
 
-// ReadExtremeProbe reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadExtremeProbe reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadExtremeProbe(stream *serialize.ReadStream, value *ExtremeProbe) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// ExtremeProbe nested in another value is read through it.
+func (value *ExtremeProbe) read(stream *serialize.ReadStream) error {
 	offsetValue := uint64(0)
 	stream.SerializeBits64(&offsetValue, 64)
 	if stream.Err() != nil {
@@ -1165,10 +1294,21 @@ func WriteExtremeRow(stream *serialize.WriteStream, value *ExtremeRow) error {
 	return stream.Err()
 }
 
-// ReadExtremeRow reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadExtremeRow reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadExtremeRow(stream *serialize.ReadStream, value *ExtremeRow) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// ExtremeRow nested in another value is read through it.
+func (value *ExtremeRow) read(stream *serialize.ReadStream) error {
 	offsetValue := uint64(0)
 	stream.SerializeBits64(&offsetValue, 64)
 	if stream.Err() != nil {

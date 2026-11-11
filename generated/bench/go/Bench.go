@@ -100,10 +100,21 @@ func WriteBenchPacket(stream *serialize.WriteStream, value *BenchPacket) error {
 	return stream.Err()
 }
 
-// ReadBenchPacket reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadBenchPacket reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchPacket(stream *serialize.ReadStream, value *BenchPacket) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchPacket nested in another value is read through it.
+func (value *BenchPacket) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -231,10 +242,21 @@ func WriteBenchInts(stream *serialize.WriteStream, value *BenchInts) error {
 	return stream.Err()
 }
 
-// ReadBenchInts reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadBenchInts reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchInts(stream *serialize.ReadStream, value *BenchInts) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchInts nested in another value is read through it.
+func (value *BenchInts) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -325,10 +347,21 @@ func WriteBenchBits(stream *serialize.WriteStream, value *BenchBits) error {
 	return stream.Err()
 }
 
-// ReadBenchBits reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadBenchBits reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchBits(stream *serialize.ReadStream, value *BenchBits) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchBits nested in another value is read through it.
+func (value *BenchBits) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -602,10 +635,21 @@ func WriteMixedEntity(stream *serialize.WriteStream, value *MixedEntity) error {
 	return stream.Err()
 }
 
-// ReadMixedEntity reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedEntity reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedEntity(stream *serialize.ReadStream, value *MixedEntity) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedEntity nested in another value is read through it.
+func (value *MixedEntity) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -688,10 +732,21 @@ func WriteMixedStat(stream *serialize.WriteStream, value *MixedStat) error {
 	return stream.Err()
 }
 
-// ReadMixedStat reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadMixedStat reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedStat(stream *serialize.ReadStream, value *MixedStat) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedStat nested in another value is read through it.
+func (value *MixedStat) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 18)
 	c0 := uint64(n0)
@@ -744,10 +799,21 @@ func WriteMixedHitEvent(stream *serialize.WriteStream, value *MixedHitEvent) err
 	return stream.Err()
 }
 
-// ReadMixedHitEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedHitEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedHitEvent(stream *serialize.ReadStream, value *MixedHitEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedHitEvent nested in another value is read through it.
+func (value *MixedHitEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 28)
 	c0 := uint64(n0)
@@ -795,10 +861,21 @@ func WriteMixedChatEvent(stream *serialize.WriteStream, value *MixedChatEvent) e
 	return stream.Err()
 }
 
-// ReadMixedChatEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadMixedChatEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedChatEvent(stream *serialize.ReadStream, value *MixedChatEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedChatEvent nested in another value is read through it.
+func (value *MixedChatEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 14)
 	c0 := uint64(n0)
@@ -842,10 +919,21 @@ func WriteMixedPickupEvent(stream *serialize.WriteStream, value *MixedPickupEven
 	return stream.Err()
 }
 
-// ReadMixedPickupEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadMixedPickupEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedPickupEvent(stream *serialize.ReadStream, value *MixedPickupEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedPickupEvent nested in another value is read through it.
+func (value *MixedPickupEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 18)
 	c0 := uint64(n0)
@@ -937,10 +1025,21 @@ func WriteMixedEvent(stream *serialize.WriteStream, value *MixedEvent) error {
 	return stream.Err() // None — the tag is the whole wire
 }
 
-// ReadMixedEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadMixedEvent reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// MixedEvent nested in another value is read through it.
+func (value *MixedEvent) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -950,13 +1049,13 @@ func ReadMixedEvent(stream *serialize.ReadStream, value *MixedEvent) error {
 	switch value.Type {
 	case MixedEventTypeHit:
 		value.Hit = MixedHitEvent{} // fresh payload on every selection
-		return ReadMixedHitEvent(stream, &value.Hit)
+		return value.Hit.read(stream)
 	case MixedEventTypeChat:
 		value.Chat = MixedChatEvent{} // fresh payload on every selection
-		return ReadMixedChatEvent(stream, &value.Chat)
+		return value.Chat.read(stream)
 	case MixedEventTypePickup:
 		value.Pickup = MixedPickupEvent{} // fresh payload on every selection
-		return ReadMixedPickupEvent(stream, &value.Pickup)
+		return value.Pickup.read(stream)
 	}
 	return stream.Err() // None
 }
@@ -1388,10 +1487,21 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	return stream.Err()
 }
 
-// ReadBenchMixed reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadBenchMixed reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// BenchMixed nested in another value is read through it.
+func (value *BenchMixed) read(stream *serialize.ReadStream) error {
 	c6 := uint64(0)
 	stream.SerializeBits64(&c6, 64)
 	c7 := uint64(0)
@@ -1648,7 +1758,7 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		v1 := (c0 >> 8) & 0x3ff
 		value.Stats[i3].Delta = int32(v1) - 512
 	}
-	if err := ReadMixedEvent(stream, &value.GameEvent); err != nil {
+	if err := value.GameEvent.read(stream); err != nil {
 		return err
 	}
 	n1 := uint32(0)

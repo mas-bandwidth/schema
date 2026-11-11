@@ -64,13 +64,13 @@ func TestGoCompressedFloatReadIsFinite(t *testing.T) {
 		"type FlatEdge\n{\n    a uint8\n    x float32 | min = 0.0, max = 1000.0, resolution = 1.0\n}\n\n" +
 		"type Fine\n{\n    y float32 | min = 0.0, max = 1000.0, resolution = 1.0\n}\n"
 	files := generateEdgeGo(t, src)
-	for _, decl := range []string{"func ReadEdge(", "func ReadFlatEdge("} {
+	for _, decl := range []string{"func (value *Edge) read(", "func (value *FlatEdge) read("} {
 		body := funcBody(t, files, decl)
 		if !strings.Contains(body, "return serialize.ErrNonFiniteFloat") {
 			t.Errorf("%s does not refuse a non-finite dequantized value\n%s", decl, body)
 		}
 	}
-	if body := funcBody(t, files, "func ReadFine("); strings.Contains(body, "ErrNonFiniteFloat") {
+	if body := funcBody(t, files, "func (value *Fine) read("); strings.Contains(body, "ErrNonFiniteFloat") {
 		t.Errorf("ReadFine guards a declaration whose every step is finite\n%s", body)
 	}
 	t.Run("probe", func(t *testing.T) {

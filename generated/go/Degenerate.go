@@ -35,10 +35,20 @@ func WriteVec2(stream *serialize.WriteStream, value *Vec2) error {
 	return stream.Err()
 }
 
-// ReadVec2 reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadVec2 reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
 func ReadVec2(stream *serialize.ReadStream, value *Vec2) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a Vec2
+// nested in another value is read through it.
+func (value *Vec2) read(stream *serialize.ReadStream) error {
 	stream.SerializeFloat64(&value.X)
 	stream.SerializeFloat64(&value.Y)
 	return stream.Err()
@@ -68,10 +78,21 @@ func WriteSpanF64(stream *serialize.WriteStream, value *SpanF64) error {
 	return stream.Err()
 }
 
-// ReadSpanF64 reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanF64 reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanF64(stream *serialize.ReadStream, value *SpanF64) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanF64 nested in another value is read through it.
+func (value *SpanF64) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
@@ -102,10 +123,21 @@ func WriteSpanU64(stream *serialize.WriteStream, value *SpanU64) error {
 	return stream.Err()
 }
 
-// ReadSpanU64 reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanU64 reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanU64(stream *serialize.ReadStream, value *SpanU64) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanU64 nested in another value is read through it.
+func (value *SpanU64) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 2; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
@@ -137,10 +169,21 @@ func WriteSpanI64(stream *serialize.WriteStream, value *SpanI64) error {
 	return stream.Err()
 }
 
-// ReadSpanI64 reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanI64 reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanI64(stream *serialize.ReadStream, value *SpanI64) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanI64 nested in another value is read through it.
+func (value *SpanI64) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 2; i++ {
 		rawValue := uint64(0)
 		stream.SerializeBits64(&rawValue, 64)
@@ -173,10 +216,21 @@ func WriteSpanOne(stream *serialize.WriteStream, value *SpanOne) error {
 	return stream.Err()
 }
 
-// ReadSpanOne reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanOne reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanOne(stream *serialize.ReadStream, value *SpanOne) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanOne nested in another value is read through it.
+func (value *SpanOne) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 1; i++ {
 		stream.SerializeBits64(&value.Values[i], 64)
 	}
@@ -210,10 +264,21 @@ func WriteSpanChunk(stream *serialize.WriteStream, value *SpanChunk) error {
 	return stream.Err()
 }
 
-// ReadSpanChunk reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanChunk reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanChunk(stream *serialize.ReadStream, value *SpanChunk) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanChunk nested in another value is read through it.
+func (value *SpanChunk) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	if stream.Err() != nil {
@@ -256,10 +321,21 @@ func WriteSpanTail(stream *serialize.WriteStream, value *SpanTail) error {
 	return stream.Err()
 }
 
-// ReadSpanTail reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanTail reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanTail(stream *serialize.ReadStream, value *SpanTail) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanTail nested in another value is read through it.
+func (value *SpanTail) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.Values[i])
 	}
@@ -295,10 +371,21 @@ func WriteSpanTwice(stream *serialize.WriteStream, value *SpanTwice) error {
 	return stream.Err()
 }
 
-// ReadSpanTwice reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadSpanTwice reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadSpanTwice(stream *serialize.ReadStream, value *SpanTwice) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// SpanTwice nested in another value is read through it.
+func (value *SpanTwice) read(stream *serialize.ReadStream) error {
 	for i := 0; i < 2; i++ {
 		stream.SerializeFloat64(&value.A[i])
 	}
@@ -336,10 +423,20 @@ func WriteTrio(stream *serialize.WriteStream, value *Trio) error {
 	return stream.Err()
 }
 
-// ReadTrio reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadTrio reads one packet holding value from stream, validating every field,
+// then checks the packet's end: a whole byte left after the value, or a set
+// unused bit in the final byte, is refused. It returns the stream's error, or
+// ErrValidation or serialize.ErrValueOutOfRange for a wire the schema refuses.
 func ReadTrio(stream *serialize.ReadStream, value *Trio) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a Trio
+// nested in another value is read through it.
+func (value *Trio) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	if stream.Err() != nil {
@@ -380,10 +477,21 @@ func WriteTrioSole(stream *serialize.WriteStream, value *TrioSole) error {
 	return stream.Err()
 }
 
-// ReadTrioSole reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadTrioSole reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTrioSole(stream *serialize.ReadStream, value *TrioSole) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TrioSole nested in another value is read through it.
+func (value *TrioSole) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	if stream.Err() != nil {
@@ -422,11 +530,22 @@ func WriteVec3Sole(stream *serialize.WriteStream, value *Vec3Sole) error {
 	return stream.Err()
 }
 
-// ReadVec3Sole reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadVec3Sole reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadVec3Sole(stream *serialize.ReadStream, value *Vec3Sole) error {
-	if err := ReadVec3(stream, &value.V); err != nil {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// Vec3Sole nested in another value is read through it.
+func (value *Vec3Sole) read(stream *serialize.ReadStream) error {
+	if err := value.V.read(stream); err != nil {
 		return err
 	}
 	return stream.Err()
@@ -462,10 +581,21 @@ func WriteTrioFirst(stream *serialize.WriteStream, value *TrioFirst) error {
 	return stream.Err()
 }
 
-// ReadTrioFirst reads value from stream, validating every field. It returns the
-// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
-// the schema refuses.
+// ReadTrioFirst reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTrioFirst(stream *serialize.ReadStream, value *TrioFirst) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TrioFirst nested in another value is read through it.
+func (value *TrioFirst) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	n1 := uint32(0)
@@ -523,10 +653,21 @@ func WriteTrioStraddle(stream *serialize.WriteStream, value *TrioStraddle) error
 	return stream.Err()
 }
 
-// ReadTrioStraddle reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadTrioStraddle reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTrioStraddle(stream *serialize.ReadStream, value *TrioStraddle) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TrioStraddle nested in another value is read through it.
+func (value *TrioStraddle) read(stream *serialize.ReadStream) error {
 	stream.SerializeBits64(&value.Pad0, 64)
 	stream.SerializeBits64(&value.Pad1, 64)
 	stream.SerializeBits64(&value.Pad2, 64)

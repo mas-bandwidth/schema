@@ -717,10 +717,21 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 	return stream.Err()
 }
 
-// ReadRealPacket reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadRealPacket reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadRealPacket(stream *serialize.ReadStream, value *RealPacket) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// RealPacket nested in another value is read through it.
+func (value *RealPacket) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)

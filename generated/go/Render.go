@@ -53,10 +53,21 @@ func WriteRenderSprite(stream *serialize.WriteStream, value *RenderSprite) error
 	return stream.Err()
 }
 
-// ReadRenderSprite reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadRenderSprite reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadRenderSprite(stream *serialize.ReadStream, value *RenderSprite) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// RenderSprite nested in another value is read through it.
+func (value *RenderSprite) read(stream *serialize.ReadStream) error {
 	c0 := uint64(0)
 	stream.SerializeBits64(&c0, 64)
 	c1 := uint64(0)
@@ -164,10 +175,21 @@ func WriteRenderBlock(stream *serialize.WriteStream, value *RenderBlock) error {
 	return stream.Err()
 }
 
-// ReadRenderBlock reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadRenderBlock reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadRenderBlock(stream *serialize.ReadStream, value *RenderBlock) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// RenderBlock nested in another value is read through it.
+func (value *RenderBlock) read(stream *serialize.ReadStream) error {
 	c5 := uint64(0)
 	stream.SerializeBits64(&c5, 64)
 	if stream.Err() != nil {

@@ -220,10 +220,21 @@ func WriteTableHitEvent(stream *serialize.WriteStream, value *TableHitEvent) err
 	return stream.Err()
 }
 
-// ReadTableHitEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadTableHitEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTableHitEvent(stream *serialize.ReadStream, value *TableHitEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TableHitEvent nested in another value is read through it.
+func (value *TableHitEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 28)
 	c0 := uint64(n0)
@@ -271,10 +282,21 @@ func WriteTableChatEvent(stream *serialize.WriteStream, value *TableChatEvent) e
 	return stream.Err()
 }
 
-// ReadTableChatEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadTableChatEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTableChatEvent(stream *serialize.ReadStream, value *TableChatEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TableChatEvent nested in another value is read through it.
+func (value *TableChatEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 14)
 	c0 := uint64(n0)
@@ -318,10 +340,21 @@ func WriteTablePickupEvent(stream *serialize.WriteStream, value *TablePickupEven
 	return stream.Err()
 }
 
-// ReadTablePickupEvent reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadTablePickupEvent reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTablePickupEvent(stream *serialize.ReadStream, value *TablePickupEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TablePickupEvent nested in another value is read through it.
+func (value *TablePickupEvent) read(stream *serialize.ReadStream) error {
 	n0 := uint32(0)
 	stream.SerializeBits(&n0, 18)
 	c0 := uint64(n0)
@@ -413,10 +446,21 @@ func WriteTableEvent(stream *serialize.WriteStream, value *TableEvent) error {
 	return stream.Err() // None — the tag is the whole wire
 }
 
-// ReadTableEvent reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadTableEvent reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadTableEvent(stream *serialize.ReadStream, value *TableEvent) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// TableEvent nested in another value is read through it.
+func (value *TableEvent) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -426,13 +470,13 @@ func ReadTableEvent(stream *serialize.ReadStream, value *TableEvent) error {
 	switch value.Type {
 	case TableEventTypeHit:
 		value.Hit = TableHitEvent{} // fresh payload on every selection
-		return ReadTableHitEvent(stream, &value.Hit)
+		return value.Hit.read(stream)
 	case TableEventTypeChat:
 		value.Chat = TableChatEvent{} // fresh payload on every selection
-		return ReadTableChatEvent(stream, &value.Chat)
+		return value.Chat.read(stream)
 	case TableEventTypePickup:
 		value.Pickup = TablePickupEvent{} // fresh payload on every selection
-		return ReadTablePickupEvent(stream, &value.Pickup)
+		return value.Pickup.read(stream)
 	}
 	return stream.Err() // None
 }

@@ -67,10 +67,21 @@ func WriteDefaultArm(stream *serialize.WriteStream, value *DefaultArm) error {
 	return stream.Err()
 }
 
-// ReadDefaultArm reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadDefaultArm reads one packet holding value from stream, validating every
+// field, then checks the packet's end: a whole byte left after the value, or a
+// set unused bit in the final byte, is refused. It returns the stream's error,
+// or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadDefaultArm(stream *serialize.ReadStream, value *DefaultArm) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// DefaultArm nested in another value is read through it.
+func (value *DefaultArm) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -173,10 +184,21 @@ func WriteDefaultChoice(stream *serialize.WriteStream, value *DefaultChoice) err
 	return stream.Err() // None — the tag is the whole wire
 }
 
-// ReadDefaultChoice reads value from stream, validating every field. It returns
-// the stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a
-// wire the schema refuses.
+// ReadDefaultChoice reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadDefaultChoice(stream *serialize.ReadStream, value *DefaultChoice) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// DefaultChoice nested in another value is read through it.
+func (value *DefaultChoice) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -189,10 +211,10 @@ func ReadDefaultChoice(stream *serialize.ReadStream, value *DefaultChoice) error
 	switch value.Type {
 	case DefaultChoiceTypeFirst:
 		value.First = NewDefaultArm() // fresh payload on every selection
-		return ReadDefaultArm(stream, &value.First)
+		return value.First.read(stream)
 	case DefaultChoiceTypeSecond:
 		value.Second = NewDefaultArm() // fresh payload on every selection
-		return ReadDefaultArm(stream, &value.Second)
+		return value.Second.read(stream)
 	}
 	return stream.Err() // None
 }
@@ -222,11 +244,22 @@ func WriteDefaultChoicePacket(stream *serialize.WriteStream, value *DefaultChoic
 	return stream.Err()
 }
 
-// ReadDefaultChoicePacket reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadDefaultChoicePacket reads one packet holding value from stream,
+// validating every field, then checks the packet's end: a whole byte left after
+// the value, or a set unused bit in the final byte, is refused. It returns the
+// stream's error, or ErrValidation or serialize.ErrValueOutOfRange for a wire
+// the schema refuses.
 func ReadDefaultChoicePacket(stream *serialize.ReadStream, value *DefaultChoicePacket) error {
-	if err := ReadDefaultChoice(stream, &value.Choice); err != nil {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// DefaultChoicePacket nested in another value is read through it.
+func (value *DefaultChoicePacket) read(stream *serialize.ReadStream) error {
+	if err := value.Choice.read(stream); err != nil {
 		return err
 	}
 	return stream.Err()
@@ -277,11 +310,22 @@ func WriteDefaultBulkArm(stream *serialize.WriteStream, value *DefaultBulkArm) e
 	return stream.Err()
 }
 
-// ReadDefaultBulkArm reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadDefaultBulkArm reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadDefaultBulkArm(stream *serialize.ReadStream, value *DefaultBulkArm) error {
-	if err := ReadDefaultArm(stream, &value.Payload); err != nil {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// DefaultBulkArm nested in another value is read through it.
+func (value *DefaultBulkArm) read(stream *serialize.ReadStream) error {
+	if err := value.Payload.read(stream); err != nil {
 		return err
 	}
 	offsetValue := uint32(0)
@@ -372,10 +416,21 @@ func WriteDefaultBulkChoice(stream *serialize.WriteStream, value *DefaultBulkCho
 	return stream.Err() // None — the tag is the whole wire
 }
 
-// ReadDefaultBulkChoice reads value from stream, validating every field. It
-// returns the stream's error, or ErrValidation or serialize.ErrValueOutOfRange
-// for a wire the schema refuses.
+// ReadDefaultBulkChoice reads one packet holding value from stream, validating
+// every field, then checks the packet's end: a whole byte left after the value,
+// or a set unused bit in the final byte, is refused. It returns the stream's
+// error, or ErrValidation or serialize.ErrValueOutOfRange for a wire the schema
+// refuses.
 func ReadDefaultBulkChoice(stream *serialize.ReadStream, value *DefaultBulkChoice) error {
+	if err := value.read(stream); err != nil {
+		return err
+	}
+	return stream.SerializeEnd()
+}
+
+// read reads value's fields from stream without the packet's end check: a
+// DefaultBulkChoice nested in another value is read through it.
+func (value *DefaultBulkChoice) read(stream *serialize.ReadStream) error {
 	offsetValue := uint32(0)
 	stream.SerializeBits(&offsetValue, 2)
 	if stream.Err() != nil {
@@ -388,10 +443,10 @@ func ReadDefaultBulkChoice(stream *serialize.ReadStream, value *DefaultBulkChoic
 	switch value.Type {
 	case DefaultBulkChoiceTypeFirst:
 		value.First = NewDefaultBulkArm() // fresh payload on every selection
-		return ReadDefaultBulkArm(stream, &value.First)
+		return value.First.read(stream)
 	case DefaultBulkChoiceTypeSecond:
 		value.Second = NewDefaultBulkArm() // fresh payload on every selection
-		return ReadDefaultBulkArm(stream, &value.Second)
+		return value.Second.read(stream)
 	}
 	return stream.Err() // None
 }
