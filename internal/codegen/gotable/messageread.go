@@ -8,17 +8,19 @@ import (
 )
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {return tableMessageBody%s(r,value,0)}\n", st.Name, g.storageName(st.Name), st.Name)
-	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,depth int)bool {\n", st.Name, g.storageName(st.Name))
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the vocabulary resolves each reference to the first slot
-	// carrying its id once, and a body's field is tested and set in one bit of
-	// a bitmap the vocabulary holds for this nesting level. The check costs one
-	// test per field whatever the vocabulary's size, and the bitmaps are reset
-	// by a generation stamp per body.
-	g.pf("if depth>tableMessageBodyMaxDepth {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n")
-	g.pf("gen:=tableMessageBodyStart(r.Vocabulary,depth);%sReset(value);\n", st.Name)
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageBodySeen(r.Vocabulary,depth,gen,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
+	// or unknown, at every nesting level: the body's open tick sits in starts,
+	// sized here at the deepest nesting this body's declaration reaches (fixed,
+	// since a by-value cycle does not compile), and the test is one look at the
+	// named entry (tableMessageBodyRepeat).
+	nest := messageBodyNest(st, map[*ir.Struct]int{})
+	if nest > ir.TableFixedMaxDepth {
+		panic(fmt.Sprintf("message body %s nests %d deep, past the fixed form's %d", st.Name, nest, ir.TableFixedMaxDepth))
+	}
+	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
+	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
+	g.pf("tableMessageBodyOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageBodyRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
@@ -78,7 +80,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-		g.pf("%sif !tableMessageBody%s(r,&%s,depth+1){return false}\n", ind, f.Type.Name, expr)
+		g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):
 		target := g.nextWireWriter()
 		g.pf("{ %s:=&%s\n", target, expr)
@@ -177,4 +179,35 @@ func (g *tableGen) emitMessageArmReset(un *ir.Union, v ir.UnionVariant, expr str
 		g.emitTableResetField(&f)
 		g.pf("}\n")
 	}
+}
+
+// messageBodyNest is how many bodies deep a read of st's body can go below it:
+// one level for each nested table reached by value, through an array's
+// element or a union's arm, exactly where the generated read descends.
+func messageBodyNest(st *ir.Struct, memo map[*ir.Struct]int) int {
+	if d, ok := memo[st]; ok {
+		return d
+	}
+	var field func(f *ir.Field) int
+	field = func(f *ir.Field) int {
+		switch {
+		case isStructRef(f.Type):
+			return 1 + messageBodyNest(f.Type.Ref.(*ir.Struct), memo)
+		case isUnionRef(f.Type):
+			d := 0
+			for _, v := range f.Type.Ref.(*ir.Union).Variants {
+				if v.F != nil {
+					d = max(d, field(v.F))
+				}
+			}
+			return d
+		}
+		return 0
+	}
+	d := 0
+	for _, f := range st.Fields {
+		d = max(d, field(f))
+	}
+	memo[st] = d
+	return d
 }

@@ -138,14 +138,11 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings) bool {
-	return tableMessageBodyGunnerSettings(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyGunnerSettings(r, value, starts[:], 0)
 }
-func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GunnerSettingsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -161,7 +158,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -480,14 +477,11 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 	return 2 + w.Bits/8
 }
 func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
-	return tableMessageBodyShipEntry(r, value, 0)
+	var starts [2]uint64
+	return tableMessageBodyShipEntry(r, value, starts[:], 0)
 }
-func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ShipEntryReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -503,7 +497,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, depth in
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -692,7 +686,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, depth in
 						return false
 					}
 				}
-				if !tableMessageBodyGunnerSettings(r, &value.Gunner, depth+1) {
+				if !tableMessageBodyGunnerSettings(r, &value.Gunner, starts, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -899,14 +893,11 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings) bool {
-	return tableMessageBodyGlobalSettings(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyGlobalSettings(r, value, starts[:], 0)
 }
-func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GlobalSettingsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -922,7 +913,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1325,14 +1316,11 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
-	return tableMessageBodyPackConfig(r, value, 0)
+	var starts [3]uint64
+	return tableMessageBodyPackConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	PackConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1348,7 +1336,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1395,7 +1383,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth 
 						return false
 					}
 				}
-				if !tableMessageBodyGlobalSettings(r, &value.Settings, depth+1) {
+				if !tableMessageBodyGlobalSettings(r, &value.Settings, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -1449,7 +1437,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth 
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyShipEntry(r, &(*p), depth+1) {
+						if !tableMessageBodyShipEntry(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1562,7 +1550,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth 
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyShipEntry(r, &(*p), depth+1) {
+						if !tableMessageBodyShipEntry(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}

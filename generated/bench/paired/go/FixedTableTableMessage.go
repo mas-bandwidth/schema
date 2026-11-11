@@ -80,14 +80,11 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
-	return tableMessageBodyFixedTable(r, value, 0)
+	var starts [3]uint64
+	return tableMessageBodyFixedTable(r, value, starts[:], 0)
 }
-func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -103,7 +100,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, depth 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -119,7 +116,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, depth 
 						return false
 					}
 				}
-				if !tableMessageBodyBenchMixed(r, &value.Value, depth+1) {
+				if !tableMessageBodyBenchMixed(r, &value.Value, starts, depth+1) {
 					return false
 				}
 				if widened {

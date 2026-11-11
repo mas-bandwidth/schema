@@ -199,94 +199,63 @@ func tableMessageBits(n uint64) int64 {
 }
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
-	seen, stamp, gen, canon := v.bodySeen, v.bodyStamp, v.bodyGen, v.bodyCanon
-	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024, bodySeen: seen, bodyStamp: stamp, bodyGen: gen, bodyCanon: canon}
-	tableMessageScratch(v)
+	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
 }
-func tableMessageScratch(v *TableVocabulary) {
-	words := (len(v.Entries) + 63) / 64
-	if words < 1 {
-		words = 1
-	}
-	span := words * (tableMessageBodyMaxDepth + 1)
-	if cap(v.bodySeen) < span {
-		v.bodySeen = make([]uint64, span)
-	} else {
-		v.bodySeen = v.bodySeen[:span]
-	}
-	if cap(v.bodyStamp) < span {
-		v.bodyStamp = make([]uint64, span)
-	} else {
-		v.bodyStamp = v.bodyStamp[:span]
-	}
-	if cap(v.bodyGen) < tableMessageBodyMaxDepth+1 {
-		v.bodyGen = make([]uint64, tableMessageBodyMaxDepth+1)
-	} else {
-		v.bodyGen = v.bodyGen[:tableMessageBodyMaxDepth+1]
-	}
-	if cap(v.bodyCanon) < len(v.Entries) {
-		v.bodyCanon = make([]uint64, len(v.Entries))
-	} else {
-		v.bodyCanon = v.bodyCanon[:len(v.Entries)]
-	}
+
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above seven bits holding that body's level) and a bit for each shallower
+// level whose body had named it: a level's mark still stands when that level's
+// open body began at or before the last naming, and the levels whose bodies
+// were opened since are dropped as the entry is named again. Two slots
+// announcing one id are one entry, the first.
+func tableMessageBodyOpen(v *TableVocabulary, starts []uint64, depth int) {
+	v.bodyClock++
+	starts[depth] = v.bodyClock
 }
-func tableMessageCanonical(v *TableVocabulary) {
-	clear(v.bodySeen)
-	clear(v.bodyStamp)
-	clear(v.bodyGen)
-	for i := int64(0); i < v.Count; i++ {
-		slot := uint64(i + 1)
-		for j := int64(0); j < i; j++ {
+func tableMessageBodyFirst(v *TableVocabulary) {
+	for i := range v.Count {
+		for j := range i {
 			if v.Entries[j].ID == v.Entries[i].ID {
-				slot = uint64(j + 1)
+				v.Entries[i].bodyFirst = uint64(j + 1)
 				break
 			}
 		}
-		v.bodyCanon[i] = slot
 	}
 }
-func tableMessageBodyStart(v *TableVocabulary, depth int) uint64 {
-	if depth < 0 || depth >= len(v.bodyGen) {
-		return 0
+func tableMessageBodyRepeat(v *TableVocabulary, starts []uint64, depth int, ref uint64) bool {
+	e := &v.Entries[ref-1]
+	if e.bodyFirst != 0 {
+		e = &v.Entries[e.bodyFirst-1]
 	}
-	v.bodyGen[depth]++
-	if v.bodyGen[depth] == 0 {
-		words := (len(v.Entries) + 63) / 64
-		if words < 1 {
-			words = 1
+	at, last, below := e.bodySeenAt>>7, int(e.bodySeenAt&127), e.bodySeenBelow
+	if starts[depth] <= at {
+		if last == depth || below>>uint(depth)&1 != 0 {
+			return true
 		}
-		clear(v.bodyStamp[depth*words : (depth+1)*words])
-		v.bodyGen[depth] = 1
+		below &= 1<<uint(depth) - 1
+	} else {
+		kept, hi := 0, depth
+		for kept < hi {
+			mid := (kept + hi) / 2
+			if starts[mid] <= at {
+				kept = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if last < kept {
+			below |= 1 << uint(last)
+		}
+		below &= 1<<uint(kept) - 1
 	}
-	return v.bodyGen[depth]
-}
-func tableMessageBodySeen(v *TableVocabulary, depth int, gen, ref uint64) bool {
-	if gen == 0 || depth < 0 || depth >= len(v.bodyGen) || ref == 0 || ref > uint64(len(v.bodyCanon)) {
-		return false
-	}
-	slot := v.bodyCanon[ref-1]
-	if slot == 0 {
-		return false
-	}
-	words := (len(v.Entries) + 63) / 64
-	if words < 1 {
-		words = 1
-	}
-	at := depth*words + int((slot-1)>>6)
-	bit := uint64(1) << ((slot - 1) & 63)
-	if v.bodyStamp[at] != gen {
-		v.bodyStamp[at] = gen
-		v.bodySeen[at] = 0
-	}
-	if v.bodySeen[at]&bit != 0 {
-		return true
-	}
-	v.bodySeen[at] |= bit
+	e.bodySeenBelow = below
+	e.bodySeenAt = v.bodyClock<<7 | uint64(depth)
 	return false
 }
-
-const tableMessageBodyMaxDepth = 128
-
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
 		return TableMessageEntry{}, false
@@ -464,8 +433,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if v.RefBits == 0 {
 		v.RefBits = 1
 	}
-	tableMessageScratch(v)
-	tableMessageCanonical(v)
+	tableMessageBodyFirst(v)
 	v.Announced = true
 	return true
 }
@@ -959,14 +927,11 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	return !w.Overflow
 }
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
-	return tableMessageBodyMixedEntity(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyMixedEntity(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedEntityReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -982,7 +947,7 @@ func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, dept
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1514,14 +1479,11 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	return !w.Overflow
 }
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
-	return tableMessageBodyMixedStat(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyMixedStat(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedStatReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1537,7 +1499,7 @@ func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, depth in
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1665,14 +1627,11 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	return !w.Overflow
 }
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
-	return tableMessageBodyMixedHitEvent(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyMixedHitEvent(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedHitEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1688,7 +1647,7 @@ func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1868,14 +1827,11 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	return !w.Overflow
 }
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
-	return tableMessageBodyMixedChatEvent(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyMixedChatEvent(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedChatEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1891,7 +1847,7 @@ func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2000,14 +1956,11 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	return !w.Overflow
 }
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
-	return tableMessageBodyMixedPickupEvent(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyMixedPickupEvent(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedPickupEventReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2023,7 +1976,7 @@ func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupE
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2443,14 +2396,11 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	return !w.Overflow
 }
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
-	return tableMessageBodyBenchMixed(r, value, 0)
+	var starts [2]uint64
+	return tableMessageBodyBenchMixed(r, value, starts[:], 0)
 }
-func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	BenchMixedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -2466,7 +2416,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -2815,7 +2765,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyMixedEntity(r, &(*p), depth+1) {
+						if !tableMessageBodyMixedEntity(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2855,7 +2805,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyMixedStat(r, &(*p), depth+1) {
+						if !tableMessageBodyMixedStat(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2910,7 +2860,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 										value := &(*payload48)
 										MixedHitEventReset(&value.Hit)
 									}
-									if !tableMessageBodyMixedHitEvent(r, &(*payload48).Hit, depth+1) {
+									if !tableMessageBodyMixedHitEvent(r, &(*payload48).Hit, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2934,7 +2884,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 										value := &(*payload48)
 										MixedChatEventReset(&value.Chat)
 									}
-									if !tableMessageBodyMixedChatEvent(r, &(*payload48).Chat, depth+1) {
+									if !tableMessageBodyMixedChatEvent(r, &(*payload48).Chat, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2958,7 +2908,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, depth 
 										value := &(*payload48)
 										MixedPickupEventReset(&value.Pickup)
 									}
-									if !tableMessageBodyMixedPickupEvent(r, &(*payload48).Pickup, depth+1) {
+									if !tableMessageBodyMixedPickupEvent(r, &(*payload48).Pickup, starts, depth+1) {
 										return false
 									}
 									if widened {

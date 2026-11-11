@@ -92,14 +92,11 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 	return 2 + w.Bits/8
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
-	return tableMessageBodyArchiveConfig(r, value, 0)
+	var starts [6]uint64
+	return tableMessageBodyArchiveConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ArchiveConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -115,7 +112,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -131,7 +128,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 						return false
 					}
 				}
-				if !tableMessageBodyRootConfig(r, &value.Root, depth+1) {
+				if !tableMessageBodyRootConfig(r, &value.Root, starts, depth+1) {
 					return false
 				}
 				if widened {

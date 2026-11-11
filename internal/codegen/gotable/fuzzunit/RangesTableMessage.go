@@ -216,14 +216,11 @@ func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) bool {
-	return tableMessageBodyRangedSigned(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyRangedSigned(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -239,7 +236,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, de
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1129,14 +1126,11 @@ func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned) bool {
-	return tableMessageBodyRangedUnsigned(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyRangedUnsigned(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1152,7 +1146,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1943,14 +1937,11 @@ func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) bool {
-	return tableMessageBodyRangedWidths(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyRangedWidths(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1966,7 +1957,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, de
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

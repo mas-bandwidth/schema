@@ -125,14 +125,11 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
-	return tableMessageBodyTeamConfig(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyTeamConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TeamConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -148,7 +145,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, depth 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -354,14 +351,11 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
-	return tableMessageBodyGunnerConfig(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyGunnerConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GunnerConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -377,7 +371,7 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, de
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -593,14 +587,11 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
-	return tableMessageBodyTurretConfig(r, value, 0)
+	var starts [2]uint64
+	return tableMessageBodyTurretConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TurretConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -616,7 +607,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, de
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -708,7 +699,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, de
 						return false
 					}
 				}
-				if !tableMessageBodyGunnerConfig(r, &value.Gunner, depth+1) {
+				if !tableMessageBodyGunnerConfig(r, &value.Gunner, starts, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -897,14 +888,11 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
-	return tableMessageBodyHullConfig(r, value, 0)
+	var starts [3]uint64
+	return tableMessageBodyHullConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	HullConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -920,7 +908,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, depth 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1048,7 +1036,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, depth 
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyTurretConfig(r, &(*p), depth+1) {
+						if !tableMessageBodyTurretConfig(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1281,14 +1269,11 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 	return 2 + w.Bits/8
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
-	return tableMessageBodyKeyedConfig(r, value, 0)
+	var starts [4]uint64
+	return tableMessageBodyKeyedConfig(r, value, starts[:], 0)
 }
-func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	KeyedConfigReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1304,7 +1289,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, dept
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
@@ -1356,7 +1341,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, dept
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyTeamConfig(r, &(*p), depth+1) {
+						if !tableMessageBodyTeamConfig(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1412,7 +1397,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, dept
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyHullConfig(r, &(*p), depth+1) {
+						if !tableMessageBodyHullConfig(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1432,7 +1417,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, dept
 						return false
 					}
 				}
-				if !tableMessageBodyScoreBoard(r, &value.Scores, depth+1) {
+				if !tableMessageBodyScoreBoard(r, &value.Scores, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -1530,14 +1515,11 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 	return !w.Overflow
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
-	return tableMessageBodyScoreBoard(r, value, 0)
+	var starts [1]uint64
+	return tableMessageBodyScoreBoard(r, value, starts[:], 0)
 }
-func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, depth int) bool {
-	if depth > tableMessageBodyMaxDepth {
-		r.Report.Refuse(TableRefuseWireDamaged, "")
-		return false
-	}
-	gen := tableMessageBodyStart(r.Vocabulary, depth)
+func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ScoreBoardReset(value)
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1553,7 +1535,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, dep
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}

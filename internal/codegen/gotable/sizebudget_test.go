@@ -55,8 +55,8 @@ const (
 	// -5: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -1161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	// +110: the message body repeat check holds a vocabulary-sized seen bitmap keyed by field id (SPEC-TABLES §3.3)
-	goOneTableLineBudget = 10117
+	// +73: the message body repeat check marks the named entry per nesting level in the caller's storage (SPEC-TABLES §3.3)
+	goOneTableLineBudget = 10080
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -94,8 +94,8 @@ const (
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	// +212: the message body repeat check holds a vocabulary-sized seen bitmap keyed by field id (SPEC-TABLES §3.3)
-	goExamplesLineBudget = 60309
+	// +112: the message body repeat check marks the named entry per nesting level in the caller's storage (SPEC-TABLES §3.3)
+	goExamplesLineBudget = 60209
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
