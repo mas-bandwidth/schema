@@ -214,8 +214,8 @@ int writeBenchPacket(BenchPacket value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchPacket(BenchPacket value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -474,8 +474,8 @@ int writeBenchInts(BenchInts value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchInts(BenchInts value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -651,8 +651,8 @@ int writeBenchBits(BenchBits value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchBits(BenchBits value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -998,8 +998,8 @@ int writeMixedEntity(MixedEntity value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEntity(MixedEntity value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1141,8 +1141,8 @@ int writeMixedStat(MixedStat value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedStat(MixedStat value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1239,8 +1239,8 @@ int writeMixedHitEvent(MixedHitEvent value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedHitEvent(MixedHitEvent value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1330,8 +1330,8 @@ int writeMixedChatEvent(MixedChatEvent value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedChatEvent(MixedChatEvent value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1415,8 +1415,8 @@ int writeMixedPickupEvent(MixedPickupEvent value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedPickupEvent(MixedPickupEvent value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -1550,8 +1550,8 @@ int writeMixedEvent(MixedEvent value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readMixedEvent(MixedEvent value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
@@ -2315,8 +2315,8 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
 // verdict: false rejects the wire (bounds, ranges, wire constants, padding);
 // hostile bytes never throw. No slack past the payload is required.
 bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
-  if (numBits > view.lengthInBytes * 8) {
-    return false; // the payload cannot exceed the buffer behind view
+  if (numBits < 0 || numBits > view.lengthInBytes * 8) {
+    return false; // a read faces untrusted wire: refuse negative or past-buffer counts
   }
   // the final 64-bit window, assembled once so every load stays inside
   // the buffer (serialize.dart's own no-slack reader stance)
