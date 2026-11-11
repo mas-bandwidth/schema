@@ -54,7 +54,10 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 4. **Every writer refuses what its declaration does not admit, by its own
    idiom.** [SPEC.md](SPEC.md) §5.1 is the whole contract: a debug-only assert
    where the language has that idiom, a refusal in every build where it does
-   not, and a storage guard in every build in every leg. A build whose check is
+   not. In an assert leg (C, C++, C#, Rust, Java, Dart) every write check,
+   storage checks included, is a debug assert only: correct writes are the
+   programmer's responsibility, and a missing release-build write check there
+   is never a defect. A build whose check is
    compiled out may write an off-declaration value; the reader on the other end
    refuses it. **No target panics on a write and none throws.**
 5. **The read side is untouched by that doctrine.** A read faces untrusted data
