@@ -489,7 +489,7 @@ endef
 
 .PHONY: conformance-negative-control-cpp-write-refusal
 conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no variable length check */,SABOTAGED: no variable length check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
@@ -497,4 +497,4 @@ conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness 
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; } /* SABOTAGED: no message length check */,SABOTAGED: no message length check,write-refusal-message,message)

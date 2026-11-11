@@ -1098,14 +1098,22 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 			width = len(s) + 2
 		}
 	}
+	// the name column fits the longest surface and a space, so every row
+	// reads `<surface> +<cell>`: the negative controls read a verdict that way
+	name := 14
+	for _, s := range surfaces {
+		if len(s)+2 > name {
+			name = len(s) + 2
+		}
+	}
 	b.WriteString("\nTABLES CONFORMANCE — surface x language\n\n")
-	fmt.Fprintf(&b, "%-14s", "surface")
+	fmt.Fprintf(&b, "%-*s", name, "surface")
 	for _, l := range langs {
 		fmt.Fprintf(&b, "%-*s", width, l)
 	}
-	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", 14+width*len(langs)))
+	fmt.Fprintf(&b, "\n%s\n", strings.Repeat("-", name+width*len(langs)))
 	for _, s := range surfaces {
-		fmt.Fprintf(&b, "%-14s", s)
+		fmt.Fprintf(&b, "%-*s", name, s)
 		for _, l := range langs {
 			r := results[l][s]
 			var cell string
