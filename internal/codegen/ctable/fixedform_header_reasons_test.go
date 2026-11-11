@@ -38,10 +38,11 @@ func TestCFixedHeaderRefusalReasons(t *testing.T) {
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
         n = @SNAKE@_fixed_load( &back, 1, file, 10, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_TRUNCATED )
+        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_TRUNCATED ||
+             r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
         {
-            printf( "truncated: n=%lld refused=%d reason=%d, want -1, refused, truncated\n",
-                    (long long) n, r.refused, r.reason );
+            printf( "truncated: n=%lld refused=%d reason=%d refuse_reason=%d, want -1, refused, truncated, wire_damaged\n",
+                    (long long) n, r.refused, r.reason, r.refuse_reason );
             bad = 1;
         }
 
@@ -52,10 +53,11 @@ func TestCFixedHeaderRefusalReasons(t *testing.T) {
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
         n = @SNAKE@_fixed_load( &back, 1, file, 20, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO )
+        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO ||
+             r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
         {
-            printf( "reserved: n=%lld refused=%d reason=%d, want -1, refused, reserved_not_zero\n",
-                    (long long) n, r.refused, r.reason );
+            printf( "reserved: n=%lld refused=%d reason=%d refuse_reason=%d, want -1, refused, reserved_not_zero, wire_damaged\n",
+                    (long long) n, r.refused, r.reason, r.refuse_reason );
             bad = 1;
         }
 
