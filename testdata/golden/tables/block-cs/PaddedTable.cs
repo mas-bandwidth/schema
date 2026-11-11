@@ -469,6 +469,7 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(10), unchecked((int)value.Id));
             int len_label = value.Label != null ? value.LabelLength : 0;
             System.Diagnostics.Debug.Assert(len_label <= 15);
+            System.Diagnostics.Debug.Assert(len_label == 0 || TableWire.TextValid(value.Label.AsSpan(0, len_label)));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(14), len_label);
             if (len_label > 0) { value.Label.AsSpan(0, len_label).CopyTo(b.Slice(18)); }
             if (value.Slots != null) { TableFixedWire.WriteLittle<ushort>(value.Slots.AsSpan(0, Math.Min(value.Slots.Length, 4)), b.Slice(33)); }

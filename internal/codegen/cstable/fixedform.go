@@ -1543,6 +1543,7 @@ func (g *tableGen) emitFixedWritePayloadAs(owner *ir.Struct, f *ir.Field, base i
 	case f.Type.Kind == ir.TString:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, stem, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, stem, f.Type.Size)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s == 0 || TableWire.TextValid(%s.%s.AsSpan(0, len_%s)));\n", ind, stem, val, prop, stem)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, stem)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, stem, val, prop, stem, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
@@ -1645,6 +1646,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 		case *ir.Union:
 			tagBytes := int64(ir.StorageBitsFor(r.Max) / 8)
 			g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
+			g.pf("%s    System.Diagnostics.Debug.Assert((ulong)%s.Type <= %d);\n", ind, expr, r.Max)
 			tagType := f.Type.Name + "Type"
 			switch tagBytes {
 			case 1:
@@ -1672,6 +1674,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
 			return
 		case *ir.Enum:
+			g.pf("%sSystem.Diagnostics.Debug.Assert((ulong)%s <= %d);\n", ind, expr, r.Max)
 			w := int64(r.StorageBits / 8)
 			switch w {
 			case 1:
@@ -1687,6 +1690,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		}
 	}
+	g.writeRangeAssert(f, expr, ind)
 	w := fixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:

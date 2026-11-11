@@ -204,6 +204,36 @@ func fieldDefaultExpr(f *ir.Field) string {
 // packet emitter uses, so one field is spelled one way across a unit.
 func member(f *ir.Field) string { return ir.GoExportName(f.Name) }
 
+// writeRangeAssert emits a write-side debug-only check for a ranged integer or
+// a bits(N) field (docs/SPEC.md §5.1 rows 1-2): a value off its declared bound
+// is caller error — a System.Diagnostics.Debug.Assert in a debug build, gone in
+// a release build. expr is the typed field access the writer already spells and
+// indent the leading whitespace. The ends are dropped exactly as the read side
+// drops its clamps, so a comparison that cannot fire is never emitted.
+func (g *tableGen) writeRangeAssert(f *ir.Field, expr, indent string) {
+	if f.HasIntRange {
+		kind := tableScalarKind(f)
+		width := tableKindWidth(kind)
+		if width == 0 {
+			return
+		}
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		low, high := tableClampEnds(f, width)
+		switch {
+		case low && high:
+			g.pf("%sSystem.Diagnostics.Debug.Assert(%s >= %s && %s <= %s);\n", indent, expr, csIntLit(f.IntMin, signed, width), expr, csIntLit(f.IntMax, signed, width))
+		case low:
+			g.pf("%sSystem.Diagnostics.Debug.Assert(%s >= %s);\n", indent, expr, csIntLit(f.IntMin, signed, width))
+		case high:
+			g.pf("%sSystem.Diagnostics.Debug.Assert(%s <= %s);\n", indent, expr, csIntLit(f.IntMax, signed, width))
+		}
+		return
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		g.pf("%sSystem.Diagnostics.Debug.Assert(%s <= %dul);\n", indent, expr, (uint64(1)<<f.Type.Width)-1)
+	}
+}
+
 // ---- storage (table declarations only; closure types come from <Base>.cs) ----
 
 func (g *tableGen) emitTableClass(st *ir.Struct) {

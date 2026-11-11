@@ -2897,7 +2897,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), unchecked((int)value.TargetObjectId));
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(72), value.Thrust);
             b.Slice(76)[0] = unchecked((byte)value.ObjectSequence);
+            System.Diagnostics.Debug.Assert((ulong)value.ShipType <= 3);
             b.Slice(77)[0] = (byte)value.ShipType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(78)[0] = (byte)value.Team;
             b.Slice(79)[0] = (byte)(value.HasTargetLock ? 1 : 0);
             b.Slice(80)[0] = (byte)(value.PredictedExplode ? 1 : 0);
@@ -2915,6 +2917,7 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(48), unchecked((int)value.TurretIndex));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), unchecked((int)value.TargetObjectId));
             b.Slice(56)[0] = unchecked((byte)value.ObjectSequence);
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(57)[0] = (byte)value.Team;
             b.Slice(58)[0] = (byte)(value.HasTargetLock ? 1 : 0);
         }
@@ -2929,7 +2932,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), unchecked((long)value.Flags));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ObjectId));
             b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
+            System.Diagnostics.Debug.Assert((ulong)value.MissileType <= 2);
             b.Slice(69)[0] = (byte)value.MissileType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(70)[0] = (byte)value.Team;
         }
 
@@ -2943,7 +2948,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), unchecked((long)value.Flags));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ObjectId));
             b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
+            System.Diagnostics.Debug.Assert((ulong)value.PropType <= 3);
             b.Slice(69)[0] = (byte)value.PropType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(70)[0] = (byte)value.Team;
         }
 
@@ -2957,7 +2964,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.Scale);
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), unchecked((long)value.Flags));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), unchecked((int)value.StaticPropId));
+            System.Diagnostics.Debug.Assert((ulong)value.PropType <= 3);
             b.Slice(76)[0] = (byte)value.PropType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(77)[0] = (byte)value.Team;
         }
 
@@ -2972,7 +2981,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), unchecked((long)value.Flags));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), unchecked((int)value.CosmeticPropId));
             b.Slice(76)[0] = unchecked((byte)value.PropSequence);
+            System.Diagnostics.Debug.Assert((ulong)value.PropType <= 3);
             b.Slice(77)[0] = (byte)value.PropType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(78)[0] = (byte)value.Team;
         }
 
@@ -2985,7 +2996,9 @@ namespace Blockdemo
             RenderVector3FixedWriteBody(b.Slice(24), value.Finish);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(48), value.T);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), unchecked((int)value.LaserId));
+            System.Diagnostics.Debug.Assert((ulong)value.LaserType <= 2);
             b.Slice(60)[0] = (byte)value.LaserType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(61)[0] = (byte)value.Team;
         }
 
@@ -2999,7 +3012,9 @@ namespace Blockdemo
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.T);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), unchecked((int)value.ExplosionId));
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), unchecked((int)value.ParentObjectId));
+            System.Diagnostics.Debug.Assert((ulong)value.ExplosionType <= 2);
             b.Slice(72)[0] = (byte)value.ExplosionType;
+            System.Diagnostics.Debug.Assert((ulong)value.Team <= 4);
             b.Slice(73)[0] = (byte)value.Team;
         }
 

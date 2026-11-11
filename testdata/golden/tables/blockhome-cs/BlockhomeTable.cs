@@ -139,6 +139,10 @@ namespace Blockhome
         public Func<ulong, TableReport, ulong> RangeRaw;
         public Func<ulong, TableReport, ulong> RangeJsonInteger;
         public Func<ulong, bool> RequiredValidRaw;
+        // a ranged integer or bits(N) field's write-side predicate (docs/SPEC.md
+        // §5.1 rows 1-2): true when the raw value lies within its declared bound,
+        // the check the writers assert in a debug build. null on every other field.
+        public Func<ulong, bool> RangeValidRaw;
         public UInt128 DefaultWide;
         public int FracBits;
         public bool WideSigned;
@@ -4880,6 +4884,9 @@ namespace Blockhome
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
+                // A RANGED INTEGER OR A BITS(N) VALUE OFF ITS BOUND IS CALLER ERROR
+                // (docs/SPEC.md §5.1 rows 1-2): a debug assert, gone in a release build.
+                if (f.RangeValidRaw != null) { System.Diagnostics.Debug.Assert(f.RangeValidRaw(f.GetRaw(value, i))); }
                 // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
                 // §3.3): collect precedes measure and the first output byte, so Measure
                 // and Save both answer -1.

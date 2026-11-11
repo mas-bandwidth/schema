@@ -119,6 +119,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 			if finite := leafFiniteCondition(f); finite != "" {
 				g.pf("    if (%s) return false;\n", finite)
 			}
+			g.writeRangeAssert(f, "v."+member(f), "    ")
 			cond := leafRideCondition(f)
 			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
 		} else if childSt, ok := isChildScalarArray(f); ok {
@@ -455,6 +456,20 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 			lit = formatFloat32
 		}
 		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, lit(f.FMin), lit(f.FMax))
+	}
+	// the write-side range/bits predicate (docs/SPEC.md §5.1 rows 1-2), the
+	// debug-assert twin of RangeRaw: exact integer bounds, no report, no clamp.
+	if (f.HasIntRange || f.Type.Kind == ir.TBits && f.Type.Width < 64) && tableKindWidth(kind) <= 8 {
+		typ := csFieldType(f.Type)
+		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
+		if f.Type.Kind == ir.TBits && !f.HasIntRange {
+			high := (uint64(1) << f.Type.Width) - 1
+			fmt.Fprintf(&b, ", RangeValidRaw = delegate (ulong raw) { %s v = %s; return v <= %dul; }", typ, value, high)
+		} else {
+			signed := f.Type.Kind == ir.TInt && f.Type.Signed
+			width := tableKindWidth(kind)
+			fmt.Fprintf(&b, ", RangeValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, csIntLit(f.IntMin, signed, width), csIntLit(f.IntMax, signed, width))
+		}
 	}
 	var c strings.Builder
 	typ := csFieldType(f.Type)
@@ -851,6 +866,9 @@ public static partial class TableWire
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
+        // A RANGED INTEGER OR A BITS(N) VALUE OFF ITS BOUND IS CALLER ERROR
+        // (docs/SPEC.md §5.1 rows 1-2): a debug assert, gone in a release build.
+        if (f.RangeValidRaw != null) { System.Diagnostics.Debug.Assert(f.RangeValidRaw(f.GetRaw(value, i))); }
         // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
         // §3.3): collect precedes measure and the first output byte, so Measure
         // and Save both answer -1.
