@@ -4781,7 +4781,7 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableEntity
-		if TableEntityFixedLoad(fixed[:], data, tableFixedReadPlanTableEntity, read) != 1 {
+		if TableEntityFixedLoad(fixed[:], data, TableEntityFixedReadPlan, read) != 1 {
 			TableEntityReset(value)
 			return false
 		}
@@ -5020,7 +5020,7 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableStat
-		if TableStatFixedLoad(fixed[:], data, tableFixedReadPlanTableStat, read) != 1 {
+		if TableStatFixedLoad(fixed[:], data, TableStatFixedReadPlan, read) != 1 {
 			TableStatReset(value)
 			return false
 		}
@@ -6724,7 +6724,7 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]TableMixed
-		if TableMixedFixedLoad(fixed[:], data, tableFixedReadPlanTableMixed, read) != 1 {
+		if TableMixedFixedLoad(fixed[:], data, TableMixedFixedReadPlan, read) != 1 {
 			TableMixedReset(value)
 			return false
 		}
@@ -8728,7 +8728,7 @@ var TableEntityFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableEntity = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
+var TableEntityFixedReadPlan = make([]TableFixedEntry, int(TableEntityFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -8984,7 +8984,7 @@ var TableStatFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableStat = make([]TableFixedEntry, int(TableStatFixedPlanMax))
+var TableStatFixedReadPlan = make([]TableFixedEntry, int(TableStatFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9464,7 +9464,7 @@ var TableMixedFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanTableMixed = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
+var TableMixedFixedReadPlan = make([]TableFixedEntry, int(TableMixedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

@@ -81,9 +81,9 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 	var starts [3]uint64
-	return tableMessageBodyFixedTable(r, value, starts[:], 0)
+	return FixedTableLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
+func FixedTableLoadMessageBodyAt(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
 	for {
@@ -116,7 +116,7 @@ func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts
 						return false
 					}
 				}
-				if !tableMessageBodyBenchMixed(r, &value.Value, starts, depth+1) {
+				if !BenchMixedLoadMessageBodyAt(r, &value.Value, starts, depth+1) {
 					return false
 				}
 				if widened {

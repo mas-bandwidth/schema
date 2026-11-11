@@ -229,7 +229,7 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]ArchiveConfig
-		if ArchiveConfigFixedLoad(fixed[:], data, tableFixedReadPlanArchiveConfig, read) != 1 {
+		if ArchiveConfigFixedLoad(fixed[:], data, ArchiveConfigFixedReadPlan, read) != 1 {
 			ArchiveConfigReset(value)
 			return false
 		}
@@ -863,7 +863,7 @@ var ArchiveConfigFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanArchiveConfig = make([]TableFixedEntry, int(ArchiveConfigFixedPlanMax))
+var ArchiveConfigFixedReadPlan = make([]TableFixedEntry, int(ArchiveConfigFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

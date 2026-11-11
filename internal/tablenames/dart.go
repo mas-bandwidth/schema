@@ -74,6 +74,7 @@ func init() {
 		Name{Name: "TableMessageBits", What: "the announced message bit codec: the reference width of an n-entry vocabulary"},
 		Name{Name: "TableMessageKnownKind", What: "the announced message bit codec: whether a kind is in the closed set"},
 		Name{Name: "TableMessageKindWidth", What: "the announced message bit codec: the fixed width of a scalar kind's payload"},
+		Name{Name: "TableMessageKindWidens", What: "the announced message bit codec: whether an announced kind widens to the declared one"},
 		Name{Name: "TableMessageLeb", What: "the announced message bit codec: the canonical LEB128 length every length takes (§3)"},
 		Name{Name: "TableMessageSameEntry", What: "the announced message bit codec: whether one entry's bytes repeat an earlier entry's (§3.3)"},
 		Name{Name: "TableMessageSkipEntry", What: "the announced message bit codec: step over one announced entry by the shape its announcement decoded (§3.3)"},

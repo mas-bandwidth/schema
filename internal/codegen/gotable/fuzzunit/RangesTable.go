@@ -903,7 +903,7 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]RangedSigned
-		if RangedSignedFixedLoad(fixed[:], data, tableFixedReadPlanRangedSigned, read) != 1 {
+		if RangedSignedFixedLoad(fixed[:], data, RangedSignedFixedReadPlan, read) != 1 {
 			RangedSignedReset(value)
 			return false
 		}
@@ -2660,7 +2660,7 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]RangedUnsigned
-		if RangedUnsignedFixedLoad(fixed[:], data, tableFixedReadPlanRangedUnsigned, read) != 1 {
+		if RangedUnsignedFixedLoad(fixed[:], data, RangedUnsignedFixedReadPlan, read) != 1 {
 			RangedUnsignedReset(value)
 			return false
 		}
@@ -3927,7 +3927,7 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 	}
 	if len(data) > 0 && data[0] == TableFixedForm {
 		var fixed [1]RangedWidths
-		if RangedWidthsFixedLoad(fixed[:], data, tableFixedReadPlanRangedWidths, read) != 1 {
+		if RangedWidthsFixedLoad(fixed[:], data, RangedWidthsFixedReadPlan, read) != 1 {
 			RangedWidthsReset(value)
 			return false
 		}
@@ -4959,7 +4959,7 @@ var RangedSignedFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanRangedSigned = make([]TableFixedEntry, int(RangedSignedFixedPlanMax))
+var RangedSignedFixedReadPlan = make([]TableFixedEntry, int(RangedSignedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5265,7 +5265,7 @@ var RangedUnsignedFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanRangedUnsigned = make([]TableFixedEntry, int(RangedUnsignedFixedPlanMax))
+var RangedUnsignedFixedReadPlan = make([]TableFixedEntry, int(RangedUnsignedFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5533,7 +5533,7 @@ var RangedWidthsFixedPlanMax = func() int32 {
 	return m
 }()
 
-var tableFixedReadPlanRangedWidths = make([]TableFixedEntry, int(RangedWidthsFixedPlanMax))
+var RangedWidthsFixedReadPlan = make([]TableFixedEntry, int(RangedWidthsFixedPlanMax))
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.

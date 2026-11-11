@@ -976,9 +976,9 @@ func TableEntitySaveMessages(values []*TableEntity, buffer []byte, report *Table
 }
 func TableEntityLoadMessageBody(r *TableMessageReader, value *TableEntity) bool {
 	var starts [1]uint64
-	return tableMessageBodyTableEntity(r, value, starts[:], 0)
+	return TableEntityLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTableEntity(r *TableMessageReader, value *TableEntity, starts []uint64, depth int) bool {
+func TableEntityLoadMessageBodyAt(r *TableMessageReader, value *TableEntity, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TableEntityReset(value)
 	for {
@@ -1618,9 +1618,9 @@ func TableStatSaveMessages(values []*TableStat, buffer []byte, report *TableRepo
 }
 func TableStatLoadMessageBody(r *TableMessageReader, value *TableStat) bool {
 	var starts [1]uint64
-	return tableMessageBodyTableStat(r, value, starts[:], 0)
+	return TableStatLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTableStat(r *TableMessageReader, value *TableStat, starts []uint64, depth int) bool {
+func TableStatLoadMessageBodyAt(r *TableMessageReader, value *TableStat, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TableStatReset(value)
 	for {
@@ -2163,9 +2163,9 @@ func TableMixedSaveMessages(values []*TableMixed, buffer []byte, report *TableRe
 }
 func TableMixedLoadMessageBody(r *TableMessageReader, value *TableMixed) bool {
 	var starts [2]uint64
-	return tableMessageBodyTableMixed(r, value, starts[:], 0)
+	return TableMixedLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts []uint64, depth int) bool {
+func TableMixedLoadMessageBodyAt(r *TableMessageReader, value *TableMixed, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TableMixedReset(value)
 	for {
@@ -2571,7 +2571,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyTableEntity(r, &(*p), starts, depth+1) {
+						if !TableEntityLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2611,7 +2611,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyTableStat(r, &(*p), starts, depth+1) {
+						if !TableStatLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2666,7 +2666,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 										value := &(*payload41)
 										TableHitEventReset(&value.Hit)
 									}
-									if !tableMessageBodyTableHitEvent(r, &(*payload41).Hit, starts, depth+1) {
+									if !TableHitEventLoadMessageBodyAt(r, &(*payload41).Hit, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2690,7 +2690,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 										value := &(*payload41)
 										TableChatEventReset(&value.Chat)
 									}
-									if !tableMessageBodyTableChatEvent(r, &(*payload41).Chat, starts, depth+1) {
+									if !TableChatEventLoadMessageBodyAt(r, &(*payload41).Chat, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2714,7 +2714,7 @@ func tableMessageBodyTableMixed(r *TableMessageReader, value *TableMixed, starts
 										value := &(*payload41)
 										TablePickupEventReset(&value.Pickup)
 									}
-									if !tableMessageBodyTablePickupEvent(r, &(*payload41).Pickup, starts, depth+1) {
+									if !TablePickupEventLoadMessageBodyAt(r, &(*payload41).Pickup, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -3426,9 +3426,9 @@ func TableHitEventSaveMessageBody(w *TableMessageWriter, value *TableHitEvent) b
 }
 func TableHitEventLoadMessageBody(r *TableMessageReader, value *TableHitEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyTableHitEvent(r, value, starts[:], 0)
+	return TableHitEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTableHitEvent(r *TableMessageReader, value *TableHitEvent, starts []uint64, depth int) bool {
+func TableHitEventLoadMessageBodyAt(r *TableMessageReader, value *TableHitEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TableHitEventReset(value)
 	for {
@@ -3626,9 +3626,9 @@ func TableChatEventSaveMessageBody(w *TableMessageWriter, value *TableChatEvent)
 }
 func TableChatEventLoadMessageBody(r *TableMessageReader, value *TableChatEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyTableChatEvent(r, value, starts[:], 0)
+	return TableChatEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTableChatEvent(r *TableMessageReader, value *TableChatEvent, starts []uint64, depth int) bool {
+func TableChatEventLoadMessageBodyAt(r *TableMessageReader, value *TableChatEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TableChatEventReset(value)
 	for {
@@ -3755,9 +3755,9 @@ func TablePickupEventSaveMessageBody(w *TableMessageWriter, value *TablePickupEv
 }
 func TablePickupEventLoadMessageBody(r *TableMessageReader, value *TablePickupEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyTablePickupEvent(r, value, starts[:], 0)
+	return TablePickupEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTablePickupEvent(r *TableMessageReader, value *TablePickupEvent, starts []uint64, depth int) bool {
+func TablePickupEventLoadMessageBodyAt(r *TableMessageReader, value *TablePickupEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TablePickupEventReset(value)
 	for {

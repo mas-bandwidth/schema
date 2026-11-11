@@ -217,9 +217,9 @@ func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *Tab
 }
 func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) bool {
 	var starts [1]uint64
-	return tableMessageBodyRangedSigned(r, value, starts[:], 0)
+	return RangedSignedLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
+func RangedSignedLoadMessageBodyAt(r *TableMessageReader, value *RangedSigned, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedSignedReset(value)
 	for {
@@ -1127,9 +1127,9 @@ func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report 
 }
 func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned) bool {
 	var starts [1]uint64
-	return tableMessageBodyRangedUnsigned(r, value, starts[:], 0)
+	return RangedUnsignedLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
+func RangedUnsignedLoadMessageBodyAt(r *TableMessageReader, value *RangedUnsigned, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedUnsignedReset(value)
 	for {
@@ -1938,9 +1938,9 @@ func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *Tab
 }
 func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) bool {
 	var starts [1]uint64
-	return tableMessageBodyRangedWidths(r, value, starts[:], 0)
+	return RangedWidthsLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
+func RangedWidthsLoadMessageBodyAt(r *TableMessageReader, value *RangedWidths, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RangedWidthsReset(value)
 	for {

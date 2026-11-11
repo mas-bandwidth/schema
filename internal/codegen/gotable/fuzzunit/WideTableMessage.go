@@ -147,9 +147,9 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 }
 func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 	var starts [1]uint64
-	return tableMessageBodyWideBlob(r, value, starts[:], 0)
+	return WideBlobLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
+func WideBlobLoadMessageBodyAt(r *TableMessageReader, value *WideBlob, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	WideBlobReset(value)
 	for {

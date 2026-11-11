@@ -4562,6 +4562,11 @@ var tableGeneratedVerbs = []string{
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
 	"MeasureMessages", "SaveMessages", "LoadMessages", "LoadMessagesMeasure", "SaveMessageBody", "LoadMessageBody",
+	// the message body reader's depth-carrying walk (Go) and the body
+	// validity predicate (JavaScript), both emitted per declaration
+	"LoadMessageBodyAt", "MessageBodyOk",
+	// the fixed root's read plan, a package variable Go emits per root
+	"FixedReadPlan",
 	"Reset", "LoadMeasure", "LoadMeasureReason", "MeasureReason", "CookMeasureReason", "LoadBuilder", "TableType", "Builder",
 	// the read's two entries over a caller's region and a builder, which the
 	// plain Load and LoadBuilder and the integrity form call (docs/SPEC-TABLES.md §6.5)

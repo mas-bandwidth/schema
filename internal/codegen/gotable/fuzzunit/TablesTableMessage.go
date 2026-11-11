@@ -150,9 +150,9 @@ func RootConfigSaveMessages(values []*RootConfig, buffer []byte, report *TableRe
 }
 func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 	var starts [5]uint64
-	return tableMessageBodyRootConfig(r, value, starts[:], 0)
+	return RootConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts []uint64, depth int) bool {
+func RootConfigLoadMessageBodyAt(r *TableMessageReader, value *RootConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	RootConfigReset(value)
 	for {
@@ -243,7 +243,7 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyWeaponConfig(r, &(*p), starts, depth+1) {
+						if !WeaponConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -283,7 +283,7 @@ func tableMessageBodyRootConfig(r *TableMessageReader, value *RootConfig, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyProfileConfig(r, &(*p), starts, depth+1) {
+						if !ProfileConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -475,9 +475,9 @@ func WeaponConfigSaveMessages(values []*WeaponConfig, buffer []byte, report *Tab
 }
 func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) bool {
 	var starts [2]uint64
-	return tableMessageBodyWeaponConfig(r, value, starts[:], 0)
+	return WeaponConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, starts []uint64, depth int) bool {
+func WeaponConfigLoadMessageBodyAt(r *TableMessageReader, value *WeaponConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	WeaponConfigReset(value)
 	for {
@@ -727,7 +727,7 @@ func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, st
 										value := (*payload15).Buff()
 										BuffReset(&value.Value)
 									}
-									if !tableMessageBodyBuff(r, &(*payload15).Buff().Value, starts, depth+1) {
+									if !BuffLoadMessageBodyAt(r, &(*payload15).Buff().Value, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -751,7 +751,7 @@ func tableMessageBodyWeaponConfig(r *TableMessageReader, value *WeaponConfig, st
 										value := (*payload15).Debuff()
 										DebuffReset(&value.Value)
 									}
-									if !tableMessageBodyDebuff(r, &(*payload15).Debuff().Value, starts, depth+1) {
+									if !DebuffLoadMessageBodyAt(r, &(*payload15).Debuff().Value, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -999,9 +999,9 @@ func LoadoutConfigSaveMessages(values []*LoadoutConfig, buffer []byte, report *T
 }
 func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) bool {
 	var starts [3]uint64
-	return tableMessageBodyLoadoutConfig(r, value, starts[:], 0)
+	return LoadoutConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, starts []uint64, depth int) bool {
+func LoadoutConfigLoadMessageBodyAt(r *TableMessageReader, value *LoadoutConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	LoadoutConfigReset(value)
 	for {
@@ -1210,7 +1210,7 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 						return false
 					}
 				}
-				if !tableMessageBodyWeaponConfig(r, &value.Primary, starts, depth+1) {
+				if !WeaponConfigLoadMessageBodyAt(r, &value.Primary, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -1247,7 +1247,7 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyWeaponConfig(r, &(*p), starts, depth+1) {
+						if !WeaponConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1286,7 +1286,7 @@ func tableMessageBodyLoadoutConfig(r *TableMessageReader, value *LoadoutConfig, 
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyAttachment(r, &(*p), starts, depth+1) {
+						if !AttachmentLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1563,9 +1563,9 @@ func ProfileConfigSaveMessages(values []*ProfileConfig, buffer []byte, report *T
 }
 func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) bool {
 	var starts [4]uint64
-	return tableMessageBodyProfileConfig(r, value, starts[:], 0)
+	return ProfileConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, starts []uint64, depth int) bool {
+func ProfileConfigLoadMessageBodyAt(r *TableMessageReader, value *ProfileConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ProfileConfigReset(value)
 	for {
@@ -2026,7 +2026,7 @@ func tableMessageBodyProfileConfig(r *TableMessageReader, value *ProfileConfig, 
 						return false
 					}
 				}
-				if !tableMessageBodyLoadoutConfig(r, &value.Loadout, starts, depth+1) {
+				if !LoadoutConfigLoadMessageBodyAt(r, &value.Loadout, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -2110,9 +2110,9 @@ func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool
 }
 func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool {
 	var starts [1]uint64
-	return tableMessageBodyAttachment(r, value, starts[:], 0)
+	return AttachmentLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyAttachment(r *TableMessageReader, value *AttachmentRow, starts []uint64, depth int) bool {
+func AttachmentLoadMessageBodyAt(r *TableMessageReader, value *AttachmentRow, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	AttachmentReset(value)
 	for {
@@ -2235,9 +2235,9 @@ func BuffSaveMessageBody(w *TableMessageWriter, value *BuffRow) bool {
 }
 func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 	var starts [1]uint64
-	return tableMessageBodyBuff(r, value, starts[:], 0)
+	return BuffLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyBuff(r *TableMessageReader, value *BuffRow, starts []uint64, depth int) bool {
+func BuffLoadMessageBodyAt(r *TableMessageReader, value *BuffRow, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	BuffReset(value)
 	for {
@@ -2321,9 +2321,9 @@ func DebuffSaveMessageBody(w *TableMessageWriter, value *DebuffRow) bool {
 }
 func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 	var starts [1]uint64
-	return tableMessageBodyDebuff(r, value, starts[:], 0)
+	return DebuffLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyDebuff(r *TableMessageReader, value *DebuffRow, starts []uint64, depth int) bool {
+func DebuffLoadMessageBodyAt(r *TableMessageReader, value *DebuffRow, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	DebuffReset(value)
 	for {

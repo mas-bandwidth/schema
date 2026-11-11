@@ -928,9 +928,9 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 }
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
 	var starts [1]uint64
-	return tableMessageBodyMixedEntity(r, value, starts[:], 0)
+	return MixedEntityLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedEntity(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
+func MixedEntityLoadMessageBodyAt(r *TableMessageReader, value *MixedEntity, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedEntityReset(value)
 	for {
@@ -1480,9 +1480,9 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 }
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 	var starts [1]uint64
-	return tableMessageBodyMixedStat(r, value, starts[:], 0)
+	return MixedStatLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedStat(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
+func MixedStatLoadMessageBodyAt(r *TableMessageReader, value *MixedStat, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedStatReset(value)
 	for {
@@ -1628,9 +1628,9 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 }
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyMixedHitEvent(r, value, starts[:], 0)
+	return MixedHitEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedHitEvent(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
+func MixedHitEventLoadMessageBodyAt(r *TableMessageReader, value *MixedHitEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedHitEventReset(value)
 	for {
@@ -1828,9 +1828,9 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 }
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyMixedChatEvent(r, value, starts[:], 0)
+	return MixedChatEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedChatEvent(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
+func MixedChatEventLoadMessageBodyAt(r *TableMessageReader, value *MixedChatEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedChatEventReset(value)
 	for {
@@ -1957,9 +1957,9 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 }
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
 	var starts [1]uint64
-	return tableMessageBodyMixedPickupEvent(r, value, starts[:], 0)
+	return MixedPickupEventLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyMixedPickupEvent(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
+func MixedPickupEventLoadMessageBodyAt(r *TableMessageReader, value *MixedPickupEvent, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	MixedPickupEventReset(value)
 	for {
@@ -2397,9 +2397,9 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 }
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 	var starts [2]uint64
-	return tableMessageBodyBenchMixed(r, value, starts[:], 0)
+	return BenchMixedLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
+func BenchMixedLoadMessageBodyAt(r *TableMessageReader, value *BenchMixed, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	BenchMixedReset(value)
 	for {
@@ -2765,7 +2765,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyMixedEntity(r, &(*p), starts, depth+1) {
+						if !MixedEntityLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2805,7 +2805,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyMixedStat(r, &(*p), starts, depth+1) {
+						if !MixedStatLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -2860,7 +2860,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 										value := &(*payload48)
 										MixedHitEventReset(&value.Hit)
 									}
-									if !tableMessageBodyMixedHitEvent(r, &(*payload48).Hit, starts, depth+1) {
+									if !MixedHitEventLoadMessageBodyAt(r, &(*payload48).Hit, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2884,7 +2884,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 										value := &(*payload48)
 										MixedChatEventReset(&value.Chat)
 									}
-									if !tableMessageBodyMixedChatEvent(r, &(*payload48).Chat, starts, depth+1) {
+									if !MixedChatEventLoadMessageBodyAt(r, &(*payload48).Chat, starts, depth+1) {
 										return false
 									}
 									if widened {
@@ -2908,7 +2908,7 @@ func tableMessageBodyBenchMixed(r *TableMessageReader, value *BenchMixed, starts
 										value := &(*payload48)
 										MixedPickupEventReset(&value.Pickup)
 									}
-									if !tableMessageBodyMixedPickupEvent(r, &(*payload48).Pickup, starts, depth+1) {
+									if !MixedPickupEventLoadMessageBodyAt(r, &(*payload48).Pickup, starts, depth+1) {
 										return false
 									}
 									if widened {

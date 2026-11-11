@@ -15,6 +15,8 @@ func init() {
 	names := []Name{
 		Name{Name: "noteStringOrigin", What: "decoded string identity bookkeeping", Scoped: true},
 		Name{Name: "stringIdentity", What: "decoded string identity bookkeeping", Scoped: true},
+		Name{Name: "mapKeyCmp", What: "the save runtime's map key order", Scoped: true},
+		Name{Name: "utf8Ok", What: "the load runtime's UTF-8 well-formedness check", Scoped: true},
 		Name{Name: "ReadStrict", What: "the strict read over the load walk, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
 		Name{Name: "ReadStrictNames", What: "the strict read's refusal vocabulary, by name (§11, §6.5)", Scoped: true},
 		// The hand-editable text form (docs/SPEC-TABLES.md §16.9): the runtime
@@ -100,7 +102,7 @@ var squirrelUnitModuleKeys = []string{
 var squirrelModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.nut)": squirrelUnitModuleKeys,
 	"the runtime files (schema_table_*.nut), each its own module table": {
-		"noteStringOrigin", "stringIdentity",
+		"noteStringOrigin", "stringIdentity", "mapKeyCmp", "utf8Ok",
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",
 		"DefaultLimits", "Destroy", "EditTextForm", "FixedWidened", "FromJson", "fromJsonWalk", "LoadMessages",
 		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",

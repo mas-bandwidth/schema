@@ -17,8 +17,8 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	if nest > ir.TableFixedMaxDepth {
 		panic(fmt.Sprintf("message body %s nests %d deep, past the fixed form's %d", st.Name, nest, ir.TableFixedMaxDepth))
 	}
-	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return tableMessageBody%s(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
-	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
+	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {var starts [%d]uint64;return %sLoadMessageBodyAt(r,value,starts[:],0)}\n", st.Name, g.storageName(st.Name), nest+1, st.Name)
+	g.pf("func %sLoadMessageBodyAt(r *TableMessageReader,value *%s,starts []uint64,depth int)bool {\n", st.Name, g.storageName(st.Name))
 	g.pf("tableMessageBodyOpen(r.Vocabulary,starts,depth);%sReset(value);\n", st.Name)
 	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageBodyRepeat(r.Vocabulary,starts,depth,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for _, f := range st.Fields {
@@ -80,7 +80,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-		g.pf("%sif !tableMessageBody%s(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
+		g.pf("%sif !%sLoadMessageBodyAt(r,&%s,starts,depth+1){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):
 		target := g.nextWireWriter()
 		g.pf("{ %s:=&%s\n", target, expr)

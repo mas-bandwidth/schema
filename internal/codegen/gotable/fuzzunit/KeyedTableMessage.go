@@ -126,9 +126,9 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	var starts [1]uint64
-	return tableMessageBodyTeamConfig(r, value, starts[:], 0)
+	return TeamConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
+func TeamConfigLoadMessageBodyAt(r *TableMessageReader, value *TeamConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TeamConfigReset(value)
 	for {
@@ -352,9 +352,9 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
 	var starts [1]uint64
-	return tableMessageBodyGunnerConfig(r, value, starts[:], 0)
+	return GunnerConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
+func GunnerConfigLoadMessageBodyAt(r *TableMessageReader, value *GunnerConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GunnerConfigReset(value)
 	for {
@@ -588,9 +588,9 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
 	var starts [2]uint64
-	return tableMessageBodyTurretConfig(r, value, starts[:], 0)
+	return TurretConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
+func TurretConfigLoadMessageBodyAt(r *TableMessageReader, value *TurretConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	TurretConfigReset(value)
 	for {
@@ -699,7 +699,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 						return false
 					}
 				}
-				if !tableMessageBodyGunnerConfig(r, &value.Gunner, starts, depth+1) {
+				if !GunnerConfigLoadMessageBodyAt(r, &value.Gunner, starts, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -889,9 +889,9 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	var starts [3]uint64
-	return tableMessageBodyHullConfig(r, value, starts[:], 0)
+	return HullConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
+func HullConfigLoadMessageBodyAt(r *TableMessageReader, value *HullConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	HullConfigReset(value)
 	for {
@@ -1036,7 +1036,7 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyTurretConfig(r, &(*p), starts, depth+1) {
+						if !TurretConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1270,9 +1270,9 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
 	var starts [4]uint64
-	return tableMessageBodyKeyedConfig(r, value, starts[:], 0)
+	return KeyedConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
+func KeyedConfigLoadMessageBodyAt(r *TableMessageReader, value *KeyedConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	KeyedConfigReset(value)
 	for {
@@ -1341,7 +1341,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyTeamConfig(r, &(*p), starts, depth+1) {
+						if !TeamConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1397,7 +1397,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyHullConfig(r, &(*p), starts, depth+1) {
+						if !HullConfigLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1417,7 +1417,7 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 						return false
 					}
 				}
-				if !tableMessageBodyScoreBoard(r, &value.Scores, starts, depth+1) {
+				if !ScoreBoardLoadMessageBodyAt(r, &value.Scores, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -1516,9 +1516,9 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
 	var starts [1]uint64
-	return tableMessageBodyScoreBoard(r, value, starts[:], 0)
+	return ScoreBoardLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
+func ScoreBoardLoadMessageBodyAt(r *TableMessageReader, value *ScoreBoardRow, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ScoreBoardReset(value)
 	for {

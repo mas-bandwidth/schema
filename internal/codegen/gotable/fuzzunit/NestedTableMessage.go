@@ -93,9 +93,9 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
 	var starts [6]uint64
-	return tableMessageBodyArchiveConfig(r, value, starts[:], 0)
+	return ArchiveConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
+func ArchiveConfigLoadMessageBodyAt(r *TableMessageReader, value *ArchiveConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ArchiveConfigReset(value)
 	for {
@@ -128,7 +128,7 @@ func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, 
 						return false
 					}
 				}
-				if !tableMessageBodyRootConfig(r, &value.Root, starts, depth+1) {
+				if !RootConfigLoadMessageBodyAt(r, &value.Root, starts, depth+1) {
 					return false
 				}
 				if widened {

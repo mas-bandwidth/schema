@@ -173,7 +173,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			// that reader's own batch name.
 			g.pf("\tif len(data) > 0 && data[0] == TableFixedForm {\n")
 			g.pf("\t\tvar fixed [1]%s\n", g.storageName(n))
-			g.pf("\t\tif %sFixedLoad(fixed[:], data, tableFixedReadPlan%s, read) != 1 {\n", n, n)
+			g.pf("\t\tif %sFixedLoad(fixed[:], data, %sFixedReadPlan, read) != 1 {\n", n, n)
 			g.pf("\t\t\t%sReset(value); return false\n\t\t}\n", n)
 			g.pf("\t\t*value = fixed[0]\n\t\treturn true\n\t}\n")
 		}

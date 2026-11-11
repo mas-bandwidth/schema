@@ -139,9 +139,9 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 }
 func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings) bool {
 	var starts [1]uint64
-	return tableMessageBodyGunnerSettings(r, value, starts[:], 0)
+	return GunnerSettingsLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, starts []uint64, depth int) bool {
+func GunnerSettingsLoadMessageBodyAt(r *TableMessageReader, value *GunnerSettings, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GunnerSettingsReset(value)
 	for {
@@ -478,9 +478,9 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 }
 func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 	var starts [2]uint64
-	return tableMessageBodyShipEntry(r, value, starts[:], 0)
+	return ShipEntryLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts []uint64, depth int) bool {
+func ShipEntryLoadMessageBodyAt(r *TableMessageReader, value *ShipEntry, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	ShipEntryReset(value)
 	for {
@@ -686,7 +686,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 						return false
 					}
 				}
-				if !tableMessageBodyGunnerSettings(r, &value.Gunner, starts, depth+1) {
+				if !GunnerSettingsLoadMessageBodyAt(r, &value.Gunner, starts, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -894,9 +894,9 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 }
 func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings) bool {
 	var starts [1]uint64
-	return tableMessageBodyGlobalSettings(r, value, starts[:], 0)
+	return GlobalSettingsLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, starts []uint64, depth int) bool {
+func GlobalSettingsLoadMessageBodyAt(r *TableMessageReader, value *GlobalSettings, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	GlobalSettingsReset(value)
 	for {
@@ -1317,9 +1317,9 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 }
 func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 	var starts [3]uint64
-	return tableMessageBodyPackConfig(r, value, starts[:], 0)
+	return PackConfigLoadMessageBodyAt(r, value, starts[:], 0)
 }
-func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts []uint64, depth int) bool {
+func PackConfigLoadMessageBodyAt(r *TableMessageReader, value *PackConfig, starts []uint64, depth int) bool {
 	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	PackConfigReset(value)
 	for {
@@ -1383,7 +1383,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 						return false
 					}
 				}
-				if !tableMessageBodyGlobalSettings(r, &value.Settings, starts, depth+1) {
+				if !GlobalSettingsLoadMessageBodyAt(r, &value.Settings, starts, depth+1) {
 					return false
 				}
 				if widened {
@@ -1437,7 +1437,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 						} else {
 							r.Report.Unknown++
 						}
-						if !tableMessageBodyShipEntry(r, &(*p), starts, depth+1) {
+						if !ShipEntryLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}
@@ -1550,7 +1550,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 					}
 					for i := range n {
 						p := &base[i]
-						if !tableMessageBodyShipEntry(r, &(*p), starts, depth+1) {
+						if !ShipEntryLoadMessageBodyAt(r, &(*p), starts, depth+1) {
 							return false
 						}
 					}

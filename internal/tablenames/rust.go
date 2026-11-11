@@ -35,6 +35,8 @@ func init() {
 		Name{Name: "TableRegionLayout", What: "the cook write's layout pass: every node of the numbering at its own alignment, the region rounded to the greatest (§7, §7.6)", Scoped: true},
 		Name{Name: "TableRegionUp", What: "the cook write's align-up (§7)", Scoped: true},
 		Name{Name: "TableReportWireFuzz", What: "the read report's wire-fuzz counters, zero on this leg, reached through TableReport"},
+		Name{Name: "TableDropUnlink", What: "the trait a self-reaching table implements so its Drop walks a work list, not the stack"},
+		Name{Name: "TableUnlink", What: "TableDropUnlink's table_unlink method"},
 		// THE FIXED FORM's runtime (docs/SPEC-TABLES.md §3.4), form byte 3.
 		// Emitted for a unit that carries a fixed root, and claimed beside
 		// any table on this list's own rule: a name free today is a
