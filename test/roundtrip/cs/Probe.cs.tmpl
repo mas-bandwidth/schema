@@ -1,0 +1,175 @@
+// The round-trip gate's C# probe (test/roundtrip). The gate renders this
+// template over the unit's root tables, builds it with the generated sources,
+// and runs it with the inputs directory as its argument. Every call is the
+// generated API: the unit's Schema class, per root (<Root>FromJson,
+// <Root>ToJson, <Root>Save, <Root>Load, <Root>FixedSave, <Root>FixedLoad, and
+// at a variable root the region load, <Root>LoadBuilder and the retaining
+// pair <Root>LoadRetain / <Root>SaveRetain).
+using System;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using [[.Title]];
+
+public static class Probe
+{
+    static string inputs;
+
+    static void Say(string root, string name, string verb, string verdict)
+    {
+        Console.WriteLine("RT " + root + " " + name + " " + verb + " " + string.Join(" ", verdict.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)));
+    }
+
+    static void Keep(string root, string name, string ext, byte[] b)
+    {
+        File.WriteAllBytes(Path.Combine(inputs, "out", root, name + ext), b);
+    }
+
+    // Call answers f's verdict, and a throw as a refusal by name.
+    static string Call(Func<string> f)
+    {
+        try { return f(); }
+        catch (Exception e) { return "refused:threw " + e.GetType().Name; }
+    }
+
+    static string Why(TableReport r)
+    {
+        return string.IsNullOrEmpty(r.Reason) ? "?" : r.Reason;
+    }
+
+    static bool Bad(TableReport r) { return r.Refused; }
+
+    public static void Main(string[] args)
+    {
+        inputs = args[0];
+        foreach (var line in File.ReadAllLines(Path.Combine(inputs, "cases.txt")))
+        {
+            var p = line.Split(' ');
+            if (p.Length < 3) { continue; }
+            string root = p[0], name = p[1];
+            var text = File.ReadAllBytes(Path.Combine(inputs, "samples", root, name + ".json"));
+            var ep = Path.Combine(inputs, "engine", root, name + ".bin");
+            var eng = File.Exists(ep) ? File.ReadAllBytes(ep) : null;
+            switch (root)
+            {
+[[range .Roots]]                case "[[.Name]]": Probe[[.Name]](root, name, text, eng); break;
+[[end]]                default: Say(root, name, "probe", "refused:the unit generated no such root"); break;
+            }
+        }
+    }
+[[range .Roots]]
+    static string Tj[[.Name]]([[.Name]] v)
+    {
+        long n = Schema.[[.Name]]ToJsonMeasure(v);
+        if (n < 0) { return null; }
+        var b = new byte[n];
+        return Schema.[[.Name]]ToJson(v, b) == n ? Encoding.UTF8.GetString(b) : null;
+    }
+
+    static unsafe void Probe[[.Name]](string root, string name, byte[] text, byte[] eng)
+    {
+        [[.Name]] v = null;
+        Say(root, name, "fromjson", Call(() =>
+        {
+            var r = new TableReport();
+            var x = new [[.Name]]();
+            if (!Schema.[[.Name]]FromJson(x, text, r) || Bad(r)) { return "refused:" + Why(r); }
+            v = x;
+            return "ok";
+        }));
+        if (v == null) { return; }
+        string want = Tj[[.Name]](v);
+        Func<[[.Name]], string> same = got =>
+        {
+            var g = Tj[[.Name]](got);
+            if (want == null || g == null) { return "refused:ToJson refuses the value"; }
+            return g == want ? "ok" : "diff";
+        };
+        Func<byte[], string> loadVerdict = b =>
+        {
+            var r = new TableReport();
+            var got = new [[.Name]]();
+            return Schema.[[.Name]]Load(got, b, r) && !Bad(r) ? same(got) : "refused:" + Why(r);
+        };
+        byte[] wire = null;
+        Say(root, name, "save", Call(() =>
+        {
+            long need = Schema.[[.Name]]Measure(v);
+            if (need <= 0) { return "refused:measure " + need; }
+            var w = new byte[need];
+            long got = Schema.[[.Name]]Save(v, w);
+            if (got != need) { return "refused:save " + got; }
+            wire = w;
+            Keep(root, name, ".save", w);
+            return "ok";
+        }));
+        if (wire != null) { Say(root, name, "load", Call(() => loadVerdict(wire))); }
+        if (eng != null) { Say(root, name, "loadeng", Call(() => loadVerdict(eng))); }
+[[if eq .Class "fixed"]]        Say(root, name, "fixedsave", Call(() =>
+        {
+            long need = Schema.[[.Name]]FixedMeasure(1);
+            var w = new byte[need];
+            long got = Schema.[[.Name]]FixedSave(v, w);
+            if (got != need) { return "refused:fixed save " + got; }
+            Keep(root, name, ".fixed", w);
+            return "ok";
+        }));
+        if (eng != null)
+        {
+            Say(root, name, "fixedloadeng", Call(() =>
+            {
+                var r = new TableReport();
+                var got = new [[.Name]]();
+                long n = Schema.[[.Name]]FixedLoad(got, eng, new TableFixedEntry[1 << 14], r);
+                return n == 1 && !Bad(r) ? same(got) : "refused:" + Why(r);
+            }));
+        }
+[[end]][[if eq .Class "variable"]]        // THE REGION LOAD, the other load entry point: the bytes into a region
+        // sized by the generated measure, then copied out through LoadBuilder.
+        Func<byte[], string> regionVerdict = b =>
+        {
+            long cap = Schema.[[.Name]]LoadMeasure(b);
+            if (cap <= 0) { return "refused:load measure " + cap; }
+            var region = Marshal.AllocHGlobal((IntPtr)cap);
+            try
+            {
+                var r = new TableReport();
+                if (Schema.[[.Name]]Load(region, cap, b, r) == null || Bad(r)) { return "refused:" + Why(r); }
+                return same(Schema.[[.Name]]LoadBuilder(region));
+            }
+            finally { Marshal.FreeHGlobal(region); }
+        };
+        if (wire != null) { Say(root, name, "load.region", Call(() => regionVerdict(wire))); }
+        if (eng != null) { Say(root, name, "load.regioneng", Call(() => regionVerdict(eng))); }
+        if (wire != null)
+        {
+            Say(root, name, "retain", Call(() =>
+            {
+                const long cap = 1 << 22;
+                var region = Marshal.AllocHGlobal((IntPtr)cap);
+                try
+                {
+                    var retain = new TableRetain();
+                    var r = new TableReport();
+                    if (Schema.[[.Name]]LoadRetain(region, cap, wire, ref retain, r) == null || Bad(r)) { return "refused:" + Why(r); }
+                    long n = Schema.[[.Name]]MeasureRetain(region, ref retain);
+                    if (n <= 0) { return "refused:measure retain " + n; }
+                    var back = new byte[n];
+                    var sr = new TableReport();
+                    if (Schema.[[.Name]]SaveRetain(region, ref retain, back, sr) != n || Bad(sr)) { return "refused:" + Why(sr); }
+                    if (!back.SequenceEqual(wire)) { return "diff"; }
+                    return same(Schema.[[.Name]]LoadBuilder(region));
+                }
+                finally { Marshal.FreeHGlobal(region); }
+            }));
+        }
+        Say(root, name, "json", Call(() =>
+        {
+            if (want == null) { return "refused:ToJson refuses the value"; }
+            var r = new TableReport();
+            var j = new [[.Name]]();
+            return Schema.[[.Name]]FromJson(j, Encoding.UTF8.GetBytes(want), r) && !Bad(r) ? same(j) : "refused:" + Why(r);
+        }));
+[[end]]    }
+[[end]]}

@@ -99,6 +99,10 @@ var legs = []*leg{
 		name: "java", lang: "java", tool: "javac and java (the generated Java package)", retain: true,
 		run: runJava,
 	},
+	{
+		name: "cs", lang: "cs", tool: "dotnet (the generated C# sources)", retain: true,
+		run: runCS,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -383,4 +387,49 @@ func runJava(t *testing.T, x *rowEnv) []byte {
 	classes := filepath.Join(x.work, "classes")
 	run(t, x.work, nil, tool("JAVAC", "javac"), append([]string{"-nowarn", "-encoding", "UTF-8", "-d", classes}, files...)...)
 	return run(t, x.work, nil, tool("JAVA", "java"), "-cp", classes, "Probe", x.in)
+}
+
+// sibling is a pinned sibling runtime checkout: the environment variable the
+// make row passes, else <name> beside the repository (the fleet stages both).
+func sibling(t testing.TB, x *rowEnv, env, name string) string {
+	t.Helper()
+	dir := os.Getenv(env)
+	if dir == "" {
+		dir = filepath.Join(filepath.Dir(x.repo), name)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("the pinned sibling %s is missing (set %s): %v", name, env, err)
+	}
+	return dir
+}
+
+// runCS builds the rendered probe with the generated sources and the pinned
+// serialize.cs runtime, then runs it.
+func runCS(t *testing.T, x *rowEnv) []byte {
+	proj := filepath.Join(x.work, "cs")
+	write(t, filepath.Join(proj, "Probe.cs"), renderProbe(t, x, "cs", "Probe.cs.tmpl", nil))
+	ser := filepath.Join(sibling(t, x, "SERIALIZE_CS", "serialize.cs"), "src")
+	csproj := `<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>roundtripprobe</AssemblyName>
+    <NoWarn>$(NoWarn);CS0618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Probe.cs" />
+    <Compile Include="` + x.gen + `/*.cs" />
+    <Compile Include="` + ser + `/Serialize.cs" />
+    <Compile Include="` + ser + `/Int128Pair.cs" />
+  </ItemGroup>
+</Project>
+`
+	write(t, filepath.Join(proj, "roundtripprobe.csproj"), []byte(csproj))
+	dotnet := tool("DOTNET", "dotnet")
+	run(t, proj, []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1"}, dotnet, "build", "-c", "Release", "--nologo", "-v", "quiet", "-o", filepath.Join(proj, "out"))
+	return run(t, proj, []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1"}, dotnet, filepath.Join(proj, "out", "roundtripprobe.dll"), x.in)
 }
