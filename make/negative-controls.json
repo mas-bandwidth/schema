@@ -1718,30 +1718,86 @@
       ]
     },
     {
-      "name": "dart-conformance",
+      "name": "dart-conformance-a",
       "when": "pull-request",
-      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11): walk negates the generated text reader's bool arm and requires dart / json-read red alone, text-boundary checks the text reader's boundary handling, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, framing drops the id-table cap and requires the framing surface red, and share breaks the shared-node identity and requires the shared rows red. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps five of the ten, and dart-conformance-2 carries the other five.",
-      "dart": "3.13.2",
+      "why": "slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
       "targets": [
-        "conformance-negative-control-dart-walk",
-        "conformance-negative-control-dart-text-boundary",
-        "conformance-negative-control-dart-zero",
-        "conformance-negative-control-dart-framing",
         "conformance-negative-control-dart-share"
-      ]
+      ],
+      "dart": "3.13.2"
     },
     {
-      "name": "dart-conformance-2",
+      "name": "dart-conformance-b",
       "when": "pull-request",
-      "why": "the Dart leg's remaining emitter-side conformance controls (docs/PORTING.md I11, I12, I15): absent runs the conformance driver with its per-case absent writers silenced, block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is built the same way, about 15 s each on a local host.",
-      "dart": "3.13.2",
+      "why": "slice 2 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-text-boundary 135 s.",
       "targets": [
-        "conformance-negative-control-dart-absent",
+        "conformance-negative-control-dart-text-boundary"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-c",
+      "when": "pull-request",
+      "why": "slice 3 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-walk 48 s.",
+      "targets": [
+        "conformance-negative-control-dart-walk"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-d",
+      "when": "pull-request",
+      "why": "slice 4 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-zero 47 s.",
+      "targets": [
+        "conformance-negative-control-dart-zero"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-e",
+      "when": "pull-request",
+      "why": "slice 5 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-framing 47 s.",
+      "targets": [
+        "conformance-negative-control-dart-framing"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-a",
+      "when": "pull-request",
+      "why": "slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
+      "targets": [
+        "conformance-negative-control-dart-absent"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-block 45 s, tables-dart-usage-negative-control 10 s.",
+      "targets": [
         "conformance-negative-control-dart-block",
-        "tables-dart-wire-fuzz-negative-control",
-        "schema-dart-runs-hostile-corpus-negative-control",
         "tables-dart-usage-negative-control"
-      ]
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-wire-fuzz-negative-control 42 s.",
+      "targets": [
+        "tables-dart-wire-fuzz-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: schema-dart-runs-hostile-corpus-negative-control 34 s.",
+      "targets": [
+        "schema-dart-runs-hostile-corpus-negative-control"
+      ],
+      "dart": "3.13.2"
     },
     {
       "name": "dart-a",
@@ -1807,22 +1863,46 @@
       "dart": "3.13.2"
     },
     {
-      "name": "dart-tables-2",
+      "name": "dart-tables-2-a",
       "when": "pull-request",
-      "why": "the Dart port's table gates' controls, the other half: the float-jit boxing, the text differential, the finite-float rule, the cook writer, the clean gate, the retain, the identity, the map sort, the cook map, the byte order, the discard and the cycle. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-1 split the table gates so each row stays inside the rule. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
+      "why": "slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
+      "targets": [
+        "tables-dart-cookwrite-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-float-jit-boxing-negative-control 3 s, tables-dart-text-differential-negative-control 5 s, tables-dart-cook-map-negative-control 51 s.",
       "targets": [
         "tables-dart-float-jit-boxing-negative-control",
         "tables-dart-text-differential-negative-control",
+        "tables-dart-cook-map-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-finite-float-negative-control 2 s, tables-dart-clean-negative-control 2 s, tables-dart-retain-negative-control 44 s, tables-dart-identity-negative-control 2 s, tables-dart-map-sort-negative-control 2 s, tables-dart-byte-order-negative-control 2 s, tables-dart-cycle-negative-control 3 s.",
+      "targets": [
         "tables-dart-finite-float-negative-control",
-        "tables-dart-cookwrite-negative-control",
         "tables-dart-clean-negative-control",
         "tables-dart-retain-negative-control",
         "tables-dart-identity-negative-control",
         "tables-dart-map-sort-negative-control",
-        "tables-dart-cook-map-negative-control",
         "tables-dart-byte-order-negative-control",
-        "tables-dart-discard-negative-control",
         "tables-dart-cycle-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-discard-negative-control 20 s.",
+      "targets": [
+        "tables-dart-discard-negative-control"
       ],
       "dart": "3.13.2"
     },
