@@ -3,8 +3,8 @@
 // §3.1, §4.1, §4.5, §4.6, §5.3 and §5.4, docs/rulings.json
 // fixed-dead-bytes-are-zero).
 //
-// The rule, dated 2026-11-10: every dead byte in a fixed record is zero on
-// write and refused if non-zero on read. The four kinds are an absent
+// The rule, dated 2026-11-10 ("Every dead byte"): every dead byte in a fixed
+// record is zero on write and refused if non-zero on read. The four kinds are an absent
 // optional's payload (present byte 0), a counted array's element slots past
 // its live count, a string(N)'s or bytes(N)'s bytes past its used length, and
 // an inactive union arm (the arm bytes under tag 0, and the bytes past a
@@ -36,7 +36,9 @@ func TestSpecFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
 	const tables = "../docs/SPEC-TABLES.md"
 	const algorithm = "../docs/FIXED-FORM-ALGORITHM.md"
-	const wantRuling = "ruled 2026-11-10: every dead byte in a fixed record is zero on write and refused if non-zero on read"
+	// the maintainer's words, verbatim: first on an absent optional's bytes,
+	// then on whether the rule held for every dead byte
+	wantQuotes := []string{"take the strict approach and refuse.", "Every dead byte"}
 
 	record := specSection(t, tables, "#### THE RECORD", "#### SELECTION IS BY THE KEYWORD")
 	oneRead := specSection(t, tables, "### 13.10 The one read, ruled", "## 14. Design notes")
@@ -214,14 +216,16 @@ func TestSpecFixedDeadBytesAreZero(t *testing.T) {
 		if got.Date != "2026-11-10" {
 			t.Errorf("date = %q, want 2026-11-10", got.Date)
 		}
-		found := false
-		for _, quote := range got.Quotes {
-			if quote == wantRuling {
-				found = true
+		for _, want := range wantQuotes {
+			found := false
+			for _, quote := range got.Quotes {
+				if quote == want {
+					found = true
+				}
 			}
-		}
-		if !found {
-			t.Errorf("the ruling text is not exactly %q; quotes = %q", wantRuling, got.Quotes)
+			if !found {
+				t.Errorf("the ruling does not quote %q verbatim; quotes = %q", want, got.Quotes)
+			}
 		}
 		supersedes := flat(strings.Join(got.Supersedes, " "))
 		for _, want := range []string{

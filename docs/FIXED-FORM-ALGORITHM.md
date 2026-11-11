@@ -244,7 +244,10 @@ optional's payload, a counted array's slots past its count, a text or bytes fiel
 an inactive union arm (under tag `0`, and past a narrower taken arm) — are DEAD, and a non-zero dead byte
 REFUSES the whole load as `wire_damaged`, checked over every record before any record lands (§5.3 step 11).
 The reader validates the USED UNITS as values; everything not live in a record is dead, and no counter moves
-for it.
+for it. **What a read that is not refused RETURNS is [SPEC-TABLES.md](SPEC-TABLES.md) §4.4**: what the record
+supplies as stored, and a field it does not supply at its DECLARED DEFAULT — an absent optional's payload at
+`T`'s declared defaults, never the zeros the record carries there (§4.4 below lands them); an arm the tag does
+not name, slots past a count and bytes past a length are not values at all.
 
 ## 4. The reader: ONE path
 
@@ -308,6 +311,7 @@ to this build's own records; only to a peer's.
 | `widenf` | source (4) | destination (8) | — | — | f32 into f64 |
 | `const` | — | the tag's storage | the tag width | **the constant**: this reader's own arm ordinal | `guard`, `arg` |
 | `present` | — | the payload's storage | — | **the present byte** | constant `1`, under `guard`, `arg` |
+| `defaults` | the writer's present byte | the present flag's storage | the payload's storage bytes | the payload's storage offset | lands the flag (`0` or `1`; the CHECK pass has refused any other byte), and when it is `0` copies the DECLARED-DEFAULTS image over the payload's storage; under `guard`, `arg`, laid AFTER every entry of its payload (§4.4) |
 
 **A PRESENT BYTE, A COUNT, A LENGTH AND A TAG DECIDE WHICH BYTES ARE DEAD.** A datum is LIVE when every guard
 on its chain holds, and, for an optional's payload, when its present byte is `1` (§5.3's definition, and §4.6
@@ -316,11 +320,19 @@ walks the same live data). Everything not live in a record is DEAD, and the read
 element slots past its `count`; a `string(N)`'s or `bytes(N)`'s bytes past its used length; and an inactive
 union arm, the bytes under tag `0` and the bytes past a narrower taken arm inside the widest arm's span. An
 optional nested inside an absent payload, and a nested type inside a dead array slot or a dead arm, are dead
-whole. A fixed array `[N]T` and an enum-keyed `[Enum]T` have no dead bytes. A DEPRECATED SLOT is not a dead
-byte. The check is the CHECK pass's, over every record and before any record lands (§5.3 step 11), and it
+whole. A fixed array `[N]T` and an enum-keyed `[Enum]T` add no dead bytes of their own (an element's own dead
+bytes are dead by the same rule). A DEPRECATED SLOT is not a dead byte: a deprecated field is live like any
+other. The check is the CHECK pass's, over every record and before any record lands (§5.3 step 11), and it
 names no new vocabulary: `wire_damaged` is the refusal for a dead byte that is not zero.
 
-Flavours: `1` utf8, `3` bytes; `2` is retired with wide text and never reused. An **identity plan carries only `copy`, `count` and `text`** — an enum
+**A DEAD BYTE IS NEVER LANDED AS A VALUE** ([SPEC-TABLES.md](SPEC-TABLES.md) §4.4). Every plan, identity
+included, ends with one `defaults` entry per optional in the reader's layout, so an absent optional's payload
+holds `T`'s declared defaults after the read, never the zeros the record carried. An arm the tag does not name
+is not a value (SPEC-TABLES §4.4 rule 2): no reader presents it, and what the storage holds there is not part
+of the read's result. Slots past a count and bytes past a
+length are not values either (SPEC-TABLES §4.4 rule 3).
+
+Flavours: `1` utf8, `3` bytes; `2` is retired with wide text and never reused. An **identity plan carries only `copy`, `count`, `text`, `bool` and `defaults`** — an enum
 ordinal and a union tag ride inside plain `copy` runs there, so the range closing of §4.5 must live in the
 SCATTER and not only in `ordinal`. **A `bytes(N)` takes the ARRAY's row, not a text field's — the count to `aux`
 and the elements to `dst`**, where a text field's row is the other way round (fix 10). Backwards, a plan compiled
@@ -392,7 +404,9 @@ READ( plan, split, record, out ):
 
 `split` is the number of UNGUARDED entries — the index the second half starts at, not a count of guarded ones.
 
-**ONE GUARDLESS ENTRY RIDES THE SECOND HALF: the deferred present-defaults entry.** An absent optional's declared
+**ONE GUARDLESS ENTRY RIDES THE SECOND HALF: the deferred present-defaults entry** (the `defaults` op of §4.1).
+Every leg lands an absent optional's payload as `T`'s DECLARED DEFAULTS ([SPEC-TABLES.md](SPEC-TABLES.md) §4.4),
+whatever its plan representation; this paragraph is the order a plan-based leg must keep. Those declared
 defaults must land AFTER the guarded arm entries of the payload they replace, or an arm's wire bytes overwrite them.
 So a present-defaults entry that answers to no tag is not counted in `split`: the coalescer lays it in a third pass,
 after every guarded entry, and the second loop applies a guardless entry unconditionally (its guard lane is "no
@@ -404,7 +418,8 @@ keeps its guard and its place after its own payload's guarded entries. The plan'
 - no guarded entry follows a guardless present-defaults entry.
 
 The C++ reference emits this order (`internal/codegen/cpptable/fixedruntime.go`, the coalescer and `TableFixedRun`)
-and `test/tables/fixedform_main.cpp` W6 checks it on every identity plan it reads.
+and `test/tables/fixedform_main.cpp` W6 checks it on every identity plan it reads; every other plan-based leg emits
+the same order.
 
 ### 4.5 The scatter
 
@@ -425,7 +440,9 @@ live slots, the `text` row a text or bytes field's used length, the present byte
 payload, and an inactive union arm is every byte outside the arm the tag names: tag `0` names no arm, and a
 narrower taken arm leaves the rest of the widest arm's span dead. Those dead bytes are never landed as values;
 a non-zero one REFUSES the whole load as `wire_damaged` in §5.3 step 11, over every record and before any
-record lands (§4.1 states the four kinds).
+record lands (§4.1 states the four kinds). On a read that is not refused, a field whose bytes are dead reads as
+SPEC-TABLES §4.4 says: an absent optional's payload at `T`'s DECLARED DEFAULTS (the `defaults` entry, §4.1,
+§4.4); an arm the tag does not name, slots past a count and bytes past a length as no value at all.
 
 ### 4.6 The bounds pass
 
@@ -1065,9 +1082,10 @@ VALUE; the four kinds of dead byte are the payload under a present byte of `0`, 
 slots past its `count`, a `string(N)`'s or `bytes(N)`'s bytes past its used length, and an inactive union
 arm — the bytes under tag `0` and the bytes past a narrower taken arm inside the widest arm's span. An
 optional nested inside an absent payload, and a nested type inside a dead array slot or a dead arm, are dead
-whole. A fixed array `[N]T` and an enum-keyed array have no dead bytes; a DEPRECATED SLOT is not a dead byte.
-The CHECK pass refuses the whole load as `wire_damaged` when any dead byte is not zero, before any record
-lands.
+whole. A fixed array `[N]T` and an enum-keyed array add no dead bytes of their own (an element's own dead bytes
+are dead by the same rule); a DEPRECATED SLOT is not a dead byte, because a deprecated field is live like any
+other. The CHECK pass refuses the whole load as `wire_damaged` when any dead byte is not zero, before any record
+lands. What lands for a field whose bytes are dead is SPEC-TABLES §4.4's declared default (§4.4 here).
 
 **TOTAL OVER THE BATCH.** A reader checks EVERY record's hash and its live counts, lengths, used text, bool
 and present bytes and floats, and that every dead byte is zero, each against the WRITER's layout, before the
@@ -1611,11 +1629,11 @@ the dump did not set carries its schema default.
 what A READER WILL PRODUCE from the bytes, not a transcript of the stores the dump made.
 
 - **A VALUE UNDER AN ABSENT OPTIONAL IS NOT RECORDED.** The writer emits an optional's payload only where the
-  flag says present; where it says absent **the bytes are the TEMPLATE'S ZEROS and not the declared default** —
-  the one place "a field absent from a line carries its schema default" does not hold, and the reason the rule
-  is written here rather than left to be inferred. A dump may store under a false flag on purpose (`p3`'s second
-  record does, to pin exactly this), and the RECORD drops it: the companion is stored FIRST and every path at or
-  below a companion that is `0` is skipped.
+  flag says present; where it says absent **the BYTES are the template's zeros, and what a READER PRODUCES there
+  is the payload's DECLARED DEFAULTS** ([SPEC-TABLES.md](SPEC-TABLES.md) §4.4), so "a field absent from a line
+  carries its schema default" holds here too, with no exception. A dump may store under a false flag on purpose
+  (`p3`'s second record does, to pin that neither the stored value nor the wire's zeros comes back), and the
+  RECORD drops it: the companion is stored FIRST and every path at or below a companion that is `0` is skipped.
 - **A PATH IS A DOTTED SCHEMA PATH AND CARRIES NO C++ MEMBER NAME.** A keyed field is a `TableKeyed<>` in the
   reference and its storage sits behind `.slots`, so `r0.teams.slots[0].spawn_count` was the C++ spelling of
   `r0.teams[0].spawn_count`; the wrapper's member is stripped. A schema field actually NAMED `slots` keeps its

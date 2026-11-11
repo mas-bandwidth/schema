@@ -1823,8 +1823,11 @@ nothing. That is not the union's `None`, which says no arm was selected.
 **What an arm may not be, or carry, is refused because the arm position
 already spends what it would buy**, and each is refused by name (§11):
 
-- **a specified default on the arm itself** — the table wire zeroes selected-arm
-  storage before decoding its payload. An arm-level default remains a named
+- **a specified default on the arm itself** — the table wire establishes the
+  selected arm's declared default before decoding its payload (zero for an arm
+  of no `type` or `table`, which takes no specified default; a `type` or
+  `table` arm's own default body, so a field its payload does not supply reads
+  as its declared default, §4.4). An arm-level default remains a named
   follow-on (§15). Packet payload construction follows SPEC §4.8;
 - **`?`** — selection IS the arm's presence, and the union's `None` is the
   absence one level up, so a second presence bit would be two spellings of
@@ -3454,12 +3457,11 @@ value of, and it costs the grammar nothing. What it means:
 - **THE SLOT STAYS EXACTLY WHERE IT IS.** The record is walked by offset;
   removing the field would slide every field after it. Deprecation is a
   statement about MEANING, never about layout, and it moves not one byte.
-- **The writer emits the field's default.** Nothing writes a retired field, so
-  what goes into the slot is what a fresh record holds there — its specified
-  default, or zero (SPEC §5).
-- **The reader ignores it.** The slot is read like any other and the value in
-  it means nothing; a consumer that still reads it is reading what the last
-  writer that cared left behind.
+- **IT STILL WORKS, ON BOTH SIDES** (§4.4). The writer stores what the value
+  holds, as for any field, so a value nobody set writes its specified
+  default, or zero (SPEC §5). The reader lands what the record carries, as for
+  any field. The mark tells people the field is going away and not to use it;
+  it changes nothing the bytes do.
 - **NEW USES ARE REFUSED**, and "new use" is deliberately small: a deprecated
   field may not be named by a **guard** — an `if` condition is the one
   construct in this language that reads another field's value, and branching
@@ -3469,8 +3471,8 @@ value of, and it costs the grammar nothing. What it means:
   else about the field is left alone. The marker is documentation with two
   teeth, not an access-control system.
 - **It is ONE-WAY.** A field that has been deprecated is not un-deprecated:
-  the readers were told to ignore the slot and the writers that have run since
-  left it at its default, so what would come back is not data.
+  people were told to stop using it, so what the slot holds in records
+  written since is not data anyone kept.
 
 A `deprecated` field's id, kind, width, default and range are unchanged, and
 it still rides the id-table wire when its table is read there — deprecation is not removal in
@@ -3592,8 +3594,8 @@ fresh value is recorded.
 
 **THE DEFAULT IS A WIRE FACT, and every entry carries one.** "No default
 declared" is not the absence of a fact — it is the fact that a fresh record
-holds zero in that slot (SPEC §5). A deprecated slot holds the default, an
-absent field on the id-table wire reads back as it, and a reader handed an
+holds zero in that slot (SPEC §5). A deprecated slot nobody sets holds the
+default, a field a record does not supply reads back as it (§4.4), and a reader handed an
 older writer's record fills the missing field from it. Move it and every one of
 those records means something else.
 
@@ -7983,8 +7985,8 @@ VALUE.**
   | `[Min..Max]T` | 4 (the count, `int32` LE) + `Max * C(T)` — **the count, then MAX elements**; ZERO on write past the count, and every slot past the count is DEAD: a non-zero one REFUSES `wire_damaged` on read |
   | `string(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES and `N` is a byte capacity; ZERO on write past the used bytes, and every byte past the used length is DEAD: a non-zero one REFUSES `wire_damaged` on read |
   | `bytes(N)` | 4 (the length in BYTES, `int32` LE) + `N` bytes — the length is in BYTES; ZERO on write past the used bytes, and every byte past the used length is DEAD: a non-zero one REFUSES `wire_damaged` on read |
-  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm and under tag `0`, and every byte outside the taken arm is DEAD: a non-zero one REFUSES `wire_damaged` on read |
-  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, and the whole payload under an absent flag is DEAD: a non-zero one REFUSES `wire_damaged` on read |
+  | a UNION | the tag ordinal at its tag type's storage width + `max` over the arms of `C(arm)` — **tag, then the WIDEST ARM**; **tag `0` is `None`, as an enum ordinal `0` is**; ZERO on write behind a narrower arm and under tag `0`, and every byte outside the taken arm is DEAD: a non-zero one REFUSES `wire_damaged` on read, and an arm the tag does not name is not a value (§4.4) |
+  | `?T` | 1 (the PRESENT FLAG, `0` or `1`) + `C(T)` — **the payload rides WHOLE whether or not it is present**; ZERO on write when the flag is `0`, and the whole payload under an absent flag is DEAD: a non-zero one REFUSES `wire_damaged` on read, and a read that is not refused leaves the optional absent with its payload at `T`'s DECLARED DEFAULTS, never the wire's zeros (§4.4) |
   | `[Enum]T` | `slots * C(T)` — **every slot is written**, in the key enum's declared order, and no key rides; every slot is live, so there are NO DEAD BYTES |
   | `const`, `reserved`, `align` | refused in a table body already (§11) |
 
@@ -8004,11 +8006,17 @@ so the used extent is always stated before the bytes are reached.
   tag `0`, and the bytes past a narrower taken arm inside the widest arm's span.
   An optional nested inside an absent payload, and a nested type inside a dead
   array slot or a dead arm, are dead whole. A fixed array `[N]T` and an
-  enum-keyed array have no dead bytes. The reader REFUSES with `wire_damaged`
-  when any dead byte is not zero, and the check is the CHECK pass of
-  FIXED-FORM-ALGORITHM.md §5.3 step 11, over every record, before any record
-  lands: nothing is clamped, repaired or read past, and no counter moves. A
-  DEPRECATED SLOT is not a dead byte and is not checked here.
+  enum-keyed array add no dead bytes of their own: every slot is live, and an
+  element's own dead bytes are dead by this same rule. The reader REFUSES with
+  `wire_damaged` when any dead byte is not zero, and the check is the CHECK
+  pass of FIXED-FORM-ALGORITHM.md §5.3 step 11, over every record, before any
+  record lands: nothing is clamped, repaired or read past, and no counter
+  moves. A DEPRECATED SLOT is not a dead byte: a deprecated field is live like
+  any other (§4.4). What a read that is not refused returns for a field whose
+  bytes are dead is §4.4's rule: an absent optional's payload reads as its
+  DECLARED DEFAULTS, never as the zeros the record carries, and an arm the
+  tag does not name, slots past a count and bytes past a length are not
+  values.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
   `string(N)`'s UTF-8 validity (§3) is checked over its stated length, not over
   `N`. A
@@ -8027,9 +8035,10 @@ still an entry in the layout, still a constant size in the record and still a
 slot in the reader's storage. A deprecated ENUM VARIANT is the same promise one
 level in: §2.15 fixes its ordinal in place, makes deprecating it a widening,
 and has every plan yield the field's declared default when it meets that
-ordinal. **THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS
-THE DECLARED DEFAULT OUT OF IT**, whatever the record carries there; nothing
-counts, because nothing was lost. Removing the field
+ordinal. **A DEPRECATED FIELD IS READ AND WRITTEN LIKE ANY OTHER FIELD**
+(§4.4): the writer stores what the value holds, the reader lands what the
+record carries, and its declared default applies only where a record does not
+supply the field; nothing counts for it. Removing the field
 outright is the edit that moves every byte behind it — which the hash catches
 and the plan compiler absorbs, at the cost of a plan per peer — and keeping the
 slot is what makes the deprecation cost nothing at all. The marker and the
@@ -8161,8 +8170,9 @@ holds for that hash, compiled at initialization from the lock's own layout bytes
 (§21.5). **A reader never parses a stranger's layout**: a hash outside the
 build's lineage is refused `layout_unknown` before any record (§21.3), and a
 known hash whose file layout bytes are not the lock's bytes for that hash is
-`layout_malformed`. The identity plan carries `copy`, `count`, `text` and
-`bool`; a lineage plan adds only the ops an older layout needs — `ordinal`,
+`layout_malformed`. The identity plan carries `copy`, `count`, `text`,
+`bool` and, after each optional's payload, `defaults` (an absent optional
+reads as its declared defaults, §4.4); a lineage plan adds only the ops an older layout needs — `ordinal`,
 `widen`, `widenF`, `const` and `tag` — and **no plan op clamps**. Neither plan is
 a shorter or a longer road than the other: one path, one set of cases to test.
 
@@ -8232,12 +8242,14 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote. **IT CARRIES FOUR OPS AND NOT ONE**: a `copy` for every field
+already wrote. **IT CARRIES FIVE OPS AND NOT ONE**: a `copy` for every field
 whose wire image is its storage image, a `count` for a `[Min..Max]T`, a `text`
-for a `string(N)` or a `bytes(N)`, and a `bool` for a bool or a
+for a `string(N)` or a `bytes(N)`, a `bool` for a bool or a
 presence byte — because a count, a length and a bool are numbers the reader
 HOLDS TO ITS BOUND before it moves the units behind them, and
-a copy holds nothing. The other five ops are a lineage plan's alone.
+a copy holds nothing — and a `defaults` after each optional's payload, which
+lands an absent optional's declared defaults over the zeros its payload
+carried (§4.4). The other ops are a lineage plan's alone.
 **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
 source and destination both advance together are one entry, so a record whose
 declared order matches its storage layout collapses to a handful of runs.
@@ -9230,6 +9242,97 @@ before the two-sided path runs and carries the field a `RangeOneSided`
 flag that is not in the projection. Go carries the construct first: every
 other target refuses a unit with any such field by name at generation
 (SPEC §4.6).
+
+### 4.4 Supplied or default: what a reader returns for every field
+
+**THE RULE, ONCE, FOR EVERY FORM AND EVERY LEG** (docs/rulings.json
+`supplied-or-default` and `fixed-dead-bytes-are-zero`). This section is the
+normative statement; every other section that says what a reader returns for
+a field, or what it does with a byte no value owns, applies it, and where one
+reads otherwise this section holds.
+
+1. **A VALUE THE RECORD SUPPLIES IS READ AS STORED** (widened exactly where
+   the lineage widens it, §21.2). A field is SUPPLIED when the record carries
+   a live value for it: a field of the writer's layout or announced
+   vocabulary, a present optional's payload, a union's taken arm, a counted
+   array's elements up to its count, and a text's or byte buffer's used
+   length. **A DEPRECATED FIELD IS SUPPLIED LIKE ANY OTHER**: the writer
+   stores what the value holds and the reader lands what the record carries.
+   The mark is a warning to people that the field is going away (§2.10); it
+   changes nothing the bytes do.
+2. **A FIELD THE RECORD DOES NOT SUPPLY READS AS ITS DECLARED DEFAULT** — its
+   specified default, or zero where none is declared (SPEC §5); a nested
+   `type` or `table` its own default body; an optional absent; a union `None`
+   (tag `0`); a pointer null. The cases, which are the whole list:
+   - **an ABSENT OPTIONAL.** The optional reads absent, and where a language
+     keeps storage for its payload, that storage holds `T`'s declared
+     defaults, every pointer null (§2.3) — never the bytes the record carried
+     under the flag. The same in every form: in the fixed form the payload
+     rides as zeros under a present byte of `0`; in the variable and message
+     forms it does not ride; in JSON its key is missing or `null`.
+   - **A UNION ARM THE TAG DOES NOT NAME.** The union's value is its tag and
+     the taken arm's value, nothing else; under tag `0` it is `None` and
+     holds no arm. A taken arm's own fields that its payload does not supply
+     read as their declared defaults (§2.6), like any field. An arm the tag
+     does not name is not a value, exactly as rule 3's slots are not: no
+     reader presents it as the union's value, and whatever a language's
+     storage holds there (an overlay shared with the taken arm, or separate
+     storage) is not part of the read's result.
+   - **A FIELD THE WRITER'S LAYOUT OR VOCABULARY LACKS** (an older writer,
+     §21.2), including a new `[N]` element slot past an older writer's `N`,
+     which takes the element's default.
+   - **A FIELD THE RECORD ELIDES OR LEAVES OUT** in the variable and message
+     forms (a field at its default is not written, §3, §3.3), and a JSON or
+     text key that is missing (§16).
+
+   **THE ONE EXCEPTION: a `| required` field** (§2.3). A record that does not
+   supply a required field is REFUSED `missing_required` (§2.3, §16.9),
+   never defaulted, on every form.
+3. **SLOTS PAST A COUNT AND BYTES PAST A LENGTH ARE NOT VALUES.** A counted
+   array's element slots past its count and a text's or byte buffer's bytes
+   past its used length are not fields and hold no value: no reader presents
+   them as elements or as text, and whatever a language's storage holds there
+   is not part of the read's result.
+4. **EVERY DEAD BYTE IN A FIXED RECORD IS ZERO, OR THE READ IS REFUSED.** The
+   DEAD bytes are every byte of a fixed record that no supplied value owns:
+   an absent optional's whole payload, a counted array's element slots past
+   its count, a `string(N)`'s or `bytes(N)`'s bytes past its used length, and
+   an inactive union arm (the arm bytes under tag `0`, and the bytes past a
+   narrower taken arm inside the widest arm's span); an optional, array, text
+   or union nested inside a dead byte range is dead whole. A writer writes
+   every dead byte as zero. A reader that finds any dead byte non-zero REFUSES
+   THE WHOLE LOAD as `wire_damaged` (§3.4, §13.10; FIXED-FORM-ALGORITHM.md §5.3
+   step 11), before any record lands, in every leg and every build. A fixed
+   array `[N]T` and an enum-keyed array add no dead bytes of their own (every
+   slot is live; an element still has its own dead bytes by this rule), and a
+   deprecated field is live like any other field (rule 1). In the variable
+   form a field that is not supplied does not ride, so there are no dead
+   bytes; the message form's only dead data is its pad bits, which are
+   verified zero and refuse `wire_damaged` when they are not (§3.3), the same
+   verdict as this rule's.
+5. **THE ORDER.** A refused read hands the caller no value: what the caller's
+   storage holds after each kind of refusal is §6.5's rule for that call. A
+   read that is not refused returns rule 1's values and rule 2's defaults,
+   and never a byte from a dead range: in the fixed form those bytes are zero
+   by rule 4, and a field rule 2 covers still lands its declared default, not
+   those zeros.
+
+**WHERE IT APPLIES.** Every read of a record: the fixed form (identity,
+compiled and in-place plans alike), the variable form, the message form, and
+the JSON and text readers (§16, where a missing key is a field the record
+does not supply, and `null` is one only where §16.2 admits it: on an
+optional, a pointer, and an array or map under its null-as-empty option;
+anywhere else `null` refuses `kind_mismatch`, §16.2). The COOKED form (§7) is
+not a read of this kind: a cooked region IS the caller's storage, not landed
+field by field, so what it holds outside the live values (an absent
+optional's payload, a union's storage outside its set arm, slots past a
+count) is §7.2's and §7.4's rule and not rule 2's. The optional still reads
+absent and the union as its tag.
+
+What this section does not cover, because each is a value the record DOES
+supply and not a missing field: a deprecated ENUM VARIANT met as a stored
+value reads as the field's declared default (§2.15), and a name this reader
+cannot resolve (an unknown variant, arm or keyed slot) is §4's rule.
 
 ## 5. Identity: the name hash, `was`, and the collision refusal
 
@@ -14847,7 +14950,9 @@ narrower taken arm inside the widest arm's span). Every dead byte is zero on
 write (§3.4), and a non-zero one REFUSES the whole load as `wire_damaged`: the
 check is the CHECK pass of FIXED-FORM-ALGORITHM.md §5.3 step 11, over every
 record, before any record lands. There is no exception — a writer produces
-zeros there, and the reader refuses what no writer produces.
+zeros there, and the reader refuses what no writer produces. A read that is
+not refused returns §4.4's values: what the record supplies as stored, and a
+declared default for every field it does not supply.
 
 **What it overturns.** The tolerant read and its named entry points
 (`...Tolerant`, §6.5); the owner read policy of 2026-10-17 ("reads forgiving
@@ -15456,9 +15561,9 @@ inspects everything in the schema built:
   and a case the payload-free arm does not already answer.
 - **`json` ON AN ARM** (§2.6): an arm key in the text form that is not the
   arm's name is the field feature one level down, and it waits for a case.
-  `= default` ON A TABLE ARM remains a follow-on: the table wire zeroes
-  selected-arm storage before decoding (§2.6) and does not admit an arm-level
-  default. Packet payload construction (SPEC §4.8) and untaken-branch resets
+  `= default` ON A TABLE ARM remains a follow-on: the table wire establishes
+  the selected arm's declared default before decoding (§2.6) and does not
+  admit an arm-level default. Packet payload construction (SPEC §4.8) and untaken-branch resets
   (SPEC §5) have their own rules.
 - **AN ENUM-KEYED ARRAY AS AN ARM — `[E]T` inside a union** (§2.6): a keyed
   body elides slots by name (§3.2), so its empty end wants stating in arm
@@ -19942,10 +20047,10 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+§4.4 is the rule here, in both forms. A field the reader added: its declared default. A field the reader deprecated is read into its slot by every plan, identity included, in BOTH forms: the reader lands what the record carries, as for any field, and no counter moves for it. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
-and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
-wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
+and count land; the slots past the count, and a text field's bytes past its length, are not values (§4.4
+rule 3), and in the writer's record they are dead bytes that must be zero (§4.4 rule 4). An older enum: its ordinals are the reader's, the list being a
 prefix. Everything else: copied.
 
 ### 21.3 What an older reader does with a newer file
@@ -20292,18 +20397,14 @@ array's live count, past a text's or a byte buffer's used length, behind a
 narrower union arm, and the payload of an absent optional. A count, a length,
 a present flag or a union tag always stands in front of the slack it governs.
 There is no padding between fields (§3.4), so slack is the only byte a value
-does not decide, and it is pinned to zero. A writer stores the LIVE extent
+does not decide, and it is pinned to zero: those bytes are DEAD, and a reader
+refuses a record where one is not zero (§4.4 rule 4). A writer stores the LIVE extent
 only: a counted array writes `count` elements and never an unused slot's
 storage, and an absent optional writes its flag `0` and skips the payload store
-(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` SLOT
-CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE** (§3.4): whatever the value holds,
-a deprecated field is written as its type's reset value would write it (a
-scalar its declared default or zero, a text its default, a counted array its
-empty count, an optional absent, a nested type its own default body), and a
-deprecated union arm of a `type` or `table` is that type's default body, an
-arm of any other shape the template's zeros, because an arm takes no specified
-default. Go copies the owner's default body and the C++ writer writes the
-field from the owner's reset value. **THE INTEGRITY TRAILER IS PER FILE** when
+(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` FIELD IS
+WRITTEN LIKE ANY OTHER FIELD** (§3.4, §4.4): the writer stores what the value
+holds there, by the same live-extent rule, and a value nobody set holds its
+declared default because that is what a fresh value holds. **THE INTEGRITY TRAILER IS PER FILE** when
 the root declares `integrity` (§2.14): the little-endian CRC-32C of every byte
 before it, header, layout and every record, after the last record. The lineage
 and the plans (§21.5) are compile-time data in the generated code and never

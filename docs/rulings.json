@@ -278,6 +278,21 @@
         "FIXED-FORM-ALGORITHM.md §5.3 step 11 and its LIVE paragraph, which read the used extent only",
         "FIXED-FORM-ALGORITHM.md §5.4's CHECK row \"over LIVE data only\""
       ]
+    },
+    {
+      "id": "supplied-or-default",
+      "date": "2026-11-10",
+      "quotes": [
+        "I mean bottom line is, if it's supplied, use the value there, otherwise, use the default."
+      ],
+      "source": "the owner's ruling of 2026-11-10, said of a deprecated field in the fixed form (a deprecated field is read and written like any other field), and applied as the general rule for every field a record does not supply: an absent optional's payload, a field an older layout lacks and a field the record leaves out read as their declared defaults, in every form and every leg (a required field refuses instead), and a union arm the tag does not name is not a value. Recorded in docs/SPEC-TABLES.md §4.4 (the one normative statement), §2.10, §3.4, §13.10, §21.2 and §22.6, and docs/FIXED-FORM-ALGORITHM.md §3.1, §4.1, §4.4, §4.5, §5.3 and the corpus manifest rules.",
+      "supersedes": [
+        "SPEC-TABLES.md §3.4 \"THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS THE DECLARED DEFAULT OUT OF IT\" for a deprecated field",
+        "SPEC-TABLES.md §2.10 \"The writer emits the field's default\" and \"The reader ignores it\"",
+        "SPEC-TABLES.md §21.2 \"In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field's declared default into its retained slot and the reader yields that default whatever the record carries\"",
+        "SPEC-TABLES.md §22.6 \"A `| deprecated` SLOT CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE\"",
+        "FIXED-FORM-ALGORITHM.md's corpus manifest rule that under an absent optional \"the bytes are the TEMPLATE'S ZEROS and not the declared default\" as what a reader produces"
+      ]
     }
   ]
 }
