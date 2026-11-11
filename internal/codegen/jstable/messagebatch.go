@@ -939,7 +939,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	}
 	g.pf("  const [r, count] = tableMessageBatchOpen(vocabulary, data, report);\n")
 	g.pf("  if (count < 0) { return -1; }\n")
-	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return count; }\n")
+	g.pf("  if (count > values.length) { TableMessageRefuse(report, \"batch_too_large\"); return 0; }\n")
 	g.pf("  for (let i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", n)
 	g.pf("      // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md\n")
