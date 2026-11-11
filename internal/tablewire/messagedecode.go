@@ -394,8 +394,20 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 // that carries a zero byte, is DAMAGE. A `bytes(N)` carries no such rule,
 // because its payload is bytes.
 func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
-	raw, ok := d.textPayload(entry.Shape, f.Type.Kind == ir.TString)
+	shape := entry.Shape
+	width := ir.TableMessageBitsRequired(0, shape.Max)
+	if f.Type.Kind == ir.TBytes {
+		width = ir.TableMessageCountBits(shape)
+	}
+	raw, ok := d.textPayload(width)
 	if !ok {
+		return false
+	}
+	if f.Type.Kind == ir.TString && !textValid(raw) {
+		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
+		// stream has no defined position to continue from, which is the only
+		// thing that differs from §3's recovery
+		d.damage()
 		return false
 	}
 	if len(raw) > int(f.Type.Size) {
@@ -407,28 +419,28 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 	return true
 }
 
-// textPayload reads and content-checks one text payload: the length at its
-// own width, the align, the bytes, and kind 12's content rule. It is the
-// wire's half of text, and the skip path reads a payload it does not keep
-// through it so an unknown string is held to the same rule (§3.3, §4).
-func (d *bitDecoder) textPayload(shape ir.TableMessageShape, isString bool) ([]byte, bool) {
-	width := ir.TableMessageBitsRequired(0, shape.Max)
-	if !isString {
-		width = ir.TableMessageCountBits(shape)
-	}
+// textPayload reads one payload's length at its own width, the align, and its
+// bytes. textBytes returns those bytes after holding the length to what the
+// batch can back. The skip path reads a payload it does not keep through the
+// same wire half, so an unknown string's bytes are held to the same rule
+// (§3.3, §4).
+func (d *bitDecoder) textPayload(width int) ([]byte, bool) {
 	n, ok := d.r.get(width)
-	if !ok || !d.r.align() || !d.r.has(int(n)*8) {
+	if !ok || !d.r.align() {
+		d.damage()
+		return nil, false
+	}
+	return d.textBytes(n)
+}
+
+// textBytes reads `n` payload bytes after holding the length to the bits that
+// remain, as the named read and the skip path both must.
+func (d *bitDecoder) textBytes(n uint64) ([]byte, bool) {
+	if !d.r.has(int(n) * 8) {
 		d.damage()
 		return nil, false
 	}
 	raw, _ := d.r.bytes(int(n))
-	if isString && !textValid(raw) {
-		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
-		// stream has no defined position to continue from, which is the only
-		// thing that differs from §3's recovery
-		d.damage()
-		return nil, false
-	}
 	return raw, true
 }
 
@@ -1048,8 +1060,22 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		// (§3.1, §3.3)
 		return false
 	case ir.TableKindString:
-		_, ok := d.textPayload(shape, true)
-		return ok
+		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
+		if !ok || !d.r.align() {
+			return false
+		}
+		raw, ok := d.textBytes(n)
+		if !ok {
+			return false
+		}
+		if !textValid(raw) {
+			// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3):
+			// the skip path reads a payload it does not keep, and a string's
+			// bytes are held to the rule a named read applies to them (§4)
+			d.damage()
+			return false
+		}
+		return true
 	case ir.TableKindEscape:
 		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
 		// the one path a later-major writer has on this form (§3.3)
