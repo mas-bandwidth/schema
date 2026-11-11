@@ -1214,38 +1214,18 @@ func (in *tableJSONIn) space() {
 			in.pos++
 			continue
 		}
-        if c == '/' && in.pos+1 < len(in.text) {
-            switch in.text[in.pos+1] {
-            case '/':
-                in.pos += 2
-                start := in.pos
-                for in.pos < len(in.text) && in.text[in.pos] != '\n' { in.pos++ }
-                if !in.commentText(start) { return }
-                continue
-            case '*':
-                in.pos += 2
-                start := in.pos
-                for in.pos+1 < len(in.text) && !(in.text[in.pos] == '*' && in.text[in.pos+1] == '/') { in.pos++ }
-                if in.pos+1 >= len(in.text) { in.bad = true; return }
-                if !in.commentText(start) { return }
-                in.pos += 2
-                continue
-            }
+        // a comment, line or block, is well-formed UTF-8 holding no NUL (docs/SPEC-TABLES.md §16.2, §16.3)
+        if c == '/' && in.pos+1 < len(in.text) && (in.text[in.pos+1] == '/' || in.text[in.pos+1] == '*') {
+            body, end := in.text[in.pos+2:], "*/"
+            if in.text[in.pos+1] == '/' { end = "\n" }
+            n := bytes.Index(body, []byte(end))
+            if n < 0 && end == "\n" { n, end = len(body), "" }
+            if n < 0 || bytes.IndexByte(body[:n], 0) >= 0 || !utf8.Valid(body[:n]) { in.bad = true; return }
+            in.pos += 2 + n + len(end)
+            continue
         }
 		return
 	}
-}
-
-// commentText holds a comment's bytes, from start to the reader's position, to
-// the text rule every entry shares (docs/SPEC-TABLES.md §16.2, §16.3): well-formed
-// UTF-8 holding no NUL; otherwise the text is not JSON and the walk stops.
-func (in *tableJSONIn) commentText(start int) bool {
-	body := in.text[start:in.pos]
-	if bytes.IndexByte(body, 0) >= 0 || !utf8.Valid(body) {
-		in.bad = true
-		return false
-	}
-	return true
 }
 
 // a leading UTF-8 byte-order mark is skipped, at the very start and nowhere
