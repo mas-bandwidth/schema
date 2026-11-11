@@ -38,7 +38,8 @@ LOBSTER_WIRE_FUZZ_HOST  = build/lobster-wirefuzzhost --known-leaks $(LOBSTER_WIR
 # first byte of sku's text set to 0xFF, a lead byte UTF-8 never spells, and
 # nothing else moved. The golden is re-pinned over the message closure, so
 # build the twin from it rather than replaying the previous encoding, whose
-# references resolve to other entries.
+# references resolve to other entries and is refused as a duplicate before it
+# reaches the text check, leaving the plant unable to redden it.
 LOBSTER_WIRE_FUZZ_ILL_TEXT := build/lobster-wire-fuzz-vectors/message_ill_formed_text.bin
 
 # the generated units move with the emitters and both runtimes, not only with
