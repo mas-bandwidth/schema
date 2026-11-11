@@ -94,6 +94,10 @@ type tableGen struct {
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
 	anyKeyed    bool // the unit declares at least one enum-keyed array
+	// wroteAssert is an emitted writer carrying a write-contract schema_assert
+	// of its own (docs/SPEC.md §5.1), which brings in the assert hook for a
+	// unit that has no other use for it.
+	wroteAssert bool
 	// anyMap is the unit declaring at least one `map[K]V` (docs/SPEC-TABLES.md
 	// §2.8). It gates the map runtime and every map-shaped walk, so not one
 	// symbol of the machinery reaches a map-free unit's header (§2.2).
@@ -2124,8 +2128,9 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
-		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
+		// them. A unit of plain scalars declares neither and gets no hook,
+		// unless a writer asserts the write contract (SPEC.md §5.1).
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteBound(u) || g.wroteAssert) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {

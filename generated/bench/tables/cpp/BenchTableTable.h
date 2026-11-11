@@ -6268,51 +6268,61 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
     if ( value.entity_id != 0 )
     {
         w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
+        schema_assert( ( value.entity_id ) <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
         w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
+        schema_assert( ( value.pos_x ) >= -16383 && ( value.pos_x ) <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
         w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
+        schema_assert( ( value.pos_y ) >= -16383 && ( value.pos_y ) <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
         w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
+        schema_assert( ( value.pos_z ) >= -16383 && ( value.pos_z ) <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
         w.header( ids.ref_at( 59, 0xb54d8e19798e16e8ull ), 7 ); // yaw
+        schema_assert( ( value.yaw ) <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
         w.header( ids.ref_at( 24, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
+        schema_assert( ( value.pitch ) <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
         w.header( ids.ref_at( 30, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
+        schema_assert( ( value.vel_x ) >= -2048 && ( value.vel_x ) <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
         w.header( ids.ref_at( 29, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
+        schema_assert( ( value.vel_y ) >= -2048 && ( value.vel_y ) <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
         w.header( ids.ref_at( 31, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
+        schema_assert( ( value.vel_z ) >= -2048 && ( value.vel_z ) <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
         w.header( ids.ref_at( 41, 0x7f69d4b5288ba9cfull ), 4 ); // health
+        schema_assert( ( value.health ) >= 0 && ( value.health ) <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != TableWeapon::None )
@@ -7324,51 +7334,61 @@ inline bool TableEntitySaveMessageBody( TableBitWriter & w, const TableEntity & 
     if ( value.entity_id != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( ( value.entity_id ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.entity_id ), 12 );
     }
     if ( value.pos_x != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_x ) >= -16383 && ( value.pos_x ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_x ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_y != 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_y ) >= -16383 && ( value.pos_y ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_y ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_z != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( ( value.pos_z ) >= -16383 && ( value.pos_z ) <= 16383 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pos_z ) - 18446744073709535233ull, 15 );
     }
     if ( value.yaw != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( ( value.yaw ) <= 511ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.yaw ), 9 );
     }
     if ( value.pitch != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( ( value.pitch ) <= 511ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.pitch ), 9 );
     }
     if ( value.vel_x != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_x ) >= -2048 && ( value.vel_x ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_x ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_y != 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_y ) >= -2048 && ( value.vel_y ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_y ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_z != 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );
+        schema_assert( ( value.vel_z ) >= -2048 && ( value.vel_z ) <= 2047 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.vel_z ) - 18446744073709549568ull, 12 );
     }
     if ( value.health != 0 )
     {
         w.put( 12, kTableMessageRefBitsHere );
+        schema_assert( ( value.health ) >= 0 && ( value.health ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.health ), 10 );
     }
     if ( value.weapon != TableWeapon::None )
@@ -8501,6 +8521,7 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
     if ( value.delta != 0 )
     {
         w.header( ids.ref_at( 23, 0x52076675ec13a0c1ull ), 4 ); // delta
+        schema_assert( ( value.delta ) >= -512 && ( value.delta ) <= 511 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8805,6 +8826,7 @@ inline bool TableStatSaveMessageBody( TableBitWriter & w, const TableStat & valu
     if ( value.delta != 0 )
     {
         w.put( 52, kTableMessageRefBitsHere );
+        schema_assert( ( value.delta ) >= -512 && ( value.delta ) <= 511 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.delta ) - 18446744073709551104ull, 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9222,6 +9244,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.ack_sequence != 0 )
     {
         w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
+        schema_assert( ( value.ack_sequence ) >= 0 && ( value.ack_sequence ) <= 65535 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
@@ -9242,16 +9265,19 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.nonce != 1ull )
     {
         w.header( ids.ref_at( 34, 0x73a94c71d60dc0d8ull ), 9 ); // nonce
+        schema_assert( ( value.nonce ) >= 1ull && ( value.nonce ) <= 9223372036854775807ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
         w.header( ids.ref_at( 21, 0x3eee6b51be54fc85ull ), 5 ); // world_time
+        schema_assert( ( value.world_time ) >= -1000000000000ll && ( value.world_time ) <= 1000000000000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
         w.header( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
+        schema_assert( ( value.frame_tick ) <= 281474976710655ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0.0f )
@@ -9446,6 +9472,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.flux != 0 )
     {
         w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 5 ); // flux
+        schema_assert( ( value.flux ) >= -1000000000000000000ll && ( value.flux ) <= 1000000000000000000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.flux ) );
     }
     if ( value.ping != 0.0f )
@@ -9457,6 +9484,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.crc_hint != 0 )
     {
         w.header( ids.ref_at( 25, 0x560d6527ccd8515full ), 8 ); // crc_hint
+        schema_assert( ( value.crc_hint ) <= 16777215ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != false )
@@ -9467,11 +9495,13 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.extra != 0 )
     {
         w.header( ids.ref_at( 76, 0xfd29ee12a979cb69ull ), 4 ); // extra
+        schema_assert( ( value.extra ) >= 0 && ( value.extra ) <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.extra ) );
     }
     if ( value.idle_ticks != 0 )
     {
         w.header( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+        schema_assert( ( value.idle_ticks ) >= 0 && ( value.idle_ticks ) <= 15 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.idle_ticks ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11390,6 +11420,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.ack_sequence != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
+        schema_assert( ( value.ack_sequence ) >= 0 && ( value.ack_sequence ) <= 65535 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.ack_sequence ), 16 );
     }
     if ( value.ack_bits != 0 )
@@ -11410,16 +11441,19 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.nonce != 1ull )
     {
         w.put( 27, kTableMessageRefBitsHere );
+        schema_assert( ( value.nonce ) >= 1ull && ( value.nonce ) <= 9223372036854775807ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.nonce ) - 1ull, 63 );
     }
     if ( value.world_time != 0 )
     {
         w.put( 28, kTableMessageRefBitsHere );
+        schema_assert( ( value.world_time ) >= -1000000000000ll && ( value.world_time ) <= 1000000000000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.world_time ) - 18446743073709551616ull, 41 );
     }
     if ( value.frame_tick != 0 )
     {
         w.put( 29, kTableMessageRefBitsHere );
+        schema_assert( ( value.frame_tick ) <= 281474976710655ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.frame_tick ), 48 );
     }
     if ( value.server_time != 0.0f )
@@ -11491,6 +11525,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.player_name_length > 0 )
     {
         w.put( 35, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.player_name_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.player_name, value.player_name_length );
@@ -11541,6 +11576,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.flux != 0 )
     {
         w.put( 43, kTableMessageRefBitsHere );
+        schema_assert( ( value.flux ) >= -1000000000000000000ll && ( value.flux ) <= 1000000000000000000ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.flux ) - 17446744073709551616ull, 61 );
     }
     if ( value.ping != 0.0f )
@@ -11552,6 +11588,7 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.crc_hint != 0 )
     {
         w.put( 45, kTableMessageRefBitsHere );
+        schema_assert( ( value.crc_hint ) <= 16777215ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.crc_hint ), 24 );
     }
     if ( value.has_extra != false )
@@ -11562,11 +11599,13 @@ inline bool TableMixedSaveMessageBody( TableBitWriter & w, const TableMixed & va
     if ( value.extra != 0 )
     {
         w.put( 47, kTableMessageRefBitsHere );
+        schema_assert( ( value.extra ) >= 0 && ( value.extra ) <= 255 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.extra ), 8 );
     }
     if ( value.idle_ticks != 0 )
     {
         w.put( 48, kTableMessageRefBitsHere );
+        schema_assert( ( value.idle_ticks ) >= 0 && ( value.idle_ticks ) <= 15 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.idle_ticks ), 4 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -13516,16 +13555,19 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & 
     if ( value.target_id != 0 )
     {
         w.header( ids.ref_at( 60, 0xb7bc9ac015a25050ull ), 7 ); // target_id
+        schema_assert( ( value.target_id ) <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ), 4 ); // damage
+        schema_assert( ( value.damage ) >= 0 && ( value.damage ) <= 4095 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
         w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
+        schema_assert( ( value.hit_kind ) >= 0 && ( value.hit_kind ) <= 7 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
@@ -13957,16 +13999,19 @@ inline bool TableHitEventSaveMessageBody( TableBitWriter & w, const TableHitEven
     if ( value.target_id != 0 )
     {
         w.put( 17, kTableMessageRefBitsHere );
+        schema_assert( ( value.target_id ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.target_id ), 12 );
     }
     if ( value.damage != 0 )
     {
         w.put( 18, kTableMessageRefBitsHere );
+        schema_assert( ( value.damage ) >= 0 && ( value.damage ) <= 4095 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.damage ), 12 );
     }
     if ( value.hit_kind != 0 )
     {
         w.put( 19, kTableMessageRefBitsHere );
+        schema_assert( ( value.hit_kind ) >= 0 && ( value.hit_kind ) <= 7 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.hit_kind ), 3 );
     }
     if ( value.crit != false )
@@ -14402,11 +14447,13 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds &
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 56, 0xa5013e9ad5caeda4ull ), 4 ); // channel
+        schema_assert( ( value.channel ) >= 0 && ( value.channel ) <= 3 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
         w.header( ids.ref_at( 75, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
+        schema_assert( ( value.speaker ) <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -14733,11 +14780,13 @@ inline bool TableChatEventSaveMessageBody( TableBitWriter & w, const TableChatEv
     if ( value.channel != 0 )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( ( value.channel ) >= 0 && ( value.channel ) <= 3 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.channel ), 2 );
     }
     if ( value.speaker != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( ( value.speaker ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.speaker ), 12 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15061,11 +15110,13 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds
     if ( value.item_id != 0 )
     {
         w.header( ids.ref_at( 51, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
+        schema_assert( ( value.item_id ) <= 1023ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 43, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( ( value.amount ) >= 0 && ( value.amount ) <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -15392,11 +15443,13 @@ inline bool TablePickupEventSaveMessageBody( TableBitWriter & w, const TablePick
     if ( value.item_id != 0 )
     {
         w.put( 49, kTableMessageRefBitsHere );
+        schema_assert( ( value.item_id ) <= 1023ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.item_id ), 10 );
     }
     if ( value.amount != 0 )
     {
         w.put( 50, kTableMessageRefBitsHere );
+        schema_assert( ( value.amount ) >= 0 && ( value.amount ) <= 255 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.amount ), 8 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15785,16 +15838,27 @@ inline void TableEntityFixedWriteBody( uint8_t * b, const TableEntity & value )
 {
     (void) b;
     (void) value;
+    schema_assert( ( value.entity_id ) <= 4095ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 0, (uint32_t) value.entity_id );
+    schema_assert( ( value.pos_x ) >= -16383 && ( value.pos_x ) <= 16383 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 4, (uint32_t) value.pos_x );
+    schema_assert( ( value.pos_y ) >= -16383 && ( value.pos_y ) <= 16383 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 8, (uint32_t) value.pos_y );
+    schema_assert( ( value.pos_z ) >= -16383 && ( value.pos_z ) <= 16383 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 12, (uint32_t) value.pos_z );
+    schema_assert( ( value.yaw ) <= 511ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 16, (uint32_t) value.yaw );
+    schema_assert( ( value.pitch ) <= 511ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 20, (uint32_t) value.pitch );
+    schema_assert( ( value.vel_x ) >= -2048 && ( value.vel_x ) <= 2047 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 24, (uint32_t) value.vel_x );
+    schema_assert( ( value.vel_y ) >= -2048 && ( value.vel_y ) <= 2047 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 28, (uint32_t) value.vel_y );
+    schema_assert( ( value.vel_z ) >= -2048 && ( value.vel_z ) <= 2047 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 32, (uint32_t) value.vel_z );
+    schema_assert( ( value.health ) >= 0 && ( value.health ) <= 1000 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 36, (uint32_t) value.health );
+    schema_assert( (uint64_t) value.weapon <= 15u ); // a fixed write refuses a enum ordinal outside its variants (SPEC.md §5.1)
     TableFixedPut8( b + 40, (uint8_t) value.weapon );
     TableFixedPut64( b + 41, (uint64_t) value.damage );
     TableFixedPut8( b + 49, value.moving ? 1 : 0 );
@@ -15808,6 +15872,7 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
     (void) b;
     (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.stat_id );
+    schema_assert( ( value.delta ) >= -512 && ( value.delta ) <= 511 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 4, (uint32_t) value.delta );
 }
 
@@ -15817,8 +15882,11 @@ inline void TableHitEventFixedWriteBody( uint8_t * b, const TableHitEvent & valu
 {
     (void) b;
     (void) value;
+    schema_assert( ( value.target_id ) <= 4095ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 0, (uint32_t) value.target_id );
+    schema_assert( ( value.damage ) >= 0 && ( value.damage ) <= 4095 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 4, (uint32_t) value.damage );
+    schema_assert( ( value.hit_kind ) >= 0 && ( value.hit_kind ) <= 7 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 8, (uint32_t) value.hit_kind );
     TableFixedPut8( b + 12, value.crit ? 1 : 0 );
 }
@@ -15829,7 +15897,9 @@ inline void TableChatEventFixedWriteBody( uint8_t * b, const TableChatEvent & va
 {
     (void) b;
     (void) value;
+    schema_assert( ( value.channel ) >= 0 && ( value.channel ) <= 3 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 0, (uint32_t) value.channel );
+    schema_assert( ( value.speaker ) <= 4095ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 4, (uint32_t) value.speaker );
 }
 
@@ -15839,7 +15909,9 @@ inline void TablePickupEventFixedWriteBody( uint8_t * b, const TablePickupEvent 
 {
     (void) b;
     (void) value;
+    schema_assert( ( value.item_id ) <= 1023ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 0, (uint32_t) value.item_id );
+    schema_assert( ( value.amount ) >= 0 && ( value.amount ) <= 255 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 4, (uint32_t) value.amount );
 }
 
@@ -15851,12 +15923,16 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     (void) value;
     TableFixedPut16( b + 0, (uint16_t) value.protocol_magic );
     TableFixedPut32( b + 2, (uint32_t) value.sequence );
+    schema_assert( ( value.ack_sequence ) >= 0 && ( value.ack_sequence ) <= 65535 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 6, (uint32_t) value.ack_sequence );
     TableFixedPut32( b + 10, (uint32_t) value.ack_bits );
     TableFixedPut64( b + 14, (uint64_t) value.session_id );
     TableFixedPut32( b + 22, (uint32_t) value.client_id );
+    schema_assert( ( value.nonce ) >= 1ull && ( value.nonce ) <= 9223372036854775807ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut64( b + 26, (uint64_t) value.nonce );
+    schema_assert( ( value.world_time ) >= -1000000000000ll && ( value.world_time ) <= 1000000000000ll ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut64( b + 34, (uint64_t) value.world_time );
+    schema_assert( ( value.frame_tick ) <= 281474976710655ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut64( b + 42, (uint64_t) value.frame_tick );
     TableFixedPutF32( b + 50, value.server_time );
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
@@ -15871,6 +15947,7 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     {
         TableStatFixedWriteBody( b + 470 + i * 8 + 0, value.stats[i] );
     }
+    schema_assert( (uint64_t) value.game_event.type <= 3u ); // a fixed write refuses a union tag outside its arms (SPEC.md §5.1)
     TableFixedPut8( b + 1110, (uint8_t) value.game_event.type );
     switch ( value.game_event.type )
     {
@@ -15896,6 +15973,7 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
         TableFixedPut8( b + 1124 + i * 1 + 0, (uint8_t) value.loadout[i] );
     }
     schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // a fixed write keeps well-formed text (SPEC.md §5.1)
     TableFixedPut32( b + 1128, (uint32_t) value.player_name_length );
     memcpy( b + 1132, value.player_name, (size_t) ( value.player_name_length ) );
     schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
@@ -15907,11 +15985,15 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPutF32( b + 1179, value.recoil );
     TableFixedPutF64( b + 1183, value.drift );
     TableFixedPut64( b + 1191, (uint64_t) value.wide_key );
+    schema_assert( ( value.flux ) >= -1000000000000000000ll && ( value.flux ) <= 1000000000000000000ll ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut64( b + 1199, (uint64_t) value.flux );
     TableFixedPutF32( b + 1207, value.ping );
+    schema_assert( ( value.crc_hint ) <= 16777215ull ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 1211, (uint32_t) value.crc_hint );
     TableFixedPut8( b + 1215, value.has_extra ? 1 : 0 );
+    schema_assert( ( value.extra ) >= 0 && ( value.extra ) <= 255 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 1216, (uint32_t) value.extra );
+    schema_assert( ( value.idle_ticks ) >= 0 && ( value.idle_ticks ) <= 15 ); // a fixed write keeps the declared bounds (SPEC.md §5.1)
     TableFixedPut32( b + 1220, (uint32_t) value.idle_ticks );
 }
 

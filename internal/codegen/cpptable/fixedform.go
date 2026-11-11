@@ -378,6 +378,9 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf
 // with two different values would not compare equal on the second write.
 func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind string, unit int64) {
 	g.fixedWriteBound(fmt.Sprintf("%s.%s_length", val, f.Name), f.Type.Size, "length", ind)
+	if f.Type.Kind == ir.TString {
+		g.emitWriteTextAssert(val+"."+f.Name, val+"."+f.Name+"_length", ind, "a fixed write")
+	}
 	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_length );\n", ind, buf, base, val, f.Name)
 	scale := ""
 	if unit != 1 {
@@ -404,6 +407,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			g.fixedWriteOrdinal(expr+".type", r.Max, ir.StorageBitsFor(r.Max), "union tag outside its arms", ind)
 			g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
@@ -415,6 +419,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Enum:
 			w := int64(r.StorageBits / 8)
+			g.fixedWriteOrdinal(expr, r.Max, r.StorageBits, "enum ordinal outside its variants", ind)
 			g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 			return
 		case *ir.Flags:
@@ -431,12 +436,26 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TFloat64:
 		g.pf("%sTableFixedPutF64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
+		g.emitWriteBoundAssert(f, expr, ind, "a fixed write")
 		if w == 16 {
 			g.pf("%sTableFixedPut128( %s + %d, %s );\n", ind, buf, off, expr)
 			return
 		}
 		g.pf("%sTableFixedPut%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 	}
+}
+
+// fixedWriteOrdinal is the WRITE CONTRACT on an enum ordinal or a union tag
+// (docs/SPEC.md §5.1 rows 5 and 6), debug-only like fixedWriteBound: a value
+// past the set's top is one the fixed reader refuses as out_of_range, so the
+// writer never writes it. An ordinal whose extent fills its storage has no
+// value past the top, and the check is dropped as the read side drops it.
+func (g *tableGen) fixedWriteOrdinal(expr string, max int64, storageBits int, what, ind string) {
+	if ordinalFillsStorage(max, storageBits) {
+		return
+	}
+	g.wroteAssert = true
+	g.pf("%sschema_assert( (uint64_t) %s <= %du ); // a fixed write refuses a %s (SPEC.md §5.1)\n", ind, expr, max, what)
 }
 
 // emitFixedWriteArm is one union arm's fixed-form store, the twin of
@@ -475,6 +494,9 @@ func (g *tableGen) emitFixedWriteArm(v ir.UnionVariant, off int64, buf, val stri
 func (g *tableGen) emitFixedWriteTextArm(v ir.UnionVariant, base int64, buf, val, ind string, unit int64) {
 	f := v.F
 	g.fixedWriteBound(armCount(val, v), f.Type.Size, "length", ind)
+	if f.Type.Kind == ir.TString {
+		g.emitWriteTextAssert(armValue(val, v), armCount(val, v), ind, "a fixed write")
+	}
 	g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s );\n", ind, buf, base, armCount(val, v))
 	scale := ""
 	if unit != 1 {

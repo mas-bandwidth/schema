@@ -330,6 +330,9 @@ func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyE
 		g.pf("%sbits += (int64_t) %s * 8;\n", ind, count)
 		return
 	}
+	if f.Type.Kind == ir.TString {
+		g.emitWriteTextAssert(value, count, ind, "a message write")
+	}
 	g.pf("%sw.put( (uint64_t) %s, %d );\n", ind, count, width)
 	g.pf("%sw.align(); // a string or a bytes ALIGNS before its bytes\n", ind)
 	g.pf("%sw.putbytes( (const uint8_t *) %s, %s );\n", ind, value, count)
@@ -369,11 +372,14 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 		width := ir.TableMessageBitsRequired(0, m)
 		if pass == messagePassMeasure {
 			g.pf("%s", loop)
+			g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return -1; } // storage invariant\n", ind, elem, elem, m)
 			g.pf("%s    bits += %d + TableAlignBits( at + bits ) + (int64_t) %s.value_length * 8;\n", ind, width, elem)
 			g.pf("%s}\n", ind)
 			return
 		}
 		g.pf("%s", loop)
+		g.pf("%s    if ( %s.value_length < 0 || %s.value_length > %d ) { return false; } // storage invariant\n", ind, elem, elem, m)
+		g.emitWriteTextAssert(elem+".value", elem+".value_length", ind+"    ", "a message write")
 		g.pf("%s    w.put( (uint64_t) %s.value_length, %d );\n", ind, elem, width)
 		g.pf("%s    w.align(); // a string payload ALIGNS before its bytes\n", ind)
 		g.pf("%s    w.putbytes( (const uint8_t *) %s.value, %s.value_length );\n", ind, elem, elem)
@@ -474,6 +480,11 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
 	default:
+		// A RANGED VALUE OFF ITS BOUNDS IS REFUSED, NEVER MASKED, WRAPPED OR
+		// CLAMPED into the field's width (docs/SPEC.md §5.1, SPEC-TABLES.md
+		// §22.6), a | required field's included: this form refuses nothing of
+		// its own for one
+		g.emitWriteBoundAssert(f, expr, ind, "a message write")
 		if tableKindWidth(int(kind)) == 16 {
 			// A 128-BIT KIND at the width its shape states: the base subtracted
 			// at 128 bits, the low half first and the high half where the
