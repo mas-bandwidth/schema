@@ -2509,6 +2509,12 @@ local function wire_check(st, bytes, blen)
       if length == nil or above(length, lim - after) then return "wire_damaged" end
       local recend = after + length
       local tid = c.ids[ref]
+      -- A RESERVED ID IS NO RECORD'S TYPE (docs/SPEC-TABLES.md §3.1, §3.3):
+      -- the node-table, build-version and vocabulary ids are damage anywhere
+      -- but the body whose transport they are; the blob ids stay lawful
+      if tid == NODE_TABLE_ID or tid == BUILD_VERSION_ID or tid == MESSAGE_VOCABULARY_ID then
+        return "wire_damaged"
+      end
       n = n + 1
       first[n] = c.ne + 1
       if tid == BYTES_BLOB_ID or tid == STRING_BLOB_ID then

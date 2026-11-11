@@ -283,6 +283,11 @@ local function node_table_scan(bytes: buffer, ids: { any }, endpos: number, repo
 	while rec.at < rec.e do
 		local tref = r_leb(rec)
 		if rec.bad or tref == 0 or tref > #ids then report.malformed = true; return nil end
+		-- A RESERVED ID IS NO RECORD'S TYPE (docs/SPEC-TABLES.md §3.1, §3.3):
+		-- the node-table, build-version and vocabulary ids are damage anywhere
+		-- but the body whose transport they are; the blob ids stay lawful
+		local rid = ids[tref]
+		if rid == NodeTableId or rid == BuildVersionId or rid == MessageVocabularyId then report.malformed = true; return nil end
 		local tlen = r_leb(rec)
 		if rec.bad or rec.at + tlen > rec.e then report.malformed = true; return nil end
 		local body = buffer.create(tlen)
@@ -2227,6 +2232,9 @@ local function wireDamage(b: buffer, top: any, ids: { integer }, rep: any): bool
 			while p < ps + n do
 				local tref, q = leb(b, p, ps + n)
 				if tref == nil or tref == 0 or tref > #ids then return true end
+				-- a reserved id is no record's type (§3.1, §3.3)
+				local rid = ids[tref]
+				if rid == NodeTableId or rid == BuildVersionId or rid == MessageVocabularyId then return true end
 				local tlen, r = leb(b, q, ps + n)
 				if tlen == nil or r + tlen > ps + n then return true end
 				recs[#recs + 1] = { tid = ids[tref], s = r, e = r + tlen }
