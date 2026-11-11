@@ -1,8 +1,21 @@
 #!/bin/sh
 # THE LUAU VECTORS' CONTROL (make/luau-fuzz.mk, tables-luau-wire-fuzz-vectors):
-# each pinned vector's fix is reverted in a scratch copy of the emitted units,
-# and that vector's replay must diverge. A plant whose anchor is not found once per generated
-# schema_load.luau fails the control rather than passing it vacuously.
+# each pinned vector's strict verdict is broken in a scratch copy of the
+# artifact the vector covers, and that vector's replay must diverge from the
+# Go engine (docs/SPEC-TABLES.md §4.2, the engine is the oracle). A plant whose
+# anchor is not found once per target fails the control rather than passing it
+# vacuously.
+#
+# The strict cut removed the tolerant read (docs/plans/strict-only.md), so a
+# vector that once pinned a tolerant counter now pins the STRICT VERDICT: the
+# whole load refuses. The plant therefore restores the tolerant read -- damage
+# no longer discards the load, and the report counters no longer refuse -- or,
+# for a fixed root's form-1 wire, restores the pre-strict fixed-form dispatch
+# that let the variable read answer. The region vector's strict verdict is
+# acceptance, and its plant makes the driver's LoadMeasure refuse a root whose
+# extent alignment raises the region above the default. In every case the leg
+# and the oracle disagree on the read verdict, and the harness names the
+# vector it stopped on.
 set -eu
 
 out=build/luau-wire-fuzz-vectors-nc
@@ -14,9 +27,22 @@ for need in build/conformance-harness "$host" build/conformance-luau build/luau-
 	fi
 done
 
-# plant <vector> <perl substitution> [driver]: the fix reverted, the run red
-# on <vector>. The substitution lands in every generated schema_load.luau, or
-# in the copied wire-fuzz driver when the third word is `driver`.
+# THE TOLERANT READ, AS THE STRICT CUT REMOVED IT: wire damage no longer
+# discards the value, and the refusing counters no longer refuse it.
+tol='s/\t\tlocal damaged = wireDamage\(b, top, fr\.ids, rep\)/\t\tlocal damaged = false/; s/\tfor _, k in REFUSING do/\tfor _, k in ({}) do/'
+# A header whose spelling crosses its L is framed by the whole body rather than
+# its own L, and the body's trailing bytes are no longer damage.
+frame='s/\tif fr == nil or \(top ~= nil and top\.term \+ 1 ~= fr\.e\) then/\tif fr == nil then/'
+# A damaged walk returns its partial value: the malformed flag stops
+# discarding the load.
+loadfix='s/\tif report\.malformed then return nil end\n\treturn v/\tif false then return nil end\n\treturn v/; s/\tif rep\.duplicate > 0 then rep\.duplicateField = witness\(root, b, "duplicate"\) end\n\treturn v/\tif rep.duplicate > 0 then rep.duplicateField = witness(root, b, "duplicate") end\n\trep.malformed = false\n\treturn v/'
+# A fixed root again answers a form-1 wire through the variable read.
+fixed='s/\tif d ~= nil and d\.fixed then/\tif false then/g'
+
+# plant <vector> <perl substitution> [driver]: the strict verdict broken, the
+# run red on <vector>. The substitution lands in every generated
+# schema_load.luau, or in the copied wire-fuzz driver when the third word is
+# `driver`.
 plant() {
 	name=$1 subst=$2 where=${3:-units}
 	rm -rf "$out"
@@ -49,26 +75,29 @@ plant() {
 	if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
 		--replay "$4" --unit "$2" --root "$3" --failed "$out/failed.bin" > "$out/log" 2>&1; then
 		cat "$out/log"
-		echo "NEGATIVE CONTROL FAILED: the $name fix reverted left its vector green" >&2
+		echo "NEGATIVE CONTROL FAILED: the $name flaw left its vector green" >&2
 		exit 1
 	fi
-	if ! grep -q '^harness: FAILED after 0 mutants: ' "$out/log"; then
+	# THE VERDICT, NOT A REASON: the planted artifact must accept what the
+	# Go engine refuses (or, for the region vector, refuse what it accepts).
+	if ! grep -qE '^harness: FAILED after 0 mutants: read acceptance differs: the leg says (true, the oracle says false|false, the oracle says true)' "$out/log"; then
 		cat "$out/log"
-		echo "NEGATIVE CONTROL FAILED: the $name fix reverted went red, but not as a divergence on its replay" >&2
+		echo "NEGATIVE CONTROL FAILED: the $name flaw went red, but not as a read-verdict divergence" >&2
 		exit 1
 	fi
-	echo "luau vectors negative control: the $name fix reverted turns the $name vector red"
+	# THE VECTOR, NOT A NEIGHBOUR: the harness must stop on this vector.
+	if ! grep -q "corpus seed ${name}.bin (" "$out/log"; then
+		cat "$out/log"
+		echo "NEGATIVE CONTROL FAILED: the $name flaw went red on another vector" >&2
+		exit 1
+	fi
+	echo "luau vectors negative control: the $name flaw turns the $name vector red"
 }
 
-plant map_header_count_past_length \
-	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= 13 then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
-plant keyed_header_count_past_length \
-	's/local hdr = new_reader\(r\.b, r\.at, r\.e\)(\n(?:[^\n]*\n){4}\t\tif ek ~= fd\.ek then)/local hdr = new_reader(r.b, r.at, endpos)$1/'
-plant text_ill_formed_repeat_reads_default \
-	's/\t\t\t\tstore_bytes\(v, fd\.slot, buffer\.fromstring\(def\), 0, #def, #def\)\n//'
-plant list_count_cross_length \
-	's/\t\t\tif crossed then\n/\t\t\tif false then\n/'
-plant map_repeated_key_widen \
-	's/\t*kindBad = false -- this occurrence replaces the earlier key kind\n//'
+plant map_header_count_past_length "$tol"
+plant keyed_header_count_past_length "$fixed; $tol; $frame; $loadfix"
+plant text_ill_formed_repeat_reads_default "$fixed; $tol; $frame; $loadfix"
+plant list_count_cross_length "$tol; $frame; $loadfix"
+plant map_repeated_key_widen "$tol"
 plant region_align_extent_uint128 \
-	's/math\.max\(layout\.record_layout\(v\)\.align, layout\.extent_align\(v, \{\}\)\)/layout.record_layout(v).align/' driver
+	's/\tif desc\.variable ~= true then return -1 end\n/\tif desc.variable ~= true then return -1 end\n\tif align > 8 then return nil end\n/' driver

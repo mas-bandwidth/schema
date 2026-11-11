@@ -218,6 +218,19 @@ end
 -- ir.TableWireIdTableBound: the most entries an id table may hold (§3)
 local ID_TABLE_BOUND = 4096
 
+-- THE ID TABLE'S COUNT, ONE RULE for every reader of the trailer (§3): the
+-- count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed integer,
+-- so a high-bit count is huge, never negative, and a count that does not frame
+-- refuses. open() and the strict read's frame() share this check, so the
+-- strict read applies one rule.
+local function idTableCount(bytes: buffer): number?
+	local len = buffer.len(bytes)
+	if len < 9 then return nil end
+	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
+	if count < 0 or count > math.floor((len - 9) / 8) then return nil end
+	return count
+end
+
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
 -- byte this reader does not know REFUSES; damage is malformed.
 local function open(bytes: buffer, report: any): any
@@ -225,10 +238,8 @@ local function open(bytes: buffer, report: any): any
 	if len < 1 then report.malformed = true; return nil end
 	if buffer.readu8(bytes, 0) ~= 1 then report.refused = report.refused + 1; return nil end
 	if len < 9 then report.malformed = true; return nil end
-	-- the count is the unsigned u64 of docs/SPEC-TABLES.md §3, not a signed
-	-- integer: a high-bit count is huge, never negative, and refuses here
-	local count = integer.tonumber(buffer.readinteger(bytes, len - 8))
-	if count < 0 or count > math.floor((len - 9) / 8) then report.malformed = true; return nil end
+	local count = idTableCount(bytes)
+	if count == nil then report.malformed = true; return nil end
 	-- THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
 	-- CHECK): a table of more than ID_TABLE_BOUND entries is malformed on the
 	-- whole-wire rule, whatever the buffer would hold
@@ -1949,14 +1960,14 @@ local function walkBody(b: buffer, at: number, e: number, ids: { integer }): any
 end
 
 -- the id table and the root body's span (docs/SPEC-TABLES.md §3: the id
--- table's count is the file's last eight bytes and its ids precede it), as
--- schema_load.luau's open reads them, except that a count that does not frame (a
--- negative one included) is refused
+-- table's count is the file's last eight bytes and its ids precede it), read
+-- by the same idTableCount rule schema_load.luau's open uses: a count that
+-- does not frame (a negative one included) is refused
 local function frame(b: buffer): any
 	local len = buffer.len(b)
 	if len < 9 then return nil end
-	local count = integer.tonumber(buffer.readinteger(b, len - 8))
-	if count < 0 or count > math.floor((len - 9) / 8) then return nil end
+	local count = idTableCount(b)
+	if count == nil then return nil end
 	local endpos = len - 8 - count * 8
 	local ids: { integer } = {}
 	for i = 0, count - 1 do
