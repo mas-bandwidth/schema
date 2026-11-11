@@ -1895,16 +1895,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             do: {:value, %{__wire_node__: idx}},
             else: {:value, :wrong_type}
 
-        :malformed ->
-          # the directory already refused a malformed record before any
-          # body was read (directory_report), so this is never taken
-          :null
-
         _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
-          {:value, :wrong_type}
+          # a malformed record was refused at the directory before any body
+          # was read (directory_report); a record whose type this reader
+          # cannot name at all counted unknown there and keeps its index, so
+          # the pointer naming it reads null, as the engine reads it (§3.1).
+          # A record of a type the reader names, under a pointer of another
+          # type, is the kind mismatch above.
+          :null
       end
     end
   end
