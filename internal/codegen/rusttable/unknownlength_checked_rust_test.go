@@ -180,7 +180,16 @@ func TestRustUnknownLengthCheckedInEveryProfile(t *testing.T) {
 		t.Run(profile.name, func(t *testing.T) {
 			t.Parallel()
 			bin := filepath.Join(t.TempDir(), "unknownlength")
-			build := exec.Command("rustc", append(append([]string{"--edition", "2024"}, profile.args...), "-o", bin, "main.rs")...)
+			args := []string{"--edition", "2024"}
+			if cc, err := exec.LookPath("cc"); err == nil {
+				if abs, err := filepath.Abs(cc); err == nil {
+					cc = abs
+				}
+				args = append(args, "-C", "linker="+cc)
+			}
+			args = append(args, profile.args...)
+			args = append(args, "-o", bin, "main.rs")
+			build := exec.Command("rustc", args...)
 			build.Dir = dir
 			if out, err := build.CombinedOutput(); err != nil {
 				t.Fatalf("the %s probe did not build: %v\n%s", profile.name, err, out)
