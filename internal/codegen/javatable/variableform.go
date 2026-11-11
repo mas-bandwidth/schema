@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -2407,6 +2408,15 @@ public final class TableVariable {
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
+        // The graph walk's work list: one frame per field to visit, plus the
+        // close marker that ends a descended node. It is grow-only and reused
+        // like the arrays above, so numbering a graph recurses nowhere.
+        private Object[] workValue = new Object[16];
+        private int[] workKind = new int[16];
+        private int[] workField = new int[16];
+        private int[] workIndex = new int[16];
+        private Object[] workClose = new Object[16];
+        private int workSize;
         public final java.util.IdentityHashMap<Object, Long> labels =
                 new java.util.IdentityHashMap<>();
 
@@ -2419,9 +2429,44 @@ public final class TableVariable {
                 java.util.Arrays.fill(nodeValue, 0, nodeCount, null);
                 nodeCount = 0;
             }
+            if (workSize > 0) {
+                java.util.Arrays.fill(workValue, 0, workSize, null);
+                java.util.Arrays.fill(workClose, 0, workSize, null);
+                workSize = 0;
+            }
             if (!labels.isEmpty()) {
                 labels.clear();
             }
+        }
+
+        public void push(Object value, int kind, int field, int index, Object close) {
+            if (workSize == workValue.length) {
+                int cap = workSize * 2;
+                workValue = java.util.Arrays.copyOf(workValue, cap);
+                workKind = java.util.Arrays.copyOf(workKind, cap);
+                workField = java.util.Arrays.copyOf(workField, cap);
+                workIndex = java.util.Arrays.copyOf(workIndex, cap);
+                workClose = java.util.Arrays.copyOf(workClose, cap);
+            }
+            workValue[workSize] = value;
+            workKind[workSize] = kind;
+            workField[workSize] = field;
+            workIndex[workSize] = index;
+            workClose[workSize] = close;
+            workSize++;
+        }
+
+        public int workCount() { return workSize; }
+        public Object workValue(int i) { return workValue[i]; }
+        public int workKind(int i) { return workKind[i]; }
+        public int workField(int i) { return workField[i]; }
+        public int workIndex(int i) { return workIndex[i]; }
+        public Object workClose(int i) { return workClose[i]; }
+
+        public void pop() {
+            workSize--;
+            workValue[workSize] = null;
+            workClose[workSize] = null;
         }
 
         private int slot(Object obj) {
@@ -4005,6 +4050,7 @@ func hasFixedFile(u *ir.Unit, st *ir.Struct) bool {
 func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	st = variableStruct(st)
 	tables := cardVariableTables(u)
+	graphTypes, graphIndex := variableGraphTypes(u)
 	var b strings.Builder
 	b.WriteString("import java.nio.charset.StandardCharsets;\n")
 	b.WriteString("import java.util.ArrayList;\n")
@@ -4043,6 +4089,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// Constants
 	fmt.Fprintf(&b, "    public static final long TYPE_ID = 0x%016xL;\n", ir.TableWireId(st.WireName()))
+	fmt.Fprintf(&b, "    static final int GRAPH_KIND = %d;\n", graphIndex[st.Name])
 	for _, f := range st.Fields {
 		fmt.Fprintf(&b, "    public static final long F_%s = 0x%016xL;\n", varMember(f), ir.TableFieldWireId(f))
 	}
@@ -4074,14 +4121,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    }\n\n")
 
 	// buildGraph
-	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
-	b.WriteString("        if (v == null) { return true; }\n")
-	for _, f := range st.Fields {
-		open := openGuard(&b, st, f)
-		writeVariableGraphField(&b, f)
-		closeGuard(&b, open)
-	}
-	b.WriteString("        return true;\n    }\n\n")
+	writeVariableGraphWalk(&b, st, graphTypes)
 
 	// readFields
 	fmt.Fprintf(&b, "    public static boolean readFields(TableVariable.Reader r, Value v, TableVariable.NodeTable nt, TableVariable.Report report) {\n")
@@ -6270,105 +6310,248 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	}
 }
 
-// Graph numbering descends only present payloads (§2.3, §3.1).
-func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
-	if f.Type.Optional {
-		fmt.Fprintf(b, "        if(v.%sPresent){\n", varMember(f))
+// variableGraphType is one class the graph walk can enter: a generated table
+// (a variable-form struct) or a table-closure union. GRAPH_KIND names it in
+// the work list and the dispatchers, so a frame carries an int and no object
+// of its own.
+type variableGraphType struct {
+	name string
+	st   *ir.Struct
+	un   *ir.Union
+}
+
+// variableGraphTypes answers the classes a graph walk can reach, in the one
+// numbering the dispatchers use: every variable-form table, then every
+// table-closure union, each group in name order.
+func variableGraphTypes(u *ir.Unit) ([]variableGraphType, map[string]int) {
+	tables := cardVariableTables(u)
+	out := make([]variableGraphType, 0, len(tables))
+	index := make(map[string]int, len(tables))
+	for _, st := range tables {
+		index[st.Name] = len(out)
+		out = append(out, variableGraphType{name: st.Name, st: st})
 	}
+	var unions []*ir.Union
+	seen := map[string]bool{}
+	for _, byName := range []map[string]*ir.Union{u.Unions, u.TableUnions} {
+		for _, un := range byName {
+			if un == nil || seen[un.Name] {
+				continue
+			}
+			if refuseVariableFormClosure(variableUnionStruct(un), map[string]bool{}) != nil {
+				continue
+			}
+			seen[un.Name] = true
+			unions = append(unions, un)
+		}
+	}
+	sort.Slice(unions, func(i, j int) bool { return unions[i].Name < unions[j].Name })
+	for _, un := range unions {
+		index[un.Name] = len(out)
+		out = append(out, variableGraphType{name: un.Name, un: un})
+	}
+	return out, index
+}
+
+// writeVariableGraphWalk emits buildGraph as a work-list walk, not a recursion:
+// a frame is one field still to visit for one node, and a close marker ends a
+// descended node. The frames are LIFO, so the visit order — and the numbering
+// each pointer takes — is the depth-first pre-order §3.1 defines.
+func writeVariableGraphWalk(b *strings.Builder, st *ir.Struct, graphTypes []variableGraphType) {
+	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        g.push(v, GRAPH_KIND, -2, 0, null);\n")
+	b.WriteString("        while (g.workCount() > 0) {\n")
+	b.WriteString("            int at = g.workCount() - 1;\n")
+	b.WriteString("            Object value = g.workValue(at);\n")
+	b.WriteString("            int kind = g.workKind(at);\n")
+	b.WriteString("            int field = g.workField(at);\n")
+	b.WriteString("            int index = g.workIndex(at);\n")
+	b.WriteString("            Object close = g.workClose(at);\n")
+	b.WriteString("            g.pop();\n")
+	b.WriteString("            if (field == -1) { g.setOpen(value, false); continue; }\n")
+	b.WriteString("            if (field == -2) {\n")
+	b.WriteString("                if (close != null) { g.push(close, 0, -1, 0, null); }\n")
+	b.WriteString("                if (!graphEnter(g, value, kind)) { return false; }\n")
+	b.WriteString("                continue;\n")
+	b.WriteString("            }\n")
+	b.WriteString("            if (!graphStep(g, value, kind, field, index)) { return false; }\n")
+	b.WriteString("        }\n")
+	b.WriteString("        return true;\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
+	b.WriteString("        if (v == null) { return true; }\n")
+	for i := len(st.Fields) - 1; i >= 0; i-- {
+		fmt.Fprintf(b, "        g.push(v, GRAPH_KIND, %d, 0, null);\n", i)
+	}
+	b.WriteString("        return true;\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {\n")
+	b.WriteString("        switch (field) {\n")
+	for i, f := range st.Fields {
+		fmt.Fprintf(b, "            case %d: {\n", i)
+		writeVariableGraphFieldStep(b, st, f, i)
+		b.WriteString("                return true;\n")
+		b.WriteString("            }\n")
+	}
+	b.WriteString("            default: return true;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+
+	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Object v, int kind) {\n")
+	b.WriteString("        switch (kind) {\n")
+	for i, gt := range graphTypes {
+		fmt.Fprintf(b, "            case %d: return %sVariable.graphEnter(g, (%sVariable.Value) v);\n", i, gt.name, gt.name)
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+	b.WriteString("    static boolean graphStep(TableVariable.NodeGraph g, Object v, int kind, int field, int index) {\n")
+	b.WriteString("        switch (kind) {\n")
+	for i, gt := range graphTypes {
+		fmt.Fprintf(b, "            case %d: return %sVariable.graphField(g, (%sVariable.Value) v, field, index);\n", i, gt.name, gt.name)
+	}
+	b.WriteString("            default: return false;\n")
+	b.WriteString("        }\n")
+	b.WriteString("    }\n\n")
+}
+
+// writeVariableGraphFieldOnce emits the checks and order a field answers once,
+// before its elements are numbered: the declared range, a map's key order, and
+// the text-list bounds.
+func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	m := varMember(f)
 	if f.Required && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		if f.HasIntRange && !variableWide(f) {
 			min, max := jsonIntRange(f)
 			switch {
 			case f.Type.Signed && f.Type.Kind == ir.TInt:
-				fmt.Fprintf(b, "        if ((long) v.%s < %s || (long) v.%s > %s) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif ((long) v.%s < %s || (long) v.%s > %s) return false;\n", pad, m, min, m, max)
 			case f.Type.Width <= 32:
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif (Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) < 0 || Long.compareUnsigned(((long) v.%s) & 0xffffffffL, %s) > 0) return false;\n", pad, m, min, m, max)
 			default:
-				fmt.Fprintf(b, "        if (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", m, min, m, max)
+				fmt.Fprintf(b, "%sif (Long.compareUnsigned(v.%s, %s) < 0 || Long.compareUnsigned(v.%s, %s) > 0) return false;\n", pad, m, min, m, max)
 			}
 		} else if f.HasFloatRange {
-			fmt.Fprintf(b, "        if ((double) v.%s < %s || (double) v.%s > %s) return false;\n", m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
+			fmt.Fprintf(b, "%sif ((double) v.%s < %s || (double) v.%s > %s) return false;\n", pad, m, fixedDoubleLit(f.FMin), m, fixedDoubleLit(f.FMax))
 		}
 	}
 	if f.IsMap() {
-		fmt.Fprintf(b, "        v.%s = order_%s(v.%s);\n", m, m, m)
+		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)
 	}
-	if un := variableUnion(f); un != nil {
-		if f.Array != ir.ArrayNone {
-			fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) { %sVariable.Value arm = v.%s.get(i); if (!%sVariable.buildGraph(g, arm)) return false; }\n", m, un.Name, m, un.Name)
+	if isStructArray(f) && f.IsTextList() {
+		target := f.Type.Ref.(*ir.Struct)
+		if f.ArrayBound > 0 {
+			fmt.Fprintf(b, "%sif (v.%s.size() > %d) return false;\n", pad, m, f.ArrayBound)
+		}
+		if f.TextTotal > 0 {
+			fmt.Fprintf(b, "%slong spent_%s = 0;\n", pad, m)
+		}
+		fmt.Fprintf(b, "%sfor (int ti = 0, tn = v.%s.size(); ti < tn; ti++) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(ti);\n", pad, target.Name, m)
+		if ir.TextListOptional(f) {
+			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
 		} else {
-			fmt.Fprintf(b, "        if(!%sVariable.buildGraph(g,v.%s))return false;\n", un.Name, m)
+			fmt.Fprintf(b, "%s    long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n", pad)
 		}
-		if f.Type.Optional {
-			b.WriteString("        }\n")
+		if !ir.TextListUnbounded(f) {
+			fmt.Fprintf(b, "%s    if (elemBytes > %dL) return false;\n", pad, ir.TextListValue(f).Type.Size)
 		}
-		return
+		if f.TextTotal > 0 {
+			fmt.Fprintf(b, "%s    spent_%s += elemBytes;\n", pad, m)
+			fmt.Fprintf(b, "%s    if (spent_%s > %dL) return false;\n", pad, m, f.TextTotal)
+		}
+		fmt.Fprintf(b, "%s}\n", pad)
+	}
+}
+
+// writeVariableGraphFieldStep emits one field's step in the work list. It
+// descends only present payloads (§2.3, §3.1), pushing each child's entry and
+// the continuation that visits this field's next array element beneath it.
+func writeVariableGraphFieldStep(b *strings.Builder, st *ir.Struct, f *ir.Field, field int) {
+	m := varMember(f)
+	base := "                "
+	pad := base
+	guard := variableGuard(st, f)
+	if guard != "" {
+		fmt.Fprintf(b, "%sif (%s) {\n", pad, strings.ReplaceAll(guard, " && ", "&&"))
+		pad += "    "
+	}
+	optPad := pad
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%sif (v.%sPresent) {\n", pad, m)
+		pad += "    "
+	}
+	isArray := f.Array != ir.ArrayNone || f.KeyEnum != ""
+	var once strings.Builder
+	writeVariableGraphFieldOnce(&once, f, pad+"    ")
+	if once.Len() > 0 {
+		if isArray {
+			fmt.Fprintf(b, "%sif (index == 0) {\n", pad)
+			b.WriteString(once.String())
+			fmt.Fprintf(b, "%s}\n", pad)
+		} else {
+			b.WriteString(once.String())
+		}
 	}
 	switch {
+	case variableUnion(f) != nil:
+		un := variableUnion(f)
+		if isArray {
+			fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+			fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+			fmt.Fprintf(b, "%s    g.push(v.%s.get(index), %sVariable.GRAPH_KIND, -2, 0, null);\n", pad, m, un.Name)
+			fmt.Fprintf(b, "%s}\n", pad)
+		} else {
+			fmt.Fprintf(b, "%sg.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, null);\n", pad, m, un.Name)
+		}
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0) return false; v.%sIdx = g.recordBlob(v.%s, TableVariable.STRING_ID); }\n", m, m, m, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { if (v.%sIdx < 0) return false; v.%sIdx = g.recordBlob(v.%s, TableVariable.STRING_ID); }\n", pad, m, m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0 || !g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", m, m, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { if (v.%sIdx < 0 || !g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", pad, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
-		fmt.Fprintf(b, "            %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
-		fmt.Fprintf(b, "            if (elem != null) {\n")
-		fmt.Fprintf(b, "                boolean isNew = !g.indexed(elem);\n")
-		fmt.Fprintf(b, "                if (!g.recordPointer(elem, %sVariable.TYPE_ID, false)) return false;\n", target.Name)
-		fmt.Fprintf(b, "                if (isNew) {\n")
-		fmt.Fprintf(b, "                    g.setOpen(elem, true);\n")
-		fmt.Fprintf(b, "                    if (!%sVariable.buildGraph(g, elem)) return false;\n", target.Name)
-		fmt.Fprintf(b, "                    g.setOpen(elem, false);\n")
-		fmt.Fprintf(b, "                }\n")
-		fmt.Fprintf(b, "            }\n")
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(index);\n", pad, target.Name, m)
+		fmt.Fprintf(b, "%s    if (elem != null) {\n", pad)
+		fmt.Fprintf(b, "%s        boolean isNew = !g.indexed(elem);\n", pad)
+		fmt.Fprintf(b, "%s        if (!g.recordPointer(elem, %sVariable.TYPE_ID, false)) return false;\n", pad, target.Name)
+		fmt.Fprintf(b, "%s        if (isNew) {\n", pad)
+		fmt.Fprintf(b, "%s            g.setOpen(elem, true);\n", pad)
+		fmt.Fprintf(b, "%s            if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s            g.push(elem, %sVariable.GRAPH_KIND, -2, 0, elem);\n", pad, target.Name)
+		fmt.Fprintf(b, "%s            return true;\n", pad)
+		fmt.Fprintf(b, "%s        }\n", pad)
+		fmt.Fprintf(b, "%s    }\n", pad)
+		fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%s != null) {\n", m)
-		fmt.Fprintf(b, "            boolean isNew = !g.indexed(v.%s);\n", m)
-		fmt.Fprintf(b, "            if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, false)) return false;\n", m, target.Name)
-		fmt.Fprintf(b, "            if (isNew) {\n")
-		fmt.Fprintf(b, "                g.setOpen(v.%s, true);\n", m)
-		fmt.Fprintf(b, "                if (!%sVariable.buildGraph(g, v.%s)) return false;\n", target.Name, m)
-		fmt.Fprintf(b, "                g.setOpen(v.%s, false);\n", m)
-		fmt.Fprintf(b, "            }\n")
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (v.%s != null) {\n", pad, m)
+		fmt.Fprintf(b, "%s    boolean isNew = !g.indexed(v.%s);\n", pad, m)
+		fmt.Fprintf(b, "%s    if (!g.recordPointer(v.%s, %sVariable.TYPE_ID, false)) return false;\n", pad, m, target.Name)
+		fmt.Fprintf(b, "%s    if (isNew) {\n", pad)
+		fmt.Fprintf(b, "%s        g.setOpen(v.%s, true);\n", pad, m)
+		fmt.Fprintf(b, "%s        g.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, v.%s);\n", pad, m, target.Name, m)
+		fmt.Fprintf(b, "%s    }\n", pad)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		if f.IsTextList() {
-			if f.ArrayBound > 0 {
-				fmt.Fprintf(b, "        if (v.%s.size() > %d) return false;\n", m, f.ArrayBound)
-			}
-			if f.TextTotal > 0 {
-				fmt.Fprintf(b, "        long spent_%s = 0;\n", m)
-			}
-		}
-		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
-		fmt.Fprintf(b, "            %sVariable.Value elem = v.%s.get(i);\n", target.Name, m)
-		if f.IsTextList() {
-			if ir.TextListOptional(f) {
-				b.WriteString("            long elemBytes = (elem == null || !elem.valuePresent || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
-			} else {
-				b.WriteString("            long elemBytes = (elem == null || elem.value == null) ? 0L : TableVariable.utf8Len(elem.value);\n")
-			}
-			if !ir.TextListUnbounded(f) {
-				fmt.Fprintf(b, "            if (elemBytes > %dL) return false;\n", ir.TextListValue(f).Type.Size)
-			}
-			if f.TextTotal > 0 {
-				fmt.Fprintf(b, "            spent_%s += elemBytes;\n", m)
-				fmt.Fprintf(b, "            if (spent_%s > %dL) return false;\n", m, f.TextTotal)
-			}
-		}
-		fmt.Fprintf(b, "            if (elem != null) { if (!%sVariable.buildGraph(g, elem)) return false; }\n", target.Name)
-		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "%sif (index < v.%s.size()) {\n", pad, m)
+		fmt.Fprintf(b, "%s    %sVariable.Value elem = v.%s.get(index);\n", pad, target.Name, m)
+		fmt.Fprintf(b, "%s    if (index + 1 < v.%s.size()) { g.push(v, GRAPH_KIND, %d, index + 1, null); }\n", pad, m, field)
+		fmt.Fprintf(b, "%s    if (elem != null) { g.push(elem, %sVariable.GRAPH_KIND, -2, 0, null); }\n", pad, target.Name)
+		fmt.Fprintf(b, "%s}\n", pad)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (v.%s != null) { if (!%sVariable.buildGraph(g, v.%s)) return false; }\n", m, target.Name, m)
+		fmt.Fprintf(b, "%sif (v.%s != null) { g.push(v.%s, %sVariable.GRAPH_KIND, -2, 0, null); }\n", pad, m, m, target.Name)
 	}
 	if f.Type.Optional {
-		b.WriteString("        }\n")
+		fmt.Fprintf(b, "%s}\n", optPad)
+	}
+	if guard != "" {
+		fmt.Fprintf(b, "%s}\n", base)
 	}
 }
 

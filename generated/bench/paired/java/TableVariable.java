@@ -2390,6 +2390,15 @@ public final class TableVariable {
         private long[] nodeType = new long[8];
         private boolean[] nodeBlob = new boolean[8];
         private int nodeCount;
+        // The graph walk's work list: one frame per field to visit, plus the
+        // close marker that ends a descended node. It is grow-only and reused
+        // like the arrays above, so numbering a graph recurses nowhere.
+        private Object[] workValue = new Object[16];
+        private int[] workKind = new int[16];
+        private int[] workField = new int[16];
+        private int[] workIndex = new int[16];
+        private Object[] workClose = new Object[16];
+        private int workSize;
         public final java.util.IdentityHashMap<Object, Long> labels =
                 new java.util.IdentityHashMap<>();
 
@@ -2402,9 +2411,61 @@ public final class TableVariable {
                 java.util.Arrays.fill(nodeValue, 0, nodeCount, null);
                 nodeCount = 0;
             }
+            if (workSize > 0) {
+                java.util.Arrays.fill(workValue, 0, workSize, null);
+                java.util.Arrays.fill(workClose, 0, workSize, null);
+                workSize = 0;
+            }
             if (!labels.isEmpty()) {
                 labels.clear();
             }
+        }
+
+        public void push(Object value, int kind, int field, int index, Object close) {
+            if (workSize == workValue.length) {
+                int cap = workSize * 2;
+                workValue = java.util.Arrays.copyOf(workValue, cap);
+                workKind = java.util.Arrays.copyOf(workKind, cap);
+                workField = java.util.Arrays.copyOf(workField, cap);
+                workIndex = java.util.Arrays.copyOf(workIndex, cap);
+                workClose = java.util.Arrays.copyOf(workClose, cap);
+            }
+            workValue[workSize] = value;
+            workKind[workSize] = kind;
+            workField[workSize] = field;
+            workIndex[workSize] = index;
+            workClose[workSize] = close;
+            workSize++;
+        }
+
+        public int workCount() {
+            return workSize;
+        }
+
+        public Object workValue(int i) {
+            return workValue[i];
+        }
+
+        public int workKind(int i) {
+            return workKind[i];
+        }
+
+        public int workField(int i) {
+            return workField[i];
+        }
+
+        public int workIndex(int i) {
+            return workIndex[i];
+        }
+
+        public Object workClose(int i) {
+            return workClose[i];
+        }
+
+        public void pop() {
+            workSize--;
+            workValue[workSize] = null;
+            workClose[workSize] = null;
         }
 
         private int slot(Object obj) {

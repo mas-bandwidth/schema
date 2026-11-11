@@ -9,6 +9,8 @@ package bench;
 public final class MixedEventVariable {
     private MixedEventVariable() {}
 
+    static final int GRAPH_KIND = 10;
+
     public static final class Value {
         public int tag;
         public MixedHitEventVariable.Value hit = new MixedHitEventVariable.Value();
@@ -16,34 +18,58 @@ public final class MixedEventVariable {
         public MixedPickupEventVariable.Value pickup = new MixedPickupEventVariable.Value();
     }
 
-    static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
-        if (v == null) return false;
+    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {
+        if (v == null) {
+            return false;
+        }
         switch (v.tag) {
             case 0:
                 return true;
             case 1:
                 {
+                    g.push(v, GRAPH_KIND, 0, 0, null);
+                    return true;
+                }
+            case 2:
+                {
+                    g.push(v, GRAPH_KIND, 0, 0, null);
+                    return true;
+                }
+            case 3:
+                {
+                    g.push(v, GRAPH_KIND, 0, 0, null);
+                    return true;
+                }
+            default:
+                return false;
+        }
+    }
+
+    static boolean graphField(TableVariable.NodeGraph g, Value v, int field, int index) {
+        switch (v.tag) {
+            case 1:
+                {
                     if (v.hit != null) {
-                        if (!MixedHitEventVariable.buildGraph(g, v.hit)) return false;
+                        g.push(v.hit, MixedHitEventVariable.GRAPH_KIND, -2, 0, null);
                     }
                     return true;
                 }
             case 2:
                 {
                     if (v.chat != null) {
-                        if (!MixedChatEventVariable.buildGraph(g, v.chat)) return false;
+                        g.push(v.chat, MixedChatEventVariable.GRAPH_KIND, -2, 0, null);
                     }
                     return true;
                 }
             case 3:
                 {
                     if (v.pickup != null) {
-                        if (!MixedPickupEventVariable.buildGraph(g, v.pickup)) return false;
+                        g.push(v.pickup, MixedPickupEventVariable.GRAPH_KIND, -2, 0, null);
                     }
                     return true;
                 }
             default:
-                return false;
+                return true;
         }
     }
 
