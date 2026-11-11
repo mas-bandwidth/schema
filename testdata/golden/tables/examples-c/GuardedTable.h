@@ -6203,7 +6203,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load(uint8_t * 
         (void)schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink);
         tabledemo_table_release(builder.arena.allocator,directory); tabledemo_table_release(builder.arena.allocator,nodes.blob_named); tabledemo_patrol_builder_shutdown(&builder);
         if(tabledemo_table_non_finite_refused(report,non_finite_before)) { report->refused=report->refused||refused_before; return NULL; }
-        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=refused_before; return NULL; }
+        if(nodes.refused && !report->refused) { report->refused=1; report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refused=1; return NULL; }
         report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL;
     }
     if(region==NULL || region_bytes<total || ((uintptr_t)region & (TABLEDEMO_K_TABLE_ALIGN-1))!=0) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return NULL; }
@@ -6408,7 +6408,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uin
   if(nodes.refused&&!report->refused){report->refused=1;
   report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
   report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP;
-  report->refused=refused_before;
+  report->refused=1;
   return NULL;
   }
   report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
