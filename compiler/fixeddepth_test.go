@@ -230,6 +230,7 @@ func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) []string {
 // makes a sixth copy impossible to land — it does not know which legs were
 // wrong, only that all nine must answer the same.
 func TestFixedDepthInsideTheBoundEmitsOnAllNineLegs(t *testing.T) {
+	t.Parallel()
 	// THE CONTROL IS THE SAME SHAPE, SHALLOW. It calibrates the marker per leg,
 	// so the test never asserts a symbol spelling it guessed: whatever a leg
 	// emits for a 4-deep chain it must emit for a 20-deep one.
@@ -260,6 +261,7 @@ func TestFixedDepthInsideTheBoundEmitsOnAllNineLegs(t *testing.T) {
 // walk that deep (§5.2's `layout_malformed`) — and the sentence that says so is
 // the compiler's, not nine separately-worded ones.
 func TestFixedDepthPastTheBoundEmitsNoFormOnAnyLeg(t *testing.T) {
+	t.Parallel()
 	u, warns := depthUnit(t, deepSchema("fixed table", ir.TableFixedMaxDepth+1))
 	st := u.Tables["Deep"]
 	if ir.TableFixedWithinDepth(st) {

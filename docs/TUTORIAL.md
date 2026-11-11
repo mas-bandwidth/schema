@@ -337,7 +337,7 @@ enum ShipType { Fighter, Freighter, Corvette }
 
 enum Pending { }
 
-enum Weapon | max = 15
+enum Weapon
 { Laser, Missile }
 
 flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }
@@ -371,8 +371,8 @@ number you can name in a schema expression as `ShipType.Max`. Size storage and
 keyed arrays by `Max`. Because `None` takes 0 and the variants pack densely
 from 1, `Max` is also the number of variants you declared, so a loop over the
 real ship types runs `1` to `Max` inclusive. One number, one name: an enum
-exports no `Count`. The one way `Max` grows past the declared variants is
-headroom, at the end of this part.
+exports no `Count`. An enum takes no `| max`: `Max` is always the number of
+variants you declared, never more (SPEC §4.2).
 
 Try to declare `None` or `Max` yourself and the compiler refuses. `bad/Bad.schema`:
 
@@ -523,29 +523,29 @@ Note the `using namespace starlight;` in the program below. A flags type is a
 flags helpers must be reachable by name. `EnumName` takes a real enum class and
 is found by lookup wherever its argument comes from.
 
-### Headroom: `| max`
+### No headroom: an enum takes no `| max`
 
 The wire cost of an enum is the fewest bits that cover `[0, Max]`, so 2 bits
 for our four `ShipType` values counting `None`. Add a fourth variant later and
-the width grows to 3 bits, which as Part 5 shows changes the protocol. When you
-know a set will grow, reserve headroom at the declaration, the way `Weapon`
-does above:
+the width grows to 3 bits, which as Part 5 shows changes the protocol. An enum
+takes no `| max` attribute: its wire range is `[0, variant count]` and nothing
+else, so there is no declaration-time way to reserve room above the variants
+you name. If a set will grow, name its variants now, or edit the schema and
+accept the protocol id move when a new variant crosses a power of two
+(SPEC §4.2).
 
 ```cpp
 enum class Weapon : uint8_t {
     None = 0,
     Laser = 1,
     Missile = 2,
-    Max = 15, // the exported extent (SPEC §4.2)
+    Max = 2, // the exported extent (SPEC §4.2)
 };
 ```
 
-The wire is now 4 bits, room for 15 variants, and stays 4 bits as you add them.
-This is where `Max` and the declared variants part company: 2 variants
-declared, an extent of 15. Size a keyed array by `Max`, which covers every
-value a read can deliver. A read
-accepts any value in `[0, 15]`, values you have not named included, so a
-`switch` over a headroom enum keeps a `default`.
+The wire is 2 bits, and every value in `[0, 2]` names a variant. Size a keyed
+array by `Max`, which covers every value a read can deliver; there are no
+values past the last variant for a `switch` to handle with a `default`.
 
 The attribute after `|` is the language's one qualification syntax, and you
 will meet it constantly from Part 3 on. On a declaration line the body brace
@@ -1177,7 +1177,7 @@ enum ShipType { Fighter, Freighter, Corvette }
 
 enum Pending { }
 
-enum Weapon | max = 15
+enum Weapon
 { Laser, Missile }
 
 flags SystemFlags { Shields, Cloak, WarpDrive, Autopilot }

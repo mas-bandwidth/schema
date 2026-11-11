@@ -11,6 +11,7 @@ import (
 // Run the emitted reader against independently encoded old-schema bytes.
 // Saving under the new schema checks every widened value as well as reports.
 func TestCppCollectionWidening(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, old, new, text string
 		widened, region      int
