@@ -549,7 +549,7 @@ func generateUnit(schemaBin, dir, src string) error {
 	var log bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &log, &log
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("generate %s: %v\n%s", src, err, log.String())
+		return fmt.Errorf("generate %s: %w\n%s", src, err, log.String())
 	}
 	return nil
 }
