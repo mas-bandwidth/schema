@@ -15,7 +15,7 @@ import (
 )
 
 func TestInertArrayHeadersElixir(t *testing.T) {
-	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header are inert in both read modes")
+	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header are inert in both read modes, and a bytes(N) body is damage")
 	u := unitFrom(t, `package inertarray
  enum Key { A, B }
  table Inner { value int32 }
@@ -71,7 +71,7 @@ for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
   end
  end
 end
-`, hex.EncodeToString(wire), len(body) == 2, fmt.Sprintf("%s/%x ", f.name, body), fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
+`, hex.EncodeToString(wire), len(body) == 2 || f.name == "payload", fmt.Sprintf("%s/%x ", f.name, body), fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
 		}
 	}
 	probe.WriteString(`case Process.get(:failures) do
