@@ -170,6 +170,36 @@ func planCapWriteOldFile(t *testing.T, dir string, older FixedLineageEntry) stri
 	return path
 }
 
+// TestFixedLineagePlanCapSkipsTheIdentityEntry pins the cap to the OLDER
+// entries by index: the identity plan is one Copy of this build's own body, so
+// its own layout contributes no compiled plan and must not be counted against
+// itself. With the identity entry first, counting it would bake 200 * 13
+// entries instead of the older entry's 200 * 11.
+func TestFixedLineagePlanCapSkipsTheIdentityEntry(t *testing.T) {
+	t.Parallel()
+	oldU := unitFrom(t, planCapOld)
+	newU := unitFrom(t, planCapNew)
+	older, ok := FixedLineageOf(oldU, "T")
+	if !ok {
+		t.Fatal("the older unit has no lineage entry for T")
+	}
+	own, ok := FixedLineageOf(newU, "T")
+	if !ok {
+		t.Fatal("the newer unit has no lineage entry for T")
+	}
+	st := newU.Tables["T"]
+	if st == nil {
+		t.Fatal("the newer unit declares no T")
+	}
+	entries := ir.TableFixedWalkRoot(st)
+	block := ir.TableFixedLayoutBytes(entries)
+
+	const want = 200 * 11
+	if got := fixedLineagePlanCap(block, entries, []FixedLineageEntry{own, older}, 0); got != want {
+		t.Fatalf("the lineage plan maximum with the identity entry first is %d, want the older entry's %d", got, want)
+	}
+}
+
 // TestFixedLineagePlanCapIsTheExactPlanMaximum pins the baked capacity to the
 // walk's own number for the fixture above: the older [200]SmallU array's union
 // has five arms, so each element contributes the None constant, five arm
