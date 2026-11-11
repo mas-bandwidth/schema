@@ -243,6 +243,8 @@ var catalog = []Entry{
 	e("test/luau-runtime-home", "Luau runtime-home check", "make tables-luau-runtime-home", "make tables-luau-runtime-home"),
 	e("test/moo-runtime-home", "moo runtime-home check", "make tables-moo-runtime-home", "make tables-moo-runtime-home"),
 	e("test/lua", "Lua interpreter harness", "make test-lua", "make test-lua"),
+	e("test/message-one-encoding", "message form one-encoding fixture", "make test-go", "go test -run TestSpecMessageFormHasOneEncoding ./compiler/"),
+	e("test/packet-end", "packet end-check fixture", "make test-go", "go test -run TestSpecPacketEndIsChecked ./compiler/"),
 	e("test/packet-defaults", "packet default-value gates", "make test", "make test"),
 	e("test/packet-finite", "packet finite-float gates", "make test-go, make test-dart, make test-elixir, make test-lua, make test-luau", "make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),

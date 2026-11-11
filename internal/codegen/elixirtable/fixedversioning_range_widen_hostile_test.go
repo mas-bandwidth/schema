@@ -15,6 +15,7 @@ import (
 // value past the writing endpoint's range refuses the whole load; the probe
 // pins that verdict for every vector.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "elixir (it runs the generated NEW reader over the forged file)")
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)

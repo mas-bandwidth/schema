@@ -1040,6 +1040,17 @@ bool _lebValid(Uint8List d, int off, int len) {
   }
 }
 
+// _decodeText decodes one validated text payload and keeps every code point
+// of its bytes: utf8.decode drops a byte-order mark at the head of its input,
+// while U+FEFF is an ordinary code point on the wire (§3, §16.14).
+String _decodeText(Uint8List d, int start, int end) {
+  final s = utf8.decode(d.sublist(start, end));
+  if (end - start >= 3 && d[start] == 0xEF && d[start + 1] == 0xBB && d[start + 2] == 0xBF) {
+    return '\uFEFF' + s;
+  }
+  return s;
+}
+
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
@@ -1395,7 +1406,7 @@ final class TableWireReader {
     } else {
       final b = resolveBlob(idx, _kStringBlobId, stringBlob);
       if (b != null) {
-        value = utf8.decode(b);
+        value = _decodeText(b, 0, b.length);
         decoded[rec] = value;
       }
     }
@@ -1758,20 +1769,23 @@ final class TableWireReader {
     return false;
   }
 
-  // _wireLeb reads one LEB128 value at off in buf: (value, next), or
-  // null when it runs past the buffer.
+  // _wireLeb reads one canonical LEB128 value at off in buf: (value, next),
+  // or null when it is truncated, past ten bytes or non-minimal — the same
+  // rule as readLeb (§3), so every walk over this wire agrees.
   (int, int)? _wireLeb(Uint8List buf, int off) {
     var v = 0;
-    var shift = 0;
-    var i = off;
-    while (i < buf.length && shift < 63) {
-      final b = buf[i];
-      i++;
-      v |= (b & 0x7F) << shift;
-      if (b & 0x80 == 0) return (v, i);
-      shift += 7;
+    var p = off;
+    for (var i = 0; ; i++) {
+      if (p >= buf.length || i >= 10) return null;
+      final b = buf[p];
+      p++;
+      if (i == 9 && b > 1) return null;
+      v |= (b & 0x7F) << (7 * i);
+      if ((b & 0x80) == 0) {
+        if (i > 0 && b == 0) return null;
+        return (v, p);
+      }
     }
-    return null;
   }
 
   // _wireScalar checks one fixed-width payload's content rules that the
@@ -1830,15 +1844,16 @@ final class TableWireReader {
         return p.$2;
       case 30:
         final p = _wireLeb(buf, off);
-        return p == null ? -1 : p.$2;
+        if (p == null || p.$1 < 0 || p.$1 > entryCount) return -1;
+        return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
-        if (arm == null || arm.$1 > entryCount) return -1;
+        if (arm == null || arm.$1 < 0 || arm.$1 > entryCount) return -1;
         if (arm.$1 == 0) return arm.$2;
         if (arm.$2 >= buf.length) return -1;
         final akind = buf[arm.$2];
         final alen = _wireLeb(buf, arm.$2 + 1);
-        if (alen == null || alen.$1 > buf.length - alen.$2) return -1;
+        if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
       case 12:
@@ -1848,7 +1863,7 @@ final class TableWireReader {
       case 31:
       case 32:
         final p = _wireLeb(buf, off);
-        if (p == null || p.$1 > buf.length - p.$2) return -1;
+        if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
         final end = p.$2 + p.$1;
         return _wireContent(buf.sublist(p.$2, end), kind, out, depth) ? end : -1;
     }
@@ -1869,7 +1884,7 @@ final class TableWireReader {
       case 14:
         if (depth >= 64 || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         for (var i = 0; i < head.$1; i++) {
           off = _wirePayload(b, off, b[0], out, depth + 1);
@@ -1879,14 +1894,14 @@ final class TableWireReader {
       case 16:
         if (depth >= 64 || b.length < 2) return false;
         final head = _wireLeb(b, 1);
-        if (head == null) return false;
+        if (head == null || head.$1 < 0) return false;
         var off = head.$2;
         final seenKeys = <int>{};
         for (var i = 0; i < head.$1; i++) {
           final key = _wireLeb(b, off);
-          if (key == null || key.$1 == 0 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
+          if (key == null || key.$1 < 1 || key.$1 > entryCount || !seenKeys.add(key.$1)) return false;
           final len = _wireLeb(b, key.$2);
-          if (len == null || len.$1 > b.length - len.$2) return false;
+          if (len == null || len.$1 < 0 || len.$1 > b.length - len.$2) return false;
           if (!_wireContent(b.sublist(len.$2, len.$2 + len.$1), b[0], out, depth + 1)) return false;
           off = len.$2 + len.$1;
         }
@@ -1923,7 +1938,7 @@ final class TableWireReader {
         // kind 12 (internal/tablewire/wirecheck.go body).
         if (!root || kind != 12) return false;
         final len = _wireLeb(buf, off);
-        if (len == null || len.$1 > buf.length - len.$2) return false;
+        if (len == null || len.$1 < 0 || len.$1 > buf.length - len.$2) return false;
         off = len.$2 + len.$1;
         continue;
       }
@@ -2884,7 +2899,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
 		g.pf("%s\t\tif (keep != len) { r.report.refuse('length_over_bound'); return; }\n", ind)
-		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
+		g.pf("%s\t\tv.%s = _decodeText(r.data, r.pos, r.pos + keep);\n", ind, name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -3090,11 +3105,11 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		if f.IsTextList() {
 			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
 			g.pf("%s\t\t\tif(kept!=elen){r.report.refuse('length_over_bound'); return;}\n", ind)
-			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
+			g.pf("%s\t\t\tfinal e=%s()..value=_decodeText(%s.data,%s.pos,%s.pos+kept);\n", ind, f.Type.Name, arr, arr, arr)
 			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
 			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)
 		} else {
-			g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+			g.pf("%s\t\t\t%s.add(_decodeText(%s.data, %s.pos, %s.pos + elen));\n", ind, dest, arr, arr, arr)
 		}
 		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
 	case wireKindEnum:

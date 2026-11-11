@@ -14,6 +14,7 @@ import (
 )
 
 func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir bounded bytes over-bound count refuses before payload")
 	u := unitFrom(t, `package widetext
  union Choice { wide bytes(2) }
