@@ -28,17 +28,10 @@ func ArchiveConfigMeasureBody(value *ArchiveConfig, ids *TableIds) int64 {
 }
 
 func ArchiveConfigMeasure(value *ArchiveConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !ArchiveConfigSaveBody(&w, value) {
+	if !ArchiveConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ArchiveConfigFixedMeasure(1)
 }
 
 func ArchiveConfigMeasureReason(value *ArchiveConfig) (int64, error) {

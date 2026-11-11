@@ -79,17 +79,10 @@ func RootConfigMeasureBody(value *RootConfig, ids *TableIds) int64 {
 }
 
 func RootConfigMeasure(value *RootConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !RootConfigSaveBody(&w, value) {
+	if !RootConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RootConfigFixedMeasure(1)
 }
 
 func RootConfigMeasureReason(value *RootConfig) (int64, error) {
@@ -1012,17 +1005,10 @@ func WeaponConfigMeasureBody(value *WeaponConfig, ids *TableIds) int64 {
 }
 
 func WeaponConfigMeasure(value *WeaponConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !WeaponConfigSaveBody(&w, value) {
+	if !WeaponConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return WeaponConfigFixedMeasure(1)
 }
 
 func WeaponConfigMeasureReason(value *WeaponConfig) (int64, error) {
@@ -1890,17 +1876,10 @@ func LoadoutConfigMeasureBody(value *LoadoutConfig, ids *TableIds) int64 {
 }
 
 func LoadoutConfigMeasure(value *LoadoutConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !LoadoutConfigSaveBody(&w, value) {
+	if !LoadoutConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return LoadoutConfigFixedMeasure(1)
 }
 
 func LoadoutConfigMeasureReason(value *LoadoutConfig) (int64, error) {
@@ -3486,17 +3465,10 @@ func ProfileConfigMeasureBody(value *ProfileConfig, ids *TableIds) int64 {
 }
 
 func ProfileConfigMeasure(value *ProfileConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !ProfileConfigSaveBody(&w, value) {
+	if !ProfileConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ProfileConfigFixedMeasure(1)
 }
 
 func ProfileConfigMeasureReason(value *ProfileConfig) (int64, error) {

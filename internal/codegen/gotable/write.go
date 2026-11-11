@@ -57,6 +57,14 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): Measure
+	// answers the size <T>Save writes, the fixed form's one-record file, and
+	// refuses the values that Save refuses.
+	if st.FixedDeclared && g.surfaces.Fixed && g.hasFixedForm(st) {
+		g.pf("func %sMeasure(value *%s) int64 {\n if !%sFixedCheckBody(value) { return -1 }\n return %sFixedMeasure(1)\n}\n\n", n, g.storageName(n), n, n)
+		g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
+		return
+	}
 	trailer := 0
 	if st.Integrity != "" {
 		trailer = 4

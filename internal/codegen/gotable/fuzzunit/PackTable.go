@@ -110,17 +110,10 @@ func GunnerSettingsMeasureBody(value *GunnerSettings, ids *TableIds) int64 {
 }
 
 func GunnerSettingsMeasure(value *GunnerSettings) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !GunnerSettingsSaveBody(&w, value) {
+	if !GunnerSettingsFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return GunnerSettingsFixedMeasure(1)
 }
 
 func GunnerSettingsMeasureReason(value *GunnerSettings) (int64, error) {
@@ -621,17 +614,10 @@ func ShipEntryMeasureBody(value *ShipEntry, ids *TableIds) int64 {
 }
 
 func ShipEntryMeasure(value *ShipEntry) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !ShipEntrySaveBody(&w, value) {
+	if !ShipEntryFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ShipEntryFixedMeasure(1)
 }
 
 func ShipEntryMeasureReason(value *ShipEntry) (int64, error) {
@@ -1481,17 +1467,10 @@ func GlobalSettingsMeasureBody(value *GlobalSettings, ids *TableIds) int64 {
 }
 
 func GlobalSettingsMeasure(value *GlobalSettings) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !GlobalSettingsSaveBody(&w, value) {
+	if !GlobalSettingsFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return GlobalSettingsFixedMeasure(1)
 }
 
 func GlobalSettingsMeasureReason(value *GlobalSettings) (int64, error) {
@@ -2260,17 +2239,10 @@ func PackConfigMeasureBody(value *PackConfig, ids *TableIds) int64 {
 }
 
 func PackConfigMeasure(value *PackConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !PackConfigSaveBody(&w, value) {
+	if !PackConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return PackConfigFixedMeasure(1)
 }
 
 func PackConfigMeasureReason(value *PackConfig) (int64, error) {

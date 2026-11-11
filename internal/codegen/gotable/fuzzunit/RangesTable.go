@@ -46,17 +46,10 @@ func RangedSignedMeasureBody(value *RangedSigned, ids *TableIds) int64 {
 }
 
 func RangedSignedMeasure(value *RangedSigned) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !RangedSignedSaveBody(&w, value) {
+	if !RangedSignedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedSignedFixedMeasure(1)
 }
 
 func RangedSignedMeasureReason(value *RangedSigned) (int64, error) {
@@ -1816,17 +1809,10 @@ func RangedUnsignedMeasureBody(value *RangedUnsigned, ids *TableIds) int64 {
 }
 
 func RangedUnsignedMeasure(value *RangedUnsigned) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !RangedUnsignedSaveBody(&w, value) {
+	if !RangedUnsignedFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedUnsignedFixedMeasure(1)
 }
 
 func RangedUnsignedMeasureReason(value *RangedUnsigned) (int64, error) {
@@ -3604,12 +3590,10 @@ func RangedWidthsMeasureBody(value *RangedWidths, ids *TableIds) int64 {
 }
 
 func RangedWidthsMeasure(value *RangedWidths) int64 {
-	var ids TableIds
-	body := RangedWidthsMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !RangedWidthsFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return RangedWidthsFixedMeasure(1)
 }
 
 func RangedWidthsMeasureReason(value *RangedWidths) (int64, error) {

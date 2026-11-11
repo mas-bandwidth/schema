@@ -147,17 +147,10 @@ func TeamConfigMeasureBody(value *TeamConfig, ids *TableIds) int64 {
 }
 
 func TeamConfigMeasure(value *TeamConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TeamConfigSaveBody(&w, value) {
+	if !TeamConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TeamConfigFixedMeasure(1)
 }
 
 func TeamConfigMeasureReason(value *TeamConfig) (int64, error) {
@@ -633,12 +626,10 @@ func GunnerConfigMeasureBody(value *GunnerConfig, ids *TableIds) int64 {
 }
 
 func GunnerConfigMeasure(value *GunnerConfig) int64 {
-	var ids TableIds
-	body := GunnerConfigMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	if !GunnerConfigFixedCheckBody(value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	return GunnerConfigFixedMeasure(1)
 }
 
 func GunnerConfigMeasureReason(value *GunnerConfig) (int64, error) {
@@ -1001,17 +992,10 @@ func TurretConfigMeasureBody(value *TurretConfig, ids *TableIds) int64 {
 }
 
 func TurretConfigMeasure(value *TurretConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !TurretConfigSaveBody(&w, value) {
+	if !TurretConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return TurretConfigFixedMeasure(1)
 }
 
 func TurretConfigMeasureReason(value *TurretConfig) (int64, error) {
@@ -1524,17 +1508,10 @@ func HullConfigMeasureBody(value *HullConfig, ids *TableIds) int64 {
 }
 
 func HullConfigMeasure(value *HullConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !HullConfigSaveBody(&w, value) {
+	if !HullConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return HullConfigFixedMeasure(1)
 }
 
 func HullConfigMeasureReason(value *HullConfig) (int64, error) {
@@ -2538,17 +2515,10 @@ func KeyedConfigMeasureBody(value *KeyedConfig, ids *TableIds) int64 {
 }
 
 func KeyedConfigMeasure(value *KeyedConfig) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !KeyedConfigSaveBody(&w, value) {
+	if !KeyedConfigFixedCheckBody(value) {
 		return -1
 	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return KeyedConfigFixedMeasure(1)
 }
 
 func KeyedConfigMeasureReason(value *KeyedConfig) (int64, error) {
