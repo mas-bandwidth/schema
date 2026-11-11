@@ -22,11 +22,20 @@ import (
 // leg is one language's row.
 type leg struct {
 	name   string // the row: make roundtrip-<name>
-	lang   string // bin/schema generate --lang
+	lang   string // generate --lang
+	bin    string // the compiler, repository-relative; empty is bin/schema
 	tool   string // what slowtest.Gate names
 	retain bool   // the leg's variable root has a retaining load: e-retain is owed
 	run    func(t *testing.T, x *rowEnv) []byte
 	plant  plant
+}
+
+// compiler is the binary the leg generates with.
+func (l *leg) compiler() string {
+	if l.bin == "" {
+		return "bin/schema"
+	}
+	return l.bin
 }
 
 // legs is every row, in the order make roundtrip runs them.
@@ -68,6 +77,10 @@ var legs = []*leg{
 	{
 		name: "luau", lang: "luau", tool: "luau (the generated Luau modules)", retain: true,
 		run: runLuau,
+	},
+	{
+		name: "moo", lang: "moo", bin: "build/schema-moo", tool: "moo (the generated moo modules, under the pinned interpreter)", retain: true,
+		run: runMoo,
 	},
 	{
 		name: "elixir", lang: "elixir", tool: "elixirc and elixir (the generated Elixir modules)", retain: true,
@@ -181,10 +194,25 @@ func runSquirrel(t *testing.T, x *rowEnv) []byte {
 // io library, so the sample texts and engine bytes travel as Luau strings and
 // the saved bytes come back as RTB lines.
 func runLuau(t *testing.T, x *rowEnv) []byte {
+	sourceInputs(t, x, ".luau", "luau", "probe.luau")
+	return run(t, x.gen, nil, tool("LUAU", "luau"), "roundtrip_probe.luau")
+}
+
+// runMoo is luau's runner under the pinned moo interpreter: no io library,
+// inputs as source and saved bytes printed.
+func runMoo(t *testing.T, x *rowEnv) []byte {
+	sourceInputs(t, x, ".moo", "moo", "probe.moo")
+	return run(t, x.gen, nil, tool("MOO", "moo"), "roundtrip_probe.moo")
+}
+
+// sourceInputs writes the unit's module list and every case (sample text and
+// engine bytes) as the module roundtrip_inputs<ext>, and copies the leg's probe
+// beside it as roundtrip_probe<ext>, for a runtime with no io library.
+func sourceInputs(t *testing.T, x *rowEnv, ext, legDir, probe string) {
 	var b strings.Builder
 	b.WriteString("-- written by test/roundtrip for one row; not source\nreturn {\n\tmodules = {")
-	for _, m := range genFiles(t, x.gen, ".luau") {
-		if strings.HasPrefix(m, "schema_") || strings.HasPrefix(m, "serialize") || strings.HasPrefix(m, "roundtrip_") {
+	for _, m := range genFiles(t, x.gen, ext) {
+		if !strings.HasSuffix(m, "Table") {
 			continue
 		}
 		b.WriteString(luaString(m) + ", ")
@@ -200,13 +228,12 @@ func runLuau(t *testing.T, x *rowEnv) []byte {
 		}
 	}
 	b.WriteString("\t},\n}\n")
-	write(t, filepath.Join(x.gen, "roundtrip_inputs.luau"), []byte(b.String()))
-	src, err := os.ReadFile(probeSource(t, "luau", "probe.luau"))
+	write(t, filepath.Join(x.gen, "roundtrip_inputs"+ext), []byte(b.String()))
+	src, err := os.ReadFile(probeSource(t, legDir, probe))
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(x.gen, "roundtrip_probe.luau"), src)
-	return run(t, x.gen, nil, tool("LUAU", "luau"), "roundtrip_probe.luau")
+	write(t, filepath.Join(x.gen, "roundtrip_probe"+ext), src)
 }
 
 // luaString is s as a Lua/Luau string literal: every byte outside printable

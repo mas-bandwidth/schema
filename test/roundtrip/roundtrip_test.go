@@ -317,16 +317,17 @@ type rowEnv struct {
 	pkg    string // the unit's package
 }
 
-// schemaBin is the compiler the row generates with: SCHEMA_BIN, else the
-// repository's bin/schema (the make row builds it first).
-func schemaBin(t testing.TB, repo string) string {
+// schemaBin is the compiler the row generates with: the leg's binary under
+// the repository (the make row builds it first), and SCHEMA_BIN in place of
+// bin/schema.
+func schemaBin(t testing.TB, repo, rel string) string {
 	t.Helper()
-	bin := os.Getenv("SCHEMA_BIN")
-	if bin == "" {
-		bin = filepath.Join(repo, "bin", "schema")
+	bin := filepath.Join(repo, rel)
+	if rel == "bin/schema" && os.Getenv("SCHEMA_BIN") != "" {
+		bin = os.Getenv("SCHEMA_BIN")
 	}
 	if _, err := os.Stat(bin); err != nil {
-		t.Fatalf("the compiler binary %s is missing: run `make bin/schema` (or set SCHEMA_BIN)", bin)
+		t.Fatalf("the compiler binary %s is missing: run `make %s` (or set SCHEMA_BIN for bin/schema)", bin, rel)
 	}
 	return bin
 }
@@ -357,7 +358,7 @@ func tail(b []byte) string {
 func newRow(t *testing.T, l *leg) *rowEnv {
 	t.Helper()
 	repo := repoRoot(t)
-	x := &rowEnv{repo: repo, schema: schemaBin(t, repo), work: t.TempDir()}
+	x := &rowEnv{repo: repo, schema: schemaBin(t, repo, l.compiler()), work: t.TempDir()}
 	x.gen = filepath.Join(x.work, "gen")
 	x.in = filepath.Join(x.work, "in")
 	u := loadUnit(t, repo)
