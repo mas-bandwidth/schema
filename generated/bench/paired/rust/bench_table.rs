@@ -953,6 +953,7 @@ fn variable_node_stub_alloc(type_id: u64) -> Option<Rc<dyn Any>> {
 
 #[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
 fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    nodes.wire_edge_owner = k + 1;
     let (type_id, start, end) = nodes.recs[k];
     let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new(), nodes: Default::default() };
     let retaining = nodes.retaining;
