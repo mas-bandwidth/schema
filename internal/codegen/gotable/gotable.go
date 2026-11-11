@@ -666,7 +666,7 @@ func generateFormsMode(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Sur
 		return nil, nil, err
 	}
 	if prune {
-		pruned, err := pruneUnreferencedDeclarations(out)
+		pruned, err := pruneUnreferencedDeclarations(out, schemaAPIEntries(u, out))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1446,7 +1446,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		return out, err
 	}
 	if rt == RuntimeStandalone || len(out) == 0 {
-		return pruneUnreferencedDeclarations(out)
+		return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 	}
 	sr, err := loadSharedRuntime()
 	if err != nil {
@@ -1487,7 +1487,7 @@ func GenerateRuntimeSurface(u *ir.Unit, lineage map[string][]FixedLineageEntry, 
 		}
 		out[other] = formatted
 	}
-	return pruneUnreferencedDeclarations(out)
+	return pruneUnreferencedDeclarations(out, schemaAPIEntries(goEscapeTables(u), out))
 }
 
 // SharedRuntimeFiles is the shared package's source, keyed by file name.

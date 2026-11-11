@@ -17,7 +17,7 @@ import (
 // generated Go file names. The table runtime is assembled from shared source
 // fragments, so a unit that needs one path should not carry every helper those
 // fragments can serve.
-func pruneUnreferencedDeclarations(files map[string][]byte) (map[string][]byte, error) {
+func pruneUnreferencedDeclarations(files map[string][]byte, schemaAPI map[string]bool) (map[string][]byte, error) {
 	names := make([]string, 0, len(files))
 	for name := range files {
 		if strings.HasSuffix(name, ".go") {
@@ -57,6 +57,9 @@ func pruneUnreferencedDeclarations(files map[string][]byte) (map[string][]byte, 
 
 	for {
 		referenced, usedIdentifiers := referencesInFiles(names, parsed, declarations)
+		for name := range schemaAPI {
+			referenced[name] = true
+		}
 		changed := false
 		for _, name := range names {
 			file := parsed[name]

@@ -31,6 +31,7 @@ table Holder {
 		}`)},
 		{name: "messages", unit: loadUnitPaths(t, root, []string{"tables/messages"})},
 		{name: "fixed-only", unit: loadUnitPaths(t, root, []string{"tables/examples/Pack.schema"})},
+		{name: "lowercase-table-api", unit: unitFrom(t, "package probe\ntable lowercase { value int32 }\n")},
 	}
 
 	for _, test := range units {
@@ -50,6 +51,7 @@ table Holder {
 			if len(names) == 0 {
 				t.Fatal("Generate emitted no Go source")
 			}
+			api := schemaAPIEntries(goEscapeTables(test.unit), files)
 
 			fset := token.NewFileSet()
 			parsed := make([]*ast.File, 0, len(names))
@@ -64,7 +66,9 @@ table Holder {
 					switch decl := decl.(type) {
 					case *ast.FuncDecl:
 						if decl.Recv == nil && decl.Name.Name != "init" {
-							addUnexportedDeclaration(declarations, decl.Name)
+							if !api[decl.Name.Name] {
+								addUnexportedDeclaration(declarations, decl.Name)
+							}
 						}
 					case *ast.GenDecl:
 						for _, spec := range decl.Specs {
