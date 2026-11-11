@@ -7,6 +7,7 @@ package compiler
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -16,14 +17,16 @@ func TestSpecPortingReadVerdictEveryBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page := string(data)
+	// The page wraps its prose; a pinned sentence may cross a line break.
+	page := strings.Join(strings.Fields(string(data)), " ")
 
 	wants := []string{
 		"the same READ verdict in every build mode its language offers",
 		"a release and a checked or debug build, an optimised and an overflow-checking one",
 		"the port's gates run each mode the language offers",
 		"Write-side checks follow `docs/rulings.json` write-refusal's per-leg table and are not changed by this rule",
-		"`loading never crashes on input that loads` covers freeing what was loaded",
+		"a debug-only assert in C, C++, C#, Rust, Java and Dart, a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose",
+		"Loading never crashes on input that loads, and that covers freeing what was loaded.",
 		"a leg whose values own their pointers drops a loaded pointer chain without recursion",
 		"a chain the reader accepts never overflows the stack when it is freed",
 	}
