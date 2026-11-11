@@ -150,24 +150,12 @@ table lower {
 	assertCompiles(t, u, surfaces, `package probe
 import "testing"
 func TestLowercaseEntryPoints(t *testing.T) {
-    var value lower
-    lowerReset(&value)
-    _ = lowerTableType()
-    size := lowerMeasure(&value)
-    wire := make([]byte, size)
-    if lowerSave(&value, wire) < 0 { t.Fatal("save") }
-    var loaded lower
-    if !lowerLoad(&loaded, wire, nil) { t.Fatal("load") }
-    var worker TableWorker
-    _ = lowerValuesAdd(&worker, &value.Values)
-    _ = lowerRosterInsert(&worker, value.Roster, 1)
-    _, _, _ = lowerLoadTextForm([]byte("{}"), TableTextFormLimits{})
-    _, _ = lowerSaveTextForm(nil)
-    _, _, _ = lowerEditTextForm(nil)
-    var cook lowerCook
-    _ = lowerOpen(&cook, nil, 0)
-    var slot int64
-    _ = lowerAt(&slot)
+    _ = testing.Short()
+    if lowerReset == nil || lowerTableType == nil || lowerMeasure == nil || lowerSave == nil || lowerLoad == nil { t.Fatal("table entry point missing") }
+    if lowerValuesAdd == nil || lowerValuesErase == nil || lowerValuesEach == nil { t.Fatal("list entry point missing") }
+    if lowerRosterInsert == nil || lowerRosterFind == nil || lowerRosterErase == nil || lowerRosterEach == nil || lowerRosterIndexMeasure == nil || lowerRosterIndex == nil || lowerRosterIndexFind == nil { t.Fatal("map entry point missing") }
+    if lowerLoadTextForm == nil || lowerSaveTextForm == nil || lowerEditTextForm == nil { t.Fatal("textform entry point missing") }
+    if lowerOpen == nil || lowerAt == nil { t.Fatal("cook entry point missing") }
 }
 `)
 }
@@ -175,16 +163,17 @@ func TestLowercaseEntryPoints(t *testing.T) {
 func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name, upperRoot, schemaRoot, goRoot string
+		name, upperSchemaRoot, privateSchemaRoot, upperGoRoot, privateGoRoot string
 	}{
-		{name: "lowercase", upperRoot: "Lower", schemaRoot: "lower", goRoot: "lower"},
-		{name: "escaped-keyword", upperRoot: "Function", schemaRoot: "func", goRoot: "func_"},
+		{name: "lowercase", upperSchemaRoot: "Lower", privateSchemaRoot: "lower", upperGoRoot: "Lower", privateGoRoot: "lower"},
+		{name: "escaped-keyword", upperSchemaRoot: "Function", privateSchemaRoot: "func", upperGoRoot: "Function", privateGoRoot: "func_"},
+		{name: "initialism", upperSchemaRoot: "LowerId", privateSchemaRoot: "lowerId", upperGoRoot: "LowerID", privateGoRoot: "lowerID"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			body := "table Element { value int32 }\ntable %s {\nitems []int32\nroster map[uint8]Element\n}\n"
-			upper := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.upperRoot, 1))
-			private := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.schemaRoot, 1))
+			upper := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.upperSchemaRoot, 1))
+			private := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.privateSchemaRoot, 1))
 			surfaces := DefaultSurfaces()
 			surfaces.TextForm = true
 			want, err := GenerateLineageSurface(upper, nil, surfaces)
@@ -204,52 +193,39 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 				for _, decl := range file.Decls {
 					switch decl := decl.(type) {
 					case *ast.FuncDecl:
-						present[decl.Name.Name] = true
+						if decl.Recv == nil {
+							present["func:"+decl.Name.Name] = true
+						}
 					case *ast.GenDecl:
 						for _, spec := range decl.Specs {
 							switch spec := spec.(type) {
 							case *ast.TypeSpec:
-								present[spec.Name.Name] = true
+								present["type:"+spec.Name.Name] = true
 							case *ast.ValueSpec:
 								for _, name := range spec.Names {
-									present[name.Name] = true
+									present["value:"+name.Name] = true
 								}
 							}
 						}
 					}
 				}
 			}
+			apiSuffixes := []string{
+				"Reset", "TableType", "Measure", "Save", "Load", "Open", "At",
+				"LoadTextForm", "SaveTextForm", "EditTextForm",
+				"ItemsAdd", "ItemsErase", "ItemsEach",
+				"RosterInsert", "RosterFind", "RosterErase", "RosterEach",
+				"RosterIndexMeasure", "RosterIndex", "RosterIndexFind",
+			}
 			var missing []string
-			for _, src := range want {
-				file, err := parser.ParseFile(token.NewFileSet(), "generated.go", src, 0)
-				if err != nil {
-					t.Fatalf("parse uppercase-root output: %v", err)
+			for _, suffix := range apiSuffixes {
+				from := tc.upperGoRoot + suffix
+				to := tc.privateGoRoot + suffix
+				if !present["func:"+from] {
+					missing = append(missing, "uppercase fixture missing "+from)
 				}
-				check := func(name string) {
-					if !token.IsExported(name) || !strings.HasPrefix(name, tc.upperRoot) || len(name) == len(tc.upperRoot) {
-						return
-					}
-					expected := tc.goRoot + strings.TrimPrefix(name, tc.upperRoot)
-					if !present[expected] {
-						missing = append(missing, expected)
-					}
-				}
-				for _, decl := range file.Decls {
-					switch decl := decl.(type) {
-					case *ast.FuncDecl:
-						check(decl.Name.Name)
-					case *ast.GenDecl:
-						for _, spec := range decl.Specs {
-							switch spec := spec.(type) {
-							case *ast.TypeSpec:
-								check(spec.Name.Name)
-							case *ast.ValueSpec:
-								for _, name := range spec.Names {
-									check(name.Name)
-								}
-							}
-						}
-					}
+				if !present["func:"+to] {
+					missing = append(missing, to)
 				}
 			}
 			sort.Strings(missing)

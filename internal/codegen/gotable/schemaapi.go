@@ -52,15 +52,20 @@ var schemaFieldCallableSuffixes = map[string]bool{
 // prefix. The AST lookup ensures a name is retained only when this unit emits
 // that entry point.
 func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
-	roots := map[string]map[string]bool{}
+	candidates := map[string]bool{}
 	for _, st := range u.Tables {
 		if st == nil || st.MapEntryOf != "" || st.TextElem || token.IsExported(st.Name) {
 			continue
 		}
-		roots[st.Name] = schemaCallableSuffixes
+		root := goname.Initialisms(st.Name)
+		for suffix := range schemaCallableSuffixes {
+			candidates[root+suffix] = true
+		}
 		for _, f := range st.Fields {
-			root := goname.Initialisms(st.Name + ir.GoExportName(f.Name))
-			roots[root] = schemaFieldCallableSuffixes
+			fieldRoot := goname.Initialisms(st.Name + ir.GoExportName(f.Name))
+			for suffix := range schemaFieldCallableSuffixes {
+				candidates[fieldRoot+suffix] = true
+			}
 		}
 	}
 	entries := map[string]bool{}
@@ -78,10 +83,8 @@ func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 			if !ok || fn.Recv != nil {
 				continue
 			}
-			for root, suffixes := range roots {
-				if strings.HasPrefix(fn.Name.Name, root) && suffixes[strings.TrimPrefix(fn.Name.Name, root)] {
-					entries[fn.Name.Name] = true
-				}
+			if candidates[fn.Name.Name] {
+				entries[fn.Name.Name] = true
 			}
 		}
 	}
