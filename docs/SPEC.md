@@ -2407,9 +2407,10 @@ field and saving it. `write-refusal` saves through the variable-form `Save`,
 `write-refusal-fixed` through `FixedSave`, `write-refusal-message` through
 `SaveMessages` against a connection's vocabulary, and `write-refusal-json`
 through the text writer. The fifth, `write-refusal-packet`, holds the packet
-`Write` on a generated type carrying one field per row: a ranged scalar, an
-enum ordinal, a union tag, a counted array's count, a `string`'s length and
-content, and a constant or reserved-range field's only lawful value. It starts
+`Write` on a generated type carrying one field per row: a ranged scalar, a
+`bits(7)` past its width, an enum ordinal, a union tag, a counted array's
+count, a `string`'s length and content, and a constant or reserved-range
+field's only lawful value. It starts
 with the Go leg; `TestWriteRefusalPacket` in test/conformance/harness runs the
 battery and a negative control that changes the emitter's upper-bound
 comparison, requiring the boundary row to go red. The four table-form batteries

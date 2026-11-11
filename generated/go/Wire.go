@@ -173,6 +173,9 @@ const ProbeHeaderMaxBytes = 16
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeHeader(stream *serialize.WriteStream, value *ProbeHeader) error {
+	if value.Version > 7 { // a value above the bits(3) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(171) & 0xff // const(171, 8)
 	f1 := uint64(value.Version) & 0x7
 	f2 := uint64(0) & 0x1f // reserved(5) — zeros on the wire
@@ -230,6 +233,12 @@ const ProbeBitsMaxBytes = 32
 // write-side refusal (serialize.ErrValueOutOfRange for a value the wire cannot
 // carry) or the stream's error; the size written is stream.BitsProcessed().
 func WriteProbeBits(stream *serialize.WriteStream, value *ProbeBits) error {
+	if value.Small > 511 { // a value above the bits(9) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.Boundary > 8589934591 { // a value above the bits(33) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
 	f0 := uint64(value.Small) & 0x1ff
 	f1 := value.Boundary & 0x1ffffffff
 	f2 := value.Wide
@@ -1154,6 +1163,15 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		return serialize.ErrValueOutOfRange
 	}
 	if value.C < -100 || value.C > 150 {
+		return serialize.ErrValueOutOfRange
+	}
+	if value.D > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.E > 255 { // a value above the bits(8) wire width cannot ride
+		return serialize.ErrValueOutOfRange
+	}
+	if value.F > 255 { // a value above the bits(8) wire width cannot ride
 		return serialize.ErrValueOutOfRange
 	}
 	f0 := uint64(value.A+100) & 0xff
