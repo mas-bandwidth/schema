@@ -5620,7 +5620,7 @@ int tableEntityLoadMessages(
   if (count < 0) return -1;
   if (count > values.length) {
     report.Refuse('batch_too_large');
-    return count;
+    return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableEntityLoadMessageBody(r, values[i])) {
@@ -6077,7 +6077,7 @@ int tableStatLoadMessages(
   if (count < 0) return -1;
   if (count > values.length) {
     report.Refuse('batch_too_large');
-    return count;
+    return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableStatLoadMessageBody(r, values[i])) {
@@ -6943,7 +6943,7 @@ int tableMixedLoadMessages(
   if (count < 0) return -1;
   if (count > values.length) {
     report.Refuse('batch_too_large');
-    return count;
+    return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableMixedLoadMessageBody(r, values[i])) {
