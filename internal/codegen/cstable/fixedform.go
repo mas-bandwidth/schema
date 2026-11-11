@@ -1475,6 +1475,16 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedFiniteBodyFn(st)
 	}
+	// THE WRITE-SIDE CHECK PASS, in the same order (fixedcheck.go): the writer
+	// asks it through Debug.Assert before its first byte.
+	for _, st := range bodies {
+		g.emitFixedCheckBodyFn(st)
+	}
+	// THE STORAGE PASS, in the same order (fixedcheck.go): the writer asks it
+	// in every build before its first byte.
+	for _, st := range bodies {
+		g.emitFixedStorageBodyFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -1981,10 +1991,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("public static long %sFixedSave(ReadOnlySpan<%s> values, Span<byte> buffer)\n{\n", name, name)
 	g.pf("    long need = %sFixedMeasure(values.Length);\n", name)
 	g.pf("    if (values.Length < 0 || buffer.Length < need) { return -1; }\n")
+	if fixedStorageNeededStruct(st, map[string]bool{}) {
+		// a count or a length past the storage it indexes is refused in every
+		// build, before the first output byte (docs/SPEC.md §5.1)
+		g.pf("    for (int k = 0; k < values.Length; ++k) { if (!%sFixedStorageBody(values[k])) { return -1; } }\n", name)
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md
 		// §3.3), before the first output byte
 		g.pf("    for (int k = 0; k < values.Length; ++k) { if (%sFixedFiniteBody(values[k]) != null) { return -1; } }\n", name)
+	}
+	if fixedCheckNeededStruct(st, map[string]bool{}) {
+		// a value its declaration refuses is caller error on the write side
+		// (docs/SPEC.md §5.1): the whole batch is checked in a debug build
+		// before the first output byte, and the check is compiled away in
+		// release
+		g.pf("#if DEBUG\n")
+		g.pf("    for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(%sFixedCheckBody(values[k]), \"write refused: a value outside its declaration\"); }\n", name)
+		g.pf("#endif\n")
 	}
 	g.pf("    buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();\n")
 	g.pf("    buffer[0] = TableFixedWire.Form;\n")

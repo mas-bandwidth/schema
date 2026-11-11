@@ -788,11 +788,16 @@ public sealed class TableFieldInfo
     public Func<ulong, TableReport, ulong> RangeRaw;
     public Func<ulong, TableReport, ulong> RangeJsonInteger;
     public Func<ulong, bool> RequiredValidRaw;
+    // a non-required ranged integer's or bits(N) field's write-side range,
+    // Debug.Assert-checked by the writer (docs/SPEC.md §5.1 rows 1 and 2);
+    // null where the storage is the range
+    public Func<ulong, bool> WriteValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
     public bool WideSigned;
     public Func<UInt128, TableReport, UInt128> RangeWide;
     public Func<UInt128, bool> RequiredValidWide;
+    public Func<UInt128, bool> WriteValidWide;
     public Func<object, int, UInt128> GetWide;
     public Action<object, int, UInt128> SetWide;
     public byte[] DefaultBytes;

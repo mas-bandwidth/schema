@@ -36,6 +36,9 @@ func wideColumns(f *ir.Field) string {
 		if f.Type.Signed {
 			typ = "Int128"
 		}
+		if !f.Required {
+			fmt.Fprintf(&b, ", WriteValidWide = delegate (UInt128 raw) { %s v = unchecked((%s)raw); return v >= %s && v <= %s; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
+		}
 		if f.Required {
 			fmt.Fprintf(&b, ", RequiredValidWide = delegate (UInt128 raw) { %s v = unchecked((%s)raw); return v >= %s && v <= %s; }", typ, typ, wideLiteral(lo, f.Type.Signed), wideLiteral(hi, f.Type.Signed))
 		}

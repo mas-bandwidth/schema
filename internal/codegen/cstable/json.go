@@ -741,7 +741,8 @@ public static class TableJson
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)
         {
-            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
+            // ill-formed text is refused; a zero byte is spelled \u0000 (docs/SPEC.md §5.1)
+            if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
