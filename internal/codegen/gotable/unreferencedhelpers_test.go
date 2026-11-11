@@ -144,6 +144,33 @@ table lower {
     values []int32
     roster map[uint8]Element
 }
+`)
+	surfaces := DefaultSurfaces()
+	surfaces.TextForm = true
+	assertCompiles(t, u, surfaces, `package probe
+import "testing"
+func TestLowercaseEntryPoints(t *testing.T) {
+    var value lower
+    lowerReset(&value)
+    _ = lowerTableType()
+    size := lowerMeasure(&value)
+    wire := make([]byte, size)
+    if lowerSave(&value, wire) < 0 { t.Fatal("save") }
+    var loaded lower
+    if !lowerLoad(&loaded, wire, nil) { t.Fatal("load") }
+    var worker TableWorker
+    _ = lowerValuesAdd(&worker, &value.Values)
+    _ = lowerRosterInsert(&worker, value.Roster, 1)
+    _, _, _ = lowerLoadTextForm([]byte("{}"), TableTextFormLimits{})
+    _, _ = lowerSaveTextForm(nil)
+    _, _, _ = lowerEditTextForm(nil)
+    var cook lowerCook
+    _ = lowerOpen(&cook, nil, 0)
+    var slot int64
+    _ = lowerAt(&slot)
+}
+`)
+}
 
 func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 	t.Parallel()
@@ -231,31 +258,4 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			}
 		})
 	}
-}
-`)
-	surfaces := DefaultSurfaces()
-	surfaces.TextForm = true
-	assertCompiles(t, u, surfaces, `package probe
-import "testing"
-func TestLowercaseEntryPoints(t *testing.T) {
-    var value lower
-    lowerReset(&value)
-    _ = lowerTableType()
-    size := lowerMeasure(&value)
-    wire := make([]byte, size)
-    if lowerSave(&value, wire) < 0 { t.Fatal("save") }
-    var loaded lower
-    if !lowerLoad(&loaded, wire, nil) { t.Fatal("load") }
-    var worker TableWorker
-    _ = lowerValuesAdd(&worker, &value.Values)
-    _ = lowerRosterInsert(&worker, value.Roster, 1)
-    _, _, _ = lowerLoadTextForm([]byte("{}"), TableTextFormLimits{})
-    _, _ = lowerSaveTextForm(nil)
-    _, _, _ = lowerEditTextForm(nil)
-    var cook lowerCook
-    _ = lowerOpen(&cook, nil, 0)
-    var slot int64
-    _ = lowerAt(&slot)
-}
-`)
 }
