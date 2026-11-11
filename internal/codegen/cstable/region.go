@@ -84,13 +84,13 @@ const tableRegionSource = `
             if (f.NativeGuardOffsets != null) { for (int i = 0; i < f.NativeGuardOffsets.Length; i++) { if ((Base[At + f.NativeGuardOffsets[i]] != 0) != f.NativeGuardValues[i]) { return false; } } }
             return true;
         }
-        public int Count(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?0:checked((int)NativeWord(slot+delta,4));} return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
+        public int Count(TableFieldInfo f) { if (f.Unbounded) { byte* slot = Slot(f); long delta = (long)NativeWord(slot, 8); return delta == 0 ? 0 : checked((int)NativeWord(slot + delta, 4)); } return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
         public UInt128 Wide(TableFieldInfo f, int index) { return NativeWord(Slot(f, index), 16); }
         public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
         public void SetWide(TableFieldInfo f, int index, UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, 16); } }
-        public Span<byte> Buffer(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?Span<byte>.Empty:new Span<byte>(slot+delta+8,checked((int)NativeWord(slot+delta,4)));} return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
+        public Span<byte> Buffer(TableFieldInfo f) { if (f.Unbounded) { byte* slot = Slot(f); long delta = (long)NativeWord(slot, 8); return delta == 0 ? Span<byte>.Empty : new Span<byte>(slot + delta + 8, checked((int)NativeWord(slot + delta, 4))); } return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
         public Span<char> Chars(TableFieldInfo f) { return new Span<char>(Slot(f), f.ArrayBound + 1); }
-        public void SetCount(TableFieldInfo f, int n) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);if(delta!=0){NativePut(slot+delta,(uint)n,4);}return;} if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
+        public void SetCount(TableFieldInfo f, int n) { if (f.Unbounded) { byte* slot = Slot(f); long delta = (long)NativeWord(slot, 8); if (delta != 0) { NativePut(slot + delta, (uint)n, 4); } return; } if (Base != null) { NativePut(Base + At + f.NativeCountOffset, (uint)n, 4); } }
         public void SetPresent(TableFieldInfo f, bool present) { if (Base != null) { Base[At + f.NativePresentOffset] = present ? (byte)1 : (byte)0; } }
         public void SetTag(TableFieldInfo f, ulong tag) { if (Base != null) { NativePut(Base + At, tag, f.Arms.NativeTagSize); } }
     }
@@ -121,7 +121,7 @@ const tableRegionSource = `
     static unsafe void NativeResetField(NativeValue value, TableFieldInfo f, bool defaults)
     {
         if (value.Base == null) { return; }
-        if (f.Unbounded) { NativePut(value.Base + value.At + f.NativeOffset, 0, 8); if(f.Optional){value.SetPresent(f,false);} return; }
+        if (f.Unbounded) { NativePut(value.Base + value.At + f.NativeOffset, 0, 8); if (f.Optional) { value.SetPresent(f, false); } return; }
         if (f.Dynamic) { NativePut(value.Base + value.At + f.NativeOffset, 0, 16); return; }
         if (f.GetBuffer != null)
         {
@@ -311,9 +311,9 @@ const tableRegionSource = `
     {
         if (f.TextList && kind == 12)
         {
-            Reader text=r;if(framed&&!r.Slice(out text)){return Damage(report);}
-            if(!framed){r.Offset=r.Buffer.Length;}
-            return NativeReadText(ref state, text.Buffer,value.Child(f,index),f.Table.Fields[0],report);
+            Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
+            if (!framed) { r.Offset = r.Buffer.Length; }
+            return NativeReadText(ref state, text.Buffer, value.Child(f, index), f.Table.Fields[0], report);
         }
         if (kind == 17)
         {
@@ -446,14 +446,14 @@ const tableRegionSource = `
         if (!TextValid(text)) { return Damage(report); }
         int keep = text.Length;
         if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-        if(f.Unbounded)
+        if (f.Unbounded)
         {
-            if(keep==0){if(value.Base!=null){NativePut(value.Slot(f),0,8);}return true;}
-            long size=Align(9L+keep,8);byte* blob;
-            if(state.Worker!=null){blob=state.Worker.Raw(size);if(blob==null){state.Refused=true;return false;}}
-            else {long at=Align(state.Next,8);if(at>state.End||size>state.End-at){return Damage(report);}state.Next=at+size;if(value.Base==null){return true;}blob=value.Base+at;}
-            System.Runtime.InteropServices.NativeMemory.Clear(blob,(nuint)size);NativePut(blob,(uint)keep,4);
-            text.Slice(0,keep).CopyTo(new Span<byte>(blob+8,keep));NativePut(value.Slot(f),unchecked((ulong)(blob-value.Slot(f))),8);return true;
+            if (keep == 0) { if (value.Base != null) { NativePut(value.Slot(f), 0, 8); } return true; }
+            long size = Align(9L + keep, 8); byte* blob;
+            if (state.Worker != null) { blob = state.Worker.Raw(size); if (blob == null) { state.Refused = true; return false; } }
+            else { long at = Align(state.Next, 8); if (at > state.End || size > state.End - at) { return Damage(report); } state.Next = at + size; if (value.Base == null) { return true; } blob = value.Base + at; }
+            System.Runtime.InteropServices.NativeMemory.Clear(blob, (nuint)size); NativePut(blob, (uint)keep, 4);
+            text.Slice(0, keep).CopyTo(new Span<byte>(blob + 8, keep)); NativePut(value.Slot(f), unchecked((ulong)(blob - value.Slot(f))), 8); return true;
         }
         if (value.Base != null) { text.Slice(0, keep).CopyTo(value.Buffer(f)); value.SetCount(f, keep); }
         return true;
@@ -506,10 +506,11 @@ const tableRegionSource = `
                 {
                     if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } if (!NativeEnsure(ref state, value, f, i)) { return false; } }
                     if (!NativeReadElement(ref state, ref array, value, f, i, elementKind, report, true)) { break; }
-                    if(f.TextTotal>0){
-                        NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];
-                        int length=text.Optional&&!child.Present(text)?0:child.Count(text);
-                        if(!TextTotalKeep(f,length,ref textSpent,report)){NativeResetElement(value,f,i);break;}
+                    if (f.TextTotal > 0)
+                    {
+                        NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0];
+                        int length = text.Optional && !child.Present(text) ? 0 : child.Count(text);
+                        if (!TextTotalKeep(f, length, ref textSpent, report)) { NativeResetElement(value, f, i); break; }
                     }
                     decoded++;
                 }

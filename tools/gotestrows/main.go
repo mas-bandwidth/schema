@@ -102,7 +102,7 @@ func readTable(path string) (table, error) {
 	if err != nil {
 		return t, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	n := 0
 	for sc.Scan() {
