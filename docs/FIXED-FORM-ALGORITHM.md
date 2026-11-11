@@ -677,14 +677,16 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
-way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — `'Q'`
-for every float range's resolution (including zero for an uncompressed range), `'F'` at a flags type's
-first use and `'G'` at each later field that names it. `'L'` is reserved: no table spelling exists, so that
-row is empty. **Structs, flags and unions share one `seen` map keyed by bare name.**
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for an integer or fixed-point range whose
+bounds fit in an i64 — an i64 for each bound — and `'W'` for one with a bound outside it, both bounds as
+full sixteen-byte two's-complement values; a float range is `'R'` with the `float64`'s own bits. It emits
+`'Q'` for every float range's resolution (including zero for an uncompressed range), `'F'` at a flags
+type's first use and `'G'` at each later field that names it. `'L'` is reserved: no table spelling exists,
+so that row is empty. **Structs, flags and unions share one `seen` map keyed by bare name.**
 
-**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
-that range is a float's, including an uncompressed float's zero resolution, then the KIND TAG — `'B'`
+**The ORDER inside one field is fixed**: `'R'` — or `'W'` when a bound is outside i64 — FIRST when the
+field has a range, `'Q'` straight after it when that range is a float's, including an uncompressed
+float's zero resolution, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type's first
 use, `'G'` for a later field naming one already seen, a RECURSE for a nested `table`/`type`, a recurse into
 each arm's payload in declared order for a union. A field spends none, one, two or three of those, in that
