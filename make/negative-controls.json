@@ -2760,6 +2760,15 @@
         "conformance-negative-control-cs-write-refusal-fixed",
         "conformance-negative-control-cs-write-refusal-message"
       ]
+    },
+    {
+      "name": "python-packet-core",
+      "when": "pull-request",
+      "why": "the packet core's control (docs/PORT-PYTHON.md, THE HARNESS): a copy of the generated ShipCreate reader offsets the health field by one and TestPythonPacketCoreNegativeControl must go red on the write-back marker. One SCHEMA_SLOW go test under both pinned interpreters, the cost of the pin cache restore rather than the run.",
+      "targets": [
+        "python-packet-core-negative-control"
+      ],
+      "python": "pin"
     }
   ],
   "excluded": [
