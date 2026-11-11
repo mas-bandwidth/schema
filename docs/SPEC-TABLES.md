@@ -5033,12 +5033,13 @@ one document rather than two.
       `30` — the array list without `12`, `15` and `17`.
 
     Those are exactly the element kinds a declaration the compiler accepts
-    can produce: `1`–`11` and `18`–`29` from a scalar, `bits`, `flags` or
-    fixed-point element, `12` from a text list (§2.13), `13` from a table or
+    can produce: `1`–`11` and `18`–`29` from a scalar, `flags` or fixed-point
+    element, `12` from a text list (§2.13), `13` from a table or
     `type` element and from a map's entries (§2.8), `15` from an array of
     unions, `17` from an array of pointers, and `30` from an enum element
     (`bytes(N)` is kind `14` over element kind `6`; it is not an element kind
-    of its own, and an array of `bytes(N)` is refused). A keyed body carries
+    of its own; an array of `bytes(N)` or of `bits(N)` is refused, so
+    `bits(N)` rides as kinds `6`–`9` only on a bare field). A keyed body carries
     none of `12`, `15` or `17` because the compiler refuses `[E]string`, an
     enum-keyed array of unions and an enum-keyed array of pointers (§2.4,
     §2.13, §15). Every OTHER element kind is damage — recommended name
