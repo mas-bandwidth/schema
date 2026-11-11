@@ -77,14 +77,19 @@ local cu64 = function(c) {
   return lo | (hi << 32);
 };
 
-// THE RESOLVED FORM's writer: a list of bytes. Lengths inside a record are this
+// THE RESOLVED FORM's writer: a bounded blob. Lengths inside a record are this
 // port's own spelling, written AFTER what they frame (§6.6).
-local outU8 = function(out, v) { out.append(v & 0xff); };
+local outAppend = function(out, v) {
+  if (out.failed) return;
+  if (out.b.len() >= out.limit) { out.failed = true; return; }
+  out.b.writen(v & 0xff, 'b');
+};
+local outU8 = function(out, v) { outAppend(out, v); };
 local outU64 = function(out, v) {
-  for (local i = 0; i < 8; i++) out.append((v >>> (8 * i)) & 0xff);
+  for (local i = 0; i < 8 && !out.failed; i++) outAppend(out, (v >>> (8 * i)) & 0xff);
 };
 local outRaw = function(out, b, at, n) {
-  for (local i = 0; i < n; i++) out.append(b[at + i] & 0xff);
+  for (local i = 0; i < n && !out.failed; i++) outAppend(out, b[at + i] & 0xff);
 };
 
 // idOf resolves one reference against the file's id table and answers the id it
@@ -123,7 +128,7 @@ local skipPayload = function(c, kind) {
 // framed reads one length and resolves the content it frames; a nested length
 // past its parent drops the record (§6.6).
 resolveContent = function(c, kind, table, out, depth) {
-  if (c.bad) return;
+  if (c.bad || out.failed) return;
   if (depth > RETAIN_DEPTH_CAP) { c.bad = true; return; }
   switch (kind) {
     case 17: { c.bad = true; return; }
@@ -137,7 +142,7 @@ resolveContent = function(c, kind, table, out, depth) {
       if (c.bad || count < 0) { c.bad = true; return; }
       outU64(out, count);
       for (local i = 0; i < count; i++) {
-        if (c.bad) return;
+        if (c.bad || out.failed) return;
         if (kind == 16) {
           local ref = cleb(c);
           if (c.bad) return;
@@ -147,13 +152,13 @@ resolveContent = function(c, kind, table, out, depth) {
           if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
           local sub = cursor(c.b, c.at, c.at + n);
           c.at += n;
-          local mark = out.len();
+          local mark = out.b.len();
           outU64(out, 0);
           resolveContent(sub, ek, table, out, depth + 1);
           if (sub.bad || sub.at != sub.end) c.bad = true;
           if (c.bad) return;
-          local len = out.len() - mark - 8;
-          for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
+          local len = out.b.len() - mark - 8;
+          for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
         } else {
           resolvePayload(c, ek, table, out, depth);
         }
@@ -171,7 +176,7 @@ resolveContent = function(c, kind, table, out, depth) {
 };
 
 resolvePayload = function(c, kind, table, out, depth) {
-  if (c.bad) return;
+  if (c.bad || out.failed) return;
   switch (kind) {
     case 17: c.bad = true; return;
     case 30: {
@@ -194,13 +199,13 @@ resolvePayload = function(c, kind, table, out, depth) {
       if (c.bad || n < 0 || c.at + n > c.end) { c.bad = true; return; }
       local sub = cursor(c.b, c.at, c.at + n);
       c.at += n;
-      local mark = out.len();
+      local mark = out.b.len();
       outU64(out, 0);
       resolveContent(sub, armKind, table, out, depth + 1);
       if (sub.bad || sub.at != sub.end) c.bad = true;
       if (c.bad) return;
-      local len = out.len() - mark - 8;
-      for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
+      local len = out.b.len() - mark - 8;
+      for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
       return;
     }
     case 13: case 14: case 16: {
@@ -208,13 +213,13 @@ resolvePayload = function(c, kind, table, out, depth) {
       if (c.bad || n < 0 || n > c.end - c.at) { c.bad = true; return; }
       local sub = cursor(c.b, c.at, c.at + n);
       c.at += n;
-      local mark = out.len();
+      local mark = out.b.len();
       outU64(out, 0);
       resolveContent(sub, kind, table, out, depth + 1);
       if (sub.bad || sub.at != sub.end) c.bad = true;
       if (c.bad) return;
-      local len = out.len() - mark - 8;
-      for (local k = 0; k < 8; k++) out[mark + k] = (len >>> (8 * k)) & 0xff;
+      local len = out.b.len() - mark - 8;
+      for (local k = 0; k < 8; k++) out.b[mark + k] = (len >>> (8 * k)) & 0xff;
       return;
     }
     default: {
@@ -227,7 +232,7 @@ resolvePayload = function(c, kind, table, out, depth) {
 
 resolveBody = function(c, table, out, depth) {
   for (;;) {
-    if (c.bad) return;
+    if (c.bad || out.failed) return;
     local ref = cleb(c);
     if (c.bad) return;
     if (ref == 0) { outU64(out, 0); return; }
@@ -250,21 +255,26 @@ local capture = function(store, inst, bytes, start, end, id, kind, table, report
     return;
   }
   local c = cursor(bytes, start, end);
-  local out = [];
+  local remaining = store.capacity - store.used - 9;
+  if (remaining < 0) {
+    report.retainLost = report.retainLost + 1;
+    return;
+  }
+  local out = { b = blob(0), failed = false, limit = remaining };
   resolvePayload(c, kind, table, out, 0);
-  if (c.bad || c.at != end) {
+  if (c.bad || out.failed || c.at != end) {
     // the plain read's framing was sound; the walk's verdict changes nothing
     // else, and the record is dropped with one retain_lost (§6.6)
     report.retainLost = report.retainLost + 1;
     return;
   }
-  local cost = 9 + out.len();
+  local cost = 9 + out.b.len();
   if (store.used + cost > store.capacity) {
     // A RECORD IS NEVER PARTIAL: a full buffer degrades one field at a time
     report.retainLost = report.retainLost + 1;
     return;
   }
-  store.recs.append({ body = inst, id = id, kind = kind, payload = out, placed = false });
+  store.recs.append({ body = inst, id = id, kind = kind, payload = out.b, placed = false });
   store.used = store.used + cost;
   report.retained = report.retained + 1;
 };
