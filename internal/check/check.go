@@ -1250,6 +1250,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
+		c.checkJavaScriptObjectMember(v.Name, v.Pos, "union arm", "a union arm")
 		if prev, dup := seen[exported]; dup {
 			c.errf(v.Pos, "duplicate variant %s in union %s (first at %s; names are unique AFTER export mapping — both become %s) (SPEC §4.8)",
 				v.Name, d.Name, prev, exported)
@@ -3578,7 +3579,8 @@ var reservedLanguages = []struct {
 	{"JavaScript", []string{"js", "javascript"}, `await break case catch class const continue debugger default delete do else
 		enum export extends false finally for function if implements import in instanceof
 		interface let new null package private protected public return static super switch
-		this throw true try typeof var void while with yield`},
+		this throw true try typeof var void while with yield
+		__proto__ __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__`},
 	// Dart 3's reserved words, the dart:core types generated files use
 	// unqualified (shadowing `int` would corrupt every declaration below it),
 	// and Object's members, which a static member may not share.
@@ -3845,6 +3847,18 @@ var jsObjectMembers = map[string]bool{
 	"propertyIsEnumerable": true, "toLocaleString": true, "toString": true, "valueOf": true,
 }
 
+// checkJavaScriptObjectMember refuses a name whose JavaScript member spelling
+// is one every object inherits from Object.prototype (SPEC §4.6, §6.1). It
+// applies to every name kind a target emits as an object member: a field, an
+// enum or flags variant, and a union arm.
+func (c *checker) checkJavaScriptObjectMember(name string, pos ast.Pos, what, noun string) {
+	member := ir.DartMemberName(name)
+	if !jsObjectMembers[member] {
+		return
+	}
+	c.errf(pos, "%s %s becomes the JavaScript member %s, which every object inherits from Object.prototype; %s of that name shadows it — rename at the source (SPEC §4.6)", what, name, member, noun)
+}
+
 // goExportName delegates to the one true mapping (ir.GoExportName), which
 // the Go backend also emits with — two names that collide under it cannot
 // coexist in one type (SPEC §4.6).
@@ -3926,9 +3940,7 @@ func (c *checker) checkTargetNames() {
 						// JavaScript storage members are lowerCamelCase own
 						// properties of a plain class instance, so a field spelt
 						// as an Object.prototype member would shadow it
-						if jsObjectMembers[ir.DartMemberName(item.Name)] {
-							c.errf(item.Pos, "field %s becomes the JavaScript member %s, which every object inherits from Object.prototype; a field of that name shadows it — rename at the source (SPEC §4.6)", item.Name, ir.DartMemberName(item.Name))
-						}
+						c.checkJavaScriptObjectMember(item.Name, item.Pos, "field", "a field")
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
 						}
@@ -3967,10 +3979,12 @@ func (c *checker) checkTargetNames() {
 						continue
 					}
 					checkEscaped(v.Text, v.Pos, "enum variant")
+					c.checkJavaScriptObjectMember(v.Text, v.Pos, "enum variant", "an enum variant")
 				}
 			case *ast.FlagsDecl:
 				for _, v := range d.Variants {
 					checkEscaped(v.Text, v.Pos, "flags variant")
+					c.checkJavaScriptObjectMember(v.Text, v.Pos, "flags variant", "a flags variant")
 				}
 			}
 		}
