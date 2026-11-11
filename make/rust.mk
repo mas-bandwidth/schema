@@ -1403,10 +1403,10 @@ test-rust: conformance-negative-control-rust-walk
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
 # leg and requires it green WITH absences counted; its control rebuilds the
-# driver (its own target directory) from a copy whose four absence writes
-# (the named refusal, the not-applicable rows and spill_absent) write an ANSWER
-# where the `.absent` marker belongs, and the leg must go red on the surfaces
-# that carry an absence.
+# driver (its own target directory) from a copy whose seven absence writes
+# (the named refusal, the not-applicable rows, the fixed-root text and cook
+# rows and spill_absent) write an ANSWER where the `.absent` marker belongs,
+# and the leg must go red on the surfaces that carry an absence.
 RUST_ABSENT_CONTROL := build/rust-absent-control
 .PHONY: conformance-rust-absent conformance-rust-absent-negative-control
 conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
@@ -1423,8 +1423,8 @@ conformance-rust-absent-negative-control: build/conformance-harness build/tables
 	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
 		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
 		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
-	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 4 ] || \
-		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all four absence writes"; exit 1; }
+	@[ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = 7 ] || \
+		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach all seven absence writes"; exit 1; }
 	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
