@@ -27,6 +27,9 @@ func tableOpenSlotCollisions(n int) []uint64 {
 func TestGoOpenDistinctIdsWorkIsBounded(t *testing.T) {
 	t.Parallel()
 	ids := tableOpenSlotCollisions(4096)
+	for i, j := 0, len(ids)-1; i < j; i, j = i+1, j-1 {
+		ids[i], ids[j] = ids[j], ids[i]
+	}
 	var literal strings.Builder
 	literal.WriteString("[]uint64{")
 	for i, id := range ids {
