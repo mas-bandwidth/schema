@@ -792,7 +792,7 @@ function _M.WriteProbeSample(stream, v)
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.SamplesCount) ~= "number" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
+  if math.type(v.SamplesCount) ~= "integer" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
   if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
   for _i = 1, v.SamplesCount do
     if math.type(v.Samples[_i]) ~= "integer" then return false end
@@ -837,7 +837,7 @@ function _M.WriteProbeCollider(stream, v)
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ExtrasCount) ~= "number" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
+  if math.type(v.ExtrasCount) ~= "integer" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
   if not stream:serializeBits({ value = v.ExtrasCount }, 2) then return false end -- the count
   for _i = 1, v.ExtrasCount do
     if not _M.WriteProbeShape(stream, v.Extras[_i]) then return false end
@@ -924,7 +924,7 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 255 then return false end
