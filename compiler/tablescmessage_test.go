@@ -36,6 +36,7 @@ fixed table Root {
 `
 
 func TestCTableMessageSave(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, cMessageSchema)
 	m := tabletext.NewModel(u)
 	texts := []string{`{}`, `{"enabled":true,"amount":17,"ratio":0.42,"mask":["One","Three"],"name":"hi","payload":"AQID","leaf":{"x":9,"choice":"Second"},"counters":[4,5],"slots":{"First":{"x":5}},"samples":[0,0,0],"body":{"text":"hello"},"history":[{"numbers":[2,3]},{"empty":null}],"choices":["First","Second"]}`, `{"body":{"leaf":{"x":22}},"payload":"BAUGBw=="}`}
@@ -88,6 +89,7 @@ int main(void) {
 }
 
 func TestCTableAnnouncementDistinctQuantizedShapes(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 fixed table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
 fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
@@ -116,6 +118,7 @@ int main(void) {
 // saves the same bytes. A receiver whose ranges and bounds the sender's
 // values cross, or whose kind changed, refuses the message whole.
 func TestCTableMessageEvolution(t *testing.T) {
+	t.Parallel()
 	sender := unitFromSource(t, `package probe
 type Item { value int8 }
 union Payload { number uint8 }
@@ -216,6 +219,7 @@ int main(void){
 }
 
 func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Root { a int32\nb string(8)\nc bool }\n")
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
  int main(void){uint8_t wire[2048];TableMessageEntry entries[1];TableVocabulary v;TableReport report={0};int64_t n=announce(wire,sizeof(wire));size_t i;
