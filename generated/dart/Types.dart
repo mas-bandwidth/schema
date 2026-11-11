@@ -1628,6 +1628,9 @@ int writeInputPacket(InputPacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.inputsCount > 16) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   v = value.synchronizeSequence & 0xffff;
   scratch |= v << scratchBits;
   scratchBits += 16;

@@ -415,12 +415,164 @@ func (g *gen) resetFn() {
 	g.scratchHi = 0 // a function's scratch starts empty
 }
 
+// emitWriteStorageGuards emits the every-build storage guards (SPEC §5.1): a
+// counted array's count, or a string/bytes length, that would index past the
+// value's own storage returns -1 before the first store. The walk mirrors the
+// write walk, so only the taken branch or union arm guards.
+func (g *gen) emitWriteStorageGuards(items []ir.Item, path, ind string) {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			g.emitWriteStorageGuardField(item.F, path, ind)
+		case *ir.Branch:
+			if !g.hasStorageGuardItems(item.Then) && !g.hasStorageGuardItems(item.Else) {
+				continue
+			}
+			neg := ""
+			if item.Neg {
+				neg = "!"
+			}
+			g.pf("%sif (%s%s.%s) {\n", ind, neg, path, dartName(item.Cond))
+			g.emitWriteStorageGuards(item.Then, path, ind+"  ")
+			if item.Else != nil && g.hasStorageGuardItems(item.Else) {
+				g.pf("%s} else {\n", ind)
+				g.emitWriteStorageGuards(item.Else, path, ind+"  ")
+			}
+			g.pf("%s}\n", ind)
+		}
+	}
+}
+
+func (g *gen) hasStorageGuardItems(items []ir.Item) bool {
+	for _, item := range items {
+		switch item := item.(type) {
+		case *ir.FieldItem:
+			if g.hasStorageGuardField(item.F) {
+				return true
+			}
+		case *ir.Branch:
+			if g.hasStorageGuardItems(item.Then) || g.hasStorageGuardItems(item.Else) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (g *gen) hasStorageGuardField(f *ir.Field) bool {
+	if f.Array == ir.ArrayCounted {
+		return true
+	}
+	return g.hasStorageGuardElem(f)
+}
+
+func (g *gen) hasStorageGuardElem(f *ir.Field) bool {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return true
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return g.hasStorageGuardItems(ref.Items)
+		case *ir.Union:
+			return g.hasStorageGuardUnion(ref)
+		}
+	}
+	return false
+}
+
+func (g *gen) hasStorageGuardUnion(u *ir.Union) bool {
+	for _, vr := range u.Variants {
+		if !vr.Void() && g.hasStorageGuardItems(vr.Ref.Items) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *gen) emitWriteStorageGuardField(f *ir.Field, path, ind string) {
+	name := path + "." + dartName(f.Name)
+	if f.Name == "" {
+		name = path
+	}
+	switch f.Array {
+	case ir.ArrayFixed:
+		if !g.hasStorageGuardElem(f) {
+			return
+		}
+		iv := fmt.Sprintf("s%d", g.loopDepth)
+		g.loopDepth++
+		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
+		g.emitWriteStorageGuardElem(f, fmt.Sprintf("%s[%s]", name, iv), ind+"  ")
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	case ir.ArrayCounted:
+		count := name + "Count"
+		g.emitWriteStorageGuard(count, f.ArrayBound, ind)
+		if !g.hasStorageGuardElem(f) {
+			return
+		}
+		iv := fmt.Sprintf("s%d", g.loopDepth)
+		g.loopDepth++
+		g.pf("%sfor (var %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+		g.emitWriteStorageGuardElem(f, fmt.Sprintf("%s[%s]", name, iv), ind+"  ")
+		g.pf("%s}\n", ind)
+		g.loopDepth--
+	default:
+		g.emitWriteStorageGuardElem(f, name, ind)
+	}
+}
+
+func (g *gen) emitWriteStorageGuardElem(f *ir.Field, name, ind string) {
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		g.emitWriteStorageGuard(name+"Length", f.Type.Size, ind)
+	case ir.TNamed:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitWriteStorageGuards(ref.Items, name, ind)
+		case *ir.Union:
+			g.emitWriteStorageGuardUnion(ref, name, ind)
+		}
+	}
+}
+
+func (g *gen) emitWriteStorageGuardUnion(u *ir.Union, expr, ind string) {
+	if !g.hasStorageGuardUnion(u) {
+		return
+	}
+	g.pf("%sswitch (%s.type) {\n", ind, expr)
+	for _, vr := range u.Variants {
+		if vr.Void() || !g.hasStorageGuardItems(vr.Ref.Items) {
+			continue
+		}
+		g.pf("%s  case %s:\n", ind, g.armTag(u, vr))
+		g.emitWriteStorageGuards(vr.Ref.Items, expr+"."+dartName(vr.Name), ind+"    ")
+	}
+	g.pf("%s}\n", ind)
+}
+
+// emitWriteStorageGuard refuses an expression past the storage it indexes.
+func (g *gen) emitWriteStorageGuard(expr string, bound int64, ind string) {
+	one := fmt.Sprintf("%sif (%s > %d) {", ind, expr, bound)
+	if len(one) <= 80 {
+		g.pf("%s\n", one)
+	} else {
+		g.pf("%sif (%s >\n%s    %d) {\n", ind, expr, ind, bound)
+	}
+	g.pf("%s  return -1; // the count or length indexes the storage it describes (SPEC §5.1)\n", ind)
+	g.pf("%s}\n", ind)
+}
+
 func (g *gen) emitWriteFunction(name, low string, items []ir.Item) {
 	g.usesTypeData = true
 	g.resetFn()
+	g.emitWriteStorageGuards(items, "value", "  ")
+	guards := g.fn.String()
+	g.resetFn()
 	g.emitWriteItems(items, "value", "  ")
 	g.chunkFlush("  ")
-	body := g.fn.String()
+	body := guards + g.fn.String()
 
 	g.bpf("// write%s packs value into view — the trusted writer (contracts asserted,\n", name)
 	g.bpf("// compiled out without --enable-asserts). The buffer behind view must hold\n")

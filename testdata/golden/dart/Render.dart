@@ -206,6 +206,9 @@ int writeRenderBlock(RenderBlock value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.spritesCount > 64) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.spritesCount >= 0);
   assert(value.spritesCount <= 64);
   v =

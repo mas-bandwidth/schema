@@ -43,6 +43,9 @@ int writeW13(W13 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 12) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 12);
   v = value.itemsCount & 0xf;
@@ -204,6 +207,9 @@ int writeW17(W17 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 9) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 9);
   v = value.itemsCount & 0xf;
@@ -359,6 +365,9 @@ int writeW26(W26 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 6) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 6);
   v = value.itemsCount & 0x7;
@@ -508,6 +517,9 @@ int writeW1(W1 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 20) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 20);
   v = value.itemsCount & 0x1f;
@@ -1008,6 +1020,9 @@ int writeW52(W52 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 3) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = value.itemsCount & 0x3;
@@ -1117,6 +1132,9 @@ int writeW50(W50 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 3) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = value.itemsCount & 0x3;
@@ -1400,6 +1418,9 @@ int writeArrTri3(ArrTri3 value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 10) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 10);
   v = value.itemsCount & 0xf;
@@ -2256,6 +2277,12 @@ int writeStrs(Strs value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.sLength > 8) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.bLength > 8) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.sLength >= 0);
   assert(value.sLength <= 8);
   v = (value.lead & 0x1f) | ((value.sLength & 0xf) << 5);
@@ -2529,6 +2556,9 @@ int writeArrNested(ArrNested value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 4) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 4);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x7) << 5);

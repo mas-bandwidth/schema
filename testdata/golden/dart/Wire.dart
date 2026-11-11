@@ -461,6 +461,9 @@ int writeProbeSample(ProbeSample value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.samplesCount > 8) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   v = value.active ? 1 : 0;
   scratch |= v << scratchBits;
   scratchBits += 1;
@@ -1091,6 +1094,9 @@ int writeProbeCollider(ProbeCollider value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.extrasCount > 2) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.shape.type >= 0);
   assert(value.shape.type <= 2);
   v = (value.armor & 0xff) | ((value.shape.type & 0x3) << 8);
@@ -1494,6 +1500,11 @@ int writeProbeArray(ProbeArray value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  for (var s0 = 0; s0 < 2; s0++) {
+    if (value.samples[s0].samplesCount > 8) {
+      return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+    }
+  }
   for (var i0 = 0; i0 < 2; i0++) {
     final e0 = value.samples[i0];
     v = e0.active ? 1 : 0;
@@ -2013,6 +2024,9 @@ int writeBlock(Block value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.dataLength > 2000) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.dataLength >= 0);
   assert(value.dataLength <= 2000);
   v = value.dataLength & 0x7ff;
@@ -2155,6 +2169,9 @@ int writeChat(Chat value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.textLength > 256) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.textLength >= 0);
   assert(value.textLength <= 256);
   v = value.textLength & 0x1ff;
@@ -2568,6 +2585,12 @@ int writeTestData(TestData value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 16) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.textLength > 255) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.a >= -100);
   assert(value.a <= 100);
   assert(value.b >= -100);

@@ -50,6 +50,9 @@ int writeDefaultArm(DefaultArm value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.entriesCount > 2) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.entriesCount >= 0);
   assert(value.entriesCount <= 2);
   v = value.entriesCount & 0x3;
@@ -208,6 +211,16 @@ int writeDefaultChoice(DefaultChoice value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  switch (value.type) {
+    case DefaultChoiceType.first:
+      if (value.first.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+    case DefaultChoiceType.second:
+      if (value.second.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+  }
   assert(value.type >= 0);
   assert(value.type <= 2);
   v = value.type & 0x3;
@@ -459,6 +472,16 @@ int writeDefaultChoicePacket(DefaultChoicePacket value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  switch (value.choice.type) {
+    case DefaultChoiceType.first:
+      if (value.choice.first.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+    case DefaultChoiceType.second:
+      if (value.choice.second.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+  }
   assert(value.choice.type >= 0);
   assert(value.choice.type <= 2);
   v = value.choice.type & 0x3;
@@ -721,6 +744,12 @@ int writeDefaultBulkArm(DefaultBulkArm value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.payload.entriesCount > 2) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.dataLength > 2) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.payload.entriesCount >= 0);
   assert(value.payload.entriesCount <= 2);
   v = value.payload.entriesCount & 0x3;
@@ -953,6 +982,22 @@ int writeDefaultBulkChoice(DefaultBulkChoice value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  switch (value.type) {
+    case DefaultBulkChoiceType.first:
+      if (value.first.payload.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+      if (value.first.dataLength > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+    case DefaultBulkChoiceType.second:
+      if (value.second.payload.entriesCount > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+      if (value.second.dataLength > 2) {
+        return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+      }
+  }
   assert(value.type >= 0);
   assert(value.type <= 2);
   v = value.type & 0x3;

@@ -1781,6 +1781,18 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.entitiesCount > 8) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.statsCount > 80) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.playerNameLength > 15) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.payloadLength > 16) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.ackSequence >= 0);
   assert(value.ackSequence <= 65535);
   v =

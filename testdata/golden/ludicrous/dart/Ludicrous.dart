@@ -815,6 +815,9 @@ int writeLudicrousState(LudicrousState value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.keysCount > 4) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.mode >= 0);
   assert(value.mode <= 3);
   assert(value.probe.angle >= -11796480);

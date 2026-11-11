@@ -675,6 +675,11 @@ int writeArmAlign(ArmAlign value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.flag) {
+    if (value.sLength > 4) {
+      return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+    }
+  }
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -904,6 +909,11 @@ int writeArmArray(ArmArray value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.flag) {
+    if (value.itemsCount > 3) {
+      return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+    }
+  }
   v = (value.lead & 0x1f) | ((value.flag ? 1 : 0) << 5);
   scratch |= v << scratchBits;
   scratchBits += 6;
@@ -1573,6 +1583,9 @@ int writeArrUneven(ArrUneven value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 3) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x3) << 5);
@@ -1785,6 +1798,12 @@ int writeRegainAfterAlign(RegainAfterAlign value, ByteData view) {
   var scratchBits = 0;
   var wordIndex = 0;
   var v = 0;
+  if (value.itemsCount > 3) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
+  if (value.sLength > 4) {
+    return -1; // the count or length indexes the storage it describes (SPEC §5.1)
+  }
   assert(value.itemsCount >= 0);
   assert(value.itemsCount <= 3);
   v = (value.lead & 0x1f) | ((value.itemsCount & 0x3) << 5);
