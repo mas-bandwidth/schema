@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -32,6 +33,17 @@ var schemaCallableSuffixes = map[string]bool{
 	"FixedSaveReason": true, "FixedLoad": true, "FixedBounds": true,
 	"FixedBoundsBody": true, "FixedCheckBody": true, "FixedCheckBodyExact": true,
 	"FixedFiniteBody": true,
+	"LoadTextForm":    true, "SaveTextForm": true, "EditTextForm": true,
+	"Open": true, "At": true,
+	"BlockOpen": true, "BlockBegin": true, "BlockBytes": true,
+	"Emplace": true,
+}
+
+var schemaFieldCallableSuffixes = map[string]bool{
+	"Add": true, "Erase": true, "Each": true,
+	"Find": true, "Insert": true, "IndexMeasure": true,
+	"Index": true, "IndexFind": true,
+	"TextAt": true, "Append": true, "AppendAbsent": true,
 }
 
 // schemaAPIEntries recognizes only table-rooted callable names the emitter
@@ -40,12 +52,16 @@ var schemaCallableSuffixes = map[string]bool{
 // prefix. The AST lookup ensures a name is retained only when this unit emits
 // that entry point.
 func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
-	roots := map[string]bool{}
+	roots := map[string]map[string]bool{}
 	for _, st := range u.Tables {
 		if st == nil || st.MapEntryOf != "" || st.TextElem || token.IsExported(st.Name) {
 			continue
 		}
-		roots[st.Name] = true
+		roots[st.Name] = schemaCallableSuffixes
+		for _, f := range st.Fields {
+			root := goname.Initialisms(st.Name + ir.GoExportName(f.Name))
+			roots[root] = schemaFieldCallableSuffixes
+		}
 	}
 	entries := map[string]bool{}
 	fset := token.NewFileSet()
@@ -62,8 +78,8 @@ func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 			if !ok || fn.Recv != nil {
 				continue
 			}
-			for root := range roots {
-				if strings.HasPrefix(fn.Name.Name, root) && schemaCallableSuffixes[strings.TrimPrefix(fn.Name.Name, root)] {
+			for root, suffixes := range roots {
+				if strings.HasPrefix(fn.Name.Name, root) && suffixes[strings.TrimPrefix(fn.Name.Name, root)] {
 					entries[fn.Name.Name] = true
 				}
 			}
