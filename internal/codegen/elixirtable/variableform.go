@@ -3900,6 +3900,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :int, flags: names}, v, depth) do
+    # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
+    # §16.2): the file read keeps it whole, and the text writer refuses it.
+    if v >>> length(names) != 0, do: throw(:invalid_value)
+
     set = for {n, i} <- Enum.with_index(names), (v >>> i &&& 1) == 1, do: n
 
     case set do
