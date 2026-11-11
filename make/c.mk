@@ -2057,7 +2057,9 @@ tables-c-cycle:
 	@echo 'C cycle: cyclic wire graphs are refused as damage and diamond DAGs load in linear time'
 tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
-	@sed -e 's#if ( !c.broken && c.processed == c.vertices ) /\* an unfreed node sits on a cycle \*/#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
+	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
+		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
+	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
