@@ -535,6 +535,14 @@ func (g *wireGen) emitConstants() {
 		g.pf("const int %s = %s; // fnv1a64(%q)\n", typeConst(st), dartU64Literal(ir.TableWireId(st.WireName())), st.WireName())
 	}
 	g.pf("\n")
+	g.pf("// THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth): a\n")
+	g.pf("// root body or a node record is level 0, and each structural payload inside\n")
+	g.pf("// it is one level deeper. Every walk of the binary form holds it.\n")
+	g.pf("const int _kBinaryMaxDepth = %d;\n\n", ir.TableBinaryMaxDepth)
+	g.pf("// _structuralKind is a kind whose payload nests one level (§4): a table\n")
+	g.pf("// body, an array, a keyed or map body, and a union.\n")
+	g.pf("bool _structuralKind(int kind) => kind == %d || kind == %d || kind == %d || kind == %d;\n",
+		ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed, ir.TableKindUnion)
 }
 
 // emitRuntime emits the generic form-1 writer/reader (§3, §4), shared by every
@@ -1855,6 +1863,12 @@ final class TableWireReader {
         final alen = _wireLeb(buf, arm.$2 + 1);
         if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
+        // A union whose arm is a table, an array, a keyed or map body or
+        // another union is one level deeper; a scalar arm adds none (§4).
+        if (_structuralKind(akind)) {
+          if (depth >= _kBinaryMaxDepth) return -1;
+          return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
+        }
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
       case 12:
       case 13:
@@ -1880,9 +1894,9 @@ final class TableWireReader {
       case 32:
         return kind != 32 || b.isEmpty;
       case 13:
-        return depth < 64 && _wireBody(b, false, out, depth + 1);
+        return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1892,7 +1906,7 @@ final class TableWireReader {
         }
         return off == b.length;
       case 16:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
