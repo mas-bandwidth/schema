@@ -143,7 +143,7 @@ jobs:
   # The compiler's own test suite, and the only job in this file that reads a
   # Go source file. `go test ./...` covers internal/fuzz, whose seeded corpus
   # re-executes every crasher ever found — a short, bounded run, not a
-  # campaign (the unit-rest row runs it, with its property and oracle tests).
+  # campaign (the unit-rest-fuzz rows run it, with its property and oracle tests).
   # The one campaign in that package, the random-schema table differential
   # (TestRandomTableDifferential and its negative control), skips itself here:
   # it runs only under SCHEMA_TABLE_DIFF=1, which only `make fuzz-tables-diff`
@@ -195,8 +195,11 @@ jobs:
     #   unit-codegen    — go test ./internal/codegen/... less elixirtable
     #   unit-compiler-1..14 — go test ./compiler, the tests one pattern names
     #   unit-compiler-15 — go test ./compiler, every other test
-    #   unit-rest       — go vet ./..., go test over everything that is
-    #                     neither an emitter package nor ./compiler, the
+    #   unit-vet        — go vet ./...
+    #   unit-rest-fuzz-1..3, unit-rest-cmd-1..2, unit-rest-goldens — go test
+    #                     internal/fuzz, cmd/schema and internal/goldens
+    #   unit-rest       — go test over everything that is neither an emitter
+    #                     package, nor ./compiler, nor one of those three, the
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
     #   unit-elixir     — go test internal/codegen/elixirtable, alone
@@ -250,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -386,8 +389,10 @@ jobs:
         if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest'
         run: make dist-luau
 
+      # go vet over the module is a row of its own: it compiles every
+      # package, which is minutes of the complement's two-minute budget.
       - name: go vet
-        if: matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-vet'
         run: go vet ./...
 
       # THE LUA PIN for the test steps below: internal/codegen/lua,
@@ -578,13 +583,56 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test -v ./compiler -skip '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))|^Test(CppTableRefOrdinalBytes$)|^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))|^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))|^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))|^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))|^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))|^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))|^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))|^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))|^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))|^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$)|Java([^a-z]|$))|^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))|^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)'
 
+      # THE THREE HEAVIEST OTHER PACKAGES, IN ROWS OF THEIR OWN. With them in
+      # the complement below it ran 607 s on four threads (2026-11-10), most of
+      # it internal/fuzz (382 s), internal/goldens (396 s, before its
+      # every-target scan ran its targets side by side) and cmd/schema (207 s).
+      # Each is cut by test name where one test outweighs a row: one pattern
+      # on -run in one row and on -skip in the next, so the two are
+      # complements and a new test lands in the -skip row.
+      - name: go test internal/fuzz, the rapid-property negative control
+        if: matrix.group == 'unit-rest-fuzz-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -run '^TestRapidPropsNegativeControl$'
+
+      - name: go test internal/fuzz, the front-end fuzz target's corpus
+        if: matrix.group == 'unit-rest-fuzz-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -run '^FuzzTableFrontEnd$'
+
+      - name: go test internal/fuzz, every other test
+        if: matrix.group == 'unit-rest-fuzz-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/fuzz -skip '^(TestRapidPropsNegativeControl|FuzzTableFrontEnd)$'
+
+      - name: go test cmd/schema, the Go reserved-words build
+        if: matrix.group == 'unit-rest-cmd-1'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./cmd/schema -run '^TestGenerateGoCompilesGoOnlyWords$'
+
+      - name: go test cmd/schema, every other test
+        if: matrix.group == 'unit-rest-cmd-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./cmd/schema -skip '^TestGenerateGoCompilesGoOnlyWords$'
+
+      - name: go test internal/goldens
+        if: matrix.group == 'unit-rest-goldens'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test ./internal/goldens
+
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in this row with no edit to this file.
-      - name: go test everything that is not an emitter package or the compiler
+      - name: go test everything that is not an emitter package, the compiler, or a package with rows of its own
         if: matrix.group == 'unit-rest'
         env:
           SCHEMA_SLOW: '1'
-        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$')
+        run: go test $(go list ./... | grep -v '/internal/codegen/' | grep -v '/compiler$' | grep -v '/internal/fuzz$' | grep -v '/cmd/schema$' | grep -v '/internal/goldens$')
 
       # THE ELIXIR EMITTER'S PACKAGE, ALONE. Its allocation test measures heap
       # words and is load-sensitive, so it is not inside the emitter row's
