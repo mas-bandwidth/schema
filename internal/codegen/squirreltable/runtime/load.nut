@@ -311,7 +311,8 @@ local rangeScalar = function(fd, kind, x, report) {
     local max;
     if (fd.bits >= 63) max = 0x7fffffffffffffff;
     else max = (1 << fd.bits) - 1;
-    if (x > max) { x = max; report.oor = report.oor + 1; }
+    local MIN = 0x8000000000000000;
+    if ((x ^ MIN) > (max ^ MIN)) { x = max; report.oor = report.oor + 1; }
   }
   return x;
 };
