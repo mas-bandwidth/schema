@@ -114,20 +114,108 @@ func TestTableFixedDefinitionsDigestResolutionMovesTheHash(t *testing.T) {
 }
 
 func TestTableFixedDefinitionsDigestFlagsOnceByName(t *testing.T) {
+	t.Parallel()
 	fl := &Flags{Name: "Perks", Variants: []string{"Shielded", "Cloaked"}, WireBits: 2}
 	st := &Struct{Name: "Root", Fields: []*Field{
 		{Name: "a", Type: FieldType{Kind: TNamed, Name: "Perks", Ref: fl}},
 		{Name: "b", Type: FieldType{Kind: TNamed, Name: "Perks", Ref: fl}},
 	}}
 	d := TableFixedDefinitionsDigest(st)
-	n := 0
+	n, g := 0, 0
 	for _, c := range d {
-		if c == 'F' {
+		switch c {
+		case 'F':
 			n++
+		case 'G':
+			g++
 		}
 	}
 	if n != 1 {
-		t.Fatalf("a flags type is a named type and emits once, got %d 'F' in %q", n, d)
+		t.Fatalf("a flags type is a named type and its definitions emit once, got %d 'F' in %q", n, d)
+	}
+	if g != 1 {
+		t.Fatalf("the later field naming that flags type carries one reference row, got %d 'G' in %q", g, d)
+	}
+}
+
+// A RANGE BOUND OUTSIDE i64 is carried whole. The old i64 row saturated such a
+// bound to zero, so two different wide maxima hashed alike and a reader could
+// not refuse the widening. The wide row keeps both bounds as full sixteen-byte
+// two's-complement values, and an in-i64 range keeps its old 'R' bytes.
+func TestTableFixedDefinitionsDigestWideBoundsAreDistinct(t *testing.T) {
+	t.Parallel()
+	wide := func(max *big.Int) *Struct {
+		return &Struct{Name: "Wide", Fields: []*Field{{
+			Name:        "n",
+			Type:        FieldType{Kind: TInt, Width: 64, Signed: false},
+			HasIntRange: true,
+			IntMin:      big.NewInt(0),
+			IntMax:      max,
+		}}}
+	}
+	top := new(big.Int).SetUint64(math.MaxUint64)
+	next := new(big.Int).Sub(top, big.NewInt(1))
+	da := TableFixedDefinitionsDigest(wide(top))
+	db := TableFixedDefinitionsDigest(wide(next))
+	if len(da) != 33 || da[0] != 'W' {
+		t.Fatalf("a wide range digest = % x, want 'W' plus two sixteen-byte bounds", da)
+	}
+	if bytes.Equal(da, db) {
+		t.Fatalf("two wide maxima must not share a digest: both % x", da)
+	}
+	layout := []byte{0x01, 0x02, 0x03, 0x04}
+	if TableFixedLayoutHash(layout, wide(top)) == TableFixedLayoutHash(layout, wide(next)) {
+		t.Fatal("two wide maxima must not share the wire hash; otherwise a reader cannot refuse the widening")
+	}
+
+	inRange := &Struct{Name: "Narrow", Fields: []*Field{{
+		Name:        "n",
+		Type:        FieldType{Kind: TInt, Width: 32},
+		HasIntRange: true,
+		IntMin:      big.NewInt(-5),
+		IntMax:      big.NewInt(5),
+	}}}
+	want := append([]byte{'R'}, int64LE(-5)...)
+	want = append(want, int64LE(5)...)
+	if got := TableFixedDefinitionsDigest(inRange); !bytes.Equal(got, want) {
+		t.Fatalf("an in-i64 range keeps its 'R' row: got % x, want % x", got, want)
+	}
+}
+
+// A FLAGS TYPE NAMED BY MORE THAN ONE FIELD carries a reference row at each
+// later field. Without it, one use and two uses of the same flags type hashed
+// alike, which is the collision the old by-name dedup left.
+func TestTableFixedDefinitionsDigestRepeatedFlagsReference(t *testing.T) {
+	t.Parallel()
+	fl := &Flags{Name: "Perks", Variants: []string{"Shielded", "Cloaked"}, WireBits: 2}
+	field := func(name string) *Field {
+		return &Field{Name: name, Type: FieldType{Kind: TNamed, Name: "Perks", Ref: fl}}
+	}
+	one := &Struct{Name: "Root", Fields: []*Field{field("a")}}
+	twice := &Struct{Name: "Root", Fields: []*Field{field("a"), field("b")}}
+	thrice := &Struct{Name: "Root", Fields: []*Field{field("a"), field("b"), field("c")}}
+	dOne := TableFixedDefinitionsDigest(one)
+	dTwo := TableFixedDefinitionsDigest(twice)
+	dThree := TableFixedDefinitionsDigest(thrice)
+	if bytes.Equal(dOne, dTwo) {
+		t.Fatalf("one use and two uses of a flags type must not share a digest: both % x", dOne)
+	}
+	if !bytes.HasPrefix(dTwo, dOne) {
+		t.Fatalf("a later use must leave the first use's bytes alone: once % x, twice % x", dOne, dTwo)
+	}
+	for name, d := range map[string][]byte{"twice": dTwo, "thrice": dThree} {
+		if n := bytes.Count(d, []byte{'F'}); n != 1 {
+			t.Fatalf("%s: a flags type emits its definition once, got %d 'F' in % x", name, n, d)
+		}
+	}
+	if n := bytes.Count(dTwo, []byte{'G'}); n != 1 {
+		t.Fatalf("twice: the second use carries one reference row, got %d 'G' in % x", n, dTwo)
+	}
+	if n := bytes.Count(dThree, []byte{'G'}); n != 2 {
+		t.Fatalf("thrice: each later use carries a reference row, got %d 'G' in % x", n, dThree)
+	}
+	if dTwo[len(dTwo)-1] != 'G' {
+		t.Fatalf("twice: the digest ends in the second use's reference row, got % x", dTwo)
 	}
 }
 
@@ -249,6 +337,12 @@ func digestSourceEmitsL(t *testing.T) bool {
 		return true
 	})
 	return emits
+}
+
+func int64LE(v int64) []byte {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], uint64(v))
+	return buf[:]
 }
 
 func float64LE(v float64) []byte {

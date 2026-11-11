@@ -668,8 +668,12 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //
 // Byte layout, per field, declared order, depth first; each named type once:
 //
-//	'R'  integer, float or fixed-point range: min then max, each i64 LE
-//	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'R'  integer, float or fixed-point range whose bounds fit in an i64:
+//	     min then max, each i64 LE (a float bound is the IEEE-754 bits of
+//	     the float64 value)
+//	'W'  an integer or fixed-point range with a bound OUTSIDE i64: min then
+//	     max, each a full 16-byte two's-complement value, LE. The wide row
+//	     keeps bounds a saturated i64 would fold together distinct.
 //	'Q'  a COMPRESSED FLOAT's RESOLUTION, beside the 'R' its min and max went
 //	     into: the IEEE-754 bits of the float64 step, u64 LE. It is a
 //	     DEFINITION and never wire — in the fixed form a compressed float
@@ -678,7 +682,11 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //	     it (bill §2: the range widens, the resolution refines, else refuse)
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
-//	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
+//	'F'  a flags type, at its FIRST use: wire bit count as u32 LE, then per
+//	     flag 'f' and fnv1a64(name) as u64 LE
+//	'G'  a flags type ALREADY seen, at each later field that names it: a
+//	     reference row with no payload, so two fields of one flags type do
+//	     not hash as one
 //	'L'  a reader-side limit: the limit as u64 LE. RESERVED: no table spelling
 //	     of a reader-side limit exists (the compiler flag --fixed-record-limit
 //	     is outside the law, algorithm §6). The row is empty until one does.
@@ -709,9 +717,15 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	}
 	switch {
 	case f.HasIntRange:
-		*b = append(*b, 'R')
-		*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
-		*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+		if bigIntFitsI64(f.IntMin) && bigIntFitsI64(f.IntMax) {
+			*b = append(*b, 'R')
+			*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
+			*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+		} else {
+			*b = append(*b, 'W')
+			*b = tableFixedDigestI128(*b, f.IntMin)
+			*b = tableFixedDigestI128(*b, f.IntMax)
+		}
 	case f.HasFloatRange:
 		*b = append(*b, 'R')
 		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
@@ -741,6 +755,7 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	switch r := f.Type.Ref.(type) {
 	case *Flags:
 		if seen[r.Name] {
+			*b = append(*b, 'G')
 			break
 		}
 		seen[r.Name] = true
@@ -780,6 +795,26 @@ func tableFixedDigestU64(b []byte, v uint64) []byte {
 
 func tableFixedDigestI64(b []byte, v int64) []byte {
 	return tableFixedDigestU64(b, uint64(v))
+}
+
+// tableFixedDigestI128 writes n as a full sixteen-byte two's-complement value,
+// little-endian. n is reduced modulo 2^128 first, so a negative bound gets its
+// two's-complement image and a positive one its unsigned one.
+func tableFixedDigestI128(b []byte, n *big.Int) []byte {
+	var be [16]byte
+	if n != nil {
+		v := new(big.Int).Set(n)
+		v.Mod(v, new(big.Int).Lsh(big.NewInt(1), 128))
+		v.FillBytes(be[:])
+	}
+	for i := 15; i >= 0; i-- {
+		b = append(b, be[i])
+	}
+	return b
+}
+
+func bigIntFitsI64(n *big.Int) bool {
+	return n == nil || n.IsInt64()
 }
 
 func bigInt64(n *big.Int) int64 {

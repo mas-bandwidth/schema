@@ -3762,7 +3762,7 @@ static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_clamp_( bench_fixed_tabl
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t bench_fixed_table_fixed_body_bytes = 1236;
 static SCHEMA_UNUSED const int64_t bench_fixed_table_fixed_record_bytes = 8 + 1236; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t bench_fixed_table_fixed_hash = 0x5f1320927e9ad910ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
+static SCHEMA_UNUSED const uint64_t bench_fixed_table_fixed_hash = 0x17a486dabf3bc923ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -4291,7 +4291,7 @@ static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_cover_count = 24;
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const bench_table_fixed_known_layout_t bench_fixed_table_fixed_known[] = {
-    { 0x5f1320927e9ad910ull, bench_fixed_table_fixed_layout, (int64_t) sizeof( bench_fixed_table_fixed_layout ), 1244 },
+    { 0x17a486dabf3bc923ull, bench_fixed_table_fixed_layout, (int64_t) sizeof( bench_fixed_table_fixed_layout ), 1244 },
 };
 static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_known_count = 1;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an

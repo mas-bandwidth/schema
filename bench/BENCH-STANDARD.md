@@ -1008,7 +1008,7 @@ the homes named above:
 
 - `bench/tables/rust/lineage/VOLD_bench_lineage.schema` (item 1) and
   `schema.lock` (item 2: `FixedTable`'s lineage, the VOLD layout
-  `0x0c2ce17509b80494` at index 0, the identity `0x5f1320927e9ad910` at 1,
+  `0x0c2ce17509b80494` at index 0, the identity `0x17a486dabf3bc923` at 1,
   floor 0), and the committed `bench_lineage.bin` / `.layout` (item 6);
 - the producer is NOT the C++ dump (item 4): `table-rust-plan --plan-read --emit-lineage DIR` narrows the paired corpus's own 64 records
   into the VOLD generation and writes them with the VOLD Rust codec, whose

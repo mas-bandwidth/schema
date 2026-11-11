@@ -18,7 +18,7 @@ package elixirtable
 // derives a hash from layout bytes it holds.
 //
 // elixir/R5 [owed]: the digest carries every range, every resolution (tag 'Q')
-// and every reader limit (tag 'L'), and a flags type deduped by name, once.
+// and every reader limit (tag 'L'), and a flags type's definition once, with a reference row at each later field.
 //
 // elixir/W11 [owed]: bytes(N) is layout kind 14.
 //
@@ -36,6 +36,7 @@ package elixirtable
 // refusal; T is never in its own closure.
 
 import (
+	"bytes"
 	"encoding/binary"
 	"reflect"
 	"regexp"
@@ -254,8 +255,17 @@ fixed table T
 }
 `), "T")
 	twiceDigest := ir.TableFixedDefinitionsDigest(flagsTwice)
-	if got := twiceDigest; string(got) != string(once) {
-		t.Errorf("R5: the flags type is not deduped by name: once % x, twice % x", once, got)
+	if !bytes.HasPrefix(twiceDigest, once) {
+		t.Errorf("R5: a later field leaves the first use's flags bytes alone: once % x, twice % x", once, twiceDigest)
+	}
+	if n := bytes.Count(twiceDigest, []byte{'F'}); n != 1 {
+		t.Errorf("R5: a flags type emits its definition once, got %d 'F' in % x", n, twiceDigest)
+	}
+	if n := bytes.Count(twiceDigest, []byte{'G'}); n != 1 {
+		t.Errorf("R5: the second field naming the flags type carries %d 'G' reference rows, want 1", n)
+	}
+	if twiceDigest[len(twiceDigest)-1] != 'G' {
+		t.Errorf("R5: the digest ends in the second use's reference row, got % x", twiceDigest)
 	}
 
 	// THE EMITTED HASH CARRIES THE DIGEST (the leg's own site, §5.2's HASH).
