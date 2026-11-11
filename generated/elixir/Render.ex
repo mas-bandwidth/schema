@@ -244,7 +244,7 @@ defmodule Example.Render do
     scratch_bits = 7
 
     {data, scratch, scratch_bits} =
-      w_render_block_sprites(value_sprites, data, scratch, scratch_bits)
+      wZrender_blockZsprites(value_sprites, data, scratch, scratch_bits)
 
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
@@ -290,7 +290,7 @@ defmodule Example.Render do
       if v > 64, do: throw(:invalid)
       n = v
       if 71 + n * 138 > num_bits, do: throw(:invalid)
-      {bits_read, v_sprites} = r_render_block_sprites(n, [], data, num_bits, 71)
+      {bits_read, v_sprites} = rZrender_blockZsprites(n, [], data, num_bits, 71)
 
       value = %Example.RenderBlock{
         worker_index: v_worker_index,
@@ -316,9 +316,9 @@ defmodule Example.Render do
     end
   end
 
-  defp w_render_block_sprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZrender_blockZsprites([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_render_block_sprites([e | rest], data, scratch, scratch_bits) do
+  defp wZrender_blockZsprites([e | rest], data, scratch, scratch_bits) do
     %{
       sort_key: e_sort_key,
       mesh_id: e_mesh_id,
@@ -365,13 +365,13 @@ defmodule Example.Render do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_render_block_sprites(rest, data, scratch, scratch_bits)
+    wZrender_blockZsprites(rest, data, scratch, scratch_bits)
   end
 
-  defp r_render_block_sprites(0, acc, _data, _num_bits, bits_read),
+  defp rZrender_blockZsprites(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_render_block_sprites(remaining, acc, data, num_bits, bits_read) do
+  defp rZrender_blockZsprites(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -400,6 +400,6 @@ defmodule Example.Render do
       team: e_team
     }
 
-    r_render_block_sprites(remaining - 1, [e | acc], data, num_bits, bits_read + 138)
+    rZrender_blockZsprites(remaining - 1, [e | acc], data, num_bits, bits_read + 138)
   end
 end

@@ -1255,9 +1255,49 @@ func (g *gen) emitWriteField(f *ir.Field, path, ind string) {
 	}
 }
 
+// helperSep separates the parts of a loop-helper name. A snake-cased schema
+// name is lowercase, so an uppercase separator is one no owner or field can
+// produce and two different (owner, field) pairs can never spell the same
+// helper name.
+const helperSep = "Z"
+
+// The fast path appends its entries with the same separator, so a field named
+// x_fast or x_align cannot meet the entry belonging to field x.
+const (
+	helperAlignSuffix = helperSep + "align"
+	helperFastSuffix  = helperSep + "fast"
+)
+
+type helperPair struct {
+	owner string
+	field string
+}
+
 // helperName keys a loop helper by owner type and field.
 func (g *gen) helperName(kind string, f *ir.Field) string {
-	return kind + "_" + ir.RustSnake(g.helperOwner) + "_" + elixirName(f.Name)
+	return kind + helperSep + ir.RustSnake(g.helperOwner) + helperSep + elixirName(f.Name)
+}
+
+// claimHelper records that name belongs to the (owner, field) pair currently
+// being emitted. The same pair may ask for its helper again; a different pair
+// asking for the same name would silently wire one field's loop under another
+// field's element type, so it fails generation.
+func (g *gen) claimHelper(name string, f *ir.Field) bool {
+	pair := helperPair{owner: g.helperOwner, field: f.Name}
+	if prev, ok := g.helperPairs[name]; ok {
+		if prev != pair {
+			if g.err == nil {
+				g.err = fmt.Errorf("Elixir loop helper %s is claimed by both %s.%s and %s.%s", name, prev.owner, prev.field, pair.owner, pair.field)
+			}
+			return false
+		}
+		return true
+	}
+	if g.helperPairs == nil {
+		g.helperPairs = map[string]helperPair{}
+	}
+	g.helperPairs[name] = pair
+	return true
 }
 
 // writeHelper materializes (once per file) the tail-recursive write loop for
@@ -1265,6 +1305,10 @@ func (g *gen) helperName(kind string, f *ir.Field) string {
 func (g *gen) writeHelper(f *ir.Field) string {
 	name := g.helperName("w", f)
 	if _, done := g.helpers[name]; done {
+		g.claimHelper(name, f)
+		return name
+	}
+	if !g.claimHelper(name, f) {
 		return name
 	}
 	g.helpers[name] = "" // claim before recursing (helpers may nest)
@@ -1948,6 +1992,10 @@ func (g *gen) emitReadCounted(f *ir.Field, lv, ind string) {
 func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 	name := g.helperName("r", f)
 	if _, done := g.helpers[name]; done {
+		g.claimHelper(name, f)
+		return g.readEntry(f, name)
+	}
+	if !g.claimHelper(name, f) {
 		return g.readEntry(f, name)
 	}
 	g.helpers[name] = ""
@@ -1986,7 +2034,7 @@ func (g *gen) readHelper(f *ir.Field, bounded bool) string {
 // scalar loop itself otherwise.
 func (g *gen) readEntry(f *ir.Field, name string) string {
 	if _, ok := g.fastReadPlan(f); ok {
-		return name + "_align"
+		return name + helperAlignSuffix
 	}
 	return name
 }
@@ -2258,6 +2306,11 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	for i := range evs {
 		evs[i] = fmt.Sprintf("e%d", i+1)
 	}
+	alignName := name + helperAlignSuffix
+	fastName := name + helperFastSuffix
+	if !g.claimHelper(alignName, f) || !g.claimHelper(fastName, f) {
+		return
+	}
 
 	// dry pass: the element bodies decide where segments chain in
 	saved := g.fn
@@ -2271,14 +2324,14 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	// hand the fast clause the stream from the byte boundary with the
 	// already-consumed low bits of the split byte dropped into the carry
 	g.rdBreak()
-	g.pf("  defp %s_align(remaining, acc, data, num_bits, bits_read)\n", name)
+	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read)\n", alignName)
 	g.pf("       when remaining >= %d do\n", m)
 	g.pf("    i = bits_read >>> 3\n")
 	g.pf("    q = bits_read &&& 7\n\n")
 	g.pf("    if q == 0 do\n")
 	g.pf("      case data do\n")
 	g.pf("        <<_::binary-size(^i), rest::binary>> ->\n")
-	g.wrapCall(name+"_fast",
+	g.wrapCall(fastName,
 		[]string{"remaining", "acc", "data", "num_bits", "bits_read", "rest", "0", "0"},
 		"          ")
 	g.pf("\n")
@@ -2288,7 +2341,7 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	g.pf("    else\n")
 	g.pf("      case data do\n")
 	g.pf("        <<_::binary-size(^i), b0, rest::binary>> ->\n")
-	g.wrapCall(name+"_fast",
+	g.wrapCall(fastName,
 		[]string{"remaining", "acc", "data", "num_bits", "bits_read", "rest", "b0 >>> q", "8 - q"},
 		"          ")
 	g.pf("\n")
@@ -2297,7 +2350,7 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	g.pf("      end\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
-	g.pf("  defp %s_align(remaining, acc, data, num_bits, bits_read),\n", name)
+	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read),\n", alignName)
 	g.pf("    do: %s(remaining, acc, data, num_bits, bits_read)\n\n", name)
 
 	// the fast clause: one head match per iteration, m elements per match
@@ -2307,7 +2360,7 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 		fmt.Fprintf(&pat, "s%d::little-%d, ", i+1, w)
 	}
 	pat.WriteString("rest::binary>>")
-	g.pf("  defp %s_fast(\n", name)
+	g.pf("  defp %s(\n", fastName)
 	g.pf("         remaining,\n")
 	g.pf("         acc,\n")
 	g.pf("         data,\n")
@@ -2325,7 +2378,7 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 	recArgs := []string{fmt.Sprintf("remaining - %d", m), "acc", "data", "num_bits",
 		fmt.Sprintf("bits_read + %d", T), "rest",
 		fmt.Sprintf("%s >>> %d", feedReg(final.reg), final.pos), "c"}
-	call := name + "_fast(" + strings.Join(recArgs, ", ") + ")"
+	call := fastName + "(" + strings.Join(recArgs, ", ") + ")"
 	g.pf("\n")
 	switch {
 	case len("    {bits_read, tail} = "+call) <= formatWidth:
@@ -2334,12 +2387,12 @@ func (g *gen) fastReadClauses(f *ir.Field, name string, m int64) {
 		g.pf("\n    {bits_read, tail} =\n      %s\n\n", call)
 	default:
 		g.pf("\n    {bits_read, tail} =\n")
-		g.wrapCall(name+"_fast", recArgs, "      ")
+		g.wrapCall(fastName, recArgs, "      ")
 		g.pf("\n")
 	}
 	g.pf("\n    {bits_read, [%s | tail]}\n", strings.Join(evs, ", "))
 	g.pf("  end\n\n")
-	g.pf("  defp %s_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),\n", name)
+	g.pf("  defp %s(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),\n", fastName)
 	g.pf("    do: %s(remaining, acc, data, num_bits, bits_read)\n\n", name)
 	g.rdBreak()
 }
