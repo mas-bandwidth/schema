@@ -2205,7 +2205,7 @@ reader on the other end refuses it (§4).
 **None of this reaches the read side.** "Of course, on read side we MUST
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
-values, union tags, UTF-8 in `string(N)` — runs
+values, union tags, UTF-8 in `string(N)`, non-finite floats — runs
 in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 

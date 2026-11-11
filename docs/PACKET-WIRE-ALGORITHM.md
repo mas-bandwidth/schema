@@ -330,7 +330,7 @@ An empty union (`Max = 0`) holds only `None` and costs zero bits.
 
 Reads validate **everything**, in every build, in all nine targets (SPEC §5): ranges, enum
 bounds, union tags, alignment padding, constants, reserved bits, counts, lengths, interior
-nulls, UTF-8, and buffer exhaustion. A value that controls iteration is
+nulls, UTF-8, non-finite floats, and buffer exhaustion. A value that controls iteration is
 never used before it has been bounded. **Reject, never clamp.**
 
 ```
@@ -408,7 +408,7 @@ because the internal align contributes zero bits.
 | ranged integer / `int128` | `GET_RANGED`; reject, never clamp |
 | `uint128` | two `GET_VALUE` of 64, low then high |
 | `fixed` / `ufixed` | read the offset in `bitlen(max-min)+F` bits (zero when `min == max`); if offset > raw span `REFUSE`; `raw := (min << F) + offset` |
-| `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern, no repair |
+| `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern; test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written; `-0` and subnormals stay bit exact |
 | compressed `float32` | §3.4 |
 | an enum | `GET_RANGED(r, 0, E.Max)`; a value in headroom stands |
 | a `flags` mask | `GET_VALUE(r, W)`; every pattern legal |
@@ -550,7 +550,7 @@ are the work.
 | `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` | golden | | | | | | | | |
 | specified defaults do not elide | `packet-defaults/` | golden | | | | | | | | |
 | empty type (zero bits) | `Heartbeat` in `Wire.schema` | golden | | | | | | | | |
-| NaN / signalling NaN bit-identity | PORTING.md float row; corpus pins | | | | | | | | | |
+| non-finite refusal: NaN / signalling NaN / each infinity refused, `-0` and a subnormal bit exact | PORTING.md float row; corpus pins | | | | | | | | | |
 | paired 64-record `BenchMixed` | `bench_mixed.bin` + variants | golden | | | | | | | | |
 | bit-flip agreement | SPEC §7.2 gate 5 | | | | | | | | | |
 | write-side debug-only vs every-build | SPEC §5 tiers | | | | | | | | | |
