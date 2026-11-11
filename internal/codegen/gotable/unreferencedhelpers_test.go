@@ -172,7 +172,6 @@ func TestLowercaseEntryPoints(t *testing.T) {
     _ = lowerObjectIDEach
     _ = lowerBoundedTextAt
     _ = lowerBoundedAppend
-    _ = lowerBoundedAppendAbsent
     _ = lowerWordsTextAt
     _ = lowerWordsAppend
     _ = lowerMaybeTextAt
