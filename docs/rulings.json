@@ -2,6 +2,14 @@
   "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes the maintainer verbatim, with the date it was said and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from the maintainer's own words.",
   "rulings": [
     {
+      "id": "json-flags-name-once",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON flags array that names one known variant twice is refused, as a repeated key is"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
       "id": "message-form-fixed-only",
       "date": "2026-10-31",
       "quotes": [
@@ -111,6 +119,14 @@
       ]
     },
     {
+      "id": "json-comment-text",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON comment ends at a line feed or the end of input, holds only well-formed UTF-8 and no NUL, and the read's depth cap counts every object and array"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
       "id": "conformance-is-read-then-write",
       "date": "2026-11-03",
       "quotes": [
@@ -181,6 +197,18 @@
       "source": "recorded in docs/SPEC.md §4.3; the maintainer's ruling that packet floats are finite-only in every language."
     },
     {
+      "id": "packet-canonical-end",
+      "date": "2026-10-22",
+      "quotes": [
+        "Approved. Let's go."
+      ],
+      "source": "relayed by the coordinator from the live session: the maintainer approved the canonical-read rule for serialize format 2.0, which the packet wire inherits (docs/SPEC.md §4.3): non-zero align padding, non-zero leftover bits in the final word, trailing bytes after the object and out-of-range integers are refused; every value has exactly one encoding. Specified for the packet wire in docs/SPEC.md §5 'Read termination' and docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET",
+      "supersedes": [
+        "SPEC §5's \"bytes remaining after the last field are the caller's concern, not a validation failure\"",
+        "PACKET-WIRE-ALGORITHM §1.1's \"a reader that does not consume them does not check them\""
+      ]
+    },
+    {
       "id": "tables-finite-only",
       "date": "2026-10-27",
       "quotes": [
@@ -211,6 +239,26 @@
         "AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink"
       ],
       "source": "recorded in docs/CONTRIBUTING.md; the maintainer's ruling that AGENTS.md stands alone."
+    },
+    {
+      "id": "json-base64-canonical",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: the JSON read of a bytes value accepts only canonical base64, the text the writer writes; any other spelling is refused"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator",
+      "supersedes": [
+        "the `bytes(N)` row's \"padded and unpadded both read\" and the unpadded-symbol-count rule in the grammar paragraph under §16.2's mapping table"
+      ]
+    },
+    {
+      "id": "message-one-encoding",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a message-form batch has one encoding for each value; an explicit default the writer elides, fields out of the writer's order, and an explicit None arm are refused",
+        "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
     }
   ]
 }

@@ -561,14 +561,16 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS, before the bits
 		// become a value (docs/SPEC-TABLES.md §3.3), as a file read refuses it:
 		// the read names the field and the batch refuses as non_finite_float,
-		// so the 0.0 that stands in is never delivered. A QUANTIZED float rides
-		// an index, and the value an index names is finite; every finite
-		// float32 widens exactly through the ordinary conversion (§4).
+		// so the 0.0 that stands in is never delivered. A DEQUANTIZED VALUE IS
+		// A FLOAT READ LIKE ANY OTHER: the peer's announced triple can name a
+		// top step past the largest float32, so the finite test cannot ride the
+		// announced packing. Every finite float32 widens exactly through the
+		// ordinary conversion (§4).
 		owner := floatOwnerIn(m.u, m.origOf(f))
 		if f.Type.Kind == ir.TFloat32 {
-			m.pf("%slet mut x = if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner)
+			m.pf("%slet mut x = if table_finite_f32(lo as u32) { f32::from_bits(lo as u32) } else { report.non_finite(%q); 0.0 };\n", ind, owner)
 		} else {
-			m.pf("%slet mut x = if %s.kind == 10 { if %s.shape.packing == 2 || table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, entry, owner, owner)
+			m.pf("%slet mut x = if %s.kind == 10 { if table_finite_f32(lo as u32) { f64::from(f32::from_bits(lo as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(lo) { f64::from_bits(lo) } else { report.non_finite(%q); 0.0 };\n", ind, entry, owner, owner)
 		}
 		if f.HasFloatRange {
 			var lo, hi string

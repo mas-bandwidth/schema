@@ -22,6 +22,12 @@
 // newline the port writes and the runner drops. Reads files only: no network,
 // no clock.
 //
+// A schema of packet types has no table unit (the PACKET UNIT section below):
+// the runner stages only that section, after importing the generated packet
+// module and a generated packet_answer dispatch, and each packet row is read
+// from bit 0 through the generated Read<Root>. A packet accept is held by the
+// SHA-256 of the bytes the generated Write<Root> writes back.
+//
 // A carrier maps to the port's reader, as the engine's verdict does
 // (internal/ci/hostilecorpus EngineVerdict):
 //   wire              schema_rt.load: a refusal by the form byte, the
@@ -148,4 +154,43 @@ for(tokenize(manifest, "\n", "\r")) line:
         out += message_answer(name, table, data, carrier == "message")
     else:
         out += announce_answer(name, carrier, data)
+assert write_file(answers_path, out, 0, 1)
+
+// ==== PACKET UNIT ====
+//
+// A schema of packet types has no table unit: the runner stages only this
+// part, after importing the generated packet module and a generated
+// packet_answer dispatch. Each packet row's raw input is read from bit 0
+// through the generated Read<Root>, a refusal is `packet_refused`, and an
+// accept is the value written back by the generated Write<Root>. The runner
+// holds the answer to the manifest's committed verdict, an accept by the
+// SHA-256 of the written bytes. Reads files only: no network, no clock.
+// The runner supplies the generated module's import, the runtime imports, and
+// the hexs, packet_capacity and packet_answer helpers above this section.
+
+let arguments = command_line_arguments()
+let argument_count = length(arguments)
+assert argument_count >= 3
+let corpus = arguments[argument_count - 3]
+let schema = arguments[argument_count - 2]
+let answers_path = arguments[argument_count - 1]
+
+let manifest = read_file(corpus + "/manifest.tsv")
+assert manifest
+var out = ""
+for(tokenize(manifest, "\n", "\r")) line:
+    if length(line) == 0 or line[0] == '#':
+        continue
+    let f = tokenize(line, "\t", "")
+    if length(f) < 9 or f[2] != schema:
+        continue
+    let name = f[0]
+    let carrier = f[1]
+    var data = read_file(corpus + "/" + f[4])
+    if not data:
+        data = ""
+    if carrier != "packet":
+        out += name + " error non-packet row in a packet unit\n"
+    else:
+        out += packet_answer(name, f[3], data)
 assert write_file(answers_path, out, 0, 1)

@@ -44,10 +44,10 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			}
 			continue
 		}
+		// THE ROOT'S OWN FILE-FORM READ: a declared fixed root's current-form
+		// instance is form 3, read by c.load. variableLoad is the form-1 read
+		// the framing surface keeps to itself (fixed.go).
 		read := c.load
-		if c.variableLoad != nil {
-			read = c.variableLoad
-		}
 		wire, err := os.ReadFile(wirePath)
 		if err != nil {
 			return err
@@ -63,15 +63,11 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 		answer := "wrote"
 		switch surface {
 		case "write-refusal":
-			measure := c.measure
-			if c.variableMeasure != nil {
-				measure = c.variableMeasure
-			}
-			save := c.save
-			if c.variableSave != nil {
-				save = c.variableSave
-			}
-			if n := measure(value); n < 0 || save(value, make([]byte, n)) != n {
+			// THE ROOT'S OWN FORM'S WRITER, the one the row's verdict names: a
+			// fixed root is written by the fixed form (c.measure/c.save), as
+			// the reference leg writes it. variableMeasure/variableSave are
+			// the form-1 twins the framing surface keeps to itself (fixed.go).
+			if n := c.measure(value); n < 0 || c.save(value, make([]byte, n)) != n {
 				answer = "refused"
 			}
 		case "write-refusal-fixed":
