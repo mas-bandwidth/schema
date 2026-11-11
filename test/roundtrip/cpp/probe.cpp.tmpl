@@ -1,0 +1,218 @@
+// The round-trip gate's C++ probe (test/roundtrip). The gate renders this
+// template over the unit's root tables, compiles it with the generated
+// sources, and runs it with the inputs directory as its argument. Every call
+// is the generated API, per root: <Root>FromJson, <Root>ToJson, <Root>Measure,
+// <Root>Save, <Root>Load, <Root>FixedSave and <Root>FixedLoad; at a variable
+// root the builder, the region load, <Root>LoadBuilder and the retaining pair
+// <Root>LoadRetain and <Root>SaveRetain.
+[[range .Headers]]#include "[[.]]"
+[[end]]#include <cstdio>
+#include <cstring>
+#include <fstream>
+#include <functional>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using namespace [[.Package]];
+
+static std::string inputs;
+
+static bool slurp( const std::string & path, std::string & out )
+{
+    std::ifstream f( path, std::ios::binary );
+    if ( !f ) { return false; }
+    std::stringstream ss;
+    ss << f.rdbuf();
+    out = ss.str();
+    return true;
+}
+
+static void say( const std::string & root, const std::string & name, const char * verb, const std::string & verdict )
+{
+    std::printf( "RT %s %s %s %s\n", root.c_str(), name.c_str(), verb, verdict.c_str() );
+    std::fflush( stdout );
+}
+
+static void keep( const std::string & root, const std::string & name, const char * ext, const uint8_t * b, int64_t n )
+{
+    std::ofstream f( inputs + "/out/" + root + "/" + name + ext, std::ios::binary );
+    f.write( (const char *) b, (std::streamsize) n );
+}
+
+static std::string why( const TableReport & r )
+{
+    return "refused:refused=" + std::to_string( (int) r.refused ) + " refuse_reason=" + std::to_string( (int) r.refuse_reason ) + " damaged=" + std::to_string( (int) r.damaged );
+}
+
+static const uint8_t * U( const std::string & s ) { return (const uint8_t *) s.data(); }
+[[range .Roots]]
+static std::string tj_[[.Name]]( const [[.Name]] * v, bool & ok )
+{
+    int64_t n = [[.Name]]ToJsonMeasure( [[if ne .Class "variable"]]*[[end]]v );
+    ok = false;
+    if ( n < 0 ) { return ""; }
+    std::string b( (size_t) n, '\0' );
+    if ( [[.Name]]ToJson( [[if ne .Class "variable"]]*[[end]]v, &b[0], n ) != n ) { return ""; }
+    ok = true;
+    return b;
+}
+
+static std::string same_[[.Name]]( const [[.Name]] * got, bool haveWant, const std::string & want )
+{
+    bool ok;
+    std::string g = tj_[[.Name]]( got, ok );
+    if ( !ok || !haveWant ) { return "refused:ToJson refuses the value"; }
+    return g == want ? "ok" : "diff";
+}
+[[if eq .Class "variable"]]
+static std::string regionLoad_[[.Name]]( const uint8_t * b, int64_t n, bool haveWant, const std::string & want )
+{
+    int64_t rn = [[.Name]]LoadMeasure( b, n );
+    if ( rn < 0 ) { return "refused:load measure"; }
+    std::vector<uint64_t> region( (size_t) rn / 8 + 8 );
+    TableReport r;
+    const [[.Name]] * got = [[.Name]]Load( (uint8_t *) region.data(), rn, b, n, &r );
+    return got == nullptr || r.refused ? why( r ) : same_[[.Name]]( got, haveWant, want );
+}
+
+static std::string builderLoad_[[.Name]]( const uint8_t * b, int64_t n, bool haveWant, const std::string & want )
+{
+    [[.Name]]Builder builder;
+    TableReport r;
+    if ( ![[.Name]]LoadBuilder( builder, b, n, &r ) || r.refused ) { return why( r ); }
+    if ( !builder.Lock() ) { return "refused:builder lock"; }
+    return same_[[.Name]]( builder.AsConst(), haveWant, want );
+}
+
+static void probe_[[.Name]]( const std::string & root, const std::string & name, const std::string & text, bool haveEng, const std::string & eng )
+{
+    [[.Name]]Builder builder;
+    TableReport r;
+    if ( ![[.Name]]FromJson( builder, text.data(), (int64_t) text.size(), &r ) || r.refused ) { say( root, name, "fromjson", why( r ) ); return; }
+    if ( !builder.Lock() ) { say( root, name, "fromjson", "refused:builder lock" ); return; }
+    say( root, name, "fromjson", "ok" );
+    const [[.Name]] * v = builder.AsConst();
+    bool haveWant;
+    std::string want = tj_[[.Name]]( v, haveWant );
+    std::vector<uint8_t> wire;
+    {
+        int64_t need = [[.Name]]Measure( v );
+        if ( need <= 0 ) { say( root, name, "save", "refused:measure" ); }
+        else
+        {
+            std::vector<uint8_t> w( (size_t) need );
+            if ( [[.Name]]Save( v, w.data(), need ) != need ) { say( root, name, "save", "refused:save" ); }
+            else { wire = w; keep( root, name, ".save", w.data(), need ); say( root, name, "save", "ok" ); }
+        }
+    }
+    int64_t wn = (int64_t) wire.size();
+    if ( wn > 0 )
+    {
+        say( root, name, "load", regionLoad_[[.Name]]( wire.data(), wn, haveWant, want ) );
+        say( root, name, "load.builder", builderLoad_[[.Name]]( wire.data(), wn, haveWant, want ) );
+    }
+    if ( haveEng )
+    {
+        say( root, name, "loadeng", regionLoad_[[.Name]]( U( eng ), (int64_t) eng.size(), haveWant, want ) );
+        say( root, name, "load.buildereng", builderLoad_[[.Name]]( U( eng ), (int64_t) eng.size(), haveWant, want ) );
+    }
+    if ( wn > 0 )
+    {
+        int64_t rn = [[.Name]]LoadMeasure( wire.data(), wn );
+        std::vector<uint64_t> region( (size_t) ( rn > 0 ? rn * 4 : 64 ) / 8 + 8 );
+        std::vector<uint8_t> store( 1 << 20 );
+        std::vector<TableRetain::Id> ids( 1 << 16 );
+        TableRetain retain;
+        retain.bytes = store.data();
+        retain.capacity = (int64_t) store.size();
+        retain.ids = ids.data();
+        retain.id_capacity = (int32_t) ids.size();
+        TableReport tr;
+        const [[.Name]] * got = [[.Name]]LoadRetain( (uint8_t *) region.data(), rn > 0 ? rn * 4 : 64, wire.data(), wn, &retain, &tr );
+        if ( got == nullptr || tr.refused ) { say( root, name, "retain", why( tr ) ); }
+        else
+        {
+            int64_t m = [[.Name]]MeasureRetain( got, &retain );
+            std::vector<uint8_t> back( m > 0 ? (size_t) m : 1 );
+            TableReport sr;
+            if ( m <= 0 || [[.Name]]SaveRetain( got, &retain, back.data(), m, &sr ) != m || sr.refused ) { say( root, name, "retain", m <= 0 ? std::string( "refused:measure retain" ) : why( sr ) ); }
+            else if ( m != wn || std::memcmp( back.data(), wire.data(), (size_t) m ) != 0 ) { say( root, name, "retain", "diff" ); }
+            else { say( root, name, "retain", same_[[.Name]]( got, haveWant, want ) ); }
+        }
+    }
+    if ( !haveWant ) { say( root, name, "json", "refused:ToJson refuses the value" ); }
+    else
+    {
+        [[.Name]]Builder jb;
+        TableReport jr;
+        if ( ![[.Name]]FromJson( jb, want.data(), (int64_t) want.size(), &jr ) || jr.refused || !jb.Lock() ) { say( root, name, "json", why( jr ) ); }
+        else { say( root, name, "json", same_[[.Name]]( jb.AsConst(), haveWant, want ) ); }
+    }
+}
+[[else]]
+static std::string load_[[.Name]]( const uint8_t * b, int64_t n, bool haveWant, const std::string & want )
+{
+    std::unique_ptr<[[.Name]]> got( new [[.Name]]() );
+    TableReport r;
+    return ![[.Name]]Load( *got, b, n, &r ) || r.refused ? why( r ) : same_[[.Name]]( got.get(), haveWant, want );
+}
+
+static void probe_[[.Name]]( const std::string & root, const std::string & name, const std::string & text, bool haveEng, const std::string & eng )
+{
+    std::unique_ptr<[[.Name]]> v( new [[.Name]]() );
+    TableReport r;
+    if ( ![[.Name]]FromJson( *v, text.data(), (int64_t) text.size(), &r ) || r.refused ) { say( root, name, "fromjson", why( r ) ); return; }
+    say( root, name, "fromjson", "ok" );
+    bool haveWant;
+    std::string want = tj_[[.Name]]( v.get(), haveWant );
+    {
+        int64_t need = [[.Name]]Measure( *v );
+        if ( need <= 0 ) { say( root, name, "save", "refused:measure" ); }
+        else
+        {
+            std::vector<uint8_t> w( (size_t) need );
+            if ( [[.Name]]Save( *v, w.data(), need ) != need ) { say( root, name, "save", "refused:save" ); }
+            else
+            {
+                keep( root, name, ".save", w.data(), need );
+                say( root, name, "save", "ok" );
+                say( root, name, "load", load_[[.Name]]( w.data(), need, haveWant, want ) );
+            }
+        }
+    }
+    if ( haveEng ) { say( root, name, "loadeng", load_[[.Name]]( U( eng ), (int64_t) eng.size(), haveWant, want ) ); }
+[[if eq .Class "fixed"]]    {
+        static TableFixedEntry plan[4096];
+        int64_t need = [[.Name]]FixedMeasure( 1 );
+        std::vector<uint8_t> w( (size_t) need );
+        if ( [[.Name]]FixedSave( v.get(), 1, w.data(), need ) != need ) { say( root, name, "fixedsave", "refused:fixed save" ); }
+        else { keep( root, name, ".fixed", w.data(), need ); say( root, name, "fixedsave", "ok" ); }
+        if ( haveEng )
+        {
+            std::unique_ptr<[[.Name]]> back( new [[.Name]]() );
+            TableReport fr;
+            if ( [[.Name]]FixedLoad( back.get(), 1, U( eng ), (int64_t) eng.size(), plan, 4096, nullptr, &fr ) != 1 || fr.refused ) { say( root, name, "fixedloadeng", why( fr ) ); }
+            else { say( root, name, "fixedloadeng", same_[[.Name]]( back.get(), haveWant, want ) ); }
+        }
+    }
+[[end]]}
+[[end]][[end]]
+int main( int argc, char ** argv )
+{
+    if ( argc < 2 ) { return 2; }
+    inputs = argv[1];
+    std::ifstream f( inputs + "/cases.txt" );
+    std::string root, name, cls;
+    while ( f >> root >> name >> cls )
+    {
+        std::string text, eng;
+        bool haveText = slurp( inputs + "/samples/" + root + "/" + name + ".json", text );
+        bool haveEng = slurp( inputs + "/engine/" + root + "/" + name + ".bin", eng );
+        if ( !haveText ) { say( root, name, "probe", "refused:no sample text" ); }
+[[range .Roots]]        else if ( root == "[[.Name]]" ) { probe_[[.Name]]( root, name, text, haveEng, eng ); }
+[[end]]        else { say( root, name, "probe", "refused:the unit generated no such root" ); }
+    }
+    return 0;
+}

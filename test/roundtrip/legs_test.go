@@ -111,6 +111,10 @@ var legs = []*leg{
 		name: "c", lang: "c", tool: "cc (the generated C sources)", retain: true,
 		run: runC,
 	},
+	{
+		name: "cpp", lang: "cpp", tool: "c++ (the generated C++ sources)", retain: true,
+		run: runCPP,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -491,5 +495,23 @@ func runC(t *testing.T, x *rowEnv) []byte {
 		args = append(args, filepath.Join(x.gen, f+".c"))
 	}
 	run(t, x.work, nil, tool("CC", "cc"), append(args, "-lm")...)
+	return run(t, x.work, nil, filepath.Join(x.work, "probe"), x.in)
+}
+
+// runCPP compiles the rendered probe with every generated source and runs it.
+func runCPP(t *testing.T, x *rowEnv) []byte {
+	var headers []string
+	for _, f := range genFiles(t, x.gen, ".h") {
+		if strings.HasSuffix(f, "Table") {
+			headers = append(headers, f+".h")
+		}
+	}
+	probe := filepath.Join(x.work, "probe.cpp")
+	write(t, probe, renderProbe(t, x, "cpp", "probe.cpp.tmpl", map[string]any{"Headers": headers}))
+	args := []string{"-std=c++17", "-O1", "-w", "-I", x.gen, "-o", filepath.Join(x.work, "probe"), probe}
+	for _, f := range genFiles(t, x.gen, ".cpp") {
+		args = append(args, filepath.Join(x.gen, f+".cpp"))
+	}
+	run(t, x.work, nil, tool("CXX", "c++"), args...)
 	return run(t, x.work, nil, filepath.Join(x.work, "probe"), x.in)
 }
