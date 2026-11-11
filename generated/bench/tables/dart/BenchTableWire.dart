@@ -533,6 +533,17 @@ bool _lebValid(Uint8List d, int off, int len) {
   }
 }
 
+// _decodeText decodes one validated text payload and keeps every code point
+// of its bytes: utf8.decode drops a byte-order mark at the head of its input,
+// while U+FEFF is an ordinary code point on the wire (§3, §16.14).
+String _decodeText(Uint8List d, int start, int end) {
+  final s = utf8.decode(d.sublist(start, end));
+  if (end - start >= 3 && d[start] == 0xEF && d[start + 1] == 0xBB && d[start + 2] == 0xBF) {
+    return '\uFEFF' + s;
+  }
+  return s;
+}
+
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
@@ -888,7 +899,7 @@ final class TableWireReader {
     } else {
       final b = resolveBlob(idx, _kStringBlobId, stringBlob);
       if (b != null) {
-        value = utf8.decode(b);
+        value = _decodeText(b, 0, b.length);
         decoded[rec] = value;
       }
     }
@@ -4186,7 +4197,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           if (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.playerName = ''; r.pos += len; break; }
           final keep = _textBoundary(r.data, r.pos, len, 15);
           if (keep != len) { r.report.refuse('length_over_bound'); return; }
-          v.playerName = utf8.decode(r.data.sublist(r.pos, r.pos + keep));
+          v.playerName = _decodeText(r.data, r.pos, r.pos + keep);
           r.pos += len;
         }
         break;

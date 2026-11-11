@@ -1040,6 +1040,17 @@ bool _lebValid(Uint8List d, int off, int len) {
   }
 }
 
+// _decodeText decodes one validated text payload and keeps every code point
+// of its bytes: utf8.decode drops a byte-order mark at the head of its input,
+// while U+FEFF is an ordinary code point on the wire (§3, §16.14).
+String _decodeText(Uint8List d, int start, int end) {
+  final s = utf8.decode(d.sublist(start, end));
+  if (end - start >= 3 && d[start] == 0xEF && d[start + 1] == 0xBB && d[start + 2] == 0xBF) {
+    return '\uFEFF' + s;
+  }
+  return s;
+}
+
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
@@ -1395,7 +1406,7 @@ final class TableWireReader {
     } else {
       final b = resolveBlob(idx, _kStringBlobId, stringBlob);
       if (b != null) {
-        value = utf8.decode(b);
+        value = _decodeText(b, 0, b.length);
         decoded[rec] = value;
       }
     }
@@ -2888,7 +2899,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.refuse('wire_damaged'); v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
 		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
 		g.pf("%s\t\tif (keep != len) { r.report.refuse('length_over_bound'); return; }\n", ind)
-		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
+		g.pf("%s\t\tv.%s = _decodeText(r.data, r.pos, r.pos + keep);\n", ind, name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -3094,11 +3105,11 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		if f.IsTextList() {
 			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
 			g.pf("%s\t\t\tif(kept!=elen){r.report.refuse('length_over_bound'); return;}\n", ind)
-			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
+			g.pf("%s\t\t\tfinal e=%s()..value=_decodeText(%s.data,%s.pos,%s.pos+kept);\n", ind, f.Type.Name, arr, arr, arr)
 			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
 			g.pf("%s\t\t\t%s.add(e);\n", ind, dest)
 		} else {
-			g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+			g.pf("%s\t\t\t%s.add(_decodeText(%s.data, %s.pos, %s.pos + elen));\n", ind, dest, arr, arr, arr)
 		}
 		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
 	case wireKindEnum:
