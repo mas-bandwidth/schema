@@ -60,8 +60,9 @@ write-refusal)
     ;;
 write-refusal-fixed)
     # the fixed writer's ranged-scalar check removed from a copy of the
-    # generated Go: the write-refusal-fixed rows must go red while the
-    # variable writer and the message form stay green
+    # generated Go: the write-refusal-fixed rows and the write-refusal rows
+    # written through a fixed root's own form must go red while the message
+    # form and the wire surface stay green
     source=$(grep -l '^func WeaponConfigFixedCheckBody(' build/tables-generated-go/examples/*.go)
     sed '/^func WeaponConfigFixedCheckBody(/,/^}/ s/if value.Penetration < 0 || value.Penetration > 10 {/if false { \/\/ SABOTAGED: fixed range check removed/' "$source" > "$out/source.gotext"
     ;;
@@ -182,7 +183,7 @@ else
         grep -q 'message       pass' "$out/log"
     elif [ "$mode" = write-refusal-fixed ]; then
         grep -q 'go / write-refusal-fixed: fref_range_high' "$out/log"
-        grep -q '^write-refusal pass' "$out/log"
+        grep -q '^write-refusal FAIL' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = write-refusal-message ]; then
         grep -q 'go / write-refusal-message: mref_range_high' "$out/log"
