@@ -1,7 +1,9 @@
 package cstable
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -49,7 +51,7 @@ func generateRegion(u *ir.Unit) []byte {
 	g.emitRetain()
 	g.emitRegionCookSurface(names)
 	g.emitBuilders(names)
-	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableNativeTextListSource+tableBuilderLoadSource+tableBuilderCollectionWireSource+tableBuilderWireSource+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRetainRegionSource()+tableRetainWriteSource())
+	g.pf("public static unsafe partial class TableWire\n{\n%s\n}\n", tableNativeTextListSource+tableBuilderLoadSource+tableBuilderCollectionWireSource+strings.ReplaceAll(tableBuilderWireSource, "@WIREIDS@", fmt.Sprint(ir.TableWireIdCapacity(u)))+tableRegionCookSource+tableRegionSource+tableRegionGraphSource+tableRegionWriteSource+tableRetainRegionSource()+tableRetainWriteSource())
 	return g.assemble()
 }
 
