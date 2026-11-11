@@ -9929,6 +9929,7 @@ inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSetti
     if ( value.callsign_length > 0 )
     {
         w.put( 13, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.callsign_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.callsign, value.callsign_length );
@@ -10773,6 +10774,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
     if ( value.display_name_length > 0 )
     {
         w.put( 89, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.display_name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.display_name, value.display_name_length );
@@ -10796,6 +10798,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
         w.put( (uint64_t) ( value.hardpoints_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.hardpoints_count; i++ )
         {
+            schema_assert( value.hardpoints[i] >= 0 && value.hardpoints[i] <= 8 ); // the declared range is the bound (§3.3)
             w.put( (uint64_t) ( value.hardpoints[i] ), 4 );
         }
     }
@@ -11792,6 +11795,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
     if ( value.tick_rate != 60 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( value.tick_rate >= 1 && value.tick_rate <= 240 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.tick_rate ) - 1ull, 8 );
     }
     if ( value.difficulty != Difficulty::Normal )
@@ -11808,6 +11812,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
     if ( value.build_note_length > 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.build_note_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.build_note, value.build_note_length );
@@ -13187,6 +13192,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Difficulty) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( value.thresholds.slots[i] >= 0 && value.thresholds.slots[i] <= 1000 ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.thresholds.slots[i] ), 10 );
             }
         }
@@ -13651,6 +13657,7 @@ inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & va
     TableFixedPutF32( b + 0, value.reaction );
     TableFixedPut8( b + 4, value.tracking ? 1 : 0 );
     schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 5, (uint32_t) value.callsign_length );
     memcpy( b + 9, value.callsign, (size_t) ( value.callsign_length ) );
 }
@@ -13662,6 +13669,7 @@ inline void ShipEntryFixedWriteBody( uint8_t * b, const ShipEntry & value )
     (void) b;
     (void) value;
     schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.display_name_length );
     memcpy( b + 4, value.display_name, (size_t) ( value.display_name_length ) );
     TableFixedPutF32( b + 36, value.health );
@@ -13670,6 +13678,7 @@ inline void ShipEntryFixedWriteBody( uint8_t * b, const ShipEntry & value )
     TableFixedPut32( b + 44, (uint32_t) value.hardpoints_count );
     for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
+        schema_assert( value.hardpoints[i] >= 0 && value.hardpoints[i] <= 8 ); // the declared range is the bound (§3.4)
         TableFixedPut32( b + 48 + i * 4 + 0, (uint32_t) value.hardpoints[i] );
     }
     TableFixedPut8( b + 64, value.gunner_present ? 1 : 0 );
@@ -13685,9 +13694,12 @@ inline void GlobalSettingsFixedWriteBody( uint8_t * b, const GlobalSettings & va
 {
     (void) b;
     (void) value;
+    schema_assert( value.tick_rate >= 1 && value.tick_rate <= 240 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.tick_rate );
+    schema_assert( (uint64_t) value.difficulty <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 4, (uint8_t) value.difficulty );
     schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 5, (uint32_t) value.build_note_length );
     memcpy( b + 9, value.build_note, (size_t) ( value.build_note_length ) );
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
@@ -13710,6 +13722,7 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
+        schema_assert( value.thresholds.slots[i] >= 0 && value.thresholds.slots[i] <= 1000 ); // the declared range is the bound (§3.4)
         TableFixedPut32( b + 367 + i * 4 + 0, (uint32_t) value.thresholds.slots[i] );
     }
     schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // the declared count is the bound (§3.4)

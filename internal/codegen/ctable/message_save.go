@@ -31,6 +31,34 @@ func (g *tableGen) messageEnum(e *ir.Enum, expr, ind string) {
 	g.pf("%s default: return 0;\n%s}\n", ind, ind)
 }
 
+// messageRangeAssert is the WRITE-SIDE CHECK for a message scalar's declared
+// range (row 1) and a bits width (row 2), DEBUG-ONLY BY RULE: NDEBUG removes
+// schema_assert. It fires on the save path only; the measure path counts bits
+// and owes no write-side check. The bounds are the field's own declaration,
+// held as schema_assert because C is an assert leg (docs/SPEC.md §5.1).
+func (g *tableGen) messageRangeAssert(f *ir.Field, kind uint8, expr, ind string) {
+	width := tableKindWidth(int(kind))
+	signed := ir.TableKindSigned(int(kind))
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		low, high := tableClampEnds(f, width)
+		switch {
+		case low && high:
+			g.pf("%sschema_assert( %s && %s ); /* the declared range is the bound (§3.3) */\n",
+				ind, wideRangeCmp(expr, ">=", rlo, signed, width), wideRangeCmp(expr, "<=", rhi, signed, width))
+		case low:
+			g.pf("%sschema_assert( %s ); /* the declared range is the bound (§3.3) */\n",
+				ind, wideRangeCmp(expr, ">=", rlo, signed, width))
+		case high:
+			g.pf("%sschema_assert( %s ); /* the declared range is the bound (§3.3) */\n",
+				ind, wideRangeCmp(expr, "<=", rhi, signed, width))
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+		maxv := fmt.Sprintf("%dull", (uint64(1)<<f.Type.Width)-1)
+		g.pf("%sschema_assert( %s <= %s ); /* the bits(%d) width is the bound (§4.2) */\n", ind, expr, maxv, f.Type.Width)
+	}
+}
+
 // Scalar arithmetic is unsigned at the stored width, including 128-bit bases.
 func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string) {
 	if e := enumRef(f); e != nil {
@@ -56,6 +84,7 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 		g.pf("%sif(!table_double_finite(%s)) return 0; /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		g.pf("%stable_bit_put(w,table_double_to_bits(%s),64);\n", ind, expr)
 	default:
+		g.messageRangeAssert(f, kind, expr, ind)
 		var lo, hi uint64
 		if shape.Base != nil {
 			low, high := wideLanes(shape.Base)
@@ -82,6 +111,9 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			g.pf("%sschema_assert( table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s ) ); /* well-formed, no zero byte (§2.13) */\n", ind, expr, count)
+		}
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)

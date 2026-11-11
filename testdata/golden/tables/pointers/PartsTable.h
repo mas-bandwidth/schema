@@ -8109,6 +8109,7 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.tag_length > 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.tag_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.tag, value.tag_length );
@@ -8116,6 +8117,7 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.seq != 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
+        schema_assert( value.seq >= 0 && value.seq <= 1000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.seq ), 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8687,8 +8689,10 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
     (void) b;
     (void) value;
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.tag_length );
     memcpy( b + 4, value.tag, (size_t) ( value.tag_length ) );
+    schema_assert( value.seq >= 0 && value.seq <= 1000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 12, (uint32_t) value.seq );
 }
 

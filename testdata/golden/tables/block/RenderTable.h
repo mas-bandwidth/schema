@@ -20540,7 +20540,9 @@ inline void RenderShipFixedWriteBody( uint8_t * b, const RenderShip & value )
     TableFixedPut32( b + 68, (uint32_t) value.target_object_id );
     TableFixedPutF32( b + 72, value.thrust );
     TableFixedPut8( b + 76, (uint8_t) value.object_sequence );
+    schema_assert( (uint64_t) value.ship_type <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 77, (uint8_t) value.ship_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 78, (uint8_t) value.team );
     TableFixedPut8( b + 79, value.has_target_lock ? 1 : 0 );
     TableFixedPut8( b + 80, value.predicted_explode ? 1 : 0 );
@@ -20559,6 +20561,7 @@ inline void RenderTurretFixedWriteBody( uint8_t * b, const RenderTurret & value 
     TableFixedPut32( b + 48, (uint32_t) value.turret_index );
     TableFixedPut32( b + 52, (uint32_t) value.target_object_id );
     TableFixedPut8( b + 56, (uint8_t) value.object_sequence );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 57, (uint8_t) value.team );
     TableFixedPut8( b + 58, value.has_target_lock ? 1 : 0 );
 }
@@ -20574,7 +20577,9 @@ inline void RenderMissileFixedWriteBody( uint8_t * b, const RenderMissile & valu
     TableFixedPut64( b + 56, (uint64_t) value.flags );
     TableFixedPut32( b + 64, (uint32_t) value.object_id );
     TableFixedPut8( b + 68, (uint8_t) value.object_sequence );
+    schema_assert( (uint64_t) value.missile_type <= 2u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 69, (uint8_t) value.missile_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 70, (uint8_t) value.team );
 }
 
@@ -20589,7 +20594,9 @@ inline void RenderDynamicPropFixedWriteBody( uint8_t * b, const RenderDynamicPro
     TableFixedPut64( b + 56, (uint64_t) value.flags );
     TableFixedPut32( b + 64, (uint32_t) value.object_id );
     TableFixedPut8( b + 68, (uint8_t) value.object_sequence );
+    schema_assert( (uint64_t) value.prop_type <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 69, (uint8_t) value.prop_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 70, (uint8_t) value.team );
 }
 
@@ -20604,7 +20611,9 @@ inline void RenderStaticPropFixedWriteBody( uint8_t * b, const RenderStaticProp 
     TableFixedPutF64( b + 56, value.scale );
     TableFixedPut64( b + 64, (uint64_t) value.flags );
     TableFixedPut32( b + 72, (uint32_t) value.static_prop_id );
+    schema_assert( (uint64_t) value.prop_type <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 76, (uint8_t) value.prop_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 77, (uint8_t) value.team );
 }
 
@@ -20620,7 +20629,9 @@ inline void RenderCosmeticPropFixedWriteBody( uint8_t * b, const RenderCosmeticP
     TableFixedPut64( b + 64, (uint64_t) value.flags );
     TableFixedPut32( b + 72, (uint32_t) value.cosmetic_prop_id );
     TableFixedPut8( b + 76, (uint8_t) value.prop_sequence );
+    schema_assert( (uint64_t) value.prop_type <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 77, (uint8_t) value.prop_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 78, (uint8_t) value.team );
 }
 
@@ -20634,7 +20645,9 @@ inline void RenderLaserFixedWriteBody( uint8_t * b, const RenderLaser & value )
     RenderVector3FixedWriteBody( b + 24, value.finish );
     TableFixedPutF64( b + 48, value.t );
     TableFixedPut32( b + 56, (uint32_t) value.laser_id );
+    schema_assert( (uint64_t) value.laser_type <= 2u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 60, (uint8_t) value.laser_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 61, (uint8_t) value.team );
 }
 
@@ -20649,7 +20662,9 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
     TableFixedPutF64( b + 56, value.t );
     TableFixedPut32( b + 64, (uint32_t) value.explosion_id );
     TableFixedPut32( b + 68, (uint32_t) value.parent_object_id );
+    schema_assert( (uint64_t) value.explosion_type <= 2u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 72, (uint8_t) value.explosion_type );
+    schema_assert( (uint64_t) value.team <= 4u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 73, (uint8_t) value.team );
 }
 

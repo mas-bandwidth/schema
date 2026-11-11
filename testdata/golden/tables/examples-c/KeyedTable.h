@@ -5607,6 +5607,8 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_message_body(tabledemo_table
   return 1;
   }
   tabledemo_table_bit_put(w,92,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->spawn_count)-UINT64_C(0),7);
  }
  }
@@ -5618,6 +5620,8 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_message_body(tabledemo_table
   }
   tabledemo_table_bit_put(w,93,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->banner_length<0 || value->banner_length>16) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->banner_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->banner,value->banner_length);
@@ -7697,6 +7701,8 @@ static SCHEMA_UNUSED int tabledemo_score_board_save_message_body(tabledemo_table
      break;
      default: return 0;
     }
+    schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
+    /* the declared range is the bound (§3.3) */
     tabledemo_table_bit_put(w,(uint64_t)(value->per_team[i])-UINT64_C(0),17);
    } }
  }
@@ -7890,8 +7896,10 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_write_body_( uint8_t * b, const tabledemo_team_config_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->spawn_count );
     schema_assert( value->banner_length >= 0 && value->banner_length <= 16 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 4, (uint32_t) value->banner_length );
     memcpy( b + 8, value->banner, (size_t) ( value->banner_length ) );
 }
@@ -7944,6 +7952,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
         int64_t i;
         for ( i = 0; i < (int64_t) 3; ++i )
         {
+            schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 ); /* the declared range is the bound (§3.4) */
             tabledemo_table_fixed_put32( b + 0 + i * 4 + 0, (uint32_t) value->per_team[i] );
         }
     }

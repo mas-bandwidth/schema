@@ -8035,6 +8035,7 @@ inline bool HeaderSaveMessageBody( TableBitWriter & w, const Header & value )
     if ( value.name_length > 0 )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.name_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -9280,6 +9281,7 @@ inline void HeaderFixedWriteBody( uint8_t * b, const Header & value )
     (void) b;
     (void) value;
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
     memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
 }

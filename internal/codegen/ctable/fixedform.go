@@ -336,6 +336,9 @@ emitFixedWriteText is the C twin of the reference's text store: the used
 */
 func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind string, unit int64) {
 	g.fixedWriteBound(fmt.Sprintf("%s%s_length", val, f.Name), f.Type.Size, "length", ind)
+	if f.Type.Kind == ir.TString {
+		g.pf("%sschema_assert( table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length ) ); /* well-formed, no zero byte (§2.13) */\n", ind, val, f.Name, val, f.Name)
+	}
 	g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
 	scale := ""
 	if unit != 1 {
@@ -354,6 +357,36 @@ func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); /* the declared %s is the bound (§3.4) */\n", ind, expr, expr, bound, what)
 }
 
+/*
+emitFixedWriteRange is the WRITE-SIDE CHECK for a scalar's declared range
+(row 1) and a bits width (row 2), DEBUG-ONLY BY RULE: NDEBUG removes
+schema_assert. It is the write-side twin of the read-side clamp's default
+case (emitFixedClampElement), which clamps the same ends a read can land:
+the write catches the caller's own bug where the read tolerates it.
+*/
+func (g *tableGen) emitFixedWriteRange(f *ir.Field, expr, ind string) {
+	width := int(ir.TableFixedStorageBytes(f.Type))
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		low, high := tableClampEnds(f, width)
+		switch {
+		case low && high:
+			g.pf("%sschema_assert( %s && %s ); /* the declared range is the bound (§3.4) */\n",
+				ind, wideRangeCmp(expr, ">=", rlo, signed, width), wideRangeCmp(expr, "<=", rhi, signed, width))
+		case low:
+			g.pf("%sschema_assert( %s ); /* the declared range is the bound (§3.4) */\n",
+				ind, wideRangeCmp(expr, ">=", rlo, signed, width))
+		case high:
+			g.pf("%sschema_assert( %s ); /* the declared range is the bound (§3.4) */\n",
+				ind, wideRangeCmp(expr, "<=", rhi, signed, width))
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+		maxv := fmt.Sprintf("%dull", (uint64(1)<<f.Type.Width)-1)
+		g.pf("%sschema_assert( %s <= %s ); /* the bits(%d) width is the bound (§4.2) */\n", ind, expr, maxv, f.Type.Width)
+	}
+}
+
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
@@ -363,6 +396,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Union:
 			tag := g.intBytes(g.fixedTable, f.Name+" (the "+r.Name+" tag)", int64(ir.StorageBitsFor(r.Max)/8))
+			g.pf("%sschema_assert( (uint64_t) %s.type <= %du ); /* the union's top tag is the bound (§4.8) */\n", ind, expr, r.Max)
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s.type );\n", ind, tag*8, buf, off, tag*8, expr)
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
@@ -377,6 +411,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		case *ir.Enum:
 			w := g.intBytes(g.fixedTable, f.Name, int64(r.StorageBits/8))
+			g.pf("%sschema_assert( (uint64_t) %s <= %du ); /* the enum's top value is the bound (§4.2) */\n", ind, expr, r.Max)
 			g.pf("%stable_fixed_put%d( %s + %d, (uint%d_t) %s );\n", ind, w*8, buf, off, w*8, expr)
 			return
 		case *ir.Flags:
@@ -393,6 +428,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	case ir.TFloat64:
 		g.pf("%stable_fixed_putf64( %s + %d, %s );\n", ind, buf, off, expr)
 	default:
+		g.emitFixedWriteRange(f, expr, ind)
 		if w == 16 {
 			if f.Type.Signed {
 				g.pf("%stable_fixed_put128_i( %s + %d, %s );\n", ind, buf, off, expr)

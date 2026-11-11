@@ -10614,16 +10614,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i8_low != 0 )
     {
         w.put( 46, kTableMessageRefBitsHere );
+        schema_assert( value.i8_low <= 126 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i8_low ) - 18446744073709551488ull, 8 );
     }
     if ( value.i8_high != 0 )
     {
         w.put( 47, kTableMessageRefBitsHere );
+        schema_assert( value.i8_high >= -127 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i8_high ) - 18446744073709551489ull, 8 );
     }
     if ( value.i8_inside != 0 )
     {
         w.put( 48, kTableMessageRefBitsHere );
+        schema_assert( value.i8_inside >= -127 && value.i8_inside <= 126 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i8_inside ) - 18446744073709551489ull, 8 );
     }
     if ( value.i16_span != 0 )
@@ -10634,16 +10637,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i16_low != 0 )
     {
         w.put( 50, kTableMessageRefBitsHere );
+        schema_assert( value.i16_low <= 32766 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i16_low ) - 18446744073709518848ull, 16 );
     }
     if ( value.i16_high != 0 )
     {
         w.put( 51, kTableMessageRefBitsHere );
+        schema_assert( value.i16_high >= -32767 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i16_high ) - 18446744073709518849ull, 16 );
     }
     if ( value.i16_inside != 0 )
     {
         w.put( 52, kTableMessageRefBitsHere );
+        schema_assert( value.i16_inside >= -32767 && value.i16_inside <= 32766 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i16_inside ) - 18446744073709518849ull, 16 );
     }
     if ( value.i32_span != 0 )
@@ -10654,16 +10660,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i32_low != 0 )
     {
         w.put( 54, kTableMessageRefBitsHere );
+        schema_assert( value.i32_low <= 2147483646 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i32_low ) - 18446744071562067968ull, 32 );
     }
     if ( value.i32_high != 0 )
     {
         w.put( 55, kTableMessageRefBitsHere );
+        schema_assert( value.i32_high >= -2147483647 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i32_high ) - 18446744071562067969ull, 32 );
     }
     if ( value.i32_inside != 0 )
     {
         w.put( 56, kTableMessageRefBitsHere );
+        schema_assert( value.i32_inside >= -2147483647 && value.i32_inside <= 2147483646 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i32_inside ) - 18446744071562067969ull, 32 );
     }
     if ( value.i64_span != 0 )
@@ -10674,16 +10683,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i64_low != 0 )
     {
         w.put( 58, kTableMessageRefBitsHere );
+        schema_assert( value.i64_low <= 9223372036854775806ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i64_low ) - 9223372036854775808ull, 64 );
     }
     if ( value.i64_high != 0 )
     {
         w.put( 59, kTableMessageRefBitsHere );
+        schema_assert( value.i64_high >= -9223372036854775807ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i64_high ) - 9223372036854775809ull, 64 );
     }
     if ( value.i64_inside != 0 )
     {
         w.put( 60, kTableMessageRefBitsHere );
+        schema_assert( value.i64_inside >= -9223372036854775807ll && value.i64_inside <= 9223372036854775806ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.i64_inside ) - 9223372036854775809ull, 64 );
     }
     if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
@@ -13397,16 +13409,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u8_low != 0 )
     {
         w.put( 63, kTableMessageRefBitsHere );
+        schema_assert( value.u8_low <= 254 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u8_low ), 8 );
     }
     if ( value.u8_high != 1 )
     {
         w.put( 64, kTableMessageRefBitsHere );
+        schema_assert( value.u8_high >= 1 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u8_high ) - 1ull, 8 );
     }
     if ( value.u8_inside != 1 )
     {
         w.put( 65, kTableMessageRefBitsHere );
+        schema_assert( value.u8_inside >= 1 && value.u8_inside <= 254 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u8_inside ) - 1ull, 8 );
     }
     if ( value.u16_span != 0 )
@@ -13417,16 +13432,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u16_low != 0 )
     {
         w.put( 67, kTableMessageRefBitsHere );
+        schema_assert( value.u16_low <= 65534 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u16_low ), 16 );
     }
     if ( value.u16_high != 1 )
     {
         w.put( 68, kTableMessageRefBitsHere );
+        schema_assert( value.u16_high >= 1 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u16_high ) - 1ull, 16 );
     }
     if ( value.u16_inside != 1 )
     {
         w.put( 69, kTableMessageRefBitsHere );
+        schema_assert( value.u16_inside >= 1 && value.u16_inside <= 65534 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u16_inside ) - 1ull, 16 );
     }
     if ( value.u32_span != 0 )
@@ -13437,16 +13455,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u32_low != 0 )
     {
         w.put( 71, kTableMessageRefBitsHere );
+        schema_assert( value.u32_low <= 4294967294 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u32_low ), 32 );
     }
     if ( value.u32_high != 1 )
     {
         w.put( 72, kTableMessageRefBitsHere );
+        schema_assert( value.u32_high >= 1 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u32_high ) - 1ull, 32 );
     }
     if ( value.u32_inside != 1 )
     {
         w.put( 73, kTableMessageRefBitsHere );
+        schema_assert( value.u32_inside >= 1 && value.u32_inside <= 4294967294 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u32_inside ) - 1ull, 32 );
     }
     if ( value.u64_span != 0 )
@@ -13457,16 +13478,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u64_low != 0 )
     {
         w.put( 75, kTableMessageRefBitsHere );
+        schema_assert( value.u64_low <= 18446744073709551614ull ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u64_low ), 64 );
     }
     if ( value.u64_high != 1ull )
     {
         w.put( 76, kTableMessageRefBitsHere );
+        schema_assert( value.u64_high >= 1ull ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u64_high ) - 1ull, 64 );
     }
     if ( value.u64_inside != 1ull )
     {
         w.put( 77, kTableMessageRefBitsHere );
+        schema_assert( value.u64_inside >= 1ull && value.u64_inside <= 18446744073709551614ull ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.u64_inside ) - 1ull, 64 );
     }
     if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
@@ -15222,11 +15246,13 @@ inline bool RangedWidthsSaveMessageBody( TableBitWriter & w, const RangedWidths 
     if ( value.b12 != 0 )
     {
         w.put( 83, kTableMessageRefBitsHere );
+        schema_assert( value.b12 <= 4095ull ); // the bits(12) width is the bound (§4.2)
         w.put( (uint64_t) ( value.b12 ), 12 );
     }
     if ( value.b48 != 0 )
     {
         w.put( 84, kTableMessageRefBitsHere );
+        schema_assert( value.b48 <= 281474976710655ull ); // the bits(48) width is the bound (§4.2)
         w.put( (uint64_t) ( value.b48 ), 48 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15780,20 +15806,32 @@ inline void RangedSignedFixedWriteBody( uint8_t * b, const RangedSigned & value 
     (void) b;
     (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.i8_span );
+    schema_assert( value.i8_low <= 126 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 1, (uint8_t) value.i8_low );
+    schema_assert( value.i8_high >= -127 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 2, (uint8_t) value.i8_high );
+    schema_assert( value.i8_inside >= -127 && value.i8_inside <= 126 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 3, (uint8_t) value.i8_inside );
     TableFixedPut16( b + 4, (uint16_t) value.i16_span );
+    schema_assert( value.i16_low <= 32766 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 6, (uint16_t) value.i16_low );
+    schema_assert( value.i16_high >= -32767 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 8, (uint16_t) value.i16_high );
+    schema_assert( value.i16_inside >= -32767 && value.i16_inside <= 32766 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 10, (uint16_t) value.i16_inside );
     TableFixedPut32( b + 12, (uint32_t) value.i32_span );
+    schema_assert( value.i32_low <= 2147483646 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 16, (uint32_t) value.i32_low );
+    schema_assert( value.i32_high >= -2147483647 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 20, (uint32_t) value.i32_high );
+    schema_assert( value.i32_inside >= -2147483647 && value.i32_inside <= 2147483646 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 24, (uint32_t) value.i32_inside );
     TableFixedPut64( b + 28, (uint64_t) value.i64_span );
+    schema_assert( value.i64_low <= 9223372036854775806ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 36, (uint64_t) value.i64_low );
+    schema_assert( value.i64_high >= -9223372036854775807ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 44, (uint64_t) value.i64_high );
+    schema_assert( value.i64_inside >= -9223372036854775807ll && value.i64_inside <= 9223372036854775806ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 52, (uint64_t) value.i64_inside );
     schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.edges_count );
@@ -15810,20 +15848,32 @@ inline void RangedUnsignedFixedWriteBody( uint8_t * b, const RangedUnsigned & va
     (void) b;
     (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.u8_span );
+    schema_assert( value.u8_low <= 254 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 1, (uint8_t) value.u8_low );
+    schema_assert( value.u8_high >= 1 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 2, (uint8_t) value.u8_high );
+    schema_assert( value.u8_inside >= 1 && value.u8_inside <= 254 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 3, (uint8_t) value.u8_inside );
     TableFixedPut16( b + 4, (uint16_t) value.u16_span );
+    schema_assert( value.u16_low <= 65534 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 6, (uint16_t) value.u16_low );
+    schema_assert( value.u16_high >= 1 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 8, (uint16_t) value.u16_high );
+    schema_assert( value.u16_inside >= 1 && value.u16_inside <= 65534 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 10, (uint16_t) value.u16_inside );
     TableFixedPut32( b + 12, (uint32_t) value.u32_span );
+    schema_assert( value.u32_low <= 4294967294 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 16, (uint32_t) value.u32_low );
+    schema_assert( value.u32_high >= 1 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 20, (uint32_t) value.u32_high );
+    schema_assert( value.u32_inside >= 1 && value.u32_inside <= 4294967294 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 24, (uint32_t) value.u32_inside );
     TableFixedPut64( b + 28, (uint64_t) value.u64_span );
+    schema_assert( value.u64_low <= 18446744073709551614ull ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 36, (uint64_t) value.u64_low );
+    schema_assert( value.u64_high >= 1ull ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 44, (uint64_t) value.u64_high );
+    schema_assert( value.u64_inside >= 1ull && value.u64_inside <= 18446744073709551614ull ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 52, (uint64_t) value.u64_inside );
     schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.counts_count );
@@ -15839,11 +15889,15 @@ inline void RangedWidthsFixedWriteBody( uint8_t * b, const RangedWidths & value 
 {
     (void) b;
     (void) value;
+    schema_assert( value.b8 <= 255ull ); // the bits(8) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.b8 );
+    schema_assert( value.b16 <= 65535ull ); // the bits(16) width is the bound (§4.2)
     TableFixedPut32( b + 4, (uint32_t) value.b16 );
     TableFixedPut32( b + 8, (uint32_t) value.b32 );
     TableFixedPut64( b + 12, (uint64_t) value.b64 );
+    schema_assert( value.b12 <= 4095ull ); // the bits(12) width is the bound (§4.2)
     TableFixedPut32( b + 20, (uint32_t) value.b12 );
+    schema_assert( value.b48 <= 281474976710655ull ); // the bits(48) width is the bound (§4.2)
     TableFixedPut64( b + 24, (uint64_t) value.b48 );
 }
 

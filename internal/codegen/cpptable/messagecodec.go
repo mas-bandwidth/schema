@@ -324,6 +324,9 @@ func (g *tableGen) emitMessageTextPayload(f *ir.Field, entry ir.TableVocabularyE
 	if f.Type.Kind == ir.TBytes {
 		width = ir.TableMessageCountBits(entry.Shape)
 	}
+	if pass == messagePassSave && f.Type.Kind == ir.TString {
+		g.pf("%sschema_assert( TableUtf8Valid( (const uint8_t *) %s, (uint64_t) %s ) ); // well-formed, no zero byte (§2.13)\n", ind, value, count)
+	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
 		g.pf("%sbits += TableAlignBits( at + bits );\n", ind)
@@ -440,6 +443,33 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 	g.pf("%s    w.put( slot%s, %s );\n%s}\n", ind, sfx, msgRefBits, ind)
 }
 
+// emitMessageRangeAssert is the WRITE-SIDE CHECK for a message scalar's
+// declared range (row 1) and a bits width (row 2), DEBUG-ONLY BY RULE: NDEBUG
+// removes schema_assert. It fires on the SAVE path only; the measure path
+// counts bits and owes no write-side check. The bounds are the field's own
+// declaration, held as schema_assert rather than a refusal because C++ is an
+// assert leg (docs/SPEC.md §5.1).
+func (g *tableGen) emitMessageRangeAssert(f *ir.Field, kind uint8, expr, ind string) {
+	width := tableKindWidth(int(kind))
+	signed := ir.TableKindSigned(int(kind))
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		low, high := tableClampEnds(f, width)
+		lo, hi := tableIntLit(rlo, signed, width), tableIntLit(rhi, signed, width)
+		switch {
+		case low && high:
+			g.pf("%sschema_assert( %s >= %s && %s <= %s ); // the declared range is the bound (§3.3)\n", ind, expr, lo, expr, hi)
+		case low:
+			g.pf("%sschema_assert( %s >= %s ); // the declared range is the bound (§3.3)\n", ind, expr, lo)
+		case high:
+			g.pf("%sschema_assert( %s <= %s ); // the declared range is the bound (§3.3)\n", ind, expr, hi)
+		}
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		g.pf("%sschema_assert( %s <= %dull ); // the bits(%d) width is the bound (§4.2)\n", ind, expr, maxv, f.Type.Width)
+	}
+}
+
 // emitMessageScalar writes ONE value at the width its declaration states,
 // which is what the packet wire writes for that declaration: a ranged integer
 // as `value - base`, a quantized float as its step index, a bare integer at
@@ -474,6 +504,7 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
 	default:
+		g.emitMessageRangeAssert(f, kind, expr, ind)
 		if tableKindWidth(int(kind)) == 16 {
 			// A 128-BIT KIND at the width its shape states: the base subtracted
 			// at 128 bits, the low half first and the high half where the

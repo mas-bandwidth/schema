@@ -311,6 +311,80 @@ const tableFixedAssertHook = `
 #endif
 `
 
+// fixedWriteAssertNeeded reports whether any fixed-emitted table of the unit
+// declares a value a write body checks by schema_assert: the count, length and
+// text checks ir.TableFixedHasWriteBound already names, plus the ranged integer,
+// bits width, enum ordinal and union tag this emitter now checks too
+// (docs/SPEC.md §5.1 rows 1, 2, 5, 6). The assert hook rides on this answer, so
+// a unit whose only write-side checks are the new ones still carries it. It is
+// deliberately one-sided: a unit whose construct the emitter might still drop
+// (a range that fills its storage) answers true anyway, which costs only a
+// harmless hook definition and never a missing one.
+func fixedWriteAssertNeeded(u *ir.Unit) bool {
+	if ir.TableFixedHasWriteBound(u) {
+		return true
+	}
+	field := func(f *ir.Field) bool {
+		switch {
+		case f.HasIntRange, f.Type.Kind == ir.TBits:
+			return true
+		}
+		if f.Type.Kind != ir.TNamed {
+			return false
+		}
+		switch f.Type.Ref.(type) {
+		case *ir.Enum, *ir.Union:
+			return true
+		}
+		return false
+	}
+	seen := map[string]bool{}
+	var has func(st *ir.Struct) bool
+	has = func(st *ir.Struct) bool {
+		if seen[st.Name] {
+			return false
+		}
+		seen[st.Name] = true
+		for _, f := range st.Fields {
+			if field(f) {
+				return true
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				if has(r) {
+					return true
+				}
+			case *ir.Union:
+				for _, v := range r.Variants {
+					if v.F == nil {
+						continue
+					}
+					if field(v.F) {
+						return true
+					}
+					if v.F.Type.Kind == ir.TNamed {
+						if s2, ok := v.F.Type.Ref.(*ir.Struct); ok && has(s2) {
+							return true
+						}
+					}
+				}
+			}
+		}
+		return false
+	}
+	for _, file := range u.Files {
+		for _, st := range file.Tables {
+			if ir.TableFixedEmitted(u, st) && has(st) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
@@ -1032,7 +1106,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// needs <stdlib.h> whether or not NDEBUG keeps the assert.
 		h.WriteString("#include <assert.h> /* the keyed accessor's None refusal, in a debug build */\n")
 		h.WriteString("#include <stdlib.h> /* and its abort, which NDEBUG does not remove */\n")
-	} else if ir.TableFixedHasWriteBound(u) {
+	} else if fixedWriteAssertNeeded(u) {
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need the assert and NOTHING after
 		// it (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, debug-only, with no abort behind them —

@@ -4077,6 +4077,8 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_
  if(value->label_length != 0) {
   blockdemo_table_bit_put(w,9,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>15) return 0;
+  schema_assert( blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+  /* well-formed, no zero byte (§2.13) */
   blockdemo_table_bit_put(w,(uint64_t)value->label_length,4);
   blockdemo_table_bit_align_write(w);
   blockdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -4989,6 +4991,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     blockdemo_table_fixed_put8( b + 9, value->flag ? 1 : 0 );
     blockdemo_table_fixed_put32( b + 10, (uint32_t) value->id );
     schema_assert( value->label_length >= 0 && value->label_length <= 15 ); /* the declared length is the bound (§3.4) */
+    schema_assert( blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* well-formed, no zero byte (§2.13) */
     blockdemo_table_fixed_put32( b + 14, (uint32_t) value->label_length );
     memcpy( b + 18, value->label, (size_t) ( value->label_length ) );
     {

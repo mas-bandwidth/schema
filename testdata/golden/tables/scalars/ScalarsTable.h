@@ -7347,46 +7347,55 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.tilt != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
+        schema_assert( value.tilt <= 112 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.tilt ) - 18446744073709551488ull, 8 );
     }
     if ( value.angle != 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
+        schema_assert( value.angle >= -11796480 && value.angle <= 11796480 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.angle ) - 18446744073697755136ull, 25 );
     }
     if ( value.position != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( value.position >= -1966080000ll && value.position <= 1966080000ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.position ) - 18446744071743471616ull, 32 );
     }
     if ( value.reach != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( value.reach >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) && value.reach <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ); // the declared range is the bound (§3.3)
         { serialize::uint128_t raw_v = serialize::uint128_t( value.reach ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); w.put( uint64_t( raw_v ), 37 ); }
     }
     if ( value.ticks != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( value.ticks >= 0 && value.ticks <= 1000000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.ticks ), 20 );
     }
     if ( value.ratio != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( value.ratio <= 240 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.ratio ), 8 );
     }
     if ( value.speed != 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( value.speed <= 65536000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.speed ), 26 );
     }
     if ( value.span != 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );
+        schema_assert( value.span <= 18446744073709486080ull ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.span ), 64 );
     }
     if ( value.mass != 0 )
     {
         w.put( 12, kTableMessageRefBitsHere );
+        schema_assert( value.mass <= ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ); // the declared range is the bound (§3.3)
         { serialize::uint128_t raw_v = serialize::uint128_t( value.mass ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 37 ); }
     }
     if ( value.frames != 0 )
@@ -7397,11 +7406,13 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.flux != 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
+        schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // the declared range is the bound (§3.3)
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
     }
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
         w.put( 15, kTableMessageRefBitsHere );
+        schema_assert( value.energy >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) && value.energy <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ); // the declared range is the bound (§3.3)
         { serialize::uint128_t raw_v = serialize::uint128_t( value.energy ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); w.put( uint64_t( raw_v ), 34 ); }
     }
     if ( value.entity_id != 0 )
@@ -7412,6 +7423,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.scale != 65536 )
     {
         w.put( 17, kTableMessageRefBitsHere );
+        schema_assert( value.scale >= -524288 && value.scale <= 524288 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.scale ) - 18446744073709027328ull, 21 );
     }
     {
@@ -7422,6 +7434,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
             w.put( 18, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 3; i++ )
             {
+                schema_assert( value.samples[i] >= -524288 && value.samples[i] <= 524288 ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.samples[i] ) - 18446744073709027328ull, 21 );
             }
         }
@@ -7433,6 +7446,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         w.put( (uint64_t) ( value.weights_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.weights_count; i++ )
         {
+            schema_assert( value.weights[i] <= 25600 ); // the declared range is the bound (§3.3)
             w.put( (uint64_t) ( value.weights[i] ), 15 );
         }
     }
@@ -7458,6 +7472,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Axis) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( value.axes.slots[i] >= -429496729600ll && value.axes.slots[i] <= 429496729600ll ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.axes.slots[i] ) - 18446743644212822016ull, 40 );
             }
         }
@@ -9045,16 +9060,19 @@ inline bool PoseSaveMessageBody( TableBitWriter & w, const Pose & value )
     if ( value.x != 32768ll )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( value.x >= -1966080000ll && value.x <= 1966080000ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.x ) - 18446744071743471616ull, 32 );
     }
     if ( value.y != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( value.y >= -1966080000ll && value.y <= 1966080000ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.y ) - 18446744071743471616ull, 32 );
     }
     if ( value.heading != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( value.heading <= 23592960 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.heading ), 25 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9381,8 +9399,11 @@ inline void PoseFixedWriteBody( uint8_t * b, const Pose & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.x >= -1966080000ll && value.x <= 1966080000ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 0, (uint64_t) value.x );
+    schema_assert( value.y >= -1966080000ll && value.y <= 1966080000ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 8, (uint64_t) value.y );
+    schema_assert( value.heading <= 23592960 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 16, (uint32_t) value.heading );
 }
 
@@ -9392,32 +9413,47 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.tilt <= 112 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 0, (uint8_t) value.tilt );
+    schema_assert( value.angle >= -11796480 && value.angle <= 11796480 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 1, (uint32_t) value.angle );
+    schema_assert( value.position >= -1966080000ll && value.position <= 1966080000ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 5, (uint64_t) value.position );
+    schema_assert( value.reach >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) && value.reach <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ); // the declared range is the bound (§3.4)
     TableFixedPut128( b + 13, value.reach );
+    schema_assert( value.ticks >= 0 && value.ticks <= 1000000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 29, (uint32_t) value.ticks );
+    schema_assert( value.ratio <= 240 ); // the declared range is the bound (§3.4)
     TableFixedPut8( b + 33, (uint8_t) value.ratio );
+    schema_assert( value.speed <= 65536000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 34, (uint32_t) value.speed );
+    schema_assert( value.span <= 18446744073709486080ull ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 38, (uint64_t) value.span );
+    schema_assert( value.mass <= ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ); // the declared range is the bound (§3.4)
     TableFixedPut128( b + 46, value.mass );
     TableFixedPut32( b + 62, (uint32_t) value.frames );
+    schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // the declared range is the bound (§3.4)
     TableFixedPut128( b + 66, value.flux );
+    schema_assert( value.energy >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) && value.energy <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ); // the declared range is the bound (§3.4)
     TableFixedPut128( b + 82, value.energy );
     TableFixedPut128( b + 98, value.entity_id );
+    schema_assert( value.scale >= -524288 && value.scale <= 524288 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 114, (uint32_t) value.scale );
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
+        schema_assert( value.samples[i] >= -524288 && value.samples[i] <= 524288 ); // the declared range is the bound (§3.4)
         TableFixedPut32( b + 118 + i * 4 + 0, (uint32_t) value.samples[i] );
     }
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 130, (uint32_t) value.weights_count );
     for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
     {
+        schema_assert( value.weights[i] <= 25600 ); // the declared range is the bound (§3.4)
         TableFixedPut16( b + 134 + i * 2 + 0, (uint16_t) value.weights[i] );
     }
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
+        schema_assert( value.axes.slots[i] >= -429496729600ll && value.axes.slots[i] <= 429496729600ll ); // the declared range is the bound (§3.4)
         TableFixedPut64( b + 142 + i * 8 + 0, (uint64_t) value.axes.slots[i] );
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // the declared count is the bound (§3.4)

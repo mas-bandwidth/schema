@@ -12594,7 +12594,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put32( b + 68, (uint32_t) value->target_object_id );
     blockdemo_table_fixed_putf32( b + 72, value->thrust );
     blockdemo_table_fixed_put8( b + 76, (uint8_t) value->object_sequence );
+    schema_assert( (uint64_t) value->ship_type <= 3u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 77, (uint8_t) value->ship_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 78, (uint8_t) value->team );
     blockdemo_table_fixed_put8( b + 79, value->has_target_lock ? 1 : 0 );
     blockdemo_table_fixed_put8( b + 80, value->predicted_explode ? 1 : 0 );
@@ -12612,6 +12614,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put32( b + 48, (uint32_t) value->turret_index );
     blockdemo_table_fixed_put32( b + 52, (uint32_t) value->target_object_id );
     blockdemo_table_fixed_put8( b + 56, (uint8_t) value->object_sequence );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 57, (uint8_t) value->team );
     blockdemo_table_fixed_put8( b + 58, value->has_target_lock ? 1 : 0 );
 }
@@ -12626,7 +12629,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put64( b + 56, (uint64_t) value->flags );
     blockdemo_table_fixed_put32( b + 64, (uint32_t) value->object_id );
     blockdemo_table_fixed_put8( b + 68, (uint8_t) value->object_sequence );
+    schema_assert( (uint64_t) value->missile_type <= 2u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 69, (uint8_t) value->missile_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 70, (uint8_t) value->team );
 }
 
@@ -12640,7 +12645,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put64( b + 56, (uint64_t) value->flags );
     blockdemo_table_fixed_put32( b + 64, (uint32_t) value->object_id );
     blockdemo_table_fixed_put8( b + 68, (uint8_t) value->object_sequence );
+    schema_assert( (uint64_t) value->prop_type <= 3u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 69, (uint8_t) value->prop_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 70, (uint8_t) value->team );
 }
 
@@ -12654,7 +12661,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_putf64( b + 56, value->scale );
     blockdemo_table_fixed_put64( b + 64, (uint64_t) value->flags );
     blockdemo_table_fixed_put32( b + 72, (uint32_t) value->static_prop_id );
+    schema_assert( (uint64_t) value->prop_type <= 3u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 76, (uint8_t) value->prop_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 77, (uint8_t) value->team );
 }
 
@@ -12669,7 +12678,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_put64( b + 64, (uint64_t) value->flags );
     blockdemo_table_fixed_put32( b + 72, (uint32_t) value->cosmetic_prop_id );
     blockdemo_table_fixed_put8( b + 76, (uint8_t) value->prop_sequence );
+    schema_assert( (uint64_t) value->prop_type <= 3u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 77, (uint8_t) value->prop_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 78, (uint8_t) value->team );
 }
 
@@ -12682,7 +12693,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     schema_blockdemo_render_vector3_fixed_write_body_( b + 24, &value->finish );
     blockdemo_table_fixed_putf64( b + 48, value->t );
     blockdemo_table_fixed_put32( b + 56, (uint32_t) value->laser_id );
+    schema_assert( (uint64_t) value->laser_type <= 2u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 60, (uint8_t) value->laser_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 61, (uint8_t) value->team );
 }
 
@@ -12696,7 +12709,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     blockdemo_table_fixed_putf64( b + 56, value->t );
     blockdemo_table_fixed_put32( b + 64, (uint32_t) value->explosion_id );
     blockdemo_table_fixed_put32( b + 68, (uint32_t) value->parent_object_id );
+    schema_assert( (uint64_t) value->explosion_type <= 2u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 72, (uint8_t) value->explosion_type );
+    schema_assert( (uint64_t) value->team <= 4u ); /* the enum's top value is the bound (§4.2) */
     blockdemo_table_fixed_put8( b + 73, (uint8_t) value->team );
 }
 

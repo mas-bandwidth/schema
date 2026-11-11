@@ -477,10 +477,10 @@ define conformance-negative-control-cpp-wref
 		echo "NEGATIVE CONTROL FAILED: the C++ $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-cpp-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-cpp-$(1)/log || \
+	@grep -Eq '^$(5) *FAIL ' build/conformance-negative-cpp-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
-	@grep -Eq '^$(6) +pass ' build/conformance-negative-cpp-$(1)/log || \
+	@grep -Eq '^$(6) *pass ' build/conformance-negative-cpp-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(6) went red too, so the control localizes nothing"; \
 		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
 	@grep -m1 "cpp / $(5)" build/conformance-negative-cpp-$(1)/log
@@ -489,12 +489,12 @@ endef
 
 .PHONY: conformance-negative-control-cpp-write-refusal
 conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal,if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; },if ( false ) { return false; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal,schema_assert( value.penetration >= 0 && value.penetration <= 10 );,(void)0; /* SABOTAGED: no fixed range check */,SABOTAGED: no fixed range check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-fixed
 conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-fixed,schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 );,(void)0; /* SABOTAGED: no fixed length check */,SABOTAGED: no fixed length check,write-refusal-fixed,wire)
+	$(call conformance-negative-control-cpp-wref,write-refusal-fixed,schema_assert( (uint64_t) value.grade <= 3u );,(void)0; /* SABOTAGED: no fixed enum check */,SABOTAGED: no fixed enum check,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-cpp-write-refusal-message
 conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
-	$(call conformance-negative-control-cpp-wref,write-refusal-message,if ( value.sku_length < 0 || value.sku_length > 32 ) { return false; },if ( false ) { return false; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,schema_assert( value.quantity >= 1 && value.quantity <= 99 );,(void)0; /* SABOTAGED: no message range check */,SABOTAGED: no message range check,write-refusal-message,message)

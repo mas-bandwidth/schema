@@ -10989,6 +10989,7 @@ inline bool ShipConfigSaveMessageBody( TableBitWriter & w, const ShipConfig & va
     if ( value.name_length > 0 )
     {
         w.put( 16, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.name_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -13758,6 +13759,7 @@ inline void ShipConfigFixedWriteBody( uint8_t * b, const ShipConfig & value )
     (void) b;
     (void) value;
     schema_assert( value.name_length >= 0 && value.name_length <= 64 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
     memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
     TableFixedPut32( b + 68, (uint32_t) value.health );

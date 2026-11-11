@@ -5907,6 +5907,8 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_message_body(tabledemo_tab
   return 1;
   }
   tabledemo_table_bit_put(w,97,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->penetration >= 0 && value->penetration <= 10 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->penetration)-UINT64_C(0),4);
  }
  }
@@ -5916,6 +5918,8 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_message_body(tabledemo_tab
   return 1;
   }
   tabledemo_table_bit_put(w,98,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->channel <= 63ull );
+  /* the bits(6) width is the bound (§4.2) */
   tabledemo_table_bit_put(w,(uint64_t)(value->channel)-UINT64_C(0),6);
  }
  }
@@ -7803,6 +7807,8 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_message_body(tabledemo_ta
  if(value->name_length != 0) {
   tabledemo_table_bit_put(w,32,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->name_length<0 || value->name_length>32) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->name_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->name,value->name_length);
@@ -8571,6 +8577,8 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
   }
   tabledemo_table_bit_put(w,85,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->version_note_length<0 || value->version_note_length>16) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->version_note_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->version_note,value->version_note_length);
@@ -8942,6 +8950,8 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_message_body(tabledemo_table_
  { /* slot */
  if(!(value->slot == 0)) {
   tabledemo_table_bit_put(w,3,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->slot >= 0 && value->slot <= 7 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->slot)-UINT64_C(0),3);
  }
  }
@@ -9467,6 +9477,8 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_message_body(tabledemo_table_bit_
  { /* amount */
  if(!(value->amount == 0)) {
   tabledemo_table_bit_put(w,6,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->amount >= 0 && value->amount <= 100 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->amount)-UINT64_C(0),7);
  }
  }
@@ -9662,6 +9674,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_buff_fi
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_debuff_fixed_write_body_( uint8_t * b, const tabledemo_debuff_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->amount >= 0 && value->amount <= 100 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->amount );
 }
 
@@ -9672,9 +9685,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_
     (void) b; (void) value;
     tabledemo_table_fixed_putf32( b + 0, value->damage );
     tabledemo_table_fixed_putf32( b + 4, value->speed );
+    schema_assert( value->penetration >= 0 && value->penetration <= 10 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 8, (uint32_t) value->penetration );
+    schema_assert( value->channel <= 63ull ); /* the bits(6) width is the bound (§4.2) */
     tabledemo_table_fixed_put32( b + 12, (uint32_t) value->channel );
     tabledemo_table_fixed_put8( b + 16, value->homing ? 1 : 0 );
+    schema_assert( (uint64_t) value->effect.type <= 2u ); /* the union's top tag is the bound (§4.8) */
     tabledemo_table_fixed_put8( b + 17, (uint8_t) value->effect.type );
     switch ( value->effect.type )
     {
@@ -9697,6 +9713,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_attachment_fixed_write_body_( uint8_t * b, const tabledemo_attachment_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->slot >= 0 && value->slot <= 7 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->slot );
     tabledemo_table_fixed_putf32( b + 4, value->power );
 }
@@ -9706,6 +9723,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_attachm
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout_config_fixed_write_body_( uint8_t * b, const tabledemo_loadout_config_t * value )
 {
     (void) b; (void) value;
+    schema_assert( (uint64_t) value->grade <= 3u ); /* the enum's top value is the bound (§4.2) */
     tabledemo_table_fixed_put8( b + 0, (uint8_t) value->grade );
     schema_assert( value->grades_count >= 0 && value->grades_count <= 4 ); /* the declared count is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 1, (uint32_t) value->grades_count );
@@ -9713,6 +9731,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
         int64_t i;
         for ( i = 0; i < (int64_t) value->grades_count; ++i )
         {
+            schema_assert( (uint64_t) value->grades[i] <= 3u ); /* the enum's top value is the bound (§4.2) */
             tabledemo_table_fixed_put8( b + 5 + i * 1 + 0, (uint8_t) value->grades[i] );
         }
     }
@@ -9720,6 +9739,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
         int64_t i;
         for ( i = 0; i < (int64_t) 3; ++i )
         {
+            schema_assert( (uint64_t) value->podium[i] <= 3u ); /* the enum's top value is the bound (§4.2) */
             tabledemo_table_fixed_put8( b + 9 + i * 1 + 0, (uint8_t) value->podium[i] );
         }
     }
@@ -9749,6 +9769,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_profile
 {
     (void) b; (void) value;
     schema_assert( value->name_length >= 0 && value->name_length <= 32 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->name, (uint64_t) value->name_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->name_length );
     memcpy( b + 4, value->name, (size_t) ( value->name_length ) );
     schema_assert( value->icon_length >= 0 && value->icon_length <= 16 ); /* the declared length is the bound (§3.4) */
@@ -9779,6 +9800,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
 {
     (void) b; (void) value;
     schema_assert( value->version_note_length >= 0 && value->version_note_length <= 16 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->version_note, (uint64_t) value->version_note_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->version_note_length );
     memcpy( b + 4, value->version_note, (size_t) ( value->version_note_length ) );
     schema_assert( value->weapons_count >= 0 && value->weapons_count <= 8 ); /* the declared count is the bound (§3.4) */

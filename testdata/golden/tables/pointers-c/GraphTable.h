@@ -5866,6 +5866,8 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
   return 1;
   }
   graphdemo_table_bit_put(w,1,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->build >= 0 && value->build <= 1000 );
+  /* the declared range is the bound (§3.3) */
   graphdemo_table_bit_put(w,(uint64_t)(value->build)-UINT64_C(0),10);
  }
  }
@@ -5877,6 +5879,8 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
   }
   graphdemo_table_bit_put(w,2,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->tag_length<0 || value->tag_length>8) return 0;
+  schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) );
+  /* well-formed, no zero byte (§2.13) */
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -6198,6 +6202,8 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  { /* quality */
  if(!(value->quality == 2)) {
   graphdemo_table_bit_put(w,3,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->quality >= 0 && value->quality <= 4 );
+  /* the declared range is the bound (§3.3) */
   graphdemo_table_bit_put(w,(uint64_t)(value->quality)-UINT64_C(0),3);
  }
  }
@@ -6206,6 +6212,8 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  if(value->label_length != 0) {
   graphdemo_table_bit_put(w,4,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>16) return 0;
+  schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+  /* well-formed, no zero byte (§2.13) */
   graphdemo_table_bit_put(w,(uint64_t)value->label_length,5);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -7614,8 +7622,10 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_write_body_( uint8_t * b, const graphdemo_meta_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->build >= 0 && value->build <= 1000 ); /* the declared range is the bound (§3.4) */
     graphdemo_table_fixed_put32( b + 0, (uint32_t) value->build );
     schema_assert( value->tag_length >= 0 && value->tag_length <= 8 ); /* the declared length is the bound (§3.4) */
+    schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ); /* well-formed, no zero byte (§2.13) */
     graphdemo_table_fixed_put32( b + 4, (uint32_t) value->tag_length );
     memcpy( b + 8, value->tag, (size_t) ( value->tag_length ) );
 }
@@ -7625,8 +7635,10 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fi
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_settings_fixed_write_body_( uint8_t * b, const graphdemo_settings_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->quality >= 0 && value->quality <= 4 ); /* the declared range is the bound (§3.4) */
     graphdemo_table_fixed_put32( b + 0, (uint32_t) value->quality );
     schema_assert( value->label_length >= 0 && value->label_length <= 16 ); /* the declared length is the bound (§3.4) */
+    schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* well-formed, no zero byte (§2.13) */
     graphdemo_table_fixed_put32( b + 4, (uint32_t) value->label_length );
     memcpy( b + 8, value->label, (size_t) ( value->label_length ) );
 }

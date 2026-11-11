@@ -7186,51 +7186,61 @@ inline bool MixedEntitySaveMessageBody( TableBitWriter & w, const MixedEntity & 
     if ( value.entity_id != 0 )
     {
         w.put( 31, kTableMessageRefBitsHere );
+        schema_assert( value.entity_id <= 4095ull ); // the bits(12) width is the bound (§4.2)
         w.put( (uint64_t) ( value.entity_id ), 12 );
     }
     if ( value.pos_x != 0 )
     {
         w.put( 32, kTableMessageRefBitsHere );
+        schema_assert( value.pos_x >= -16383 && value.pos_x <= 16383 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.pos_x ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_y != 0 )
     {
         w.put( 33, kTableMessageRefBitsHere );
+        schema_assert( value.pos_y >= -16383 && value.pos_y <= 16383 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.pos_y ) - 18446744073709535233ull, 15 );
     }
     if ( value.pos_z != 0 )
     {
         w.put( 34, kTableMessageRefBitsHere );
+        schema_assert( value.pos_z >= -16383 && value.pos_z <= 16383 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.pos_z ) - 18446744073709535233ull, 15 );
     }
     if ( value.yaw != 0 )
     {
         w.put( 35, kTableMessageRefBitsHere );
+        schema_assert( value.yaw <= 511ull ); // the bits(9) width is the bound (§4.2)
         w.put( (uint64_t) ( value.yaw ), 9 );
     }
     if ( value.pitch != 0 )
     {
         w.put( 36, kTableMessageRefBitsHere );
+        schema_assert( value.pitch <= 511ull ); // the bits(9) width is the bound (§4.2)
         w.put( (uint64_t) ( value.pitch ), 9 );
     }
     if ( value.vel_x != 0 )
     {
         w.put( 37, kTableMessageRefBitsHere );
+        schema_assert( value.vel_x >= -2048 && value.vel_x <= 2047 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.vel_x ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_y != 0 )
     {
         w.put( 38, kTableMessageRefBitsHere );
+        schema_assert( value.vel_y >= -2048 && value.vel_y <= 2047 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.vel_y ) - 18446744073709549568ull, 12 );
     }
     if ( value.vel_z != 0 )
     {
         w.put( 39, kTableMessageRefBitsHere );
+        schema_assert( value.vel_z >= -2048 && value.vel_z <= 2047 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.vel_z ) - 18446744073709549568ull, 12 );
     }
     if ( value.health != 0 )
     {
         w.put( 40, kTableMessageRefBitsHere );
+        schema_assert( value.health >= 0 && value.health <= 1000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.health ), 10 );
     }
     if ( value.weapon != MixedWeapon::None )
@@ -8656,6 +8666,7 @@ inline bool MixedStatSaveMessageBody( TableBitWriter & w, const MixedStat & valu
     if ( value.delta != 0 )
     {
         w.put( 52, kTableMessageRefBitsHere );
+        schema_assert( value.delta >= -512 && value.delta <= 511 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.delta ) - 18446744073709551104ull, 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9375,16 +9386,19 @@ inline bool MixedHitEventSaveMessageBody( TableBitWriter & w, const MixedHitEven
     if ( value.target_id != 0 )
     {
         w.put( 45, kTableMessageRefBitsHere );
+        schema_assert( value.target_id <= 4095ull ); // the bits(12) width is the bound (§4.2)
         w.put( (uint64_t) ( value.target_id ), 12 );
     }
     if ( value.damage != 0 )
     {
         w.put( 46, kTableMessageRefBitsHere );
+        schema_assert( value.damage >= 0 && value.damage <= 4095 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.damage ), 12 );
     }
     if ( value.hit_kind != 0 )
     {
         w.put( 47, kTableMessageRefBitsHere );
+        schema_assert( value.hit_kind >= 0 && value.hit_kind <= 7 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.hit_kind ), 3 );
     }
     if ( value.crit != false )
@@ -10140,11 +10154,13 @@ inline bool MixedChatEventSaveMessageBody( TableBitWriter & w, const MixedChatEv
     if ( value.channel != 0 )
     {
         w.put( 29, kTableMessageRefBitsHere );
+        schema_assert( value.channel >= 0 && value.channel <= 3 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.channel ), 2 );
     }
     if ( value.speaker != 0 )
     {
         w.put( 30, kTableMessageRefBitsHere );
+        schema_assert( value.speaker <= 4095ull ); // the bits(12) width is the bound (§4.2)
         w.put( (uint64_t) ( value.speaker ), 12 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -10788,11 +10804,13 @@ inline bool MixedPickupEventSaveMessageBody( TableBitWriter & w, const MixedPick
     if ( value.item_id != 0 )
     {
         w.put( 49, kTableMessageRefBitsHere );
+        schema_assert( value.item_id <= 1023ull ); // the bits(10) width is the bound (§4.2)
         w.put( (uint64_t) ( value.item_id ), 10 );
     }
     if ( value.amount != 0 )
     {
         w.put( 50, kTableMessageRefBitsHere );
+        schema_assert( value.amount >= 0 && value.amount <= 255 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.amount ), 8 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -13308,6 +13326,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.ack_sequence != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( value.ack_sequence >= 0 && value.ack_sequence <= 65535 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.ack_sequence ), 16 );
     }
     if ( value.ack_bits != 0 )
@@ -13333,16 +13352,19 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.world_time != 0 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( value.world_time >= -1000000000000ll && value.world_time <= 1000000000000ll ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.world_time ) - 18446743073709551616ull, 41 );
     }
     if ( value.frame_tick != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
+        schema_assert( value.frame_tick <= 281474976710655ull ); // the bits(48) width is the bound (§4.2)
         w.put( (uint64_t) ( value.frame_tick ), 48 );
     }
     if ( value.server_time != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( value.server_time >= 0 && value.server_time <= 16776960 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.server_time ), 24 );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
@@ -13408,6 +13430,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.player_name_length > 0 )
     {
         w.put( 14, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.player_name_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.player_name, value.player_name_length );
@@ -13458,16 +13481,19 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.flux != 0 )
     {
         w.put( 22, kTableMessageRefBitsHere );
+        schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // the declared range is the bound (§3.3)
         { serialize::uint128_t raw_v = serialize::uint128_t( value.flux ) - ( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); w.put( uint64_t( raw_v ), 64 ); w.put( uint64_t( raw_v >> 64 ), 38 ); }
     }
     if ( value.ping != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
+        schema_assert( value.ping <= 64000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.ping ), 16 );
     }
     if ( value.crc_hint != 0 )
     {
         w.put( 24, kTableMessageRefBitsHere );
+        schema_assert( value.crc_hint <= 16777215ull ); // the bits(24) width is the bound (§4.2)
         w.put( (uint64_t) ( value.crc_hint ), 24 );
     }
     if ( value.has_extra != true )
@@ -13478,11 +13504,13 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.extra != 0 )
     {
         w.put( 26, kTableMessageRefBitsHere );
+        schema_assert( value.extra >= 0 && value.extra <= 255 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.extra ), 8 );
     }
     if ( value.idle_ticks != 0 )
     {
         w.put( 27, kTableMessageRefBitsHere );
+        schema_assert( value.idle_ticks >= 0 && value.idle_ticks <= 15 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.idle_ticks ), 4 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -15361,16 +15389,27 @@ inline void MixedEntityFixedWriteBody( uint8_t * b, const MixedEntity & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.entity_id <= 4095ull ); // the bits(12) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.entity_id );
+    schema_assert( value.pos_x >= -16383 && value.pos_x <= 16383 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.pos_x );
+    schema_assert( value.pos_y >= -16383 && value.pos_y <= 16383 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 8, (uint32_t) value.pos_y );
+    schema_assert( value.pos_z >= -16383 && value.pos_z <= 16383 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 12, (uint32_t) value.pos_z );
+    schema_assert( value.yaw <= 511ull ); // the bits(9) width is the bound (§4.2)
     TableFixedPut32( b + 16, (uint32_t) value.yaw );
+    schema_assert( value.pitch <= 511ull ); // the bits(9) width is the bound (§4.2)
     TableFixedPut32( b + 20, (uint32_t) value.pitch );
+    schema_assert( value.vel_x >= -2048 && value.vel_x <= 2047 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 24, (uint32_t) value.vel_x );
+    schema_assert( value.vel_y >= -2048 && value.vel_y <= 2047 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 28, (uint32_t) value.vel_y );
+    schema_assert( value.vel_z >= -2048 && value.vel_z <= 2047 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 32, (uint32_t) value.vel_z );
+    schema_assert( value.health >= 0 && value.health <= 1000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 36, (uint32_t) value.health );
+    schema_assert( (uint64_t) value.weapon <= 15u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 40, (uint8_t) value.weapon );
     TableFixedPut64( b + 41, (uint64_t) value.damage );
     TableFixedPut8( b + 49, value.moving ? 1 : 0 );
@@ -15383,7 +15422,9 @@ inline void MixedStatFixedWriteBody( uint8_t * b, const MixedStat & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.stat_id <= 255ull ); // the bits(8) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.stat_id );
+    schema_assert( value.delta >= -512 && value.delta <= 511 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.delta );
 }
 
@@ -15393,8 +15434,11 @@ inline void MixedHitEventFixedWriteBody( uint8_t * b, const MixedHitEvent & valu
 {
     (void) b;
     (void) value;
+    schema_assert( value.target_id <= 4095ull ); // the bits(12) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.target_id );
+    schema_assert( value.damage >= 0 && value.damage <= 4095 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.damage );
+    schema_assert( value.hit_kind >= 0 && value.hit_kind <= 7 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 8, (uint32_t) value.hit_kind );
     TableFixedPut8( b + 12, value.crit ? 1 : 0 );
 }
@@ -15405,7 +15449,9 @@ inline void MixedChatEventFixedWriteBody( uint8_t * b, const MixedChatEvent & va
 {
     (void) b;
     (void) value;
+    schema_assert( value.channel >= 0 && value.channel <= 3 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.channel );
+    schema_assert( value.speaker <= 4095ull ); // the bits(12) width is the bound (§4.2)
     TableFixedPut32( b + 4, (uint32_t) value.speaker );
 }
 
@@ -15415,7 +15461,9 @@ inline void MixedPickupEventFixedWriteBody( uint8_t * b, const MixedPickupEvent 
 {
     (void) b;
     (void) value;
+    schema_assert( value.item_id <= 1023ull ); // the bits(10) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.item_id );
+    schema_assert( value.amount >= 0 && value.amount <= 255 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.amount );
 }
 
@@ -15425,14 +15473,19 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.sequence <= 65535ull ); // the bits(16) width is the bound (§4.2)
     TableFixedPut32( b + 0, (uint32_t) value.sequence );
+    schema_assert( value.ack_sequence >= 0 && value.ack_sequence <= 65535 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.ack_sequence );
     TableFixedPut32( b + 8, (uint32_t) value.ack_bits );
     TableFixedPut64( b + 12, (uint64_t) value.session_id );
     TableFixedPut32( b + 20, (uint32_t) value.client_id );
     TableFixedPut64( b + 24, (uint64_t) value.nonce );
+    schema_assert( value.world_time >= -1000000000000ll && value.world_time <= 1000000000000ll ); // the declared range is the bound (§3.4)
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
+    schema_assert( value.frame_tick <= 281474976710655ull ); // the bits(48) width is the bound (§4.2)
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
+    schema_assert( value.server_time >= 0 && value.server_time <= 16776960 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
     schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
@@ -15446,6 +15499,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     {
         MixedStatFixedWriteBody( b + 468 + i * 8 + 0, value.stats[i] );
     }
+    schema_assert( (uint64_t) value.game_event.type <= 3u ); // the union's top tag is the bound (§4.8)
     TableFixedPut8( b + 1108, (uint8_t) value.game_event.type );
     switch ( value.game_event.type )
     {
@@ -15471,6 +15525,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
         TableFixedPut8( b + 1122 + i * 1 + 0, (uint8_t) value.loadout[i] );
     }
     schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 1126, (uint32_t) value.player_name_length );
     memcpy( b + 1130, value.player_name, (size_t) ( value.player_name_length ) );
     schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
@@ -15482,11 +15537,16 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPutF32( b + 1177, value.recoil );
     TableFixedPutF64( b + 1181, value.drift );
     TableFixedPut128( b + 1189, value.wide_key );
+    schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // the declared range is the bound (§3.4)
     TableFixedPut128( b + 1205, value.flux );
+    schema_assert( value.ping <= 64000 ); // the declared range is the bound (§3.4)
     TableFixedPut16( b + 1221, (uint16_t) value.ping );
+    schema_assert( value.crc_hint <= 16777215ull ); // the bits(24) width is the bound (§4.2)
     TableFixedPut32( b + 1223, (uint32_t) value.crc_hint );
     TableFixedPut8( b + 1227, value.has_extra ? 1 : 0 );
+    schema_assert( value.extra >= 0 && value.extra <= 255 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 1228, (uint32_t) value.extra );
+    schema_assert( value.idle_ticks >= 0 && value.idle_ticks <= 15 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 1232, (uint32_t) value.idle_ticks );
 }
 

@@ -9586,6 +9586,7 @@ inline bool ArchiveConfigSaveMessageBody( TableBitWriter & w, const ArchiveConfi
     if ( value.count != 1 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( value.count >= 0 && value.count <= 100 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.count ), 7 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9857,6 +9858,7 @@ inline void ArchiveConfigFixedWriteBody( uint8_t * b, const ArchiveConfig & valu
     (void) b;
     (void) value;
     RootConfigFixedWriteBody( b + 0, value.root );
+    schema_assert( value.count >= 0 && value.count <= 100 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 1248, (uint32_t) value.count );
 }
 

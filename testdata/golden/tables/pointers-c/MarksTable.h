@@ -5569,6 +5569,8 @@ static SCHEMA_UNUSED int graphdemo_tally_save_message_body(graphdemo_table_bit_w
  { /* hits */
  if(!(value->hits == 0)) {
   graphdemo_table_bit_put(w,6,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->hits >= 0 && value->hits <= 10000 );
+  /* the declared range is the bound (§3.3) */
   graphdemo_table_bit_put(w,(uint64_t)(value->hits)-UINT64_C(0),14);
  }
  }
@@ -5804,6 +5806,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_f
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_write_body_( uint8_t * b, const graphdemo_tally_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->hits >= 0 && value->hits <= 10000 ); /* the declared range is the bound (§3.4) */
     graphdemo_table_fixed_put32( b + 0, (uint32_t) value->hits );
 }
 

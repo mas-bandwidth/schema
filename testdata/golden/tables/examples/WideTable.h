@@ -9746,6 +9746,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
     if ( value.label_length > 0 )
     {
         w.put( 101, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.label_length, 17 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );

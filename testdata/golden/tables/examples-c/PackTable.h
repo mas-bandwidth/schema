@@ -5583,6 +5583,8 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_message_body(tabledemo_t
  if(value->callsign_length != 0) {
   tabledemo_table_bit_put(w,13,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->callsign_length<0 || value->callsign_length>24) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->callsign_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->callsign,value->callsign_length);
@@ -6052,6 +6054,8 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
   }
   tabledemo_table_bit_put(w,89,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->display_name_length<0 || value->display_name_length>32) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->display_name_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->display_name,value->display_name_length);
@@ -6090,6 +6094,8 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
   tabledemo_table_bit_put(w,(uint64_t)value->hardpoints_count-0,3);
   { int32_t i;
   for(i=0;i<value->hardpoints_count;i++) {
+    schema_assert( value->hardpoints[i] >= 0 && value->hardpoints[i] <= 8 );
+    /* the declared range is the bound (§3.3) */
     tabledemo_table_bit_put(w,(uint64_t)(value->hardpoints[i])-UINT64_C(0),4);
   } }
  }
@@ -6613,6 +6619,8 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
   return 1;
   }
   tabledemo_table_bit_put(w,7,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->tick_rate >= 1 && value->tick_rate <= 240 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->tick_rate)-UINT64_C(1),8);
  }
  }
@@ -6643,6 +6651,8 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
   }
   tabledemo_table_bit_put(w,9,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->build_note_length<0 || value->build_note_length>48) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->build_note_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->build_note,value->build_note_length);
@@ -7468,6 +7478,8 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
      break;
      default: return 0;
     }
+    schema_assert( value->thresholds[i] >= 0 && value->thresholds[i] <= 1000 );
+    /* the declared range is the bound (§3.3) */
     tabledemo_table_bit_put(w,(uint64_t)(value->thresholds[i])-UINT64_C(0),10);
    } }
  }
@@ -7759,6 +7771,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_gunner_
     tabledemo_table_fixed_putf32( b + 0, value->reaction );
     tabledemo_table_fixed_put8( b + 4, value->tracking ? 1 : 0 );
     schema_assert( value->callsign_length >= 0 && value->callsign_length <= 24 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 5, (uint32_t) value->callsign_length );
     memcpy( b + 9, value->callsign, (size_t) ( value->callsign_length ) );
 }
@@ -7769,6 +7782,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_en
 {
     (void) b; (void) value;
     schema_assert( value->display_name_length >= 0 && value->display_name_length <= 32 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->display_name_length );
     memcpy( b + 4, value->display_name, (size_t) ( value->display_name_length ) );
     tabledemo_table_fixed_putf32( b + 36, value->health );
@@ -7779,6 +7793,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_en
         int64_t i;
         for ( i = 0; i < (int64_t) value->hardpoints_count; ++i )
         {
+            schema_assert( value->hardpoints[i] >= 0 && value->hardpoints[i] <= 8 ); /* the declared range is the bound (§3.4) */
             tabledemo_table_fixed_put32( b + 48 + i * 4 + 0, (uint32_t) value->hardpoints[i] );
         }
     }
@@ -7794,9 +7809,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_en
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_settings_fixed_write_body_( uint8_t * b, const tabledemo_global_settings_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->tick_rate >= 1 && value->tick_rate <= 240 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->tick_rate );
+    schema_assert( (uint64_t) value->difficulty <= 3u ); /* the enum's top value is the bound (§4.2) */
     tabledemo_table_fixed_put8( b + 4, (uint8_t) value->difficulty );
     schema_assert( value->build_note_length >= 0 && value->build_note_length <= 48 ); /* the declared length is the bound (§3.4) */
+    schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) ); /* well-formed, no zero byte (§2.13) */
     tabledemo_table_fixed_put32( b + 5, (uint32_t) value->build_note_length );
     memcpy( b + 9, value->build_note, (size_t) ( value->build_note_length ) );
     {
@@ -7826,6 +7844,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
         int64_t i;
         for ( i = 0; i < (int64_t) 3; ++i )
         {
+            schema_assert( value->thresholds[i] >= 0 && value->thresholds[i] <= 1000 ); /* the declared range is the bound (§3.4) */
             tabledemo_table_fixed_put32( b + 367 + i * 4 + 0, (uint32_t) value->thresholds[i] );
         }
     }

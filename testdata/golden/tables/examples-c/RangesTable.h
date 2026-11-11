@@ -6388,18 +6388,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i8_low */
  if(!(value->i8_low == 0)) {
   tabledemo_table_bit_put(w,46,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i8_low <= 126 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_low)-UINT64_C(18446744073709551488),8);
  }
  }
  { /* i8_high */
  if(!(value->i8_high == 0)) {
   tabledemo_table_bit_put(w,47,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i8_high >= -127 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_high)-UINT64_C(18446744073709551489),8);
  }
  }
  { /* i8_inside */
  if(!(value->i8_inside == 0)) {
   tabledemo_table_bit_put(w,48,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i8_inside >= -127 && value->i8_inside <= 126 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i8_inside)-UINT64_C(18446744073709551489),8);
  }
  }
@@ -6412,18 +6418,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i16_low */
  if(!(value->i16_low == 0)) {
   tabledemo_table_bit_put(w,50,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i16_low <= 32766 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_low)-UINT64_C(18446744073709518848),16);
  }
  }
  { /* i16_high */
  if(!(value->i16_high == 0)) {
   tabledemo_table_bit_put(w,51,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i16_high >= -32767 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_high)-UINT64_C(18446744073709518849),16);
  }
  }
  { /* i16_inside */
  if(!(value->i16_inside == 0)) {
   tabledemo_table_bit_put(w,52,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i16_inside >= -32767 && value->i16_inside <= 32766 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i16_inside)-UINT64_C(18446744073709518849),16);
  }
  }
@@ -6436,18 +6448,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i32_low */
  if(!(value->i32_low == 0)) {
   tabledemo_table_bit_put(w,54,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i32_low <= 2147483646 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_low)-UINT64_C(18446744071562067968),32);
  }
  }
  { /* i32_high */
  if(!(value->i32_high == 0)) {
   tabledemo_table_bit_put(w,55,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i32_high >= -2147483647 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_high)-UINT64_C(18446744071562067969),32);
  }
  }
  { /* i32_inside */
  if(!(value->i32_inside == 0)) {
   tabledemo_table_bit_put(w,56,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i32_inside >= -2147483647 && value->i32_inside <= 2147483646 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i32_inside)-UINT64_C(18446744071562067969),32);
  }
  }
@@ -6460,18 +6478,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
  { /* i64_low */
  if(!(value->i64_low == 0)) {
   tabledemo_table_bit_put(w,58,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i64_low <= 9223372036854775806ll );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_low)-UINT64_C(9223372036854775808),64);
  }
  }
  { /* i64_high */
  if(!(value->i64_high == 0)) {
   tabledemo_table_bit_put(w,59,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i64_high >= -9223372036854775807ll );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_high)-UINT64_C(9223372036854775809),64);
  }
  }
  { /* i64_inside */
  if(!(value->i64_inside == 0)) {
   tabledemo_table_bit_put(w,60,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->i64_inside >= -9223372036854775807ll && value->i64_inside <= 9223372036854775806ll );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->i64_inside)-UINT64_C(9223372036854775809),64);
  }
  }
@@ -7898,18 +7922,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u8_low */
  if(!(value->u8_low == 0)) {
   tabledemo_table_bit_put(w,63,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u8_low <= 254 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_low)-UINT64_C(0),8);
  }
  }
  { /* u8_high */
  if(!(value->u8_high == 1)) {
   tabledemo_table_bit_put(w,64,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u8_high >= 1 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_high)-UINT64_C(1),8);
  }
  }
  { /* u8_inside */
  if(!(value->u8_inside == 1)) {
   tabledemo_table_bit_put(w,65,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u8_inside >= 1 && value->u8_inside <= 254 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u8_inside)-UINT64_C(1),8);
  }
  }
@@ -7922,18 +7952,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u16_low */
  if(!(value->u16_low == 0)) {
   tabledemo_table_bit_put(w,67,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u16_low <= 65534 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_low)-UINT64_C(0),16);
  }
  }
  { /* u16_high */
  if(!(value->u16_high == 1)) {
   tabledemo_table_bit_put(w,68,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u16_high >= 1 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_high)-UINT64_C(1),16);
  }
  }
  { /* u16_inside */
  if(!(value->u16_inside == 1)) {
   tabledemo_table_bit_put(w,69,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u16_inside >= 1 && value->u16_inside <= 65534 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u16_inside)-UINT64_C(1),16);
  }
  }
@@ -7946,18 +7982,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u32_low */
  if(!(value->u32_low == 0)) {
   tabledemo_table_bit_put(w,71,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u32_low <= 4294967294 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_low)-UINT64_C(0),32);
  }
  }
  { /* u32_high */
  if(!(value->u32_high == 1)) {
   tabledemo_table_bit_put(w,72,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u32_high >= 1 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_high)-UINT64_C(1),32);
  }
  }
  { /* u32_inside */
  if(!(value->u32_inside == 1)) {
   tabledemo_table_bit_put(w,73,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u32_inside >= 1 && value->u32_inside <= 4294967294 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u32_inside)-UINT64_C(1),32);
  }
  }
@@ -7970,18 +8012,24 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
  { /* u64_low */
  if(!(value->u64_low == 0)) {
   tabledemo_table_bit_put(w,75,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u64_low <= 18446744073709551614ull );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_low)-UINT64_C(0),64);
  }
  }
  { /* u64_high */
  if(!(value->u64_high == 1ull)) {
   tabledemo_table_bit_put(w,76,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u64_high >= 1ull );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_high)-UINT64_C(1),64);
  }
  }
  { /* u64_inside */
  if(!(value->u64_inside == 1ull)) {
   tabledemo_table_bit_put(w,77,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->u64_inside >= 1ull && value->u64_inside <= 18446744073709551614ull );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->u64_inside)-UINT64_C(1),64);
  }
  }
@@ -8844,12 +8892,16 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_message_body(tabledemo_tab
  { /* b12 */
  if(!(value->b12 == 0)) {
   tabledemo_table_bit_put(w,83,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->b12 <= 4095ull );
+  /* the bits(12) width is the bound (§4.2) */
   tabledemo_table_bit_put(w,(uint64_t)(value->b12)-UINT64_C(0),12);
  }
  }
  { /* b48 */
  if(!(value->b48 == 0)) {
   tabledemo_table_bit_put(w,84,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->b48 <= 281474976710655ull );
+  /* the bits(48) width is the bound (§4.2) */
   tabledemo_table_bit_put(w,(uint64_t)(value->b48)-UINT64_C(0),48);
  }
  }
@@ -9108,20 +9160,32 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 {
     (void) b; (void) value;
     tabledemo_table_fixed_put8( b + 0, (uint8_t) value->i8_span );
+    schema_assert( value->i8_low <= 126 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 1, (uint8_t) value->i8_low );
+    schema_assert( value->i8_high >= -127 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 2, (uint8_t) value->i8_high );
+    schema_assert( value->i8_inside >= -127 && value->i8_inside <= 126 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 3, (uint8_t) value->i8_inside );
     tabledemo_table_fixed_put16( b + 4, (uint16_t) value->i16_span );
+    schema_assert( value->i16_low <= 32766 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 6, (uint16_t) value->i16_low );
+    schema_assert( value->i16_high >= -32767 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 8, (uint16_t) value->i16_high );
+    schema_assert( value->i16_inside >= -32767 && value->i16_inside <= 32766 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 10, (uint16_t) value->i16_inside );
     tabledemo_table_fixed_put32( b + 12, (uint32_t) value->i32_span );
+    schema_assert( value->i32_low <= 2147483646 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 16, (uint32_t) value->i32_low );
+    schema_assert( value->i32_high >= -2147483647 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 20, (uint32_t) value->i32_high );
+    schema_assert( value->i32_inside >= -2147483647 && value->i32_inside <= 2147483646 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 24, (uint32_t) value->i32_inside );
     tabledemo_table_fixed_put64( b + 28, (uint64_t) value->i64_span );
+    schema_assert( value->i64_low <= 9223372036854775806ll ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 36, (uint64_t) value->i64_low );
+    schema_assert( value->i64_high >= -9223372036854775807ll ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 44, (uint64_t) value->i64_high );
+    schema_assert( value->i64_inside >= -9223372036854775807ll && value->i64_inside <= 9223372036854775806ll ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 52, (uint64_t) value->i64_inside );
     schema_assert( value->edges_count >= 0 && value->edges_count <= 4 ); /* the declared count is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 60, (uint32_t) value->edges_count );
@@ -9140,20 +9204,32 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 {
     (void) b; (void) value;
     tabledemo_table_fixed_put8( b + 0, (uint8_t) value->u8_span );
+    schema_assert( value->u8_low <= 254 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 1, (uint8_t) value->u8_low );
+    schema_assert( value->u8_high >= 1 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 2, (uint8_t) value->u8_high );
+    schema_assert( value->u8_inside >= 1 && value->u8_inside <= 254 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put8( b + 3, (uint8_t) value->u8_inside );
     tabledemo_table_fixed_put16( b + 4, (uint16_t) value->u16_span );
+    schema_assert( value->u16_low <= 65534 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 6, (uint16_t) value->u16_low );
+    schema_assert( value->u16_high >= 1 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 8, (uint16_t) value->u16_high );
+    schema_assert( value->u16_inside >= 1 && value->u16_inside <= 65534 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put16( b + 10, (uint16_t) value->u16_inside );
     tabledemo_table_fixed_put32( b + 12, (uint32_t) value->u32_span );
+    schema_assert( value->u32_low <= 4294967294 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 16, (uint32_t) value->u32_low );
+    schema_assert( value->u32_high >= 1 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 20, (uint32_t) value->u32_high );
+    schema_assert( value->u32_inside >= 1 && value->u32_inside <= 4294967294 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 24, (uint32_t) value->u32_inside );
     tabledemo_table_fixed_put64( b + 28, (uint64_t) value->u64_span );
+    schema_assert( value->u64_low <= 18446744073709551614ull ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 36, (uint64_t) value->u64_low );
+    schema_assert( value->u64_high >= 1ull ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 44, (uint64_t) value->u64_high );
+    schema_assert( value->u64_inside >= 1ull && value->u64_inside <= 18446744073709551614ull ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put64( b + 52, (uint64_t) value->u64_inside );
     schema_assert( value->counts_count >= 0 && value->counts_count <= 4 ); /* the declared count is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 60, (uint32_t) value->counts_count );
@@ -9171,11 +9247,15 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_write_body_( uint8_t * b, const tabledemo_ranged_widths_t * value )
 {
     (void) b; (void) value;
+    schema_assert( value->b8 <= 255ull ); /* the bits(8) width is the bound (§4.2) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->b8 );
+    schema_assert( value->b16 <= 65535ull ); /* the bits(16) width is the bound (§4.2) */
     tabledemo_table_fixed_put32( b + 4, (uint32_t) value->b16 );
     tabledemo_table_fixed_put32( b + 8, (uint32_t) value->b32 );
     tabledemo_table_fixed_put64( b + 12, (uint64_t) value->b64 );
+    schema_assert( value->b12 <= 4095ull ); /* the bits(12) width is the bound (§4.2) */
     tabledemo_table_fixed_put32( b + 20, (uint32_t) value->b12 );
+    schema_assert( value->b48 <= 281474976710655ull ); /* the bits(48) width is the bound (§4.2) */
     tabledemo_table_fixed_put64( b + 24, (uint64_t) value->b48 );
 }
 

@@ -6221,6 +6221,7 @@ inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
     if ( value.name_length > 0 )
     {
         w.put( 27, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.name_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -6728,6 +6729,7 @@ inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -8787,6 +8789,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
     if ( value.text_length > 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.text_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.text, value.text_length );
@@ -8811,6 +8814,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             case OriginType::Pid:
             {
                 w.put( 37, kTableMessageRefBitsHere );
+                schema_assert( value.origin.pid <= 1000 ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.origin.pid ), 10 );
                 break;
             }
@@ -8818,6 +8822,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             {
                 w.put( 38, kTableMessageRefBitsHere );
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
                 w.put( (uint64_t) value.origin.note.value_length, 5 );
                 w.align(); // a string or a bytes ALIGNS before its bytes
                 w.putbytes( (const uint8_t *) value.origin.note.value, value.origin.note.value_length );
@@ -8856,6 +8861,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
                     case OriginType::Pid:
                     {
                         w.put( 37, kTableMessageRefBitsHere );
+                        schema_assert( value.origins[i].pid <= 1000 ); // the declared range is the bound (§3.3)
                         w.put( (uint64_t) ( value.origins[i].pid ), 10 );
                         break;
                     }
@@ -8863,6 +8869,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
                     {
                         w.put( 38, kTableMessageRefBitsHere );
                         if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length ) ); // well-formed, no zero byte (§2.13)
                         w.put( (uint64_t) value.origins[i].note.value_length, 5 );
                         w.align(); // a string or a bytes ALIGNS before its bytes
                         w.putbytes( (const uint8_t *) value.origins[i].note.value, value.origins[i].note.value_length );
@@ -10833,6 +10840,7 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
             case EditBodyType::Tally:
             {
                 w.put( 32, kTableMessageRefBitsHere );
+                schema_assert( value.body.tally >= 0 && value.body.tally <= 100 ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.body.tally ), 7 );
                 break;
             }
@@ -11774,6 +11782,7 @@ inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument 
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -12345,6 +12354,7 @@ inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument 
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -13914,6 +13924,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
     if ( value.reason_length > 0 )
     {
         w.put( 22, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.reason_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.reason, value.reason_length );
@@ -13959,6 +13970,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
                         case EditBodyType::Tally:
                         {
                             w.put( 32, kTableMessageRefBitsHere );
+                            schema_assert( value.pending[i].tally >= 0 && value.pending[i].tally <= 100 ); // the declared range is the bound (§3.3)
                             w.put( (uint64_t) ( value.pending[i].tally ), 7 );
                             break;
                         }
@@ -17394,6 +17406,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                         case OriginType::Pid:
                         {
                             w.put( 37, kTableMessageRefBitsHere );
+                            schema_assert( value.body.origin.pid <= 1000 ); // the declared range is the bound (§3.3)
                             w.put( (uint64_t) ( value.body.origin.pid ), 10 );
                             break;
                         }
@@ -17401,6 +17414,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                         {
                             w.put( 38, kTableMessageRefBitsHere );
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
                             w.put( (uint64_t) value.body.origin.note.value_length, 5 );
                             w.align(); // a string or a bytes ALIGNS before its bytes
                             w.putbytes( (const uint8_t *) value.body.origin.note.value, value.body.origin.note.value_length );
@@ -17499,6 +17513,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                                 case OriginType::Pid:
                                 {
                                     w.put( 37, kTableMessageRefBitsHere );
+                                    schema_assert( value.history[i].origin.pid <= 1000 ); // the declared range is the bound (§3.3)
                                     w.put( (uint64_t) ( value.history[i].origin.pid ), 10 );
                                     break;
                                 }
@@ -17506,6 +17521,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                                 {
                                     w.put( 38, kTableMessageRefBitsHere );
                                     if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
                                     w.put( (uint64_t) value.history[i].origin.note.value_length, 5 );
                                     w.align(); // a string or a bytes ALIGNS before its bytes
                                     w.putbytes( (const uint8_t *) value.history[i].origin.note.value, value.history[i].origin.note.value_length );
@@ -19961,6 +19977,7 @@ inline void UserFixedWriteBody( uint8_t * b, const User & value )
     (void) b;
     (void) value;
     schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
     memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
 }
@@ -19972,6 +19989,7 @@ inline void ScriptFixedWriteBody( uint8_t * b, const Script & value )
     (void) b;
     (void) value;
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
     memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
     TableFixedPut32( b + 68, (uint32_t) value.line );
@@ -20005,8 +20023,10 @@ inline void InsertTextFixedWriteBody( uint8_t * b, const InsertText & value )
     (void) value;
     CursorFixedWriteBody( b + 0, value.at );
     schema_assert( value.text_length >= 0 && value.text_length <= 32 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.text, (uint64_t) value.text_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 8, (uint32_t) value.text_length );
     memcpy( b + 12, value.text, (size_t) ( value.text_length ) );
+    schema_assert( (uint64_t) value.origin.type <= 4u ); // the union's top tag is the bound (§4.8)
     TableFixedPut8( b + 44, (uint8_t) value.origin.type );
     switch ( value.origin.type )
     {
@@ -20022,12 +20042,14 @@ inline void InsertTextFixedWriteBody( uint8_t * b, const InsertText & value )
         }
         case OriginType::Pid:
         {
+            schema_assert( value.origin.pid <= 1000 ); // the declared range is the bound (§3.4)
             TableFixedPut32( b + 45, (uint32_t) value.origin.pid );
             break;
         }
         case OriginType::Note:
         {
             schema_assert( value.origin.note.value_length >= 0 && value.origin.note.value_length <= 24 ); // the declared length is the bound (§3.4)
+            schema_assert( TableUtf8Valid( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
             TableFixedPut32( b + 45, (uint32_t) value.origin.note.value_length );
             memcpy( b + 49, value.origin.note.value, (size_t) ( value.origin.note.value_length ) );
             break;
@@ -20038,6 +20060,7 @@ inline void InsertTextFixedWriteBody( uint8_t * b, const InsertText & value )
     TableFixedPut32( b + 117, (uint32_t) value.origins_count );
     for ( int64_t i = 0; i < (int64_t) value.origins_count; ++i )
     {
+        schema_assert( (uint64_t) value.origins[i].type <= 4u ); // the union's top tag is the bound (§4.8)
         TableFixedPut8( b + 121 + i * 73 + 0, (uint8_t) value.origins[i].type );
         switch ( value.origins[i].type )
         {
@@ -20053,12 +20076,14 @@ inline void InsertTextFixedWriteBody( uint8_t * b, const InsertText & value )
             }
             case OriginType::Pid:
             {
+                schema_assert( value.origins[i].pid <= 1000 ); // the declared range is the bound (§3.4)
                 TableFixedPut32( b + 121 + i * 73 + 1, (uint32_t) value.origins[i].pid );
                 break;
             }
             case OriginType::Note:
             {
                 schema_assert( value.origins[i].note.value_length >= 0 && value.origins[i].note.value_length <= 24 ); // the declared length is the bound (§3.4)
+                schema_assert( TableUtf8Valid( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length ) ); // well-formed, no zero byte (§2.13)
                 TableFixedPut32( b + 121 + i * 73 + 1, (uint32_t) value.origins[i].note.value_length );
                 memcpy( b + 121 + i * 73 + 5, value.origins[i].note.value, (size_t) ( value.origins[i].note.value_length ) );
                 break;
@@ -20073,6 +20098,7 @@ inline void InsertTextFixedWriteBody( uint8_t * b, const InsertText & value )
         TableFixedPut32( b + 268, (uint32_t) value.modes_count );
         for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
         {
+            schema_assert( (uint64_t) value.modes[i] <= 2u ); // the enum's top value is the bound (§4.2)
             TableFixedPut8( b + 272 + i * 1 + 0, (uint8_t) value.modes[i] );
         }
     }
@@ -20094,6 +20120,7 @@ inline void EditFixedWriteBody( uint8_t * b, const Edit & value )
     (void) b;
     (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.revision );
+    schema_assert( (uint64_t) value.body.type <= 6u ); // the union's top tag is the bound (§4.8)
     TableFixedPut8( b + 4, (uint8_t) value.body.type );
     switch ( value.body.type )
     {
@@ -20109,6 +20136,7 @@ inline void EditFixedWriteBody( uint8_t * b, const Edit & value )
         }
         case EditBodyType::Tally:
         {
+            schema_assert( value.body.tally >= 0 && value.body.tally <= 100 ); // the declared range is the bound (§3.4)
             TableFixedPut32( b + 5, (uint32_t) value.body.tally );
             break;
         }
@@ -20131,6 +20159,7 @@ inline void EditFixedWriteBody( uint8_t * b, const Edit & value )
         }
         case EditBodyType::Mode:
         {
+            schema_assert( (uint64_t) value.body.mode <= 2u ); // the enum's top value is the bound (§4.2)
             TableFixedPut8( b + 5, (uint8_t) value.body.mode );
             break;
         }
@@ -20145,8 +20174,10 @@ inline void OpenDocumentFixedWriteBody( uint8_t * b, const OpenDocument & value 
     (void) b;
     (void) value;
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
     memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
+    schema_assert( (uint64_t) value.mode <= 2u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 68, (uint8_t) value.mode );
     CursorFixedWriteBody( b + 69, value.cursor );
 }
@@ -20158,6 +20189,7 @@ inline void SaveDocumentFixedWriteBody( uint8_t * b, const SaveDocument & value 
     (void) b;
     (void) value;
     schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
     memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
     TableFixedPut8( b + 68, value.force ? 1 : 0 );
@@ -20170,6 +20202,7 @@ inline void TransactionFixedWriteBody( uint8_t * b, const Transaction & value )
     (void) b;
     (void) value;
     schema_assert( value.reason_length >= 0 && value.reason_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.reason_length );
     memcpy( b + 4, value.reason, (size_t) ( value.reason_length ) );
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // the declared count is the bound (§3.4)
@@ -20180,6 +20213,7 @@ inline void TransactionFixedWriteBody( uint8_t * b, const Transaction & value )
     }
     for ( int64_t i = 0; i < (int64_t) 2; ++i )
     {
+        schema_assert( (uint64_t) value.pending[i].type <= 6u ); // the union's top tag is the bound (§4.8)
         TableFixedPut8( b + 861 + i * 275 + 0, (uint8_t) value.pending[i].type );
         switch ( value.pending[i].type )
         {
@@ -20195,6 +20229,7 @@ inline void TransactionFixedWriteBody( uint8_t * b, const Transaction & value )
             }
             case EditBodyType::Tally:
             {
+                schema_assert( value.pending[i].tally >= 0 && value.pending[i].tally <= 100 ); // the declared range is the bound (§3.4)
                 TableFixedPut32( b + 861 + i * 275 + 1, (uint32_t) value.pending[i].tally );
                 break;
             }
@@ -20217,6 +20252,7 @@ inline void TransactionFixedWriteBody( uint8_t * b, const Transaction & value )
             }
             case EditBodyType::Mode:
             {
+                schema_assert( (uint64_t) value.pending[i].mode <= 2u ); // the enum's top value is the bound (§4.2)
                 TableFixedPut8( b + 861 + i * 275 + 1, (uint8_t) value.pending[i].mode );
                 break;
             }
@@ -20257,6 +20293,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
     (void) b;
     (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.sequence );
+    schema_assert( (uint64_t) value.body.type <= 8u ); // the union's top tag is the bound (§4.8)
     TableFixedPut8( b + 4, (uint8_t) value.body.type );
     switch ( value.body.type )
     {
@@ -20295,6 +20332,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
         }
         case ToolBodyType::Origin:
         {
+            schema_assert( (uint64_t) value.body.origin.type <= 4u ); // the union's top tag is the bound (§4.8)
             TableFixedPut8( b + 5, (uint8_t) value.body.origin.type );
             switch ( value.body.origin.type )
             {
@@ -20310,12 +20348,14 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
                 }
                 case OriginType::Pid:
                 {
+                    schema_assert( value.body.origin.pid <= 1000 ); // the declared range is the bound (§3.4)
                     TableFixedPut32( b + 6, (uint32_t) value.body.origin.pid );
                     break;
                 }
                 case OriginType::Note:
                 {
                     schema_assert( value.body.origin.note.value_length >= 0 && value.body.origin.note.value_length <= 24 ); // the declared length is the bound (§3.4)
+                    schema_assert( TableUtf8Valid( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
                     TableFixedPut32( b + 6, (uint32_t) value.body.origin.note.value_length );
                     memcpy( b + 10, value.body.origin.note.value, (size_t) ( value.body.origin.note.value_length ) );
                     break;
@@ -20334,6 +20374,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
     TableFixedPut32( b + 1458, (uint32_t) value.history_count );
     for ( int64_t i = 0; i < (int64_t) value.history_count; ++i )
     {
+        schema_assert( (uint64_t) value.history[i].type <= 8u ); // the union's top tag is the bound (§4.8)
         TableFixedPut8( b + 1462 + i * 1454 + 0, (uint8_t) value.history[i].type );
         switch ( value.history[i].type )
         {
@@ -20372,6 +20413,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
             }
             case ToolBodyType::Origin:
             {
+                schema_assert( (uint64_t) value.history[i].origin.type <= 4u ); // the union's top tag is the bound (§4.8)
                 TableFixedPut8( b + 1462 + i * 1454 + 1, (uint8_t) value.history[i].origin.type );
                 switch ( value.history[i].origin.type )
                 {
@@ -20387,12 +20429,14 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
                     }
                     case OriginType::Pid:
                     {
+                        schema_assert( value.history[i].origin.pid <= 1000 ); // the declared range is the bound (§3.4)
                         TableFixedPut32( b + 1462 + i * 1454 + 2, (uint32_t) value.history[i].origin.pid );
                         break;
                     }
                     case OriginType::Note:
                     {
                         schema_assert( value.history[i].origin.note.value_length >= 0 && value.history[i].origin.note.value_length <= 24 ); // the declared length is the bound (§3.4)
+                        schema_assert( TableUtf8Valid( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length ) ); // well-formed, no zero byte (§2.13)
                         TableFixedPut32( b + 1462 + i * 1454 + 2, (uint32_t) value.history[i].origin.note.value_length );
                         memcpy( b + 1462 + i * 1454 + 6, value.history[i].origin.note.value, (size_t) ( value.history[i].origin.note.value_length ) );
                         break;
@@ -20423,6 +20467,7 @@ inline void ToolMessageFixedWriteBody( uint8_t * b, const ToolMessage & value )
     {
         for ( int64_t i = 0; i < (int64_t) 2; ++i )
         {
+            schema_assert( (uint64_t) value.marks[i] <= 2u ); // the enum's top value is the bound (§4.2)
             TableFixedPut8( b + 4592 + i * 1 + 0, (uint8_t) value.marks[i] );
         }
     }

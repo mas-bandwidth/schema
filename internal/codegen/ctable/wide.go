@@ -61,6 +61,23 @@ func tableWideLit(v *big.Int, signed bool) string {
 	return fmt.Sprintf("%s_make( %sull, %sull )", prefix, hi, lo)
 }
 
+// wideRangeCmp renders a write-side range comparison for a scalar's raw value:
+// the plain operators at every width but 128, where the value is a struct and
+// the compare is the runtime's table_fixed_cmp128_* — the twin of the
+// read-side bounds' cmp (fixedform.go emitFixedClampElement). op is one of
+// ">=" or "<=".
+func wideRangeCmp(expr, op string, v *big.Int, signed bool, width int) string {
+	if width != 16 {
+		return fmt.Sprintf("%s %s %s", expr, op, tableIntLit(v, signed, width))
+	}
+	fn := "table_fixed_cmp128_u"
+	if signed {
+		fn = "table_fixed_cmp128_i"
+	}
+	lo, hi := wideLanes(v)
+	return fmt.Sprintf("%s( %s, %sull, %sull ) %s 0", fn, expr, hi, lo, op)
+}
+
 func byteLiterals(b []byte) string {
 	parts := make([]string, len(b))
 	for i, v := range b {

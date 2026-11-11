@@ -10045,12 +10045,14 @@ inline bool TeamConfigSaveMessageBody( TableBitWriter & w, const TeamConfig & va
     if ( value.spawn_count != 4 )
     {
         w.put( 92, kTableMessageRefBitsHere );
+        schema_assert( value.spawn_count >= 0 && value.spawn_count <= 64 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.spawn_count ), 7 );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
     if ( value.banner_length > 0 )
     {
         w.put( 93, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.banner_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.banner, value.banner_length );
@@ -13764,6 +13766,7 @@ inline bool ScoreBoardSaveMessageBody( TableBitWriter & w, const ScoreBoard & va
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Team) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( value.per_team[i] >= 0 && value.per_team[i] <= 100000 ); // the declared range is the bound (§3.3)
                 w.put( (uint64_t) ( value.per_team[i] ), 17 );
             }
         }
@@ -14031,8 +14034,10 @@ inline void TeamConfigFixedWriteBody( uint8_t * b, const TeamConfig & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.spawn_count >= 0 && value.spawn_count <= 64 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.spawn_count );
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 4, (uint32_t) value.banner_length );
     memcpy( b + 8, value.banner, (size_t) ( value.banner_length ) );
 }
@@ -14084,6 +14089,7 @@ inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
     (void) value;
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
+        schema_assert( value.per_team[i] >= 0 && value.per_team[i] <= 100000 ); // the declared range is the bound (§3.4)
         TableFixedPut32( b + 0 + i * 4 + 0, (uint32_t) value.per_team[i] );
     }
 }

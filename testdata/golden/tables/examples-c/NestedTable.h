@@ -5481,6 +5481,8 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_message_body(tabledemo_ta
  { /* count */
  if(!(value->count == 1)) {
   tabledemo_table_bit_put(w,2,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  schema_assert( value->count >= 0 && value->count <= 100 );
+  /* the declared range is the bound (§3.3) */
   tabledemo_table_bit_put(w,(uint64_t)(value->count)-UINT64_C(0),7);
  }
  }
@@ -5625,6 +5627,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive
 {
     (void) b; (void) value;
     schema_tabledemo_root_config_fixed_write_body_( b + 0, &value->root );
+    schema_assert( value->count >= 0 && value->count <= 100 ); /* the declared range is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 1248, (uint32_t) value->count );
 }
 

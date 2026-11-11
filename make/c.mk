@@ -2199,10 +2199,10 @@ define conformance-negative-control-c-wref
 		echo "NEGATIVE CONTROL FAILED: the C $(5) writer without its $(1) check left the harness green"; \
 		cat build/conformance-negative-c-$(1)/log; exit 1; \
 	fi
-	@grep -Eq '^$(5) +FAIL ' build/conformance-negative-c-$(1)/log || \
+	@grep -Eq '^$(5) *FAIL ' build/conformance-negative-c-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(5)"; \
 		  cat build/conformance-negative-c-$(1)/log; exit 1; }
-	@grep -Eq '^$(6) +pass ' build/conformance-negative-c-$(1)/log || \
+	@grep -Eq '^$(6) *pass ' build/conformance-negative-c-$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: $(6) went red too, so the control localizes nothing"; \
 		  cat build/conformance-negative-c-$(1)/log; exit 1; }
 	@grep -m1 "c / $(5)" build/conformance-negative-c-$(1)/log
@@ -2211,12 +2211,12 @@ endef
 
 .PHONY: conformance-negative-control-c-write-refusal
 conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal,if ( value->version_note_length < 0 || value->version_note_length > 16 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no variable length check,write-refusal,wire)
+	$(call conformance-negative-control-c-wref,write-refusal,schema_assert( value->penetration >= 0 && value->penetration <= 10 );,(void)0; /* SABOTAGED: no fixed range check */,SABOTAGED: no fixed range check,write-refusal,wire)
 
 .PHONY: conformance-negative-control-c-write-refusal-fixed
 conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal-fixed,schema_assert( value->version_note_length >= 0 && value->version_note_length <= 16 );,(void)0; /* SABOTAGED: no fixed length check */,SABOTAGED: no fixed length check,write-refusal-fixed,wire)
+	$(call conformance-negative-control-c-wref,write-refusal-fixed,schema_assert( (uint64_t) value->grade <= 3u );,(void)0; /* SABOTAGED: no fixed enum check */,SABOTAGED: no fixed enum check,write-refusal-fixed,wire)
 
 .PHONY: conformance-negative-control-c-write-refusal-message
 conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
-	$(call conformance-negative-control-c-wref,write-refusal-message,if ( value->sku_length < 0 || value->sku_length > 32 ) { return 0; },if ( false ) { return 0; },SABOTAGED: no message length check,write-refusal-message,message)
+	$(call conformance-negative-control-c-wref,write-refusal-message,schema_assert( value->quantity >= 1 && value->quantity <= 99 );,(void)0; /* SABOTAGED: no message range check */,SABOTAGED: no message range check,write-refusal-message,message)

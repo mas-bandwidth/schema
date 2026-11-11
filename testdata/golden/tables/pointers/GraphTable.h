@@ -8620,12 +8620,14 @@ inline bool MetaSaveMessageBody( TableBitWriter & w, const Meta & value )
     if ( value.build != 1 )
     {
         w.put( 1, kTableMessageRefBitsHere );
+        schema_assert( value.build >= 0 && value.build <= 1000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.build ), 10 );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
     if ( value.tag_length > 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.tag_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.tag, value.tag_length );
@@ -9239,12 +9241,14 @@ inline bool SettingsSaveMessageBody( TableBitWriter & w, const Settings & value 
     if ( value.quality != 2 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( value.quality >= 0 && value.quality <= 4 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.quality ), 3 );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.label_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
@@ -11730,8 +11734,10 @@ inline void MetaFixedWriteBody( uint8_t * b, const Meta & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.build >= 0 && value.build <= 1000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.build );
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 4, (uint32_t) value.tag_length );
     memcpy( b + 8, value.tag, (size_t) ( value.tag_length ) );
 }
@@ -11742,8 +11748,10 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.quality >= 0 && value.quality <= 4 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.quality );
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 4, (uint32_t) value.label_length );
     memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }

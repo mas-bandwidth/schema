@@ -5591,6 +5591,8 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_b
  if(value->label_length != 0) {
   tabledemo_table_bit_put(w,101,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>70000) return 0;
+  schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+  /* well-formed, no zero byte (§2.13) */
   tabledemo_table_bit_put(w,(uint64_t)value->label_length,17);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->label,value->label_length);

@@ -10194,11 +10194,13 @@ inline bool WeaponConfigSaveMessageBody( TableBitWriter & w, const WeaponConfig 
     if ( value.penetration != 1 )
     {
         w.put( 97, kTableMessageRefBitsHere );
+        schema_assert( value.penetration >= 0 && value.penetration <= 10 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.penetration ), 4 );
     }
     if ( value.channel != 0 )
     {
         w.put( 98, kTableMessageRefBitsHere );
+        schema_assert( value.channel <= 63ull ); // the bits(6) width is the bound (§4.2)
         w.put( (uint64_t) ( value.channel ), 6 );
     }
     if ( value.homing != false )
@@ -13153,6 +13155,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
     if ( value.name_length > 0 )
     {
         w.put( 32, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -14606,6 +14609,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
     if ( value.version_note_length > 0 )
     {
         w.put( 85, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // well-formed, no zero byte (§2.13)
         w.put( (uint64_t) value.version_note_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
@@ -15239,6 +15243,7 @@ inline bool AttachmentSaveMessageBody( TableBitWriter & w, const Attachment & va
     if ( value.slot != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
+        schema_assert( value.slot >= 0 && value.slot <= 7 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.slot ), 3 );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -16253,6 +16258,7 @@ inline bool DebuffSaveMessageBody( TableBitWriter & w, const Debuff & value )
     if ( value.amount != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( value.amount >= 0 && value.amount <= 100 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.amount ), 7 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -16561,6 +16567,7 @@ inline void DebuffFixedWriteBody( uint8_t * b, const Debuff & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.amount >= 0 && value.amount <= 100 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.amount );
 }
 
@@ -16572,9 +16579,12 @@ inline void WeaponConfigFixedWriteBody( uint8_t * b, const WeaponConfig & value 
     (void) value;
     TableFixedPutF32( b + 0, value.damage );
     TableFixedPutF32( b + 4, value.speed );
+    schema_assert( value.penetration >= 0 && value.penetration <= 10 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 8, (uint32_t) value.penetration );
+    schema_assert( value.channel <= 63ull ); // the bits(6) width is the bound (§4.2)
     TableFixedPut32( b + 12, (uint32_t) value.channel );
     TableFixedPut8( b + 16, value.homing ? 1 : 0 );
+    schema_assert( (uint64_t) value.effect.type <= 2u ); // the union's top tag is the bound (§4.8)
     TableFixedPut8( b + 17, (uint8_t) value.effect.type );
     switch ( value.effect.type )
     {
@@ -16598,6 +16608,7 @@ inline void AttachmentFixedWriteBody( uint8_t * b, const Attachment & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.slot >= 0 && value.slot <= 7 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.slot );
     TableFixedPutF32( b + 4, value.power );
 }
@@ -16608,15 +16619,18 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
 {
     (void) b;
     (void) value;
+    schema_assert( (uint64_t) value.grade <= 3u ); // the enum's top value is the bound (§4.2)
     TableFixedPut8( b + 0, (uint8_t) value.grade );
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 1, (uint32_t) value.grades_count );
     for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
     {
+        schema_assert( (uint64_t) value.grades[i] <= 3u ); // the enum's top value is the bound (§4.2)
         TableFixedPut8( b + 5 + i * 1 + 0, (uint8_t) value.grades[i] );
     }
     for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
+        schema_assert( (uint64_t) value.podium[i] <= 3u ); // the enum's top value is the bound (§4.2)
         TableFixedPut8( b + 9 + i * 1 + 0, (uint8_t) value.podium[i] );
     }
     TableFixedPut64( b + 12, (uint64_t) value.perks );
@@ -16640,6 +16654,7 @@ inline void ProfileConfigFixedWriteBody( uint8_t * b, const ProfileConfig & valu
     (void) b;
     (void) value;
     schema_assert( value.name_length >= 0 && value.name_length <= 32 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
     memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
     schema_assert( value.icon_length >= 0 && value.icon_length <= 16 ); // the declared length is the bound (§3.4)
@@ -16668,6 +16683,7 @@ inline void RootConfigFixedWriteBody( uint8_t * b, const RootConfig & value )
     (void) b;
     (void) value;
     schema_assert( value.version_note_length >= 0 && value.version_note_length <= 16 ); // the declared length is the bound (§3.4)
+    schema_assert( TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ); // well-formed, no zero byte (§2.13)
     TableFixedPut32( b + 0, (uint32_t) value.version_note_length );
     memcpy( b + 4, value.version_note, (size_t) ( value.version_note_length ) );
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // the declared count is the bound (§3.4)

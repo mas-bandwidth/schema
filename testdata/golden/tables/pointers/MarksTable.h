@@ -8152,6 +8152,7 @@ inline bool TallySaveMessageBody( TableBitWriter & w, const Tally & value )
     if ( value.hits != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( value.hits >= 0 && value.hits <= 10000 ); // the declared range is the bound (§3.3)
         w.put( (uint64_t) ( value.hits ), 14 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8597,6 +8598,7 @@ inline void TallyFixedWriteBody( uint8_t * b, const Tally & value )
 {
     (void) b;
     (void) value;
+    schema_assert( value.hits >= 0 && value.hits <= 10000 ); // the declared range is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.hits );
 }
 
