@@ -1464,25 +1464,31 @@ write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_
 
 # THE WRITE-REFUSAL NEGATIVE CONTROLS, C# side (docs/SPEC.md §5.1). The
 # conformance driver is built Debug against a copy of the generated tree with
-# one write check removed, and the surface that writer serves must go red while
-# the surface beside it stays green. Nothing tracked is written to.
+# one write check removed, and the surface that writer serves must go red by
+# the one case that check refuses while the surface beside it stays green. The
+# sabotaged driver must compile under the leg's warnings-as-errors and answer.
+# Nothing tracked is written to. Every write-refusal row names a fixed root, so
+# each surface's writer is the fixed form's: the finite check is the fixed
+# finite pass's. The message writer holds a text's length check three times,
+# at the field, at its payload and at the text element, so that control
+# removes all three.
 .PHONY: conformance-negative-control-cs-write-refusal
 conformance-negative-control-cs-write-refusal: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-control \
-		's/if \(!float\.IsFinite\(v\.Damage\)\) return false;/\/* SABOTAGED: a non-finite float writes *\//' \
-		'if \(!float\.IsFinite\(v\.Damage\)\) return false;' write-refusal wire
-	@echo 'C# write-refusal negative control: the writer without its finite check is detected by cs / write-refusal; wire stays green'
+		's/if \(!float\.IsFinite\(value\.Damage\)\) return "WeaponConfig\.damage";/\/* SABOTAGED: a non-finite float writes *\//' \
+		'if \(!float\.IsFinite\(value\.Damage\)\) return "WeaponConfig\.damage";' write-refusal wref_non_finite wire
+	@echo 'C# write-refusal negative control: the writer without its finite check is detected by cs / write-refusal wref_non_finite; wire stays green'
 
 .PHONY: conformance-negative-control-cs-write-refusal-fixed
 conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-fixed-control \
 		's/System\.Diagnostics\.Debug\.Assert\(len_version_note <= 16\);/\/* SABOTAGED: no fixed length check *\//' \
-		'Debug\.Assert\(len_version_note <= 16\);' write-refusal-fixed wire
-	@echo 'C# write-refusal-fixed negative control: the fixed writer without its length check is detected by cs / write-refusal-fixed; wire stays green'
+		'Debug\.Assert\(len_version_note <= 16\);' write-refusal-fixed fref_length wire
+	@echo 'C# write-refusal-fixed negative control: the fixed writer without its length check is detected by cs / write-refusal-fixed fref_length; wire stays green'
 
 .PHONY: conformance-negative-control-cs-write-refusal-message
 conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
-		's/if \(f\.Counted && \(Count\(value, f\) < 0 \|\| Count\(value, f\) > f\.ArrayBound\)\) \{ return false; \}/if (false) { return false; } \/* SABOTAGED: no message length check *\//' \
-		'f\.Counted && \(Count\(value, f\) < 0' write-refusal-message message
-	@echo 'C# write-refusal-message negative control: the message writer without its count check is detected by cs / write-refusal-message; message stays green'
+		's/if \(f\.Counted && \(Count\(value, f\) < 0 \|\| Count\(value, f\) > f\.ArrayBound\)\) \{ return false; \}/\/* SABOTAGED: no message length check *\//; s/if \(f\.Counted && \(count < 0 \|\| count > f\.ArrayBound\)\) \{ return false; \}/\/* SABOTAGED: no message length check *\//; s/return count >= 0 && count <= f\.ArrayBound && TextValid\(f\.GetBuffer\(value\)\.AsSpan\(0, count\)\);/return TextValid(f.GetBuffer(value).AsSpan(0, count)); \/* SABOTAGED: no message length check *\//' \
+		'f\.Counted && \(Count\(value, f\) < 0' write-refusal-message mref_length message
+	@echo 'C# write-refusal-message negative control: the message writer without its count check is detected by cs / write-refusal-message mref_length; message stays green'
