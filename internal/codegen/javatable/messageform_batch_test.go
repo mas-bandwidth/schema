@@ -483,6 +483,7 @@ func runMessageBatchProbeWithin(t *testing.T, u *ir.Unit, body string, timeout t
 	var names []string
 	for name := range files {
 		keep := name == "TableFixed.java" ||
+			name == "TableVariable.java" ||
 			name == "TableVocabulary.java" ||
 			name == "TableMessage.java" ||
 			strings.HasSuffix(name, "Fixed.java") ||
