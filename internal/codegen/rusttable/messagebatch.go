@@ -395,7 +395,9 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the ids this body has carried are held in a fixed stack set.
+	// or unknown: the ids this body has carried are held in a fixed stack set,
+	// and the vector only owns ids past its capacity, so every id is covered
+	// without an allocation for an ordinary body.
 	m.pf("    let mut seen_ids = [0u64; 64];\n")
 	m.pf("    let mut seen_count = 0usize;\n")
 	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
