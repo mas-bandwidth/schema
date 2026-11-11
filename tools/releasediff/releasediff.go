@@ -564,7 +564,7 @@ func run1(dir string, env []string, name string, args ...string) (string, error)
 				return "", errors.New(strings.TrimSpace(l))
 			}
 		}
-		return "", fmt.Errorf("%v: %s", err, msg)
+		return "", fmt.Errorf("%w: %s", err, msg)
 	}
 	return out.String(), nil
 }
