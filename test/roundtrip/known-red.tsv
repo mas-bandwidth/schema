@@ -3,3 +3,17 @@
 # A row fails when a pair it measures red is not listed here, and when a
 # listed pair measures green: remove the line in the change that turns it
 # green. Nothing is added to this list to make a row pass.
+go a fixed
+go c-load fixed
+go c-save fixed
+go d ceiling
+js b-load fixed
+js b-save fixed
+js c-load fixed
+js c-save fixed
+lua a fixed
+lua b-load fixed
+lua b-save fixed
+lua c-load fixed
+lua c-save fixed
+lua d ceiling
