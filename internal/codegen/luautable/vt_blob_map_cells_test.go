@@ -153,12 +153,11 @@ func vtRun(t *testing.T, schemaPath, schema, main string, inputs map[string][]by
 	return strings.TrimRight(string(luaurun.Run(t, g.dir, "main.luau", inputs)), "\n")
 }
 
-// vtDropDuplicateRefusal is the sabotage: remove the duplicate-key refusal from
-// the strict read's refusing set (schema_load.luau's REFUSING), so a repeated
-// map key reads instead of refusing.
+// vtDupFrom/vtDupTo is the sabotage: weaken the map read's ascending-key check
+// (schema_load.luau read_map) so a repeated map key reads instead of refusing.
 const (
-	vtDupFrom = `{ "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch", "duplicate" }`
-	vtDupTo   = `{ "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch" }`
+	vtDupFrom = repeatedKeyCheckFrom
+	vtDupTo   = repeatedKeyCheckTo
 )
 
 // vtSuite runs every probe of this card — the comprehensive all-cells wires,
@@ -206,8 +205,8 @@ func TestLuauVtBlobMapCells(t *testing.T) {
 	}
 }
 
-// TestLuauVtBlobMapCellsNegativeControl drops the duplicate-key refusal from the
-// strict read's refusing set in the real schema_load.luau and requires a
+// TestLuauVtBlobMapCellsNegativeControl weakens the map read's ascending-key
+// check in the real schema_load.luau and requires a
 // repeated map key, which must refuse, to start reading: the row goes red.
 func TestLuauVtBlobMapCellsNegativeControl(t *testing.T) {
 	t.Parallel()

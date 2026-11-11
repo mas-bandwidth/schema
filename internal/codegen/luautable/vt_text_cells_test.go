@@ -445,7 +445,7 @@ func TestLuauVtTextCells(t *testing.T) {
 //  1. disabling the strict refusal loop in J.FromJson lets hostile inputs pass;
 //  2. capping float32 formatting in J.ToJson at six significant digits breaks
 //     json-write byte equality against the Go engine;
-//  3. dropping duplicate from schema_load.luau's REFUSING set lets a forged
+//  3. weakening schema_load.luau's ascending map-key check lets a forged
 //     repeated-key wire pass ReadStrict.
 func TestLuauVtTextCellsNegativeControl(t *testing.T) {
 	t.Parallel()
@@ -468,8 +468,8 @@ func TestLuauVtTextCellsNegativeControl(t *testing.T) {
 		{
 			name: "load-strict-duplicate-disabled",
 			file: "schema_load.luau",
-			from: `"blobShared", "clamped", "kindMismatch", "duplicate" }`,
-			to:   `"blobShared", "clamped", "kindMismatch" }`,
+			from: repeatedKeyCheckFrom,
+			to:   repeatedKeyCheckTo,
 		},
 	}
 	for _, tc := range controls {

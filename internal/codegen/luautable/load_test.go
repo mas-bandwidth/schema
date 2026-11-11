@@ -312,28 +312,27 @@ func TestLuauTableLoadMatchesTheReports(t *testing.T) {
 }
 
 // TestLuauTableLoadNegativeControl patches the emitted runtime in memory — one
-// anchor, matched exactly once — so a duplicate key is not counted, and
-// requires the walk's duplicate count to go red. Two map entries claiming one
-// key (docs/SPEC-TABLES.md §4). OWED: strict-only decision 5 makes this wire
-// damage; the strict wire read does not refuse it yet.
+// anchor, matched exactly once — so a repeated map key passes the map read's
+// ascending check, and requires the walk's damage verdict to go red. Two map
+// entries claiming one key are damage (strict-only decision 5;
+// docs/SPEC-TABLES.md §2.8, §4), as the engine's decode holds.
 func TestLuauTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
 	g := generateFiles(t, map[string]string{"Dup.schema": "package dup\ntable Box\n{\n    m map[uint8]uint8\n}\n"})
-	const want = "duplicate=1"
+	const want = "malformed=true"
 	wire := duplicateMapWire(t)
 	if got := runWire(t, g, "Box", wire); got != want {
-		t.Fatalf("the control, an unpatched duplicate: got %s, want %s", got, want)
+		t.Fatalf("the control, an unpatched repeated key: got %s, want %s", got, want)
 	}
 	path := filepath.Join(g.dir, "schema_load.luau")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "report.duplicate = report.duplicate + 1"
-	if strings.Count(string(src), anchor) != 1 {
-		t.Fatalf("the duplicate anchor is not in the emitted runtime exactly once")
+	if strings.Count(string(src), repeatedKeyCheckFrom) != 1 {
+		t.Fatalf("the ascending-key anchor is not in the emitted runtime exactly once")
 	}
-	patched := strings.Replace(string(src), anchor, "report.duplicate = report.duplicate + 0", 1)
+	patched := strings.Replace(string(src), repeatedKeyCheckFrom, repeatedKeyCheckTo, 1)
 	if patched == string(src) {
 		t.Fatal("the patch changed nothing")
 	}
@@ -342,12 +341,12 @@ func TestLuauTableLoadNegativeControl(t *testing.T) {
 	}
 	got := runWire(t, g, "Box", wire)
 	if got == want {
-		t.Fatalf("the patched runtime still reports the duplicate: %s", got)
+		t.Fatalf("the patched runtime still reports the damage: %s", got)
 	}
 	t.Logf("the reports comparison went red: got %s, want %s", got, want)
 }
 
-// runWire walks one wire at a root and prints the walk's duplicate count, the
+// runWire walks one wire at a root and prints the walk's damage verdict, the
 // diagnostic TestLuauTableLoadNegativeControl holds.
 func runWire(t *testing.T, g *generatedUnit, rootName string, wire []byte) string {
 	t.Helper()
@@ -355,7 +354,7 @@ func runWire(t *testing.T, g *generatedUnit, rootName string, wire []byte) strin
 	probe, _, _ = strings.Cut(probe, "local v = load.load(")
 	probe += fmt.Sprintf(`local report: any = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 load.loadWalk(%q, inputs.wire, report)
-print("duplicate=" .. tostring(report.duplicate))
+print("malformed=" .. tostring(report.malformed))
 `, rootName)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(probe), 0o644); err != nil {
 		t.Fatal(err)

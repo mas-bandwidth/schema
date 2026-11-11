@@ -123,12 +123,21 @@ func TestLuauMapRepeatedKeyRefused(t *testing.T) {
 	}
 }
 
-// TestLuauMapRepeatedKeyRefusedNegativeControl drops the repeat from the strict
-// read's refusing set and requires the row to go red.
+// The sabotage every repeated-key control plants: schema_load.luau's map read
+// marks the load damaged at the first key that does not ascend strictly
+// (docs/SPEC-TABLES.md §2.8, §4); weakened to "descends", a repeated key is
+// landed beside the one it repeats and the value reads.
+const (
+	repeatedKeyCheckFrom = "\t\t\t\tif order >= 0 then\n"
+	repeatedKeyCheckTo   = "\t\t\t\tif order > 0 then\n"
+)
+
+// TestLuauMapRepeatedKeyRefusedNegativeControl lets a repeated key past the
+// map read's ascending check and requires the row to go red.
 func TestLuauMapRepeatedKeyRefusedNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
-	out := repeatedKeyRun(t, `"blobShared", "clamped", "kindMismatch", "duplicate" }`, `"blobShared", "clamped", "kindMismatch" }`)
+	out := repeatedKeyRun(t, repeatedKeyCheckFrom, repeatedKeyCheckTo)
 	if out == repeatedKeyWant {
 		t.Fatalf("the planted defect left the row green:\n%s", out)
 	}
