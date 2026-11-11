@@ -180,10 +180,6 @@ abstract final class TableFixedRefusal {
   static const int layoutUnknown = 15;
   static const int layoutUnsupported = 16;
 
-  /// RETIRED (docs/SPEC-TABLES.md §21.3): the same answer as layoutUnknown,
-  /// kept so a locked caller's spelling still compiles; no read emits it.
-  static const int layoutNewer = layoutUnknown;
-
   /// ILL-FORMED TEXT IN THE USED UNITS REFUSES THE WHOLE READ BY NAME. The
   /// content rules hold the USED units and never the slack, and a violation is
   /// a refusal and not the reference's 'malformed' (docs/FIXED-FORM-ALGORITHM.md

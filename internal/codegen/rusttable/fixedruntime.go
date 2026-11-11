@@ -286,11 +286,6 @@ pub enum TableFixedReason {
 }
 
 impl TableFixedReason {
-    /// RETIRED (docs/SPEC-TABLES.md §21.3): the same answer as LayoutUnknown,
-    /// kept so a locked caller's spelling still compiles; no read emits it.
-    #[allow(non_upper_case_globals)]
-    pub const LayoutNewer: TableFixedReason = TableFixedReason::LayoutUnknown;
-
     pub fn name(&self) -> &'static str {
         match self {
             Self::None => "none",

@@ -517,13 +517,7 @@ public final class TableFixed {
         nonFiniteFloat,
         outOfRange,
         countOverBound,
-        lengthOverBound;
-
-        /**
-         * RETIRED (docs/SPEC-TABLES.md §21.3): the same answer as layoutUnknown, kept so a locked
-         * caller's spelling still compiles; no read emits it.
-         */
-        public static final Reason layoutNewer = layoutUnknown;
+        lengthOverBound
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */
