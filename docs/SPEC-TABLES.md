@@ -284,9 +284,9 @@ none for a `table` — neither declares the member nor reads it. Every generated
 language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C#, Go, Rust,
-Elixir and Java. Section 3.4's FIXED form is carried by the C++ reference, by
-Go, by Rust, by Elixir, by Java, by Dart, and by JavaScript, whose
+reference, the compiler engine (`internal/tablewire`), C, C#, Go, Dart,
+JavaScript, Rust, Elixir and Java. Section 3.4's FIXED form is carried by the
+C++ reference, by Go, by Rust, by Elixir, by Java, by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
