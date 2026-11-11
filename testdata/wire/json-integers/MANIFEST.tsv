@@ -1,0 +1,25 @@
+# The JSON wide-integer and integer-token vectors (docs/SPEC-TABLES.md §16.2;
+# docs/rulings.json json-wide-integers-are-strings, json-integer-token-only).
+# The table is Counts in testdata/wire/json-integers/JsonIntegers.schema. A kind
+# whose storage is wider than 32 bits — int64, uint64, int128 and a
+# fixed(I, F) with I + F wider than 32 bits — is written as a string of decimal
+# digits and read from either the string or the number; an integer field takes
+# an integer token only: digits with an optional minus, no fraction, no
+# exponent, not -0.
+#
+# Columns: name, schema, root, json file, verdict, recommended reason.
+# A reason of "-" means the verdict is the contract and the name is per-language
+# detail (docs/rulings.json refusal-verdict-only).
+canonical	testdata/wire/json-integers	Counts	canonical.json	read	-
+wide-as-numbers	testdata/wire/json-integers	Counts	wide-as-numbers.json	read	-
+int32-fraction	testdata/wire/json-integers	Counts	int32-fraction.json	refused	kind_mismatch
+int32-exponent	testdata/wire/json-integers	Counts	int32-exponent.json	refused	kind_mismatch
+int32-negative-zero	testdata/wire/json-integers	Counts	int32-negative-zero.json	refused	kind_mismatch
+int64-fraction	testdata/wire/json-integers	Counts	int64-fraction.json	refused	kind_mismatch
+int64-string-fraction	testdata/wire/json-integers	Counts	int64-string-fraction.json	refused	kind_mismatch
+int64-string-exponent	testdata/wire/json-integers	Counts	int64-string-exponent.json	refused	kind_mismatch
+int64-string-negative-zero	testdata/wire/json-integers	Counts	int64-string-negative-zero.json	refused	kind_mismatch
+int64-one-past	testdata/wire/json-integers	Counts	int64-one-past.json	refused	out_of_range
+uint64-one-past	testdata/wire/json-integers	Counts	uint64-one-past.json	refused	out_of_range
+int128-one-past	testdata/wire/json-integers	Counts	int128-one-past.json	refused	out_of_range
+ranged-one-past	testdata/wire/json-integers	Counts	ranged-one-past.json	refused	out_of_range

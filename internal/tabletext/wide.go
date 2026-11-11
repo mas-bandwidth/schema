@@ -164,6 +164,23 @@ func FormatWide(raw *big.Int, kind, frac int) string {
 	return b.String()
 }
 
+// jsonStringInteger reports whether a field's integer or fixed-point value is
+// written as a JSON string of decimal digits and read from either a string or
+// a number (docs/SPEC-TABLES.md §16.2, docs/rulings.json
+// `json-wide-integers-are-strings`): the kind's storage is wider than 32 bits.
+// A timestamp is its own string row and is never this rule's; a float has no
+// integer spelling and is never this rule's either.
+func jsonStringInteger(f *ir.Field) bool {
+	if f.Type.Timestamp {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TFixed:
+		return f.Type.Width > 32
+	}
+	return false
+}
+
 // WideBytes renders a raw integer as its two's-complement bytes at a kind's
 // width, little-endian — the wire's payload and the little-endian region's
 // slot alike.

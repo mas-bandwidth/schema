@@ -34,10 +34,10 @@
         "experience": 777,
         "tilt": -12,
         "heading": -30000,
-        "timestamp": -5000000000,
+        "timestamp": "-5000000000",
         "badge": 200,
         "port": 40000,
-        "epoch": 1234605616436508552,
+        "epoch": "1234605616436508552",
         "precision": 2.5,
         "ratings": [
           0,

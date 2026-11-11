@@ -583,11 +583,20 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		w.put(']')
 		return nil
 	}
-	if kind := ir.TableScalarKind(f); ir.TableKindWide(kind) {
-		w.raw(FormatWide(WideValue(cell), kind, f.Type.FracBits))
+	kind := ir.TableScalarKind(f)
+	if ir.TableKindWide(kind) {
+		// A wide kind's value is a string of decimal digits when its storage
+		// is wider than 32 bits (§16.2): the same digits the number form
+		// carried, quoted so no reader rounds them through a double.
+		s := FormatWide(WideValue(cell), kind, f.Type.FracBits)
+		if jsonStringInteger(f) {
+			writeString(w, []byte(s))
+		} else {
+			w.raw(s)
+		}
 		return nil
 	}
-	switch ir.TableScalarKind(f) {
+	switch kind {
 	case ir.TableKindBool:
 		if cell.B {
 			w.raw("true")
@@ -606,11 +615,19 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		var scratch [48]byte
 		writeString(w, time.Unix(0, cell.I).UTC().AppendFormat(scratch[:0], time.RFC3339Nano))
 		return nil
-	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32, ir.TableKindI64:
+	case ir.TableKindI8, ir.TableKindI16, ir.TableKindI32:
 		w.raw(strconv.FormatInt(cell.I, 10))
 		return nil
+	case ir.TableKindI64:
+		writeString(w, []byte(strconv.FormatInt(cell.I, 10)))
+		return nil
 	default:
-		w.raw(strconv.FormatUint(cell.U, 10))
+		s := strconv.FormatUint(cell.U, 10)
+		if jsonStringInteger(f) {
+			writeString(w, []byte(s))
+		} else {
+			w.raw(s)
+		}
 		return nil
 	}
 }

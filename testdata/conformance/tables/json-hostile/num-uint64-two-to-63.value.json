@@ -8,10 +8,10 @@
       "experience": 0,
       "tilt": 0,
       "heading": 0,
-      "timestamp": 0,
+      "timestamp": "0",
       "badge": 0,
       "port": 0,
-      "epoch": 9223372036854775808,
+      "epoch": "9223372036854775808",
       "precision": 0,
       "ratings": [
         0,

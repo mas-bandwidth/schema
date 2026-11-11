@@ -95,7 +95,7 @@ func TestUncoveredPaths(t *testing.T) {
 		}
 		text := `{
 			"names": { "zz": "last", "a": "first", "ab": "middle" },
-					"blobs": { "1e3": "AQ==", "2.0": "Ag==", "-0": "Aw==" },
+					"blobs": { "1000": "AQ==", "2": "Ag==", "0": "Aw==" },
 			"past": 7
 		}`
 		if !m.Read(inst, []byte(text), &r) || !r.Silent() {
@@ -115,7 +115,7 @@ func TestUncoveredPaths(t *testing.T) {
 		if len(blobs.Entries) != 3 {
 			t.Fatalf("blobs holds %d entries, want 3", len(blobs.Entries))
 		}
-		want := []int64{0, 2, 1000} // -0, 2.0 and 1e3, sorted
+		want := []int64{0, 2, 1000} // 0, 2 and 1000, sorted
 		for i, w := range want {
 			if got := blobs.Entries[i].Tab.Fields[0].Cell.I; got != w {
 				t.Fatalf("blob key %d is %d, want %d", i, got, w)
@@ -141,7 +141,7 @@ func TestUncoveredPaths(t *testing.T) {
 		edgeText := `{ "ids": {
 			"9007199254740993": { "count": 1 },
 			"18446744073709551615": { "count": 2 },
-			"1e3": { "count": 3 }
+			"1000": { "count": 3 }
 		} }`
 		if !m.Read(edge, []byte(edgeText), &er) || er.Refused {
 			t.Fatalf("uint64 keys refused: %+v", er)

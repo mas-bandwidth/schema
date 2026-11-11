@@ -2409,8 +2409,9 @@ shape an enum-keyed array already takes:
 - **An integer key is the integer's decimal spelling, quoted**, because a
   JSON object's keys are strings: `"7"`, `"-3"`,
   `"18446744073709551615"`. The token is read by §16.2's integer rule and by
-  nothing else, so `"2.0"` and `"1e3"` are the integers 2 and 1000 and
-  `"-0"` is zero. A token that rule calls `malformed` makes the KEY
+  nothing else: digits with an optional minus, no fraction, no exponent, and
+  not `-0`, so `"2.0"`, `"1e3"` and `"-0"` each refuse `kind_mismatch`. A
+  token that rule calls `malformed` makes the KEY
   malformed, and the whole read refuses `malformed` (§16.2). A token with a
   genuinely fractional value refuses `kind_mismatch`, and a value outside the
   key kind's range refuses `out_of_range`.
@@ -15798,10 +15799,10 @@ Per kind:
 
 | declaration | JSON | notes |
 |---|---|---|
-| integers, `bits(N)` | number | see **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
+| integers, `bits(N)` | number; string when wider than 32 bits | see **Numbers** below; a kind whose storage is wider than 32 bits — `int64`, `uint64`, `int128`, `uint128`, a `bits(N)` over 32, and a ranged integer whose storage is wider than 32 bits — is written as a string of decimal digits and read from either the string or a number; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
 | `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold refuses `kind_mismatch`, never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
-| `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit; read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
-| `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value refuses `kind_mismatch` |
+| `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS; string when the storage is wider than 32 bits | the spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. Written as the shortest EXACT decimal with at least one fractional digit — a string of those digits when `I + F` is wider than 32 bits; read from any number token, or that string, whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
+| `int128`, `uint128` | string, or a number | a decimal integer as a string of digits, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. The string and the number read the same value; the integer-token rule applies inside the string, and a fractional value refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
 | `bytes(N)` | string, base64 | CANONICAL base64 on write and on read, the text §16.8 defines: the standard alphabet, padded, pad bits zero, and exactly the spelling the writer writes for those bytes. Longer than N bytes refuses `length_over_bound`. Any other spelling that decodes refuses the read (recommended name `base64_not_canonical`). A string that is valid JSON but not base64 at all (a byte outside the alphabet, misplaced padding, no decoding at all) refuses `kind_mismatch` (recommended name; the verdict is the contract, §16.8). The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
@@ -15817,7 +15818,7 @@ Per kind:
 | pointer `*T` | object, or `null` | the pointee's object in place; `null` is a null pointer. A node named MORE THAN ONCE is defined once under `&node`, with its fields, and named by `&node` alone after — §16.7's one construct, and the only thing this form adds for the variable class. An ARRAY of pointers (§2.1) is an array of this row, and a slot may define or name a node any other slot or field does |
 | `*bytes` | string, base64, or `null` | the blob in place, as `bytes(N)` spells its bytes — CANONICAL base64 per §16.8, the text the writer writes — with NO length bound; `""` is a present blob of length zero and `null` is a null reference (§2.5). Any other spelling that decodes refuses the read (recommended name `base64_not_canonical`); a body that is not base64 at all refuses `kind_mismatch` (recommended name; the verdict is the contract, §16.8) |
 | `*string` | string, or `null` | the blob's bytes as a string, with no bound; the same two values at the empty end |
-| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` refuses `length_over_bound`; an integer key is its decimal spelling, quoted, read by the integer rule above and by nothing else, so a token that rule calls `malformed` refuses the read `malformed`, one with a fractional value refuses `kind_mismatch` and one out of the key kind's range refuses `out_of_range`; written in ASCENDING key order; a repeated key refuses `malformed`; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
+| `map[K]V` | object keyed by the KEY | a string key is the string, and one longer than `N` refuses `length_over_bound`; an integer key is its decimal spelling, quoted — the same digits a wide field's string carries — read by the integer rule above and by nothing else, so a token that rule calls `malformed` refuses the read `malformed`, one with a fraction, an exponent or a `-0` refuses `kind_mismatch` and one out of the key kind's range refuses `out_of_range`; written in ASCENDING key order; a repeated key refuses `malformed`; every key of the object is a key of the map, so the `&` prefix is ordinary data here and `&node` lives in the value's object (§2.8, §16.7); a `?T` VALUE (`map[K]?T`) is written `null` when ABSENT and as its value when PRESENT, defaults included, and read the same way: the object's key is the ENTRY and never the value's presence, so `null` is the one spelling of an absent value and any other value is present (§2.3); an OPTIONAL MAP (`?map[K]V`) is a `?T` at its field: ABSENT writes no key, PRESENT writes the object, `{}` when empty, and a `null` reads as ABSENT (§2.8) |
 | text list `[..N]string(M)`, `[]string(M)` | array of strings | `["a","b"]`, `[]` for an empty list, written in INDEX order (§2.13). An element that is not a string, `null` included, refuses `kind_mismatch`; an element longer than `M` refuses `length_over_bound`, and a count past a `[..N]` bound refuses `count_over_bound` |
 | unbounded text list `[]string`, `[..N]string` | array of strings | `["a","b"]` as above, with NO element bound: no element is refused for its length; a `[..N]` count past `N` refuses `count_over_bound` (§2.13.1) |
 | unbounded text list `[]?string`, `[..N]?string` | array of strings and `null` | as the `?string(M)` row, with no element bound |
@@ -15858,15 +15859,13 @@ the value under an unknown key included: 128 container levels are read and 129
 refuse. The write's cap at the same number counts table and type values only
 (W2), so the two caps share a number and not a unit.
 
-**Numbers.** JSON has ONE number type, so an integer field accepts any
-token whose VALUE is integral — `2`, `2.0` and `1e3` are the integers 2, 2
-and 1000 — because that is how every library that round-trips numbers
-through a double writes them, and meeting an existing text is what §16.4
-exists for. A token with a genuinely fractional value in an integer field
-refuses `kind_mismatch`. A value outside the field's declared or implied
-range refuses `out_of_range` (**Bounds**, below); a float value the field's
-width cannot represent refuses `kind_mismatch`, so an infinity is never
-stored. **A float field reads a token by ONE correctly rounded conversion**
+**Numbers.** An integer field takes an INTEGER TOKEN and nothing else: digits
+with an optional minus, no fraction, no exponent, and not `-0` — `2` reads,
+and `2.0`, `1e3` and `-0` each refuse `kind_mismatch`, because the value
+never passes through a double. A value outside the field's declared or
+implied range refuses `out_of_range` (**Bounds**, below); a float value the
+field's width cannot represent refuses `kind_mismatch`, so an infinity is
+never stored. **A float field reads a token by ONE correctly rounded conversion**
 from the token's exact decimal value to the field's width (round to nearest,
 ties to even), never through a wider float first, and it refuses ONLY when
 that conversion rounds to infinity; a token that rounds to a finite value, a
@@ -15890,9 +15889,27 @@ is finite because a dyadic fraction has at most F decimal digits. A 128-bit
 integer's token is its digits. A magnitude past the kind's domain refuses
 `out_of_range`, at 128 bits as at 64, and the declared range is held on the raw
 scale (§4) by the same name. A negative token in an unsigned field refuses
-`out_of_range`, and `-0` is zero. Every engine that holds this form — the
+`out_of_range`, and `-0` is the wrong shape for an integer field, refused
+`kind_mismatch`. Every engine that holds this form — the
 generated walks and the tool's — gives the same answer on every tree of the
 hostile corpus, which is what makes the rule one rule.
+
+**A KIND WHOSE STORAGE IS WIDER THAN 32 BITS IS A STRING OF DECIMAL DIGITS**
+(docs/rulings.json `json-wide-integers-are-strings`): in the JSON form an
+integer wider than 32 bits is written as a JSON string of its decimal digits,
+so no reader rounds it through a double. The exact list: `int64`, `uint64`,
+`int128`, `uint128`, and every ranged integer and fixed-point kind whose
+storage is wider than 32 bits — a `fixed(I, F)` or `ufixed(I, F)` whose
+`I + F` is 64 or 128, and a ranged `int64`, `uint64`, `int128` or `uint128`
+(§2 states each kind's storage). Kinds of 32 bits and under stay JSON numbers.
+The string holds the same digits the number form carried — a fixed field's
+whole-units decimal included — and a map key of those kinds, already a string,
+carries the same digits. **On READ such a field takes the string and KEEPS
+taking the number token an earlier build wrote**: a string or a number, read to
+the same value (the owner's 2026-10-22 ruling). An integer field's string holds
+the integer rule's own digits — an optional minus and digits only, no fraction,
+no exponent, not `-0` — and a fixed field's string holds its whole-units
+decimal, read exactly as the number form is.
 
 **`null`** refuses `kind_mismatch` for every kind except the two where absence
 is a value: a `?T` reads `null` as ABSENT, and a pointer reads it as null.
@@ -17502,7 +17519,10 @@ is `null`.
 and nothing for any other, then the digits with no leading zero, `0` for zero.
 No `+`, no exponent, no fraction, and no binary floating-point step anywhere
 on the path, so `18446744073709551615`, `-9223372036854775808` and the 128-bit
-extremes are written exactly. `bool` is `true` or `false`; an enum is its
+extremes are written exactly. **A kind whose storage is wider than 32 bits —
+`int64`, `uint64`, `int128`, `uint128` and a `bits(N)` over 32 — is that digit
+string WRAPPED IN QUOTES, a JSON string**; a kind of 32 bits and under stays a
+number. `bool` is `true` or `false`; an enum is its
 variant's name as a string (W8); `flags` is W4's array over the set bits'
 variant names in ascending bit order, `[]` for none. A value no variant names
 refuses (§16.3).
@@ -17514,6 +17534,8 @@ one at a time (multiply the remaining fraction by ten, take the integer part
 as the digit, keep the rest) until the fraction is zero — at most `F` digits,
 because a dyadic fraction terminates — or `0` when the fraction is zero to
 begin with. So `1.0`, `-0.25`, `3.0000152587890625`; never an exponent.
+**A fixed field whose storage `I + F` is wider than 32 bits is that decimal
+WRAPPED IN QUOTES, a JSON string**; one of 32 bits and under stays a number.
 
 **W12. A float** — `float32`, `float64`, and a compressed float by the
 width its declaration names — is written by this loop, and by nothing that

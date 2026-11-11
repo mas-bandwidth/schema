@@ -30,7 +30,9 @@ func longMantissaModel(t *testing.T) *tabletext.Model {
 
 // docs/SPEC-TABLES.md §16.2 Numbers: a valid number is read by its value
 // however many digits it spans, so a mantissa longer than a conversion's own
-// working precision still lands the value its decimal spells.
+// working precision still lands the value its decimal spells. A float field
+// reads an exponent token; an integer field does not, so the long-mantissa
+// row is the float's alone.
 func TestTextLongMantissaReadsByValue(t *testing.T) {
 	t.Parallel()
 	m := longMantissaModel(t)
@@ -46,15 +48,12 @@ func TestTextLongMantissaReadsByValue(t *testing.T) {
 		token := one(n)
 		inst := m.New(st)
 		var r tabletext.Report
-		text := []byte(`{"f":` + token + `,"u":` + token + `}`)
+		text := []byte(`{"f":` + token + `}`)
 		if !m.Read(inst, text, &r) || !r.Silent() {
 			t.Fatalf("%d zeros: the valid number was refused: %+v", n, r)
 		}
 		if got := field(t, inst, "f").Cell.F; got != 1.0 {
 			t.Fatalf("%d zeros: float64 landed %v, want 1.0", n, got)
-		}
-		if got := field(t, inst, "u").Cell.U; got != 1 {
-			t.Fatalf("%d zeros: uint32 landed %d, want 1", n, got)
 		}
 	}
 	// 123 followed by 900 zeros, times 10^-900, is exactly 123; the same

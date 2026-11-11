@@ -705,11 +705,11 @@ json-hostile num-float64-overflow          tabledemo  RootConfig  testdata/confo
 json-hostile num-fraction                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-fraction       refused
 json-hostile num-int-overflow              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int-overflow   refused
 json-hostile num-int64-min                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-int64-min      read
-json-hostile num-integral-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms read
+json-hostile num-integral-forms            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-integral-forms refused
 json-hostile num-leading-plus              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-plus   refused
 json-hostile num-leading-zero              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-leading-zero   refused
 json-hostile num-negative-unsigned         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-unsigned refused
-json-hostile num-negative-zero             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero  read
+json-hostile num-negative-zero             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-negative-zero  refused
 json-hostile num-no-exp-digits             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-no-exp-digits  refused
 json-hostile num-no-int                    tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-no-int         refused
 json-hostile num-three-part                tabledemo  RootConfig  testdata/conformance/tables/json-hostile/num-three-part     refused
@@ -878,7 +878,7 @@ json-hostile fixed-wrong-shape             scalars    SimState    testdata/confo
 json-hostile int128-beyond-int64           scalars    SimState    testdata/conformance/tables/json-hostile/int128-beyond-int64 read
 json-hostile int128-over-range             scalars    SimState    testdata/conformance/tables/json-hostile/int128-over-range  refused
 json-hostile int128-fractional             scalars    SimState    testdata/conformance/tables/json-hostile/int128-fractional  refused
-json-hostile int128-integral-forms         scalars    SimState    testdata/conformance/tables/json-hostile/int128-integral-forms read
+json-hostile int128-integral-forms         scalars    SimState    testdata/conformance/tables/json-hostile/int128-integral-forms refused
 json-hostile uint128-max                   scalars    SimState    testdata/conformance/tables/json-hostile/uint128-max        read
 json-hostile uint128-over                  scalars    SimState    testdata/conformance/tables/json-hostile/uint128-over       refused
 json-hostile uint128-negative              scalars    SimState    testdata/conformance/tables/json-hostile/uint128-negative   refused

@@ -1,0 +1,9 @@
+{
+  "small": 7,
+  "wide_signed": "-9223372036854775808",
+  "wide_unsigned": "18446744073709551615",
+  "huge": "0",
+  "ranged": "-5",
+  "ratio": "1.5",
+  "weights": {}
+}

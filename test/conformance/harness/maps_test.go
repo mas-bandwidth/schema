@@ -141,9 +141,9 @@ func TestAMapKeyIsNeverTruncatedIntoAnother(t *testing.T) {
 }
 
 // AN INTEGER MAP KEY IS READ BY §16.2's INTEGER RULE AND BY NOTHING ELSE
-// (docs/SPEC-TABLES.md §2.8), so "2.0" and "1e3" are the integers 2 and 1000 in
-// a key exactly as in a field, at every integer key kind. A value outside the
-// key kind's range refuses the whole read (§6.5), and a key is never clamped.
+// (docs/SPEC-TABLES.md §2.8): digits with an optional minus, no fraction, no
+// exponent, not `-0`, at every integer key kind. A value outside the key kind's
+// range refuses the whole read (§6.5), and a key is never clamped.
 func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 	m := mapsModel(t)
 	for _, tc := range []struct {
@@ -151,10 +151,10 @@ func TestAnIntegerMapKeyTakesTheIntegerRule(t *testing.T) {
 		keys                 []uint64
 		outside              []string
 	}{
-		{"WideRow", "entries", `"2.0":{"count":1},"1e3":{"count":2}`,
+		{"WideRow", "entries", `"2":{"count":1},"1000":{"count":2}`,
 			[]uint64{2, 1000}, []string{"99999999999"}},
-		{"EdgeRow", "ids", `"2.0":{"count":1},"1e19":{"count":2},"18446744073709551615":{"count":3}`,
-			[]uint64{2, 10000000000000000000, 18446744073709551615}, []string{"-1", "1e30"}},
+		{"EdgeRow", "ids", `"2":{"count":1},"10000000000000000000":{"count":2},"18446744073709551615":{"count":3}`,
+			[]uint64{2, 10000000000000000000, 18446744073709551615}, []string{"-1", "18446744073709551616"}},
 	} {
 		t.Run(tc.root, func(t *testing.T) {
 			inst := m.New(m.Lookup(tc.root))
@@ -216,18 +216,19 @@ func TestWhitespaceIsNeverPartOfAMapKey(t *testing.T) {
 	}
 }
 
-// AN INTEGER KEY SPELLED WITH A DECIMAL POINT IS PARSED AS AN INTEGER, never
-// through a double (docs/SPEC-TABLES.md §16.2). A double carries 53 bits of
-// mantissa, so it cannot tell 9007199254740993 from its neighbor, and a key
-// read through one lands on the neighbor's identity: two keys the text spells
-// separately become one, and the read refuses a repeat the text never wrote.
+// AN INTEGER KEY IS ITS DIGITS, READ EXACTLY, never through a double
+// (docs/SPEC-TABLES.md §16.2). A double carries 53 bits of mantissa, so it
+// cannot tell 9007199254740993 from its neighbor; the integer key is read by
+// its digits and lands the value it spells. A key with a decimal point is not
+// an integer token and refuses `kind_mismatch`, so the two spellings are never
+// one key read twice.
 func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993.0":{"count":2}}}`
+	text := `{"ids":{"9007199254740992":{"count":1},"9007199254740993":{"count":2}}}`
 	if !strictReadJSON(m, inst, []byte(text), &r) {
-		t.Fatalf("two keys 2^53 apart are two keys: %+v", r)
+		t.Fatalf("two integer keys 2^53 apart are two keys: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
@@ -242,20 +243,25 @@ func TestADecimalMapKeyDoesNotRoundIntoItsNeighbour(t *testing.T) {
 			t.Errorf("entry %d: key %d, want %d", i, got, w)
 		}
 	}
+	// a key with a decimal point is not an integer token and refuses
+	inst = m.New(m.Lookup("EdgeRow"))
+	r = tabletext.Report{}
+	if strictReadJSON(m, inst, []byte(`{"ids":{"9007199254740993.0":{"count":2}}}`), &r) || !r.Refused {
+		t.Errorf("a decimal-point key is not an integer token and refuses: %+v", r)
+	}
 }
 
-// THE SAME VALUE SPELLED TWO WAYS IS THE SAME KEY (docs/SPEC-TABLES.md §16.2):
-// `2` and `2.0` are the integer 2 wherever an integer is read, and that holds at
-// the top of the uint64 domain as well as at the bottom. Read through a double,
-// 18446744073709551615.0 rounds UP to 2^64 and falls outside the kind, where
-// the digits alone are exactly the key the kind holds. The two spellings are
-// one key written twice, and a repeated key refuses (§6.5).
+// THE INTEGER KEY AT THE TOP OF THE UINT64 DOMAIN IS READ BY ITS DIGITS
+// (docs/SPEC-TABLES.md §16.2): `18446744073709551615` is exactly the key the
+// kind holds, where a double would round it UP to 2^64 and out of the kind.
+// The two spellings are one key written twice, and a repeated key refuses
+// (§6.5). A `.0` spelling is not an integer token and refuses.
 func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	m := mapsModel(t)
 	inst := m.New(m.Lookup("EdgeRow"))
 	var r tabletext.Report
-	if !strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) {
-		t.Fatalf("the decimal spelling of UINT64_MAX is a key the kind holds: %+v", r)
+	if !strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615":{"count":2}}}`), &r) {
+		t.Fatalf("the integer spelling of UINT64_MAX is a key the kind holds: %+v", r)
 	}
 	fv, ok := inst.FieldByKey("ids")
 	if !ok {
@@ -269,9 +275,16 @@ func TestADecimalMapKeyAtTheTopOfTheDomainIsTheSameKey(t *testing.T) {
 	}
 	inst = m.New(m.Lookup("EdgeRow"))
 	r = tabletext.Report{}
-	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615.0":{"count":2}}}`
+	text := `{"ids":{"18446744073709551615":{"count":1},"18446744073709551615":{"count":2}}}`
 	if strictReadJSON(m, inst, []byte(text), &r) || !r.Refused {
 		t.Errorf("the two spellings are one key repeated, which refuses: %+v", r)
+	}
+	// the `.0` spelling is not an integer token and refuses, so it is never the
+	// same key read twice
+	inst = m.New(m.Lookup("EdgeRow"))
+	r = tabletext.Report{}
+	if strictReadJSON(m, inst, []byte(`{"ids":{"18446744073709551615.0":{"count":2}}}`), &r) || !r.Refused {
+		t.Errorf("the decimal spelling is not an integer token and refuses: %+v", r)
 	}
 }
 

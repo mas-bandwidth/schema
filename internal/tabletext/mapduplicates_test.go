@@ -42,11 +42,23 @@ func TestMapRepeatedKeyRefuses(t *testing.T) {
 		`{"names":{"b":"1","a":"2","b":"3"}}`,
 		`{"ints":{"-1":1,"5":2,"-1":3}}`,
 		`{"wide":{"18446744073709551615":1,"0":2,"18446744073709551615":7}}`,
-		`{"ints":{"-1":1,"-1.0e0":2}}`,
 	} {
 		var r tabletext.Report
 		if m.Read(m.New(m.Lookup("Maps")), []byte(text), &r) || !r.Refused || !strings.HasPrefix(r.Reason, "malformed") {
 			t.Fatalf("%s: want a refusal, got %+v", text, r)
+		}
+	}
+	// a key that is not an integer token — a fraction, an exponent, -0 — is the
+	// wrong shape for the key's kind and refuses the whole read (docs/SPEC-TABLES.md §16.2)
+	for _, text := range []string{
+		`{"ints":{"-1.0e0":1}}`,
+		`{"ints":{"2.0":1}}`,
+		`{"ints":{"1e3":1}}`,
+		`{"ints":{"-0":1}}`,
+	} {
+		var r tabletext.Report
+		if m.Read(m.New(m.Lookup("Maps")), []byte(text), &r) || !r.Refused || !strings.HasPrefix(r.Reason, "kind_mismatch") {
+			t.Fatalf("%s: want a kind mismatch, got %+v", text, r)
 		}
 	}
 	text := `{"names":{"b":"4","a":"2"},` +

@@ -259,6 +259,23 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "json-wide-integers-are-strings",
+      "date": "2026-11-10",
+      "quotes": [
+        "strings, because numbers can be wrong",
+        "ruled 2026-11-10: in the JSON form, integers wider than 32 bits are written as strings of decimal digits"
+      ],
+      "source": "relayed by the coordinator from the live session"
+    },
+    {
+      "id": "json-integer-token-only",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON integer field takes an integer token only: no fraction, no exponent, no negative zero"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
     }
   ]
 }

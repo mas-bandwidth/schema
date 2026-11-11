@@ -1,0 +1,19 @@
+// JsonIntegers.schema — the JSON-integer vectors (docs/SPEC-TABLES.md §16.2,
+// docs/rulings.json `json-wide-integers-are-strings` and
+// `json-integer-token-only`): one small table with an int32, an int64, a
+// uint64, an int128, a ranged int64 and a fixed-point field, plus a map keyed
+// by uint64. The wide kinds — int64, uint64, int128 and a fixed whose storage
+// is wider than 32 bits — are written as strings of decimal digits and read
+// from either a string or a number; the int32 stays a number.
+package jsonintegers
+
+table Counts
+{
+    small        int32 = 7
+    wide_signed  int64 = -9223372036854775808
+    wide_unsigned uint64 = 18446744073709551615
+    huge         int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    ranged       int64 = -5 | min = -100, max = 100
+    ratio        fixed(48, 16) = 1.5 | min = -30000, max = 30000
+    weights      map[uint64]int32
+}

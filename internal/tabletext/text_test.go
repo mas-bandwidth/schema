@@ -112,11 +112,14 @@ func TestWrongTypeRefuses(t *testing.T) {
 }
 
 // §16.2: an integer field given a fraction is the wrong SHAPE for the kind,
-// refused, never rounded into place; the integral spelling of it reads.
+// refused, never rounded into place; the integer spelling of it reads. A
+// fraction whose value is integral is still a fraction, and refuses the same.
 func TestFractionWhereIntegerDeclared(t *testing.T) {
 	_, _, r := read(t, "GlobalSettings", `{ "tick_rate": 90.5 }`)
 	refuses(t, r, "kind_mismatch")
-	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90.0 }`)
+	_, _, r = read(t, "GlobalSettings", `{ "tick_rate": 90.0 }`)
+	refuses(t, r, "kind_mismatch")
+	m, inst, r := read(t, "GlobalSettings", `{ "tick_rate": 90 }`)
 	accepts(t, m, inst, r)
 	if field(t, inst, "tick_rate").Cell.U != 90 {
 		t.Fatal("an integral spelling did not place")
@@ -452,30 +455,31 @@ func lap(t *testing.T, m *tabletext.Model, st *ir.Struct, text []byte) []byte {
 // numberCases is the number grammar and its semantics, row by row
 // (docs/SPEC-TABLES.md §16.2). Every row was measured against the generated C++
 // reader before it was written down: the tokenizer is RFC 8259's, an integer
-// field takes any token whose VALUE is integral however it was spelled, a
-// genuinely fractional value is the wrong shape for it, a magnitude a float
-// field cannot hold is the wrong shape too — so no path stores an infinity —
-// and a token that is not a JSON number at all refuses as malformed. Every
-// row that is not a value refuses the whole read (§6.5); the reason is
-// diagnostic and checked here only as this engine's spelling.
+// field takes an integer token only — digits with an optional minus, no
+// fraction, no exponent, and not `-0` — a magnitude a float field cannot hold
+// is the wrong shape too — so no path stores an infinity — and a token that is
+// not a JSON number at all refuses as malformed. Every row that is not a value
+// refuses the whole read (§6.5); the reason is diagnostic and checked here only
+// as this engine's spelling.
 var numberCases = []struct {
 	token string
 	field string // "experience" uint32, "precision" float64, "timestamp" int64
 	want  string // "value=N" | "kind_mismatch" | "out_of_range" | "malformed"
 }{
-	// integral in VALUE, however it is spelled
-	{"1e3", "experience", "value=1000"},
-	{"1e2", "experience", "value=100"},
-	{"1E2", "experience", "value=100"},
-	{"1e+2", "experience", "value=100"},
-	{"2.0", "experience", "value=2"},
-	{"1.0e1", "experience", "value=10"},
-	{"0.0", "experience", "value=0"},
-	{"0e0", "experience", "value=0"},
+	// a fraction or an exponent in an integer field is the wrong shape
+	{"1e3", "experience", "kind_mismatch"},
+	{"1e2", "experience", "kind_mismatch"},
+	{"1E2", "experience", "kind_mismatch"},
+	{"1e+2", "experience", "kind_mismatch"},
+	{"2.0", "experience", "kind_mismatch"},
+	{"1.0e1", "experience", "kind_mismatch"},
+	{"0.0", "experience", "kind_mismatch"},
+	{"0e0", "experience", "kind_mismatch"},
+	{"-0", "experience", "kind_mismatch"},
+	{"-0.0", "experience", "kind_mismatch"},
+	{"2e1", "experience", "kind_mismatch"},
+	// digits with an optional minus, and nothing else
 	{"0", "experience", "value=0"},
-	{"-0", "experience", "value=0"},
-	{"-0.0", "experience", "value=0"},
-	{"2e1", "experience", "value=20"},
 	{"7", "experience", "value=7"},
 	// genuinely fractional in an integer field: the wrong shape, never rounded
 	{"1.5", "experience", "kind_mismatch"},
@@ -506,7 +510,8 @@ var numberCases = []struct {
 	{"9e99999", "precision", "out_of_range"},
 	{"-1e400", "precision", "out_of_range"},
 	{"1e308", "precision", "value=1e+308"},
-	{"-9223372036854775808", "timestamp", "value=-9223372036854775808"},
+	// an int64 writes as a string of digits (§16.2)
+	{"-9223372036854775808", "timestamp", `value="-9223372036854775808"`},
 }
 
 func TestNumberGrammarAndSemantics(t *testing.T) {
@@ -625,39 +630,36 @@ func TestRepeatedKeyRefusesWhateverItHolds(t *testing.T) {
 	}
 }
 
-// A FIELD READS ITS TOKEN THROUGH THE FLOAT64 AND A MAP KEY READS IT EXACTLY,
-// and this row is the field half. The exact reader lives on the key path alone
-// (§16.2's map row, and the key rows in test/conformance/harness/maps_test.go),
-// because a key is an identity that two spellings must not share, while a
-// field's value is a quantity read the same way by every port that reads these
-// texts. So the field path keeps the interpretation the C, Go and Rust readers
-// have: a magnitude past what a float64 holds refuses, and a token at 2^53
-// lands the value the mantissa carries.
+// A FIELD READS ITS INTEGER TOKEN EXACTLY, NEVER THROUGH A DOUBLE
+// (docs/SPEC-TABLES.md §16.2): an integer field takes digits with an optional
+// minus, no fraction, no exponent, and not `-0`, and its range is held on the
+// exact value. A magnitude at and above 2^53 lands the digits it spells, where
+// a path through a float64 would round them; a wide field accepts the number
+// token and the string form alike.
 func TestAnIntegerFieldReadsItsTokenThroughTheFloat(t *testing.T) {
 	_, _, r := read(t, "ProfileConfig", `{ "badge": 1e309 }`)
 	if !r.Refused {
-		t.Fatalf("a magnitude no float64 holds refuses for an integer field: %+v", r)
+		t.Fatalf("an exponent token refuses for an integer field: %+v", r)
 	}
-	// the same spelling in a FLOAT field
+	_, _, r = read(t, "ProfileConfig", `{ "badge": 1.5 }`)
+	refuses(t, r, "kind_mismatch")
+	// the same spelling in a FLOAT field keeps the float's own rule
 	_, _, r = read(t, "ProfileConfig", `{ "precision": 1e400 }`)
 	refuses(t, r, "out_of_range")
-	// and at 2^53 the field lands what the mantissa carries, where the KEY path
-	// lands the digits the token spells
-	m, inst, r := read(t, "ProfileConfig", `{ "epoch": 9007199254740993.0 }`)
+	// at 2^53 the field lands the digits the token spells, exactly
+	m, inst, r := read(t, "ProfileConfig", `{ "epoch": 9007199254740993 }`)
 	accepts(t, m, inst, r)
-	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740992 {
-		t.Fatalf("the field path rounds at the mantissa: got %d, want 9007199254740992", got)
+	if got := field(t, inst, "epoch").Cell.U; got != 9007199254740993 {
+		t.Fatalf("the field reads the digits exactly: got %d, want 9007199254740993", got)
 	}
-	// and the decimal spelling of UINT64_MAX rounds UP through the float64,
-	// past the domain, so the field refuses where the key path reads the digits
-	_, _, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615.0 }`)
-	refuses(t, r, "out_of_range")
-	// the largest float64 below 2^64 is in the domain and reads
-	m, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709549568 }`)
+	// the decimal spelling of UINT64_MAX reads exactly and one past it refuses
+	m, inst, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551615 }`)
 	accepts(t, m, inst, r)
-	if got := field(t, inst, "epoch").Cell.U; got != 18446744073709549568 {
+	if got := field(t, inst, "epoch").Cell.U; got != math.MaxUint64 {
 		t.Fatalf("got %d", got)
 	}
+	_, _, r = read(t, "ProfileConfig", `{ "epoch": 18446744073709551616 }`)
+	refuses(t, r, "out_of_range")
 }
 
 // KeyedSlot resolves a variant name to its slot for a keyed field.
@@ -939,12 +941,14 @@ func TestUnsignedHighHalfIsOutOfRange(t *testing.T) {
 	}
 }
 
-// §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD IS OUT OF RANGE whatever its
-// spelling, never the wrong SHAPE: -1e30 is a magnitude past every width and a
-// sign, and both halves are known before anything is cast.
+// §16.2: A NEGATIVE TOKEN IN AN UNSIGNED FIELD, spelled as an integer, is OUT
+// OF RANGE; an exponent or a fraction in an integer field is the wrong shape,
+// never a value.
 func TestNegativeExponentInAnUnsignedFieldIsOutOfRange(t *testing.T) {
-	_, _, r := read(t, "ProfileConfig", `{ "experience": -1e30 }`)
+	_, _, r := read(t, "ProfileConfig", `{ "experience": -1 }`)
 	refuses(t, r, "out_of_range")
-	m, inst, r := read(t, "ProfileConfig", `{ "experience": -0e30 }`)
-	accepts(t, m, inst, r)
+	_, _, r = read(t, "ProfileConfig", `{ "experience": -1e30 }`)
+	refuses(t, r, "kind_mismatch")
+	_, _, r = read(t, "ProfileConfig", `{ "experience": -0e30 }`)
+	refuses(t, r, "kind_mismatch")
 }

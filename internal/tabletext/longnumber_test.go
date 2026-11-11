@@ -45,7 +45,7 @@ func TestTextLongNumberTokenLands(t *testing.T) {
 		`{"i":1` + zeros + `}`:      "out_of_range",
 		`{"w":1.` + zeros + `1}`:    "kind_mismatch",
 		`{"g":1` + zeros + `.0}`:    "out_of_range",
-		`{"i":-1` + zeros + `.0e0}`: "", // past what a float64 holds: refused, its reason this engine's detail
+		`{"i":-1` + zeros + `.0e0}`: "kind_mismatch", // a fraction in an integer field
 	} {
 		var r tabletext.Report
 		if m.Read(m.New(st), []byte(text), &r) || !r.Refused || !strings.HasPrefix(r.Reason, reason) {
@@ -53,7 +53,7 @@ func TestTextLongNumberTokenLands(t *testing.T) {
 		}
 	}
 	inst := m.New(st)
-	text := []byte(`{"f":1.` + zeros + `,"i":1.` + zeros + `,"w":0.` + zeros + `,"g":1.` + zeros + `}`)
+	text := []byte(`{"f":1.` + zeros + `,"i":1,"w":0,"g":1.` + zeros + `}`)
 	var r tabletext.Report
 	if !m.Read(inst, text, &r) || !r.Silent() {
 		t.Fatalf("a valid long number token was refused: %+v", r)
@@ -77,7 +77,7 @@ func TestTextLongNumberTokenLands(t *testing.T) {
 	// the file writer adds the canonical single newline the generated ToJson
 	// also ends with (§16.1), so the bytes compared are the ones both land
 	out = append(out, '\n')
-	want := "{\n  \"f\": 1,\n  \"i\": 1,\n  \"w\": 0,\n  \"g\": 1.0\n}\n"
+	want := "{\n  \"f\": 1,\n  \"i\": 1,\n  \"w\": \"0\",\n  \"g\": 1.0\n}\n"
 	if string(out) != want {
 		t.Fatalf("text %q, want %q", out, want)
 	}
