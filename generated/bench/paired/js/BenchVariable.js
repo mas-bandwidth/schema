@@ -3825,22 +3825,37 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   }
 }
 
-// a base64 body six bits at a time (read.go readBase64): '=' anywhere is
-// padding, a character outside the alphabet makes the body the wrong shape
-// (one kind mismatch), and past the bound the excess is oor
+// a base64 body six bits at a time (read.go readBase64): the JSON string is
+// decoded first, then standard-alphabet symbols take zero to two trailing '='
+// of the right count. A symbol after padding, a byte outside the alphabet, a
+// length that does not decode or more than two pads is the wrong shape (one
+// kind mismatch); past the bound the excess is oor.
 function TableVariableBase64Read(inp, bound, report) {
-  if (inp.peek() !== "\"") { inp.bad = true; return null; }
-  inp.p++;
-  const t = inp.t;
+  const s = inp.str();
+  if (s === null) { return null; }
+  let symbols = 0, pad = 0, bad = false;
+  for (let i = 0; i < s.length; i++) {
+    if (bad) { continue; }
+    const ch = s[i];
+    if (ch === "=") { pad++; continue; }
+    if (pad > 0) { bad = true; continue; }
+    if (TableVariableBase64.indexOf(ch) < 0) { bad = true; continue; }
+    symbols++;
+  }
+  if (!bad) {
+    if (pad > 0) {
+      if (pad > 2 || (symbols + pad) % 4 !== 0 || symbols % 4 < 2) { bad = true; }
+    } else if (symbols % 4 === 1) {
+      bad = true;
+    }
+  }
+  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
   const out = [];
-  let acc = 0, held = 0, oor = false, bad = false;
-  for (;;) {
-    if (inp.p >= t.length) { inp.bad = true; return null; }
-    const ch = t[inp.p++];
-    if (ch === "\"") { break; }
-    if (ch === "=" || bad) { continue; }
+  let acc = 0, held = 0, oor = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === "=") { break; }
     const at = TableVariableBase64.indexOf(ch);
-    if (at < 0) { bad = true; continue; }
     acc = ((acc << 6) | at) & 0xffffff;
     held += 6;
     if (held >= 8) {
@@ -3848,7 +3863,6 @@ function TableVariableBase64Read(inp, bound, report) {
       if (bound < 0 || out.length < bound) { out.push((acc >> held) & 0xff); } else { oor = true; }
     }
   }
-  if (bad) { report.mismatch++; return { bad: true, bytes: new Uint8Array(0) }; }
   if (oor) { report.oor++; }
   return { bad: false, bytes: new Uint8Array(out) };
 }
