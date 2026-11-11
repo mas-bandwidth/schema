@@ -605,6 +605,10 @@ const tableRefuseReasonLaterValues = `
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
     length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    // A RECORD THAT LACKS A | required FIELD (§2.3): Go's TableRefuseMissingRequired,
+    // at Go's own value, so the two targets answer the same number. The report's
+    // missing_required count and missing_required_fields name the fields.
+    missing_required = 255
 `
 
 // tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
@@ -626,14 +630,7 @@ func tableRefuseReason() string {
 		panic("cpptable: the refusal enum no longer ends at data_cycle")
 	}
 	body = body[:nl+1] + strings.Replace(line, "data_cycle ", "data_cycle,", 1)
-	enum := body + tableRefuseReasonLaterValues + "};"
-	// missing_required is not part of the iota sequence. Like Go's
-	// TableRefuseMissingRequired it sits apart, at its own value 255, so the
-	// two targets answer the same number for the same refusal and the implicit
-	// iota numbering of every other value is untouched (docs/SPEC-TABLES.md
-	// §2.3).
-	enum += "\nconstexpr TableRefuseReason missing_required = (TableRefuseReason) 255;\n"
-	return enum
+	return body + tableRefuseReasonLaterValues + "};"
 }
 
 // tableMessageReasonMembers spells TableMessageReason's static members: every
