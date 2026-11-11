@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package example — protocol id 0xeb26c970fde3fd71 */
+   package example — protocol id 0xf35accd0582cdd84 */
 
 #ifndef SCHEMA_EXAMPLE_WIRE_H
 #define SCHEMA_EXAMPLE_WIRE_H
@@ -34,6 +34,18 @@ typedef uint8_t example_weapon_t;
 #define EXAMPLE_WEAPON_LASER 1
 #define EXAMPLE_WEAPON_MISSILE 2
 #define EXAMPLE_WEAPON_RAILGUN 3
+#define EXAMPLE_WEAPON_FLAK 4
+#define EXAMPLE_WEAPON_BEAM 5
+#define EXAMPLE_WEAPON_PLASMA 6
+#define EXAMPLE_WEAPON_TORPEDO 7
+#define EXAMPLE_WEAPON_MINE 8
+#define EXAMPLE_WEAPON_DRONE 9
+#define EXAMPLE_WEAPON_SWARM 10
+#define EXAMPLE_WEAPON_PULSE 11
+#define EXAMPLE_WEAPON_LANCE 12
+#define EXAMPLE_WEAPON_COMET 13
+#define EXAMPLE_WEAPON_QUAKE 14
+#define EXAMPLE_WEAPON_ARC 15
 #define EXAMPLE_WEAPON_MAX 15
 
 /* Debug/log name for any Weapon value, out-of-set included. */
@@ -45,6 +57,18 @@ static SCHEMA_UNUSED const char * example_enum_name_weapon( example_weapon_t val
         case EXAMPLE_WEAPON_LASER: return "Laser";
         case EXAMPLE_WEAPON_MISSILE: return "Missile";
         case EXAMPLE_WEAPON_RAILGUN: return "Railgun";
+        case EXAMPLE_WEAPON_FLAK: return "Flak";
+        case EXAMPLE_WEAPON_BEAM: return "Beam";
+        case EXAMPLE_WEAPON_PLASMA: return "Plasma";
+        case EXAMPLE_WEAPON_TORPEDO: return "Torpedo";
+        case EXAMPLE_WEAPON_MINE: return "Mine";
+        case EXAMPLE_WEAPON_DRONE: return "Drone";
+        case EXAMPLE_WEAPON_SWARM: return "Swarm";
+        case EXAMPLE_WEAPON_PULSE: return "Pulse";
+        case EXAMPLE_WEAPON_LANCE: return "Lance";
+        case EXAMPLE_WEAPON_COMET: return "Comet";
+        case EXAMPLE_WEAPON_QUAKE: return "Quake";
+        case EXAMPLE_WEAPON_ARC: return "Arc";
         default: return "???";
     }
 }

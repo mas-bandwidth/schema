@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 use crate::*;
 use serialize::{ReadStream, Stream, WriteStream};
@@ -26,6 +26,18 @@ impl Weapon {
     pub const LASER: Weapon = Weapon(1);
     pub const MISSILE: Weapon = Weapon(2);
     pub const RAILGUN: Weapon = Weapon(3);
+    pub const FLAK: Weapon = Weapon(4);
+    pub const BEAM: Weapon = Weapon(5);
+    pub const PLASMA: Weapon = Weapon(6);
+    pub const TORPEDO: Weapon = Weapon(7);
+    pub const MINE: Weapon = Weapon(8);
+    pub const DRONE: Weapon = Weapon(9);
+    pub const SWARM: Weapon = Weapon(10);
+    pub const PULSE: Weapon = Weapon(11);
+    pub const LANCE: Weapon = Weapon(12);
+    pub const COMET: Weapon = Weapon(13);
+    pub const QUAKE: Weapon = Weapon(14);
+    pub const ARC: Weapon = Weapon(15);
     pub const MAX: Weapon = Weapon(15); // the exported extent (SPEC §4.2)
 
     /// Debug/log name for any value, out-of-set included.
@@ -47,6 +59,18 @@ pub fn enum_name_weapon(value: Weapon) -> &'static str {
         1 => "Laser",
         2 => "Missile",
         3 => "Railgun",
+        4 => "Flak",
+        5 => "Beam",
+        6 => "Plasma",
+        7 => "Torpedo",
+        8 => "Mine",
+        9 => "Drone",
+        10 => "Swarm",
+        11 => "Pulse",
+        12 => "Lance",
+        13 => "Comet",
+        14 => "Quake",
+        15 => "Arc",
         _ => "???",
     }
 }

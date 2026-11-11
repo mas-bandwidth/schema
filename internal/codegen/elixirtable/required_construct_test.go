@@ -21,6 +21,7 @@ import (
 // These defaults are pinned directly from the specified payload/framing rules,
 // independently of a writer whose default-elision is the behavior under test.
 func TestRequiredConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir required fields, native presence and refusals")
 	const src = `package probe
  enum Choice { A, B }
@@ -238,6 +239,7 @@ IO.puts("REQUIRED_OK")
 }
 
 func TestRequiredWidePresenceElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir required presence beyond 512 fields")
 	src := "package probe\ntable Wide | forms=\"wire,json\" {\n"
 	for i := range 513 {
@@ -271,6 +273,7 @@ IO.puts("WIDE_REQUIRED_OK")
 }
 
 func TestRequiredRangeDomainsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir required range preflight across storage domains")
 	u := unitFrom(t, `package probe
  enum Choice { A, B }
@@ -311,6 +314,7 @@ IO.puts("REQUIRED_RANGES_OK")
 }
 
 func TestRequiredFloatReadClampsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir ranged required float scalar and array reads")
 	u := unitFrom(t, `package probe
  table R {
@@ -339,6 +343,7 @@ IO.puts("REQUIRED_FLOAT_CLAMP_OK")
 }
 
 func TestRequiredCookGuardStorageElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir physical guarded cook storage against native Go pins")
 	const base = "../../../testdata/conformance/feature-witnesses/required/cook-guard/"
 	src, e := os.ReadFile(base + "Probe.schema")
@@ -414,6 +419,7 @@ if T.cook_measure("Guard",v)!=byte_size(want), do: raise("guard measure")
 }
 
 func TestRequiredCookInactiveEdgesElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir cook refuses unreached storage behind inactive guards")
 	u := unitFrom(t, `package probe
  table Leaf { x int32 }
@@ -441,6 +447,7 @@ IO.puts("COOK_INACTIVE_EDGES_OK")
 }
 
 func TestRequiredNestedGuardCorpusElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir shared twelve-row nested required guard corpus")
 	const base = "../../../testdata/conformance/feature-witnesses/required/nested-guards/"
 	source, e := os.ReadFile(base + "Probe.schema")
@@ -516,6 +523,7 @@ IO.puts("REQUIRED_NESTED_GUARDS_OK")
 }
 
 func TestRequiredArrayRootRangeElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir required range on array-root JSON writer")
 	u := unitFrom(t, `package probe
  table R | json="array" { values [..2]int32 | min=5, required }

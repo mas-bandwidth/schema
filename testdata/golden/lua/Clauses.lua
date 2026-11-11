@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local _M = {}
 
@@ -586,7 +586,7 @@ end
 -- type W13 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW13(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
@@ -598,7 +598,7 @@ end
 -- type W17 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW17(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 131071 then return false end
@@ -610,7 +610,7 @@ end
 -- type W26 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW26(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 67108863 then return false end
@@ -622,7 +622,7 @@ end
 -- type W1 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW1(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1 then return false end
@@ -634,7 +634,7 @@ end
 -- type W52 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW52(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 4503599627370495 then return false end
@@ -646,7 +646,7 @@ end
 -- type W50 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW50(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 1125899906842623 then return false end
@@ -676,7 +676,7 @@ end
 -- type ArrTri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrTri3(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteTri3(stream, v.Items[_i]) then return false end
@@ -756,7 +756,7 @@ function _M.WriteArrNested(stream, v)
   if math.type(v.Lead) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end

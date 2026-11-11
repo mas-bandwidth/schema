@@ -36,6 +36,16 @@ public final class MixedChatEventMessage {
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedChatEventFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedChatEventFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -45,6 +55,10 @@ public final class MixedChatEventMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

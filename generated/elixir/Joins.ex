@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # type ArmsAgree
 defmodule Example.ArmsAgree do
@@ -295,7 +295,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsAgree.t(), non_neg_integer()} | :error
   def read_arms_agree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -422,7 +422,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsDisagree.t(), non_neg_integer()} | :error
   def read_arms_disagree_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -556,7 +556,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmEmpty.t(), non_neg_integer()} | :error
   def read_arm_empty_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -704,7 +704,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmsNested.t(), non_neg_integer()} | :error
   def read_arms_nested_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -875,7 +875,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmAlign.t(), non_neg_integer()} | :error
   def read_arm_align_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -989,7 +989,7 @@ defmodule Example.Joins do
         scratch = 0
 
         {data, scratch, scratch_bits} =
-          w_arm_array_items(value.items, data, scratch, scratch_bits)
+          wZarm_arrayZitems(value.items, data, scratch, scratch_bits)
 
         {data, scratch, scratch_bits}
       else
@@ -1033,7 +1033,7 @@ defmodule Example.Joins do
           {:ok, Example.ArmArray.t(), non_neg_integer()} | :error
   def read_arm_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1052,7 +1052,7 @@ defmodule Example.Joins do
           v = rv &&& 0x3
           n = v
           if 8 + n * 13 > num_bits, do: throw(:invalid)
-          {bits_read, v_items} = r_arm_array_items(n, [], data, num_bits, 8)
+          {bits_read, v_items} = rZarm_arrayZitems(n, [], data, num_bits, 8)
           v_b = 0
           {bits_read, v_items, v_b}
         else
@@ -1143,7 +1143,7 @@ defmodule Example.Joins do
           {:ok, Example.Narrow.t(), non_neg_integer()} | :error
   def read_narrow_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1230,7 +1230,7 @@ defmodule Example.Joins do
           {:ok, Example.Wide.t(), non_neg_integer()} | :error
   def read_wide_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1367,7 +1367,7 @@ defmodule Example.Joins do
           {:ok, Example.Uneven.t(), non_neg_integer()} | :error
   def read_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1532,7 +1532,7 @@ defmodule Example.Joins do
           {:ok, Example.HoldsUneven.t(), non_neg_integer()} | :error
   def read_holds_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1638,7 +1638,7 @@ defmodule Example.Joins do
     v = n
     scratch = scratch ||| v <<< 5
     scratch_bits = 7
-    {data, scratch, scratch_bits} = w_arr_uneven_items(value_items, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZarr_unevenZitems(value_items, <<>>, scratch, scratch_bits)
     v = value_tail &&& 0x7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 3
@@ -1671,7 +1671,7 @@ defmodule Example.Joins do
           {:ok, Example.ArrUneven.t(), non_neg_integer()} | :error
   def read_arr_uneven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1684,7 +1684,7 @@ defmodule Example.Joins do
       rv = rdw(data, 5, 49)
       v = rv &&& 0x3
       n = v
-      {bits_read, v_items} = r_arr_uneven_items(n, [], data, num_bits, 7)
+      {bits_read, v_items} = rZarr_unevenZitems(n, [], data, num_bits, 7)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
@@ -1760,7 +1760,7 @@ defmodule Example.Joins do
     scratch_bits = 7
 
     {data, scratch, scratch_bits} =
-      w_regain_after_align_items(value_items, <<>>, scratch, scratch_bits)
+      wZregain_after_alignZitems(value_items, <<>>, scratch, scratch_bits)
 
     if byte_size(value_s) > 4 do
       raise ArgumentError, "value.s longer than the declared 4-byte bound"
@@ -1816,7 +1816,7 @@ defmodule Example.Joins do
   def read_regain_after_align_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1830,7 +1830,7 @@ defmodule Example.Joins do
       v = rv &&& 0x3
       n = v
       if 7 + n * 13 > num_bits, do: throw(:invalid)
-      {bits_read, v_items} = r_regain_after_align_items(n, [], data, num_bits, 7)
+      {bits_read, v_items} = rZregain_after_alignZitems(n, [], data, num_bits, 7)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0x7
@@ -1901,9 +1901,9 @@ defmodule Example.Joins do
     end
   end
 
-  defp w_arm_array_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZarm_arrayZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_arm_array_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZarm_arrayZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1955,10 +1955,10 @@ defmodule Example.Joins do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_arm_array_items(rest, data, scratch, scratch_bits)
+    wZarm_arrayZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp w_arm_array_items([e | rest], data, scratch, scratch_bits) do
+  defp wZarm_arrayZitems([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -1974,12 +1974,12 @@ defmodule Example.Joins do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_arm_array_items(rest, data, scratch, scratch_bits)
+    wZarm_arrayZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp r_arm_array_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZarm_arrayZitems(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_arm_array_items(remaining, acc, data, num_bits, bits_read)
+  defp rZarm_arrayZitems(remaining, acc, data, num_bits, bits_read)
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
@@ -1988,19 +1988,19 @@ defmodule Example.Joins do
     e2 = v
     v = rv >>> 26
     e3 = v
-    r_arm_array_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
+    rZarm_arrayZitems(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
-  defp r_arm_array_items(remaining, acc, data, num_bits, bits_read) do
+  defp rZarm_arrayZitems(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
     e = v
-    r_arm_array_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
+    rZarm_arrayZitems(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 
-  defp w_arr_uneven_items([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZarr_unevenZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_arr_uneven_items([e | rest], data, scratch, scratch_bits) do
+  defp wZarr_unevenZitems([e | rest], data, scratch, scratch_bits) do
     v =
       case e do
         nil ->
@@ -2053,12 +2053,12 @@ defmodule Example.Joins do
           {data, scratch, scratch_bits}
       end
 
-    w_arr_uneven_items(rest, data, scratch, scratch_bits)
+    wZarr_unevenZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp r_arr_uneven_items(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZarr_unevenZitems(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_arr_uneven_items(remaining, acc, data, num_bits, bits_read) do
+  defp rZarr_unevenZitems(remaining, acc, data, num_bits, bits_read) do
     if bits_read + 2 > num_bits, do: throw(:invalid)
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0x3
@@ -2094,13 +2094,13 @@ defmodule Example.Joins do
           {bits_read, nil}
       end
 
-    r_arr_uneven_items(remaining - 1, [e | acc], data, num_bits, bits_read)
+    rZarr_unevenZitems(remaining - 1, [e | acc], data, num_bits, bits_read)
   end
 
-  defp w_regain_after_align_items([], data, scratch, scratch_bits),
+  defp wZregain_after_alignZitems([], data, scratch, scratch_bits),
     do: {data, scratch, scratch_bits}
 
-  defp w_regain_after_align_items([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZregain_after_alignZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2152,10 +2152,10 @@ defmodule Example.Joins do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_regain_after_align_items(rest, data, scratch, scratch_bits)
+    wZregain_after_alignZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp w_regain_after_align_items([e | rest], data, scratch, scratch_bits) do
+  defp wZregain_after_alignZitems([e | rest], data, scratch, scratch_bits) do
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -2171,13 +2171,13 @@ defmodule Example.Joins do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_regain_after_align_items(rest, data, scratch, scratch_bits)
+    wZregain_after_alignZitems(rest, data, scratch, scratch_bits)
   end
 
-  defp r_regain_after_align_items(0, acc, _data, _num_bits, bits_read),
+  defp rZregain_after_alignZitems(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_regain_after_align_items(remaining, acc, data, num_bits, bits_read)
+  defp rZregain_after_alignZitems(remaining, acc, data, num_bits, bits_read)
        when remaining >= 3 do
     rv = rdw(data, bits_read, 39)
     v = rv &&& 0x1FFF
@@ -2186,13 +2186,13 @@ defmodule Example.Joins do
     e2 = v
     v = rv >>> 26
     e3 = v
-    r_regain_after_align_items(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
+    rZregain_after_alignZitems(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 39)
   end
 
-  defp r_regain_after_align_items(remaining, acc, data, num_bits, bits_read) do
+  defp rZregain_after_alignZitems(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 13)
     v = rv
     e = v
-    r_regain_after_align_items(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
+    rZregain_after_alignZitems(remaining - 1, [e | acc], data, num_bits, bits_read + 13)
   end
 end
