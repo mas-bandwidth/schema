@@ -41,7 +41,7 @@ func TestKeyedElementWideningElixir(t *testing.T) {
 	}{
 		{"signed8", "values", ir.TableKindI8, [][]byte{{10}, {30}}, 1, false, false},
 		{"signed16", "values", ir.TableKindI16, [][]byte{{252, 255}, {6, 0}}, 1, false, false},
-		{"padded-slots", "values", ir.TableKindI8, [][]byte{{10, 0, 0, 0}, {30, 0, 0, 0}}, 1, true, false},
+		{"padded-slots", "values", ir.TableKindI8, [][]byte{{10, 0, 0, 0}, {30, 0, 0, 0}}, 1, true, true},
 		{"unsigned", "positive", ir.TableKindU16, [][]byte{{250, 255}, {3, 0}}, 1, false, false},
 		{"float", "real", ir.TableKindF32, [][]byte{binary.LittleEndian.AppendUint32(nil, math.Float32bits(1.5)), binary.LittleEndian.AppendUint32(nil, math.Float32bits(2.5))}, 1, false, false},
 		{"wide", "wide", ir.TableKindI64, [][]byte{binary.LittleEndian.AppendUint64(nil, 1<<60+1)}, 1, false, false},
@@ -117,29 +117,25 @@ func TestPinnedKeyedElementWideningElixir(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	want, e := os.ReadFile("../../../testdata/wire/tables/keyed_config.bin")
-	if e != nil {
-		t.Fatal(e)
-	}
 	v := m.New(u.Tables["KeyedConfig"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
 	if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 		t.Fatalf("pinned keyed widening: %v %v %+v", ok, e, report)
 	}
+	// The engine refuses the vector, and so does the leg on both of its
+	// reads: the verdict is the contract (docs/rulings.json
+	// refusal-verdict-only), and since the one read holds the bytes past a
+	// slot's element as damage (9ed0ddef3) the leg no longer tolerates it.
 	probe := fmt.Sprintf(`alias Tabledemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("KeyedConfig",wire),T.load_retain("KeyedConfig",wire,store,zero)] do
- unless elem(result,0)==:ok,do: raise("keyed pin verdict "<>inspect(result))
- report=elem(result,2)
- unless report.widened==1 and report.reason == "",do: raise("keyed pin report "<>inspect(report))
- {:ok,bytes}=T.save("KeyedConfig",elem(result,1))
- unless Base.encode16(bytes,case: :lower)==%q,do: raise("keyed pin values "<>inspect(bytes))
+ unless elem(result,0)==:error and elem(result,2).reason != "",do: raise("keyed pin verdict "<>inspect(result))
 end
 IO.puts("PINNED_KEYED_WIDENING_OK")
-`, hex.EncodeToString(wire), hex.EncodeToString(want))
+`, hex.EncodeToString(wire))
 	out := runCompleteUnitProbe(t, u, probe)
 	if !strings.Contains(out, "PINNED_KEYED_WIDENING_OK") {
 		t.Fatalf("native keyed pin: %s", out)
