@@ -25,8 +25,38 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// unitDir is the unit every row generates and drives.
-const unitDir = "tables/examples"
+// unit is one schema unit every row generates and drives, and where its
+// samples come from.
+type unit struct {
+	name    string   // the ratchet's unit column
+	dir     string   // repository-relative
+	classes []string // the root classes it must carry, so no assertion compares nothing
+	samples func(st *ir.Struct) (names, texts []string, err error)
+}
+
+// units is every unit, in the order a row runs them. The first carries the
+// negative controls' plants.
+var units = []unit{
+	{name: "examples", dir: "tables/examples", classes: []string{classFixed, classCeiling, classVariable}, samples: testgenSamples},
+	{name: "nested", dir: "test/roundtrip/nested", classes: []string{classFixed, classVariable}, samples: nestedSamples},
+}
+
+// testgenSamples is a root's generated-test samples (docs/SPEC-TABLES.md
+// §16.11), evaluated.
+func testgenSamples(st *ir.Struct) (names, texts []string, err error) {
+	names, exprs, err := gotable.TestgenSamples(st)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, expr := range exprs {
+		text, err := evalSample(expr)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", names[i], err)
+		}
+		texts = append(texts, text)
+	}
+	return names, texts, nil
+}
 
 // A root's CLASS decides which assertions its cases owe (docs/SPEC-TABLES.md
 // §3.4, "SELECTION IS BY THE KEYWORD").
@@ -61,10 +91,10 @@ func repoRoot(t testing.TB) string {
 	return dir
 }
 
-// loadUnit is tables/examples, loaded the way the CLI loads it: no writes.
-func loadUnit(t testing.TB, repo string) *ir.Unit {
+// loadUnit is a unit, loaded the way the CLI loads it: no writes.
+func loadUnit(t testing.TB, repo, dir string) *ir.Unit {
 	t.Helper()
-	paths, err := compiler.GatherPaths([]string{filepath.Join(repo, unitDir)})
+	paths, err := compiler.GatherPaths([]string{filepath.Join(repo, dir)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +102,7 @@ func loadUnit(t testing.TB, repo string) *ir.Unit {
 	c.FormatInPlace = false
 	u, err := c.Load(paths)
 	if err != nil {
-		t.Fatalf("loading %s: %v", unitDir, err)
+		t.Fatalf("loading %s: %v", dir, err)
 	}
 	return u
 }
@@ -93,7 +123,7 @@ func classOf(u *ir.Unit, st *ir.Struct) string {
 // generated map entry is not one), its samples, and the engine's bytes for
 // each. The engine refusing a sample it generated is a defect of the gate's
 // inputs, so it stops the test rather than becoming a case.
-func oracleRoots(t testing.TB, u *ir.Unit) []root {
+func oracleRoots(t testing.TB, u *ir.Unit, un unit) []root {
 	t.Helper()
 	model := tabletext.NewModel(u)
 	var roots []root
@@ -103,15 +133,12 @@ func oracleRoots(t testing.TB, u *ir.Unit) []root {
 				continue
 			}
 			r := root{name: st.Name, class: classOf(u, st)}
-			names, exprs, err := gotable.TestgenSamples(st)
+			names, texts, err := un.samples(st)
 			if err != nil {
-				t.Fatalf("%s: samples: %v", st.Name, err)
+				t.Fatalf("%s %s: samples: %v", un.name, st.Name, err)
 			}
 			for i, name := range names {
-				text, err := evalSample(exprs[i])
-				if err != nil {
-					t.Fatalf("%s/%s: %v", st.Name, name, err)
-				}
+				text := texts[i]
 				inst := model.New(st)
 				var report tabletext.Report
 				if !model.Read(inst, []byte(text), &report) {
@@ -135,7 +162,7 @@ func oracleRoots(t testing.TB, u *ir.Unit) []root {
 		}
 	}
 	if len(roots) == 0 {
-		t.Fatalf("%s declares no root table", unitDir)
+		t.Fatalf("%s declares no root table", un.dir)
 	}
 	return roots
 }
@@ -294,12 +321,17 @@ func TestOracleSampleGrammar(t *testing.T) {
 	}
 }
 
-// TestOracleRoots holds the oracle's own shape: every root of the unit has at
-// least one sample, every class the gate's assertions name is present, and the
-// engine wrote form 3 at every fixed root and form 1 at every variable root.
+// TestOracleRoots holds the oracle's own shape: every root of every unit has
+// at least one sample, every class the unit owes is present, and the engine
+// wrote form 3 at every fixed root and form 1 at every variable root.
 func TestOracleRoots(t *testing.T) {
 	repo := repoRoot(t)
-	roots := oracleRoots(t, loadUnit(t, repo))
+	for _, un := range units {
+		t.Run(un.name, func(t *testing.T) { checkOracleRoots(t, un, oracleRoots(t, loadUnit(t, repo, un.dir), un)) })
+	}
+}
+
+func checkOracleRoots(t *testing.T, un unit, roots []root) {
 	seen := map[string]int{}
 	for _, r := range roots {
 		seen[r.class]++
@@ -316,9 +348,9 @@ func TestOracleRoots(t *testing.T) {
 			}
 		}
 	}
-	for _, c := range []string{classFixed, classCeiling, classVariable} {
+	for _, c := range un.classes {
 		if seen[c] == 0 {
-			t.Errorf("%s has no %s root: the gate's %s assertions would compare nothing", unitDir, c, c)
+			t.Errorf("%s has no %s root: the gate's %s assertions would compare nothing", un.dir, c, c)
 		}
 	}
 }

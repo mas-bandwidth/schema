@@ -1,0 +1,48 @@
+// Nested.schema — the round-trip gate's second unit (test/roundtrip): a list
+// inside a list element. A counted and a fixed array of a union whose arms
+// are a float array, a text, an int array and a record holding an enum-keyed
+// array (a keyed array is not itself an arm, §2.6), and a counted array of a
+// record holding an array, once under a fixed root and once under a variable
+// one. The gate's samples (nested_test.go) put every bounded
+// array at its declared maximum and rotate the arms so each arm kind sits at
+// every element position.
+package roundtripnested
+
+enum Side { Left, Right }
+
+union Arm
+{
+    vals  [..2]float32
+    label string(8)
+    nums  [..3]int32
+    sides Sides
+}
+
+fixed table Sides
+{
+    per [Side]int16
+}
+
+fixed table Row
+{
+    xs [..2]int16
+}
+
+fixed table Box
+{
+    arms [..4]Arm
+    pair [2]Arm
+    rows [..3]Row
+}
+
+table OpenRow
+{
+    xs [..2]int16
+}
+
+table OpenBox
+{
+    arms [..4]Arm
+    pair [2]Arm
+    rows [..3]OpenRow
+}

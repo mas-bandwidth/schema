@@ -47,7 +47,7 @@ var legs = []*leg{
 			file: "GuardedTable.go", what: "the variable root's save corrupts its last byte",
 			old: "return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator)",
 			new: "n := tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator); if n > 0 { buffer[n-1] ^= 0xff }; return n",
-			red: []string{"a@variable", "c-save@variable"},
+			red: []string{"examples:a@variable", "examples:c-save@variable"},
 		},
 	},
 	{
@@ -57,7 +57,7 @@ var legs = []*leg{
 			file: "TabledemoVariable.js", what: "the variable root's load answers a default value",
 			old: "export function PatrolLoad(bytes, report) {\n  return TableVariableLoad(",
 			new: "export function PatrolLoad(bytes, report) {\n  return PatrolFromJson(\"{}\", report) ?? TableVariableLoad(",
-			red: []string{"a@variable", "c-load@variable"},
+			red: []string{"examples:a@variable", "examples:c-load@variable"},
 		},
 	},
 	{
@@ -67,7 +67,7 @@ var legs = []*leg{
 			file: "save.lua", what: "every plain save writes the wrong form byte",
 			old: "function S.Save(T, name, v)\n  return save_with(T, name, v, nil)",
 			new: "function S.Save(T, name, v)\n  local w = save_with(T, name, v, nil)\n  if w ~= nil then w = string.char((w:byte(1) % 7) + 1) .. w:sub(2) end\n  return w",
-			red: []string{"a@variable", "c-save@variable"},
+			red: []string{"examples:a@variable", "examples:c-save@variable"},
 		},
 	},
 	{

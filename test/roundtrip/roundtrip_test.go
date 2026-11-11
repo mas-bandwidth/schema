@@ -41,10 +41,11 @@ import (
 // knownRedFile is the ratchet's list, beside this file.
 const knownRedFile = "known-red.tsv"
 
-// key is one ratchet pair within a leg.
-type key struct{ check, class string }
+// key is one ratchet entry within a leg: the unit, the assertion and the root
+// class.
+type key struct{ unit, check, class string }
 
-func (k key) String() string { return k.check + "@" + k.class }
+func (k key) String() string { return k.unit + ":" + k.check + "@" + k.class }
 
 // outcome is what a row measured for one key.
 type outcome struct {
@@ -108,7 +109,7 @@ func parseAnswers(out []byte, outDir string) (answers, error) {
 // evaluate turns a probe's answers and the files it wrote into one outcome per
 // key, and the hard failures no list can cover: a root the probe never
 // answered, and a row that compared nothing.
-func evaluate(roots []root, retain bool, ans answers, outDir string) (map[key]*outcome, []string) {
+func evaluate(unitName string, roots []root, retain bool, ans answers, outDir string) (map[key]*outcome, []string) {
 	res := map[key]*outcome{}
 	var hard []string
 	total := 0
@@ -124,7 +125,7 @@ func evaluate(roots []root, retain bool, ans answers, outDir string) (map[key]*o
 				if !owed {
 					continue
 				}
-				k := key{check, r.class}
+				k := key{unitName, check, r.class}
 				if res[k] == nil {
 					res[k] = &outcome{}
 				}
@@ -136,11 +137,11 @@ func evaluate(roots []root, retain bool, ans answers, outDir string) (map[key]*o
 			}
 		}
 		if answered == 0 {
-			hard = append(hard, fmt.Sprintf("root %s: the probe answered none of its %d samples", r.name, len(r.samples)))
+			hard = append(hard, fmt.Sprintf("%s root %s: the probe answered none of its %d samples", unitName, r.name, len(r.samples)))
 		}
 	}
 	if total == 0 {
-		hard = append(hard, "the row compared nothing")
+		hard = append(hard, unitName+": the row compared nothing")
 	}
 	return res, hard
 }
@@ -251,7 +252,7 @@ func sameBytes(path string, want []byte) (bool, string) {
 	return false, fmt.Sprintf("is %s, %d bytes; the engine's is %s, %d bytes; first difference at byte %d", form(got), len(got), form(want), len(want), at)
 }
 
-// knownRed reads the ratchet's list: `<leg> <check> <class>` per line, # for a
+// knownRed reads the ratchet's list: `<leg> <unit> <check> <class>` per line, # for a
 // comment. A malformed line is a failure, never skipped.
 func knownRed(t testing.TB) map[string]map[key]bool {
 	t.Helper()
@@ -266,10 +267,10 @@ func knownRed(t testing.TB) map[string]map[key]bool {
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) != 3 {
-			t.Fatalf("%s:%d: want `<leg> <check> <class>`, got %q", knownRedFile, i+1, line)
+		if len(f) != 4 {
+			t.Fatalf("%s:%d: want `<leg> <unit> <check> <class>`, got %q", knownRedFile, i+1, line)
 		}
-		k := key{f[1], f[2]}
+		k := key{f[1], f[2], f[3]}
 		if out[f[0]] == nil {
 			out[f[0]] = map[key]bool{}
 		}
@@ -294,7 +295,7 @@ func ratchet(leg string, res map[key]*outcome, listed map[key]bool) []string {
 			}
 			errs = append(errs, fmt.Sprintf("RED %s %s: %d of %d cases fail and the pair is not in %s:\n\t%s", leg, k, n, o.cases, knownRedFile, strings.Join(shown, "\n\t")))
 		case len(o.fails) == 0 && listed[k]:
-			errs = append(errs, fmt.Sprintf("NOW GREEN %s %s: all %d cases pass; remove `%s %s %s` from %s (the list only shrinks)", leg, k, o.cases, leg, k.check, k.class, knownRedFile))
+			errs = append(errs, fmt.Sprintf("NOW GREEN %s %s: all %d cases pass; remove `%s %s %s %s` from %s (the list only shrinks)", leg, k, o.cases, leg, k.unit, k.check, k.class, knownRedFile))
 		}
 	}
 	for k := range listed {
@@ -315,6 +316,7 @@ type rowEnv struct {
 	in     string // samples/, engine/, out/, cases.txt
 	roots  []root
 	pkg    string // the unit's package
+	unit   string // the unit's name in the ratchet
 }
 
 // schemaBin is the compiler the row generates with: the leg's binary under
@@ -354,32 +356,52 @@ func tail(b []byte) string {
 	return string(b)
 }
 
-// newRow generates the leg's code for the unit and lays out the oracle's inputs.
-func newRow(t *testing.T, l *leg) *rowEnv {
+// newRow generates the leg's code for one unit and lays out the oracle's inputs.
+func newRow(t *testing.T, l *leg, un unit) *rowEnv {
 	t.Helper()
 	repo := repoRoot(t)
-	x := &rowEnv{repo: repo, schema: schemaBin(t, repo, l.compiler()), work: t.TempDir()}
+	x := &rowEnv{repo: repo, schema: schemaBin(t, repo, l.compiler()), work: t.TempDir(), unit: un.name}
 	x.gen = filepath.Join(x.work, "gen")
 	x.in = filepath.Join(x.work, "in")
-	u := loadUnit(t, repo)
+	u := loadUnit(t, repo, un.dir)
 	x.pkg = u.Package
-	x.roots = oracleRoots(t, u)
+	x.roots = oracleRoots(t, u, un)
 	writeInputs(t, x.in, x.roots)
-	run(t, repo, nil, x.schema, "generate", "--lang", l.lang, "--out", x.gen, unitDir)
+	run(t, repo, nil, x.schema, "generate", "--lang", l.lang, "--out", x.gen, un.dir)
 	return x
 }
 
-// measure runs one leg's probe and returns the ratchet errors and hard failures.
-func measure(t *testing.T, l *leg, x *rowEnv) (map[key]*outcome, []string, []string) {
+// probe runs one leg's probe over one unit and returns its outcomes and hard
+// failures.
+func probe(t *testing.T, l *leg, x *rowEnv) (map[key]*outcome, []string) {
 	t.Helper()
 	out := l.run(t, x)
 	ans, err := parseAnswers(out, filepath.Join(x.in, "out"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, hard := evaluate(x.roots, l.retain, ans, filepath.Join(x.in, "out"))
-	errs := ratchet(l.name, res, knownRed(t)[l.name])
-	return res, errs, hard
+	return evaluate(x.unit, x.roots, l.retain, ans, filepath.Join(x.in, "out"))
+}
+
+// measure runs one leg's probe over every unit, with plant (when not nil)
+// applied to the first unit's generated code, and returns the outcomes, the
+// ratchet errors and the hard failures.
+func measure(t *testing.T, l *leg, planted *plant) (map[key]*outcome, []string, []string) {
+	t.Helper()
+	res := map[key]*outcome{}
+	var hard []string
+	for i, un := range units {
+		x := newRow(t, l, un)
+		if planted != nil && i == 0 {
+			plantBreak(t, x.gen, *planted)
+		}
+		r, h := probe(t, l, x)
+		for k, o := range r {
+			res[k] = o
+		}
+		hard = append(hard, h...)
+	}
+	return res, ratchet(l.name, res, knownRed(t)[l.name]), hard
 }
 
 // report prints the row's table, one line per key, so a green row says what it
@@ -406,8 +428,7 @@ func TestRoundTrip(t *testing.T) {
 	for _, l := range legs {
 		t.Run(l.name, func(t *testing.T) {
 			slowtest.Gate(t, l.tool)
-			x := newRow(t, l)
-			res, errs, hard := measure(t, l, x)
+			res, errs, hard := measure(t, l, nil)
 			report(t, l.name, res)
 			for _, h := range hard {
 				t.Error(h)
@@ -431,9 +452,7 @@ func TestRoundTripNegativeControl(t *testing.T) {
 			if len(l.plant.red) == 0 {
 				t.Fatalf("leg %s has no planted break: every row carries a negative control", l.name)
 			}
-			x := newRow(t, l)
-			plantBreak(t, x.gen, l.plant)
-			res, errs, hard := measure(t, l, x)
+			res, errs, hard := measure(t, l, &l.plant)
 			report(t, l.name, res)
 			if len(hard) > 0 {
 				t.Fatalf("NEGATIVE CONTROL FAILED: the planted row failed for a reason that is not the plant:\n%s", strings.Join(hard, "\n"))
@@ -460,7 +479,7 @@ type plant struct {
 	old, new string   // exactly one occurrence of old becomes new
 	all      bool     // replace every occurrence (a rule the file repeats per table); at least one must match
 	what     string   // what the break is
-	red      []string // the keys (check@class) that must go red
+	red      []string // the keys (unit:check@class) that must go red; the plant is in the first unit
 }
 
 func plantBreak(t *testing.T, gen string, p plant) {
