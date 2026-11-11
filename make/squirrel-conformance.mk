@@ -37,13 +37,16 @@ conformance-negative-control-squirrel-block: build/conformance-harness build/con
 		forgery block block-dump
 
 # THE RETAINED-ID CAPACITY (§6.6): the save interns retained ids past the
-# caller's list, so retain_ids_short keeps a record it must drop and the retain
-# surface goes red; the plain wire and the report never touch retention.
+# caller's list, so retain_ids_short keeps a record it must drop and writes the
+# round trip's bytes where the row pins the shorter save: the retain-save
+# surface goes red. The retain surface reads only the complete known value,
+# which no retained id moves, so it stays green beside the plain wire and the
+# report, which never touch retention.
 .PHONY: conformance-negative-control-squirrel-retain
 conformance-negative-control-squirrel-retain: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@sh test/conformance/squirrel/negative-control retain retain.nut \
 		's/if (store.ids.len() >= store.idCapacity) return false;//' \
-		retain wire report
+		retain-save retain wire report
 
 # THE FRAMING LAYER (docs/LAYERS/1-framing.md): the load forgets the id
 # table's 4096-entry maximum (docs/SPEC-TABLES.md §3), so frame_entries_4097
