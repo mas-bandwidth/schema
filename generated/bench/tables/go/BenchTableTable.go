@@ -2058,12 +2058,13 @@ type TableMessageEntry struct {
 
 // Storage belongs to the caller and is resolved once for one connection direction.
 type TableVocabulary struct {
-	Entries            []TableMessageEntry
-	Count, RefBits     int64
-	BuildVersion       uint64
-	Announced, Refused bool
-	MaxBytes           int64
-	Strict             bool
+	Entries                                 []TableMessageEntry
+	Count, RefBits                          int64
+	BuildVersion                            uint64
+	Announced, Refused                      bool
+	MaxBytes                                int64
+	Strict                                  bool
+	bodySeen, bodyStamp, bodyGen, bodyCanon []uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader

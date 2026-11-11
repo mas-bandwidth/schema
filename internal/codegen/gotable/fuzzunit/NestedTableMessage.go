@@ -92,9 +92,15 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 	return 2 + w.Bits/8
 }
 func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) bool {
+	return tableMessageBodyArchiveConfig(r, value, 0)
+}
+func tableMessageBodyArchiveConfig(r *TableMessageReader, value *ArchiveConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	ArchiveConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -109,23 +115,9 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xa354fd1ff0c467c5:
@@ -139,7 +131,7 @@ func ArchiveConfigLoadMessageBody(r *TableMessageReader, value *ArchiveConfig) b
 						return false
 					}
 				}
-				if !RootConfigLoadMessageBody(r, &value.Root) {
+				if !tableMessageBodyRootConfig(r, &value.Root, depth+1) {
 					return false
 				}
 				if widened {

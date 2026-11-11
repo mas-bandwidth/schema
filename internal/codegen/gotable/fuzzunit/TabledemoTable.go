@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x3874a951f98d7507)
-const _ = uint64(0x3874a951f98d7507 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x6340ca9f808ba580)
+const _ = uint64(0x6340ca9f808ba580 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -311,6 +311,20 @@ func tableFixedOverlay(a0 unsafe.Pointer, a1 uintptr) []byte {
 const TableMessageBatchMax = goruntime.TableMessageBatchMax
 
 func tableMessageBits(a0 uint64) int64 { return goruntime.TableMessageBits(a0) }
+
+func tableMessageScratch(a0 *TableVocabulary) { goruntime.TableMessageScratch(a0) }
+
+func tableMessageCanonical(a0 *TableVocabulary) { goruntime.TableMessageCanonical(a0) }
+
+func tableMessageBodyStart(a0 *TableVocabulary, a1 int) uint64 {
+	return goruntime.TableMessageBodyStart(a0, a1)
+}
+
+func tableMessageBodySeen(a0 *TableVocabulary, a1 int, a2, a3 uint64) bool {
+	return goruntime.TableMessageBodySeen(a0, a1, a2, a3)
+}
+
+const tableMessageBodyMaxDepth = goruntime.TableMessageBodyMaxDepth
 
 func tableMessageRefuse(a0 *TableReport, a1 string) bool { return goruntime.TableMessageRefuse(a0, a1) }
 

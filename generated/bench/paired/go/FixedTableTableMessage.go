@@ -80,9 +80,15 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
+	return tableMessageBodyFixedTable(r, value, 0)
+}
+func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	FixedTableReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -97,23 +103,9 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
@@ -127,7 +119,7 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 						return false
 					}
 				}
-				if !BenchMixedLoadMessageBody(r, &value.Value) {
+				if !tableMessageBodyBenchMixed(r, &value.Value, depth+1) {
 					return false
 				}
 				if widened {

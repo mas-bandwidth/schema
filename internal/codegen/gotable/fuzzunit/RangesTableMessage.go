@@ -216,9 +216,15 @@ func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) bool {
+	return tableMessageBodyRangedSigned(r, value, 0)
+}
+func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	RangedSignedReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -233,23 +239,9 @@ func RangedSignedLoadMessageBody(r *TableMessageReader, value *RangedSigned) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x48121511bf702eb5:
@@ -1137,9 +1129,15 @@ func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned) bool {
+	return tableMessageBodyRangedUnsigned(r, value, 0)
+}
+func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	RangedUnsignedReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1154,23 +1152,9 @@ func RangedUnsignedLoadMessageBody(r *TableMessageReader, value *RangedUnsigned)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x0f8897557f37c021:
@@ -1959,9 +1943,15 @@ func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) bool {
+	return tableMessageBodyRangedWidths(r, value, 0)
+}
+func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	RangedWidthsReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1976,23 +1966,9 @@ func RangedWidthsLoadMessageBody(r *TableMessageReader, value *RangedWidths) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x08a60c07b54d8dc7:

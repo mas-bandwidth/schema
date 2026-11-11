@@ -613,12 +613,13 @@ type TableMessageEntry struct {
 
 // Storage belongs to the caller and is resolved once for one connection direction.
 type TableVocabulary struct {
-	Entries            []TableMessageEntry
-	Count, RefBits     int64
-	BuildVersion       uint64
-	Announced, Refused bool
-	MaxBytes           int64
-	Strict             bool
+	Entries                                 []TableMessageEntry
+	Count, RefBits                          int64
+	BuildVersion                            uint64
+	Announced, Refused                      bool
+	MaxBytes                                int64
+	Strict                                  bool
+	bodySeen, bodyStamp, bodyGen, bodyCanon []uint64
 }
 
 type TableMessageReader struct {
@@ -1752,8 +1753,97 @@ func TableMessageBits(n uint64) int64 {
 }
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry) {
-	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024}
+	seen, stamp, gen, canon := v.bodySeen, v.bodyStamp, v.bodyGen, v.bodyCanon
+	*v = TableVocabulary{Entries: storage, MaxBytes: 64 * 1024, bodySeen: seen, bodyStamp: stamp, bodyGen: gen, bodyCanon: canon}
+	TableMessageScratch(v)
 }
+
+func TableMessageScratch(v *TableVocabulary) {
+	words := (len(v.Entries) + 63) / 64
+	if words < 1 {
+		words = 1
+	}
+	span := words * (TableMessageBodyMaxDepth + 1)
+	if cap(v.bodySeen) < span {
+		v.bodySeen = make([]uint64, span)
+	} else {
+		v.bodySeen = v.bodySeen[:span]
+	}
+	if cap(v.bodyStamp) < span {
+		v.bodyStamp = make([]uint64, span)
+	} else {
+		v.bodyStamp = v.bodyStamp[:span]
+	}
+	if cap(v.bodyGen) < TableMessageBodyMaxDepth+1 {
+		v.bodyGen = make([]uint64, TableMessageBodyMaxDepth+1)
+	} else {
+		v.bodyGen = v.bodyGen[:TableMessageBodyMaxDepth+1]
+	}
+	if cap(v.bodyCanon) < len(v.Entries) {
+		v.bodyCanon = make([]uint64, len(v.Entries))
+	} else {
+		v.bodyCanon = v.bodyCanon[:len(v.Entries)]
+	}
+}
+
+func TableMessageCanonical(v *TableVocabulary) {
+	clear(v.bodySeen)
+	clear(v.bodyStamp)
+	clear(v.bodyGen)
+	for i := int64(0); i < v.Count; i++ {
+		slot := uint64(i + 1)
+		for j := int64(0); j < i; j++ {
+			if v.Entries[j].ID == v.Entries[i].ID {
+				slot = uint64(j + 1)
+				break
+			}
+		}
+		v.bodyCanon[i] = slot
+	}
+}
+
+func TableMessageBodyStart(v *TableVocabulary, depth int) uint64 {
+	if depth < 0 || depth >= len(v.bodyGen) {
+		return 0
+	}
+	v.bodyGen[depth]++
+	if v.bodyGen[depth] == 0 {
+		words := (len(v.Entries) + 63) / 64
+		if words < 1 {
+			words = 1
+		}
+		clear(v.bodyStamp[depth*words : (depth+1)*words])
+		v.bodyGen[depth] = 1
+	}
+	return v.bodyGen[depth]
+}
+
+func TableMessageBodySeen(v *TableVocabulary, depth int, gen, ref uint64) bool {
+	if gen == 0 || depth < 0 || depth >= len(v.bodyGen) || ref == 0 || ref > uint64(len(v.bodyCanon)) {
+		return false
+	}
+	slot := v.bodyCanon[ref-1]
+	if slot == 0 {
+		return false
+	}
+	words := (len(v.Entries) + 63) / 64
+	if words < 1 {
+		words = 1
+	}
+	at := depth*words + int((slot-1)>>6)
+	bit := uint64(1) << ((slot - 1) & 63)
+	if v.bodyStamp[at] != gen {
+		v.bodyStamp[at] = gen
+		v.bodySeen[at] = 0
+	}
+	if v.bodySeen[at]&bit != 0 {
+		return true
+	}
+	v.bodySeen[at] |= bit
+	return false
+}
+
+const TableMessageBodyMaxDepth = 128
 
 func (v *TableVocabulary) Entry(ref uint64) (TableMessageEntry, bool) {
 	if ref == 0 || ref > uint64(v.Count) {
@@ -2010,4 +2100,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x3874a951f98d7507
+const Version uint64 = 0x6340ca9f808ba580

@@ -39,13 +39,8 @@ func lebs(v uint64) []byte {
 	}
 }
 
-// unknownAnnouncement is an announcement of n unknown no-payload entries.
-func unknownAnnouncement(n int) []byte {
-	vocab := make([]byte, 0, n*9)
-	for i := 0; i < n; i++ {
-		vocab = binary.LittleEndian.AppendUint64(vocab, 0x100000000+uint64(i))
-		vocab = append(vocab, 0)
-	}
+// announcementFor wraps one vocabulary byte string in the announcement body.
+func announcementFor(vocab []byte) []byte {
 	fields := []byte{1, 9}
 	fields = binary.LittleEndian.AppendUint64(fields, 0)
 	sub := append([]byte{6}, lebs(uint64(len(vocab)))...)
@@ -58,6 +53,25 @@ func unknownAnnouncement(n int) []byte {
 	out = binary.LittleEndian.AppendUint64(out, 0xfffffffffffffffe)
 	out = binary.LittleEndian.AppendUint64(out, 0xfffffffffffffffd)
 	return binary.LittleEndian.AppendUint64(out, 2)
+}
+
+// unknownAnnouncement is an announcement of n unknown no-payload entries.
+func unknownAnnouncement(n int) []byte {
+	vocab := make([]byte, 0, n*9)
+	for i := 0; i < n; i++ {
+		vocab = binary.LittleEndian.AppendUint64(vocab, 0x100000000+uint64(i))
+		vocab = append(vocab, 0)
+	}
+	return announcementFor(vocab)
+}
+
+// sharedIDAnnouncement carries one field id in two slots at two shapes.
+func sharedIDAnnouncement() []byte {
+	vocab := binary.LittleEndian.AppendUint64(nil, 0x200000000)
+	vocab = append(vocab, 0)
+	vocab = binary.LittleEndian.AppendUint64(vocab, 0x200000000)
+	vocab = append(vocab, 32)
+	return announcementFor(vocab)
 }
 
 func messageBits(n int) int {
@@ -114,34 +128,84 @@ func repeatedBody(n, position int) []byte {
 
 func vocab(t *testing.T, n int) *TableVocabulary {
 	t.Helper()
+	return announced(t, n, unknownAnnouncement(n))
+}
+
+func announced(t *testing.T, capacity int, announcement []byte) *TableVocabulary {
+	t.Helper()
 	v := new(TableVocabulary)
-	v.Init(make([]TableMessageEntry, n))
+	v.Init(make([]TableMessageEntry, capacity))
+	v.MaxBytes = int64(len(announcement))
 	var report TableReport
-	if !AnnounceRead(v, unknownAnnouncement(n), &report) || v.Count != int64(n) {
-		t.Fatalf("%d-entry announcement: %+v", n, report)
+	if !AnnounceRead(v, announcement, &report) {
+		t.Fatalf("%d-slot announcement: %+v", capacity, report)
 	}
 	return v
 }
 
-func TestRepeatCheck(t *testing.T) {
-	for _, n := range []int{100, 1000} {
+// TestRepeatCheckAllocs measures allocation and must not run parallel:
+// testing.AllocsPerRun refuses to run while a parallel test is active.
+func TestRepeatCheckAllocs(t *testing.T) {
+	for _, n := range []int{100, 1000, 9000} {
 		v := vocab(t, n)
-		body := distinctBody(n)
-		batch := append([]byte{2, 0}, body...)
+		batch := append([]byte{2, 0}, distinctBody(n)...)
+		values := make([]Root, 1)
+		allocs := testing.AllocsPerRun(100, func() {
+			var r TableReport
+			if count, ok := RootLoadMessages(values, v, batch, &r); !ok || count != 1 || r.Refused() || r.Unknown != int32(n) {
+				t.Fatalf("%d distinct entries: count=%d ok=%v %+v", n, count, ok, r)
+			}
+		})
+		if allocs != 0 {
+			t.Fatalf("%d distinct entries allocate %v per load", n, allocs)
+		}
+	}
+	// a vocabulary reused for one connection: init and announce allocate nothing
+	v := vocab(t, 1000)
+	storage := make([]TableMessageEntry, 1000)
+	announcement := unknownAnnouncement(1000)
+	if allocs := testing.AllocsPerRun(10, func() {
+		v.Init(storage)
+		var r TableReport
+		if !AnnounceRead(v, announcement, &r) {
+			t.Fatalf("re-announce: %+v", r)
+		}
+	}); allocs != 0 {
+		t.Fatalf("a reused vocabulary allocates %v per announce", allocs)
+	}
+}
+
+func TestRepeatCheck(t *testing.T) {
+	t.Parallel()
+	for _, n := range []int{100, 1000, 9000} {
+		v := vocab(t, n)
+		batch := append([]byte{2, 0}, distinctBody(n)...)
 		values := make([]Root, 1)
 		var report TableReport
 		count, ok := RootLoadMessages(values, v, batch, &report)
 		if !ok || count != 1 || report.Refused() || report.Unknown != int32(n) {
 			t.Fatalf("%d distinct entries: count=%d ok=%v %+v", n, count, ok, report)
 		}
-		allocs := testing.AllocsPerRun(100, func() {
-			var r TableReport
-			if _, ok := RootLoadMessages(values, v, batch, &r); !ok {
-				t.Fatalf("%d distinct entries: %+v", n, r)
-			}
-		})
-		if allocs != 0 {
-			t.Fatalf("%d distinct entries allocate %v per load", n, allocs)
+	}
+	// one field id in two slots: each reference alone reads, both together repeat
+	v := announced(t, 2, sharedIDAnnouncement())
+	refBits := messageBits(int(v.Count))
+	for _, ref := range []uint64{1, 2} {
+		batch := append([]byte{2, 0}, bodyBits([]uint64{ref}, refBits)...)
+		values := make([]Root, 1)
+		var report TableReport
+		count, ok := RootLoadMessages(values, v, batch, &report)
+		if !ok || count != 1 || report.Refused() || report.Unknown != 1 {
+			t.Fatalf("shared-id slot %d alone: count=%d ok=%v %+v", ref, count, ok, report)
+		}
+	}
+	for _, refs := range [][]uint64{{1, 2}, {2, 1}} {
+		batch := append([]byte{2, 0}, bodyBits(refs, refBits)...)
+		values := make([]Root, 1)
+		var report TableReport
+		count, ok := RootLoadMessages(values, v, batch, &report)
+		if ok || count != 0 || !report.Refused() {
+			t.Fatalf("shared-id slots %v: count=%d ok=%v %+v", refs, count, ok, report)
 		}
 	}
 	for _, tc := range []struct{ n, position int }{{100, 2}, {1000, 2}, {1000, 1000}} {

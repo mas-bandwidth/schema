@@ -146,9 +146,15 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 	return 2 + w.Bits/8
 }
 func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
+	return tableMessageBodyWideBlob(r, value, 0)
+}
+func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	WideBlobReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -163,23 +169,9 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:

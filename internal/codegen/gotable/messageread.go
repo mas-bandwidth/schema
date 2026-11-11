@@ -8,14 +8,17 @@ import (
 )
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
-	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);\n", st.Name, g.storageName(st.Name), st.Name)
+	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {return tableMessageBody%s(r,value,0)}\n", st.Name, g.storageName(st.Name), st.Name)
+	g.pf("func tableMessageBody%s(r *TableMessageReader,value *%s,depth int)bool {\n", st.Name, g.storageName(st.Name))
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: a reference is tested and set in one bit of a stack bitmap.
-	// The bitmap is sized for every vocabulary the conforming byte bound admits,
-	// and a caller that raised that bound keeps the same verdicts through the
-	// overflow set, so the check costs one test per field whatever the size.
-	g.pf("var seenRefs [128]uint64;var seenLarge map[uint64]struct{}\n")
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref>uint64(len(seenRefs))*64 {if seenLarge==nil{seenLarge=map[uint64]struct{}{}};if _,dup:=seenLarge[ref];dup{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seenLarge[ref]=struct{}{}} else {word:=(ref-1)>>6;bit:=uint64(1)<<((ref-1)&63);if seenRefs[word]&bit!=0{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seenRefs[word]|=bit};switch entry.ID {\n")
+	// or unknown: the vocabulary resolves each reference to the first slot
+	// carrying its id once, and a body's field is tested and set in one bit of
+	// a bitmap the vocabulary holds for this nesting level. The check costs one
+	// test per field whatever the vocabulary's size, and the bitmaps are reset
+	// by a generation stamp per body.
+	g.pf("if depth>tableMessageBodyMaxDepth {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n")
+	g.pf("gen:=tableMessageBodyStart(r.Vocabulary,depth);%sReset(value);\n", st.Name)
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if tableMessageBodySeen(r.Vocabulary,depth,gen,ref){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
@@ -75,7 +78,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
-		g.pf("%sif !%sLoadMessageBody(r,&%s){return false}\n", ind, f.Type.Name, expr)
+		g.pf("%sif !tableMessageBody%s(r,&%s,depth+1){return false}\n", ind, f.Type.Name, expr)
 	case isUnionRef(f.Type):
 		target := g.nextWireWriter()
 		g.pf("{ %s:=&%s\n", target, expr)

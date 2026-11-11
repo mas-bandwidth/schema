@@ -138,9 +138,15 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings) bool {
+	return tableMessageBodyGunnerSettings(r, value, 0)
+}
+func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	GunnerSettingsReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -155,23 +161,9 @@ func GunnerSettingsLoadMessageBody(r *TableMessageReader, value *GunnerSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xb75aa3662201646a:
@@ -488,9 +480,15 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 	return 2 + w.Bits/8
 }
 func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
+	return tableMessageBodyShipEntry(r, value, 0)
+}
+func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	ShipEntryReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -505,23 +503,9 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x2d21d7cd66bd5a5d:
@@ -708,7 +692,7 @@ func ShipEntryLoadMessageBody(r *TableMessageReader, value *ShipEntry) bool {
 						return false
 					}
 				}
-				if !GunnerSettingsLoadMessageBody(r, &value.Gunner) {
+				if !tableMessageBodyGunnerSettings(r, &value.Gunner, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -915,9 +899,15 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 	return 2 + w.Bits/8
 }
 func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings) bool {
+	return tableMessageBodyGlobalSettings(r, value, 0)
+}
+func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	GlobalSettingsReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -932,23 +922,9 @@ func GlobalSettingsLoadMessageBody(r *TableMessageReader, value *GlobalSettings)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xa65f859b617deaf3:
@@ -1349,9 +1325,15 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
+	return tableMessageBodyPackConfig(r, value, 0)
+}
+func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	PackConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1366,23 +1348,9 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xbb62c62c9808ea37:
@@ -1427,7 +1395,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						return false
 					}
 				}
-				if !GlobalSettingsLoadMessageBody(r, &value.Settings) {
+				if !tableMessageBodyGlobalSettings(r, &value.Settings, depth+1) {
 					return false
 				}
 				if widened {
@@ -1481,7 +1449,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 						} else {
 							r.Report.Unknown++
 						}
-						if !ShipEntryLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyShipEntry(r, &(*p), depth+1) {
 							return false
 						}
 					}
@@ -1594,7 +1562,7 @@ func PackConfigLoadMessageBody(r *TableMessageReader, value *PackConfig) bool {
 					}
 					for i := range n {
 						p := &base[i]
-						if !ShipEntryLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyShipEntry(r, &(*p), depth+1) {
 							return false
 						}
 					}

@@ -125,9 +125,15 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
+	return tableMessageBodyTeamConfig(r, value, 0)
+}
+func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	TeamConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -142,23 +148,9 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xceec99e2d65db674:
@@ -362,9 +354,15 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
+	return tableMessageBodyGunnerConfig(r, value, 0)
+}
+func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	GunnerConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -379,23 +377,9 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xb75aa3662201646a:
@@ -609,9 +593,15 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 	return 2 + w.Bits/8
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
+	return tableMessageBodyTurretConfig(r, value, 0)
+}
+func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	TurretConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -626,23 +616,9 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
@@ -732,7 +708,7 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 						return false
 					}
 				}
-				if !GunnerConfigLoadMessageBody(r, &value.Gunner) {
+				if !tableMessageBodyGunnerConfig(r, &value.Gunner, depth+1) {
 					return false
 				}
 				value.GunnerPresent = true
@@ -921,9 +897,15 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
+	return tableMessageBodyHullConfig(r, value, 0)
+}
+func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	HullConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -938,23 +920,9 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
@@ -1080,7 +1048,7 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 						} else {
 							r.Report.Unknown++
 						}
-						if !TurretConfigLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyTurretConfig(r, &(*p), depth+1) {
 							return false
 						}
 					}
@@ -1313,9 +1281,15 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 	return 2 + w.Bits/8
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
+	return tableMessageBodyKeyedConfig(r, value, 0)
+}
+func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	KeyedConfigReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1330,23 +1304,9 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
@@ -1396,7 +1356,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						} else {
 							r.Report.Unknown++
 						}
-						if !TeamConfigLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyTeamConfig(r, &(*p), depth+1) {
 							return false
 						}
 					}
@@ -1452,7 +1412,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						} else {
 							r.Report.Unknown++
 						}
-						if !HullConfigLoadMessageBody(r, &(*p)) {
+						if !tableMessageBodyHullConfig(r, &(*p), depth+1) {
 							return false
 						}
 					}
@@ -1472,7 +1432,7 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 						return false
 					}
 				}
-				if !ScoreBoardLoadMessageBody(r, &value.Scores) {
+				if !tableMessageBodyScoreBoard(r, &value.Scores, depth+1) {
 					return false
 				}
 				if widened {
@@ -1570,9 +1530,15 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 	return !w.Overflow
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
+	return tableMessageBodyScoreBoard(r, value, 0)
+}
+func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, depth int) bool {
+	if depth > tableMessageBodyMaxDepth {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	gen := tableMessageBodyStart(r.Vocabulary, depth)
 	ScoreBoardReset(value)
-	var seenRefs [128]uint64
-	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1587,23 +1553,9 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if ref > uint64(len(seenRefs))*64 {
-			if seenLarge == nil {
-				seenLarge = map[uint64]struct{}{}
-			}
-			if _, dup := seenLarge[ref]; dup {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenLarge[ref] = struct{}{}
-		} else {
-			word := (ref - 1) >> 6
-			bit := uint64(1) << ((ref - 1) & 63)
-			if seenRefs[word]&bit != 0 {
-				r.Report.Refuse(TableRefuseWireDamaged, "")
-				return false
-			}
-			seenRefs[word] |= bit
+		if tableMessageBodySeen(r.Vocabulary, depth, gen, ref) {
+			r.Report.Refuse(TableRefuseWireDamaged, "")
+			return false
 		}
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
