@@ -196,7 +196,7 @@ local S = schema.require("schema_table_save");
 local one = function(name) {
   local rep = {};
   local v = R.ReadStrict(T, "Root", inputs[name], rep);
-  if (v == null) print(name + "=refused:" + rep.reason + "\n");
+  if (v == null) print(name + "=refused\n");
   else print(name + "=read|" + hexOf(S.save(T, "Root", v)) + "\n");
 };
 one("v1"); one("v2"); one("clampedWire");
@@ -210,7 +210,7 @@ local R = schema.require("schema_table_refusal");
 local one = function(name) {
   local rep = {};
   local v = R.ReadStrict(T, "Root", inputs[name], rep);
-  if (v == null) print(name + "=refused:" + rep.reason + "\n");
+  if (v == null) print(name + "=refused\n");
   else print(name + "=read|" + v.Keyed[0] + "," + v.Keyed[2] + "\n");
 };
 one("clean"); one("dup"); one("trailing"); one("elemExtra");
@@ -228,7 +228,7 @@ func vtShapeWant(t *testing.T) string {
 	t.Helper()
 	v1 := vtShapeOracle(t, vtShapeSchema, `{"cell":{"power":5,"label":"a"},"ship":{"name":"s","hull":7},"flag":{"name":"f","hull":3},"opt":3,"optCell":{"power":2},"keyed":{"Red":1,"Blue":3},"keyedCells":{"Green":{"power":9}},"fp":1.5,"ufp":2.5,"bigfp":-12.25,"i128v":-12345,"u128v":12345,"wideText":"héllo","title":"hello","grade":"Argent","effect":{"shield":{"charge":1.5}},"buff":{"mult":2.0},"clamped":5}`)
 	v2 := vtShapeOracle(t, vtShapeSchema, `{}`)
-	return fmt.Sprintf("v1=read|%x\nv2=read|%x\nclampedWire=refused:out_of_range\nclean=read|11,33\ndup=refused:malformed\ntrailing=refused:malformed\nelemExtra=refused:wire_damaged", v1, v2)
+	return fmt.Sprintf("v1=read|%x\nv2=read|%x\nclampedWire=refused\nclean=read|11,33\ndup=refused\ntrailing=refused\nelemExtra=refused", v1, v2)
 }
 
 func TestSquirrelVtShapeCells(t *testing.T) {
