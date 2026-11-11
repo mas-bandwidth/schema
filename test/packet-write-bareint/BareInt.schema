@@ -1,0 +1,12 @@
+// BareInt.schema — the packet write of a bare integer (SPEC §5.1, row 11):
+// a bare integer's range is its declared width. One field of each width the
+// shared cases in cases.txt exercise.
+package packetwritebareint
+
+type BareInt
+{
+    i8  int8
+    u8  uint8
+    u32 uint32
+    u64 uint64
+}

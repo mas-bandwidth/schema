@@ -2300,6 +2300,16 @@ a caller can hold that the declaration does not admit:
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
+| 11 | a bare integer (`int8` to `int64`, `uint8` to `uint64`, no `min`/`max`: its range is its declared width) whose value its declared width cannot carry, or that is not an integer. The row binds only where a leg's storage can hold such a value (a Lua, Luau or JavaScript number, a Dart `int`, an Elixir integer); a typed field of the declared width cannot hold one | not seen: only the width's bits ride, and the reader reads what they say |
+
+**Row 11 is a value off its declaration like any other**, held by the leg's
+mechanism (`write-refusal`): a debug assert in C, C++, C#, Rust, Java and Dart,
+a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO
+and Goose. A writer never masks or wraps such a value in the build where its
+check is active; what an assert leg's release build writes for one is
+unspecified (§5). No cell of the per-writer tables below records row 11 yet: a
+leg's cell names it when that leg's writer is held to it, and
+test/packet-write-bareint/ carries the shared packet cases.
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
@@ -2312,7 +2322,7 @@ correct writes are the programmer's responsibility, and the assert is how the
 leg tells them they got it wrong. An assert leg's release build carries no
 write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
-check runs in every build in every leg (§4). Glenn, 2026-11-10: "in languages
+check runs in every leg, in every build (§4). Glenn, 2026-11-10: "in languages
 that have assert, we rely on assert to prompt the user they fucked up. when we
 don't have asserts, we have to do some checks in release depending on the
 language."
@@ -2322,7 +2332,7 @@ language."
 | C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
 | C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++ |
 | C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it) |
-| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set union tag cannot be built: a union is a native enum. An enum is a newtype over its ordinal (`pub struct E(pub u8)`), so an out-of-set ordinal can be built, and the writer's `debug_assert!` holds it |
 | Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError` |
 | Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError` |
 | Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |

@@ -1,0 +1,31 @@
+# The shared cases for the packet write of a bare integer (docs/SPEC.md §5.1,
+# row 11; docs/PACKET-WIRE-ALGORITHM.md §2.4), over BareInt.schema.
+#
+# One case per line: the field, the value, the verdict. Each case sets one field
+# of a BareInt whose other fields are 0 and writes it with the packet Write.
+#
+# "refused" means the write is held by the leg's own mechanism (SPEC §5.1):
+# by the debug build's assert in an assert leg (C, C++, C#, Rust, Java, Dart),
+# and by the writer's refusal, in every build, in Go, JavaScript, Elixir, Lua,
+# Luau, Squirrel, MOO and Goose. An assert leg answers from its debug build;
+# what its release build writes for such a value is unspecified.
+# A refused case binds only where the leg can hold the value at all: a leg whose
+# storage cannot represent a case (an int8 field cannot hold 300) skips it and
+# says so.
+#
+# "written" means the write succeeds in every build of every leg, and a read of
+# the bytes gives back exactly the value written.
+i8 300 refused
+i8 -129 refused
+i8 1.5 refused
+u8 256 refused
+u8 -1 refused
+u32 4294967296 refused
+u64 18446744073709551616 refused
+u64 -1 refused
+i8 -128 written
+i8 127 written
+u8 0 written
+u8 255 written
+u32 4294967295 written
+u64 18446744073709551615 written
