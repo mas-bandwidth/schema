@@ -121,13 +121,25 @@ print("refused=" + (refusal == null ? "none" : refusal) + "\n");
 local n = 0;
 foreach (k, v in tableExports) n++;
 print("exports=" + n + "\n");
+local loaded = 0;
+local defined = 0;
+foreach (name, exports in modules) {
+  loaded++;
+  foreach (k, v in exports) {
+    defined++;
+    print("defined " + name + "." + k + "\n");
+  }
+}
+print("loaded=" + loaded + " defined=" + defined + "\n");
 `
 			if err := os.WriteFile(filepath.Join(dir, "main.nut"), []byte(main), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			out := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", nil)))
-			if !strings.Contains(out, "refused=squirrel_table_unpinned_vm") || !strings.Contains(out, "exports=0") {
-				t.Fatalf("runtime did not refuse by name: %q (source replacement %q -> %q)", out, probe.source, probe.replacement)
+			// The refusal comes before anything is defined: neither the table
+			// module nor any runtime module it required holds an export.
+			if !strings.Contains(out, "refused=squirrel_table_unpinned_vm") || !strings.Contains(out, "exports=0") || !strings.Contains(out, " defined=0") {
+				t.Fatalf("runtime did not refuse by name before defining anything: %q (source replacement %q -> %q)", out, probe.source, probe.replacement)
 			}
 		})
 	}
