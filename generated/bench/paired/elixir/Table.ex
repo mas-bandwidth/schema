@@ -4050,12 +4050,18 @@ defmodule Bench.Table do
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-            {:cont, v, report} ->
-              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged)}
+          else
+            case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+              {:cont, v, report} ->
+                read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-            {:halt, v, report} ->
-              {:halt, Map.put(acc, name, v), report}
+              {:halt, v, report} ->
+                {:halt, Map.put(acc, name, v), report}
+            end
           end
 
         :error ->
