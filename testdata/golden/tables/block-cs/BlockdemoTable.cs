@@ -2050,7 +2050,23 @@ namespace Blockdemo
             {
                 input.Bad = true;
                 input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+                // A NAMED REFUSAL IS THE PUBLIC VERDICT (docs/SPEC-TABLES.md §16.2): a
+                // changed kind, an out-of-range value, a count or length past its
+                // bound, or text that cannot be stored refuses the load. The rest of
+                // the walk's failures are damage.
+                if (reason == "kind_mismatch" || reason == "out_of_range" || reason == "count_over_bound" || reason == "length_over_bound" || reason == "text_holds_zero")
+                {
+                    input.Report.Refused = true;
+                }
                 return false;
+            }
+            // THE REPORT CARRIES THE READ'S ANSWER (docs/SPEC-TABLES.md §16.2): a
+            // refusal names itself, damage names itself, and a read is Ok. The return
+            // value is the same answer, so a caller reading either one agrees.
+            static bool TextVerdict(ref In input, TableWire.Verdict verdict)
+            {
+                input.Report.Verdict = verdict;
+                return verdict == TableWire.Verdict.Ok;
             }
             // A decoded string body for the base64 and timestamp readers
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
@@ -3062,16 +3078,16 @@ namespace Blockdemo
                     Space(text, ref input);
                     if (input.Pos != text.Length) { input.Bad = true; }
                 }
-                if (input.Report.Refused) { info.Reset(value); return false; }
+                if (input.Report.Refused) { info.Reset(value); return TextVerdict(ref input, TableWire.Verdict.Refused); }
                 if (input.Bad || !ok)
                 {
                     // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
                     // the walk placed before the damage is handed back.
                     input.Report.Damaged = true;
                     info.Reset(value);
-                    return false;
+                    return TextVerdict(ref input, TableWire.Verdict.Damaged);
                 }
-                return true;
+                return TextVerdict(ref input, TableWire.Verdict.Ok);
             }
 
             public static long Write(object value, TableTypeInfo info, Span<byte> buffer, bool measuring)
