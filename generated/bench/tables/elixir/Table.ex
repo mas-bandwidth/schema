@@ -2438,8 +2438,6 @@ defmodule Benchtable.Table do
 
   def strict_load(table, data) when is_binary(data), do: variable_load(table, data)
 
-  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
-
   defp strict_unknown!(13, payload, _nodes, ids) do
     case leb(payload) do
       {l, body} when byte_size(body) >= l ->
@@ -3452,15 +3450,14 @@ defmodule Benchtable.Table do
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
-            if strict_flag?() and payload != :unframed,
-              do: strict_unknown!(kind, payload, nodes, ids)
+            if payload != :unframed, do: strict_unknown!(kind, payload, nodes, ids)
 
             if payload == :unframed,
               do: {:halt, {:halt, value, report}},
               else: {:cont, {:cont, value, report}}
 
           f ->
-            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+            if Map.has_key?(value, f.name), do: throw(:wire_damaged)
 
             cond do
               payload == :unframed ->
@@ -3480,9 +3477,8 @@ defmodule Benchtable.Table do
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, report} ->
-                    if strict_flag?(), do: throw(:wire_damaged)
-                    {:cont, {:cont, inert_required_field(f, value), report}}
+                  {:cont, :inert, _report} ->
+                    throw(:wire_damaged)
 
                   {:cont, v, report} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report}}
@@ -3525,17 +3521,7 @@ defmodule Benchtable.Table do
 
   defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
 
-  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
-  # array, map or keyed body too short to carry its own header, fewer than two
-  # bytes, decodes nothing, counts nothing, and the field keeps the value it
-  # has. The field rode, so an optional one is present: empty, when no earlier
-  # occurrence set it.
-  defp inert_field(f, value) do
-    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
-      do: Map.put(value, f.name, inert_empty(f)),
-      else: value
-  end
-
+  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
   defp inert_empty(%{t: :bytes}), do: <<>>
   defp inert_empty(%{t: :list}), do: []
   defp inert_empty(_f), do: %{}
@@ -3802,7 +3788,7 @@ defmodule Benchtable.Table do
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -4183,12 +4169,11 @@ defmodule Benchtable.Table do
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
     # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+    # A widened element kind reads at the wire width, and bytes left in its L
+    # are damage like any other (§2.9, §4).
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -4574,11 +4559,6 @@ defmodule Benchtable.Table do
     do: rest == <<>> or crosses_l?(rest, i + 1)
 
   defp crosses_l?(_bin, _i), do: false
-
-  defp inert_required_field(%{required: true} = f, value),
-    do: Map.put_new(value, f.name, f.default)
-
-  defp inert_required_field(f, value), do: inert_field(f, value)
 
   defp malformed_report, do: throw(:wire_damaged)
 

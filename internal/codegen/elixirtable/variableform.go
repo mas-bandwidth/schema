@@ -203,6 +203,9 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		cook = cookWithoutUnions(cook, anyExtent)
 		retain = withoutRetainUnions(retain)
 	}
+	if len(unionNames) == 0 && len(ir.VariableTables(u)) == 0 {
+		runtime = withoutInertEmpty(runtime)
+	}
 	if len(unionNames) > 0 {
 		retain = withRetainArmKinds(retain, armKinds)
 	}
@@ -247,6 +250,21 @@ func withoutArrayRoots(source string) string {
 		source = strings.ReplaceAll(source, block, "")
 	}
 	return source
+}
+
+// withoutInertEmpty drops the arm helper a unit with no union and no variable
+// root can never call, so the emitted module carries no unused function.
+func withoutInertEmpty(source string) string {
+	const block = `  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
+  defp inert_empty(%{t: :bytes}), do: <<>>
+  defp inert_empty(%{t: :list}), do: []
+  defp inert_empty(_f), do: %{}
+
+`
+	if strings.Count(source, block) != 1 {
+		panic("elixirtable: inert arm helper not found exactly once")
+	}
+	return strings.Replace(source, block, "", 1)
 }
 
 // uncarriedRootNames is the compatibility roster for region measurement.
@@ -2055,15 +2073,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           nil ->
             report = %{report | unknown: report.unknown + 1}
 
-            if strict_flag?() and payload != :unframed,
-              do: strict_unknown!(kind, payload, nodes, ids)
+            if payload != :unframed, do: strict_unknown!(kind, payload, nodes, ids)
 
             if payload == :unframed,
               do: {:halt, {:halt, value, report}},
               else: {:cont, {:cont, value, report}}
 
           f ->
-            if strict_flag?() and Map.has_key?(value, f.name), do: throw(:wire_damaged)
+            if Map.has_key?(value, f.name), do: throw(:wire_damaged)
 
             cond do
               payload == :unframed ->
@@ -2083,9 +2100,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, report} ->
-                    if strict_flag?(), do: throw(:wire_damaged)
-                    {:cont, {:cont, inert_required_field(f, value), report}}
+                  {:cont, :inert, _report} ->
+                    throw(:wire_damaged)
 
                   {:cont, v, report} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report}}
@@ -2128,17 +2144,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
 
-  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
-  # array, map or keyed body too short to carry its own header, fewer than two
-  # bytes, decodes nothing, counts nothing, and the field keeps the value it
-  # has. The field rode, so an optional one is present: empty, when no earlier
-  # occurrence set it.
-  defp inert_field(f, value) do
-    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
-      do: Map.put(value, f.name, inert_empty(f)),
-      else: value
-  end
-
+  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
   defp inert_empty(%{t: :bytes}), do: <<>>
   defp inert_empty(%{t: :list}), do: []
   defp inert_empty(_f), do: %{}
@@ -2405,7 +2411,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+              reader = %{f | elem_kind: elem_kind}
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -2806,12 +2812,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # element kind (docs/SPEC-TABLES.md §2.9, §3): a table element is a framed
   # body, a pointer element a node index, a string element its L and bytes, an
   # enum element a variant reference, and every scalar element its own bytes.
-  defp read_list_elements(f, rest, 0, _nodes, _ids, acc, report) do
+  defp read_list_elements(_f, rest, 0, _nodes, _ids, acc, report) do
     # Bytes left inside an array's L after its elements are damage (§3, §4).
-    # A widened element kind reads at the wire width, and the rest of the L
-    # is the writer's wider slots, skipped with the body (§2.9, §4).
-    if rest != <<>> and (strict_flag?() or not Map.get(f, :widened_list, false)),
-      do: throw(:wire_damaged)
+    # A widened element kind reads at the wire width, and bytes left in its L
+    # are damage like any other (§2.9, §4).
+    if rest != <<>>, do: throw(:wire_damaged)
 
     {Enum.reverse(acc), report}
   end
@@ -3197,11 +3202,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: rest == <<>> or crosses_l?(rest, i + 1)
 
   defp crosses_l?(_bin, _i), do: false
-
-  defp inert_required_field(%{required: true} = f, value),
-    do: Map.put_new(value, f.name, f.default)
-
-  defp inert_required_field(f, value), do: inert_field(f, value)
 
   defp malformed_report, do: throw(:wire_damaged)
 
@@ -5926,6 +5926,22 @@ const variableRetainSource = `
   # []. A record costs 9 + byte_size(resolved) + 8 * length(path) bytes, and a
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
+
+  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
+  # array, map or keyed body too short to carry its own header, fewer than two
+  # bytes, decodes nothing, counts nothing, and the field keeps the value it
+  # has. The field rode, so an optional one is present: empty, when no earlier
+  # occurrence set it.
+  defp inert_field(f, value) do
+    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
+      do: Map.put(value, f.name, inert_empty(f)),
+      else: value
+  end
+
+  defp inert_required_field(%{required: true} = f, value),
+    do: Map.put_new(value, f.name, f.default)
+
+  defp inert_required_field(f, value), do: inert_field(f, value)
 
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)

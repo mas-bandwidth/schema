@@ -85,9 +85,7 @@ func variableLoadImpl(runtime string) string {
 	return impl + "\n"
 }
 
-const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
-
-  defp strict_unknown!(13, payload, _nodes, ids) do
+const strictHelpers = `  defp strict_unknown!(13, payload, _nodes, ids) do
     case leb(payload) do
       {l, body} when byte_size(body) >= l ->
         case entries(binary_part(body, 0, l), ids, false, :nested) do

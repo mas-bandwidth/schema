@@ -177,8 +177,7 @@ type cellsVector struct {
 	wire []byte
 	want bool
 	// framing vectors carry a collection body too short for its header
-	// or a node no pointer reaches: tolerated by the value load (§4, H2),
-	// refused on the framing read.
+	// or a node no pointer reaches: damage that refuses every read (§3, §4).
 	framing bool
 }
 
@@ -542,13 +541,12 @@ func TestElixirCellsStrictNegativeControl(t *testing.T) {
 		t.Fatalf("the unplanted fixed artifacts already fail the gate: %v\n%s", err, out)
 	}
 
-	// Plant the short-body tolerance on the framing read: variable_load
-	// no longer raises the strict framing flag, so the short rows land
-	// inert partial values there.
+	// Plant the short-body tolerance: an inert collection body lands
+	// instead of refusing the whole load.
 	out, err := runCellsVTProbe(t, func(files map[string][]byte) {
 		elixirPatch(t, files,
-			"Process.put(:elixir_strict_framing, true)",
-			"Process.put(:elixir_strict_framing, false)")
+			"                  {:cont, :inert, _report} ->\n                    throw(:wire_damaged)",
+			"                  {:cont, :inert, report} ->\n                    {:cont, {:cont, inert_required_field(f, value), report}}")
 	})
 	if err == nil {
 		t.Fatalf("NEGATIVE CONTROL FAILED: the short-body plant left the variable probe green\n%s", out)
