@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,6 +58,11 @@ type wireFuzzOptions struct {
 	mixedBuilder bool
 	failed       string
 	vectors      string
+	// shard is "K/N" or empty: this run compares the mutants at positions
+	// K, K+N, K+2N, ... of the whole run's deterministic stream (vectors,
+	// enumerated passes, then the seeded random pass), so the N rows K = 0..N-1
+	// together compare every mutant of the unsharded run exactly once.
+	shard string
 	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
 }
@@ -676,6 +682,14 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.driver == "" {
 		return fmt.Errorf("wire-fuzz needs --driver")
 	}
+	shardK, shardN, err := parseShard(opts.shard)
+	if err != nil {
+		return err
+	}
+	if opts.replay != "" {
+		// a replay is one mutant: there is no run to split
+		shardK, shardN = 0, 1
+	}
 	seeds, roots, seedRoot, skipped, err := buildWireFuzzRoster(m, opts)
 	if err != nil {
 		return err
@@ -711,6 +725,17 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		m *wireMutant
 	}
 	produced := make(chan item, 256)
+	// every mutant the unsharded run would compare takes the next position;
+	// this row keeps the positions that are shardK modulo shardN
+	position, whole := 0, 0
+	emit := func(m *wireMutant) {
+		mine := inShard(position, shardK, shardN)
+		position++
+		whole++
+		if mine {
+			produced <- item{m: m}
+		}
+	}
 	go func() {
 		if opts.replay != "" {
 			produced <- item{m: &wireMutant{seed: live[0], pass: "replay", data: live[0].wire}}
@@ -720,18 +745,16 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 					// a pinned vector IS the mutant. Its bytes are hostile
 					// already, and mutating them would lose the exact input
 					// the vector exists to replay
-					produced <- item{m: &wireMutant{seed: s, pass: "vector", data: s.wire}}
+					emit(&wireMutant{seed: s, pass: "vector", data: s.wire})
 					continue
 				}
 				pass := map[string]int{}
 				enumerated(s, func(name string, data []byte) {
-					produced <- item{m: &wireMutant{seed: s, pass: name, index: pass[name], data: data}}
+					emit(&wireMutant{seed: s, pass: name, index: pass[name], data: data})
 					pass[name]++
 				})
 			}
-			if line := randomPass(pool, len(live)-len(pool), opts.seed, opts.n, func(mut *wireMutant) {
-				produced <- item{m: mut}
-			}); line != "" {
+			if line := randomPass(pool, len(live)-len(pool), opts.seed, opts.n, emit); line != "" {
 				fmt.Fprintln(os.Stderr, line)
 			}
 		}
@@ -829,10 +852,32 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.retain {
 		arm += " retain"
 	}
+	if shardN > 1 {
+		arm += fmt.Sprintf(" shard %d/%d (%d of the run's %d mutants)", shardK, shardN, total, whole)
+	}
 	fmt.Printf("%s: seed %d, %d seeds over %d roots%s, %d enumerated + %d random = %d mutants, 0 divergences, %.1f s, %.0f mutants/s\n",
 		arm, opts.seed, len(live), len(roots), absence, enumeratedCount, total-enumeratedCount, total, elapsed.Seconds(), rate)
 	return nil
 }
+
+// parseShard reads --shard: empty is the whole run (0 of 1), else "K/N" with
+// 0 <= K < N.
+func parseShard(spec string) (int, int, error) {
+	if spec == "" {
+		return 0, 1, nil
+	}
+	ks, ns, ok := strings.Cut(spec, "/")
+	k, kerr := strconv.Atoi(ks)
+	n, nerr := strconv.Atoi(ns)
+	if !ok || kerr != nil || nerr != nil || n < 1 || k < 0 || k >= n {
+		return 0, 0, fmt.Errorf("--shard %q: want K/N with 0 <= K < N", spec)
+	}
+	return k, n, nil
+}
+
+// inShard says whether the mutant at this position of the whole run belongs
+// to shard k of n.
+func inShard(position, k, n int) bool { return position%n == k }
 
 func describeBytes(b []byte, refused bool) string {
 	if refused {
