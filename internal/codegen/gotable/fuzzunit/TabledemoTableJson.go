@@ -3698,24 +3698,58 @@ func PatrolLoadText(text string, report *TableReport) (*Patrol, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
-	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	var decoded [256]byte
+	var stackWire, heapWire []byte
+	var err error
+	heap := false
+	if want := base64.StdEncoding.DecodedLen(len(text)); want <= len(decoded) {
+		var n int
+		n, err = base64.StdEncoding.Strict().Decode(decoded[:want], []byte(text))
+		stackWire = decoded[:n]
+	} else {
+		heapWire, err = base64.StdEncoding.Strict().DecodeString(text)
+		heap = true
+	}
 	if err != nil {
 		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
 			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 		}
 		return nil, tableRefuseError(TableRefuseBase64Damaged)
 	}
+	wire := stackWire
+	if heap {
+		wire = heapWire
+	}
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	size := PatrolLoadMeasure(wire)
-	size = max(size, 0)
+	size, measureErr := PatrolLoadMeasureReason(wire)
+	if measureErr == TableRefuseCountOverLength {
+		measureErr = TableRefuseWireDamaged
+	}
+	if measureErr != nil {
+		if report != nil {
+			*report = TableReport{}
+			if reason, ok := measureErr.(TableRefuseReason); ok {
+				report.Refuse(reason, "")
+			} else {
+				report.Refuse(TableRefuseWireDamaged, "")
+			}
+		}
+		return nil, measureErr
+	}
+	var load []byte
+	if heap {
+		load = heapWire
+	} else {
+		load = append([]byte(nil), stackWire...)
+	}
 	var builder PatrolBuilder
 	if !builder.initSized(size) {
 		return nil, tableRefuseError(TableRefuseAllocationFailed)
 	}
 	var read TableReport
-	ok := PatrolLoadBuilder(&builder, wire, &read)
+	ok := PatrolLoadBuilder(&builder, load, &read)
 	if report != nil {
 		*report = read
 	}

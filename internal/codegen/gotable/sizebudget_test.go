@@ -91,7 +91,8 @@ const (
 	// +110: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
-	goExamplesLineBudget = 60090
+	// +39: the strict read and the text read return the measure's refusal before the builder, and a small text decodes into a stack buffer so a refusal allocates nothing.
+	goExamplesLineBudget = 60129
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
