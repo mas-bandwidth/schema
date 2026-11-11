@@ -808,19 +808,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		}
 	}
 	if older > 0 {
-		stride := ir.TableFixedLeafCount(g.unit, st)*2 + len(entries)*2 + 128
-		// THE GUARD CHAINS RIDE THE SAME STORAGE (§5.8 row 6): a compiled
-		// plan lays each path's chain once per union on it, growing by one
-		// link a level, so a chain of k links costs at most k(k+1)/2 links
-		// (each no wider than an entry) and one alignment step. Counting it
-		// here keeps the layout's 64 the only bound on a chain: the declared
-		// capacity is never the one that refuses it.
-		seen := map[[2]int]bool{}
-		for _, e := range plan {
-			if e.GuardCount > 2 && !seen[[2]int{e.GuardIndex, e.GuardCount}] {
-				seen[[2]int{e.GuardIndex, e.GuardCount}] = true
-				stride += e.GuardCount*(e.GuardCount+1)/2 + 1
-			}
+		// THE STRIDE IS THE WORST PLAN THE LOCK'S OWN ENTRIES NEED, computed
+		// by the same compile walk the runtime runs (fixedstride.go). A flat
+		// array is one identity entry, but an evolved element is compiled
+		// once per element, so sizing from this build's own leaf fold would
+		// refuse a valid older file forever.
+		strideEntries, stridePool := g.fixedLineagePlanStorage(st, lineage, hash)
+		if strideEntries < 1 {
+			strideEntries = 1
 		}
 		g.pf("/* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and\n")
 		g.pf("   never from a file's (§5.9 #3). The storage is STATIC — this codec\n")
@@ -830,7 +825,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("   this leg's PR), so \"once\" is this flag and not a language phase; what\n")
 		g.pf("   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load\n")
 		g.pf("   can miss — is gone either way: the bytes here are the lock's. */\n")
-		g.pf("#define %s_FIXED_LINEAGE_STRIDE %d\n", strings.ToUpper(n), stride)
+		g.pf("#define %s_FIXED_LINEAGE_STRIDE ( %d + ( %d + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry ) )\n", strings.ToUpper(n), strideEntries, stridePool)
 		g.pf("%s", tableFixedOnce)
 		g.pf("static TableFixedEntry %s_fixed_lineage_storage[%d][%s_FIXED_LINEAGE_STRIDE];\n", n, len(lineage), strings.ToUpper(n))
 		g.pf("static TableFixedLineagePlan %s_fixed_lineage[%d];\n", n, len(lineage))
