@@ -380,6 +380,7 @@ func (g *fixedModule) emitMessageBody(st *ir.Struct) {
 	g.pf("// reference. The write measures then saves over one bit writer; the read\n")
 	g.pf("// fills the caller's storage.\n\n")
 
+	g.emitMessageCheckBody(st)
 	g.emitMessageSaveBody(st)
 	g.emitMessageLoadBody(st)
 }
@@ -396,17 +397,150 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.emitMessageVerbs(st)
 }
 
+// emitMessageCheckBody emits a body's write preflight (docs/SPEC.md §5.1 rows
+// 1 to 8): the value is held to every rule its declaration states BEFORE the
+// body's first bit, so the writer refuses it and never writes bytes its own
+// reader refuses. The checks are plain comparisons, so a wrong JavaScript type
+// is the same false and never a throw.
+func (g *fixedModule) emitMessageCheckBody(st *ir.Struct) {
+	g.pf("function %sMessageBodyOk(value) {\n", st.Name)
+	g.pf("  if (value === null || value === undefined) { return false; }\n")
+	for _, f := range st.Fields {
+		if f.Type.Optional {
+			name := js.MemberName(f.Name)
+			g.pf("  if (value.%sPresent) {\n", name)
+			g.emitMessageCheckPayload(f, "value", "    ")
+			g.pf("  }\n")
+			continue
+		}
+		g.emitMessageCheckPayload(f, "value", "  ")
+	}
+	g.pf("  return true;\n}\n\n")
+}
+
+func (g *fixedModule) emitMessageCheckPayload(f *ir.Field, val, ind string) {
+	mem := val + "." + js.MemberName(f.Name)
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.emitMessageCheckText(mem, ind, f.Type.Size, true)
+	case f.Type.Kind == ir.TBytes:
+		g.emitMessageCheckText(mem, ind, f.Type.Size, false)
+	case f.KeyEnum != "":
+		g.emitMessageCheckArray(f, mem, ind, f.ArrayBound)
+	case f.Array == ir.ArrayFixed:
+		g.emitMessageCheckArray(f, mem, ind, f.ArrayBound)
+	case f.Array == ir.ArrayCounted:
+		g.emitMessageCheckCounted(f, mem, ind)
+	default:
+		g.emitMessageCheckElement(f, mem, ind)
+	}
+}
+
+func (g *fixedModule) emitMessageCheckText(mem, ind string, size int64, text bool) {
+	length := mem + "Length"
+	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" ||\n", ind, mem, mem, mem)
+	g.pf("%s    typeof %s !== \"number\" || !Number.isInteger(%s) || %s < 0 || %s > %d || %s > %s.length) { return false; }\n",
+		ind, length, length, length, length, size, length, mem)
+	if text {
+		g.pf("%sif (!tableMessageUtf8Valid(%s, 0, %s)) { return false; }\n", ind, mem, length)
+	}
+}
+
+func (g *fixedModule) emitMessageCheckArray(f *ir.Field, mem, ind string, bound int64) {
+	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length < %d) { return false; }\n",
+		ind, mem, mem, mem, mem, bound)
+	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, bound)
+	e := messageElementField(f)
+	g.emitMessageCheckElement(e, mem+"[i]", ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedModule) emitMessageCheckCounted(f *ir.Field, mem, ind string) {
+	count := mem + "Count"
+	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\") { return false; }\n", ind, mem, mem, mem)
+	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s) || %s < %d || %s > %d || %s > %s.length) { return false; }\n",
+		ind, count, count, count, f.ArrayMin, count, f.ArrayBound, count, mem)
+	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
+	e := messageElementField(f)
+	g.emitMessageCheckElement(e, mem+"[i]", ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *fixedModule) emitMessageCheckInteger(expr, ind string, big bool) {
+	if big {
+		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+		return
+	}
+	g.pf("%sif (typeof %s !== \"number\" || !Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+}
+
+func (g *fixedModule) emitMessageCheckRange(expr, ind string, lo, hi *big.Int, big bool) {
+	g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, big), expr, jsIntLit(hi, big))
+}
+
+func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr, expr)
+		return
+	case ir.TFloat64:
+		g.pf("%sif (typeof %s !== \"number\" || !Number.isFinite(%s)) { return false; }\n", ind, expr, expr)
+		return
+	case ir.TBits:
+		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		asBig := fixedIsBig(f.Type)
+		g.emitMessageCheckInteger(expr, ind, asBig)
+		g.emitMessageCheckRange(expr, ind, big.NewInt(0), maxv, asBig)
+		return
+	case ir.TInt, ir.TFixed:
+		g.emitMessageCheckInteger(expr, ind, fixedIsBig(f.Type))
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			g.emitMessageCheckRange(expr, ind, lo, hi, fixedIsBig(f.Type))
+		}
+		return
+	case ir.TString:
+		g.emitMessageCheckText(expr, ind, f.Type.Size, true)
+		return
+	}
+	if f.Type.Kind != ir.TNamed {
+		return
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Flags:
+		g.emitMessageCheckInteger(expr, ind, true)
+	case *ir.Enum:
+		g.emitMessageCheckInteger(expr, ind, false)
+		g.pf("%sif (%s < 0 || %s > %d) { return false; }\n", ind, expr, expr, len(r.Variants))
+	case *ir.Struct:
+		g.pf("%sif (%s === null || %s === undefined || !%sMessageBodyOk(%s)) { return false; }\n", ind, expr, expr, r.Name, expr)
+	case *ir.Union:
+		g.pf("%sif (%s === null || %s === undefined) { return false; }\n", ind, expr, expr)
+		g.emitMessageCheckInteger(expr+".type", ind, false)
+		g.pf("%sswitch (%s.type) {\n", ind, expr)
+		g.pf("%s  case 0: break;\n", ind)
+		for i, v := range r.Variants {
+			g.pf("%s  case %d:\n", ind, i+1)
+			if !v.Void() {
+				g.emitMessageCheckPayload(v.F, expr, ind+"    ")
+			}
+			g.pf("%s    break;\n", ind)
+		}
+		g.pf("%s  default: return false;\n%s}\n", ind, ind)
+	}
+}
+
+// messageRides answers the elision condition: a field at its declared default
+// is not written, an empty string/array is not written, and presence rather
+// than content decides `?T` (§3.3, §4).
 func (g *fixedModule) emitMessageSaveBody(st *ir.Struct) {
 	g.pf("export function %sSaveMessageBody(w, value) {\n", st.Name)
+	g.pf("  if (!%sMessageBodyOk(value)) { return false; }\n", st.Name)
 	for _, f := range st.Fields {
 		g.emitMessageWriteField(f, "  ")
 	}
 	g.pf("  w.Put(0n, TableMessageRefBitsHere);\n  return !w.Overflow;\n}\n\n")
 }
 
-// messageRides answers the elision condition: a field at its declared default
-// is not written, an empty string/array is not written, and presence rather
-// than content decides `?T` (§3.3, §4).
 func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 	if f.Type.Optional {
 		return mem + "Present"
@@ -894,7 +1028,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("  if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, \"batch_too_large\"); return -1; }\n")
 	g.pf("  const w = new TableBitWriter(null, true);\n")
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
+	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
@@ -921,7 +1055,7 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 		g.pf("  const w = new TableBitWriter(buffer.subarray(2), false);\n")
 	}
 	g.pf("  for (let i = 0; i < values.length; i++) {\n")
-	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { return -1; }\n", n)
+	g.pf("    if (values[i] === null || values[i] === undefined || !%sSaveMessageBody(w, values[i])) { TableMessageRefuse(report, \"invalid_value\"); return -1; }\n", n)
 	g.pf("  }\n")
 	g.pf("  w.Align();\n")
 	g.pf("  if (w.Overflow) { return -1; }\n")
