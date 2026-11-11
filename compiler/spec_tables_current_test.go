@@ -42,15 +42,19 @@ func TestSpecTablesCurrent(t *testing.T) {
 			row:  "the three wires' status",
 			text: status,
 			wants: []string{
-				"STATUS: SIX LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
-				"Dart, Elixir and Rust emit the fixed form alone",
-				"C, C++, C#, Go, Java and JavaScript still emit a form-`1` `<T>Save`",
-				"Go's plain `<T>Load` and `ReadStrict` already refuse",
-				"C, C++, C#, Java and JavaScript still read form `1`",
+				"STATUS: SEVEN LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
+				"Dart and Elixir emit the fixed form alone",
+				"C, C++, C#, Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save`",
+				"Go's plain `<T>Load` and `ReadStrict` already",
+				"C, C++, C#, Java, JavaScript and Rust still read",
 			},
 			stales: []string{
 				"EVERY LEG STILL CARRIES THE FORM-`1` PAIR",
 				"Beside it, every leg still emits",
+				"STATUS: SIX LEGS STILL WRITE FORM `1`",
+				"Dart, Elixir and Rust emit the fixed form alone",
+				"C, C++, C#, Go, Java and JavaScript still emit",
+				"C, C++, C#, Java and JavaScript still read",
 			},
 		},
 		{
@@ -188,7 +192,27 @@ func TestSpecTablesCurrent(t *testing.T) {
 	mustState(t, "goruntime refusal comment", comment,
 		"recommended table order so a port that follows it spells them alike")
 	mustState(t, "goruntime refusal comment", comment,
-		"the verdict,\n\t// not the names, is the contract")
+		"verdict, not the names, is the contract")
 	mustNotState(t, "goruntime refusal comment", comment,
 		"names, order and spelling agree in all ports")
+
+	// THE GENERATED GO TREE CARRIES THE SAME COMMENT, from the same emitter
+	// (make/go.mk, make generated-current). Pin the committed copies, so a
+	// hand edit to the shared runtime alone cannot leave them stale.
+	for _, path := range []string{
+		"../generated/bench/tables/go/BenchTableTable.go",
+		"../generated/bench/paired/go/BenchTable.go",
+	} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tree := string(data)
+		mustState(t, path, tree,
+			"recommended table order so a port that follows it spells them alike")
+		mustState(t, path, tree,
+			"verdict, not the names, is the contract")
+		mustNotState(t, path, tree,
+			"names, order and spelling agree in all ports")
+	}
 }

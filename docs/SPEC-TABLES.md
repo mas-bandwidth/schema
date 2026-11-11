@@ -116,14 +116,14 @@ an old file, and no write at a fixed root writes it: the plain `<T>Save` of a
 fixed table writes form `3`, the bytes `<T>FixedSave` writes, and so does
 `schema pack`.
 
-**STATUS: SIX LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT.** This is
+**STATUS: SEVEN LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT.** This is
 status, not the rule above. `<T>FixedLoad` refuses form `1` as
-`previous_form` in every leg. Dart, Elixir and Rust emit the fixed form alone
+`previous_form` in every leg. Dart and Elixir emit the fixed form alone
 there: their save writes form `3`, and their read at that root refuses form
-`1`. C, C++, C#, Go, Java and JavaScript still emit a form-`1` `<T>Save` for
-a declared fixed table; Go's plain `<T>Load` and `ReadStrict` already refuse
-form `1` there, while C, C++, C#, Java and JavaScript still read form `1`
-through their plain load. The tool's engine now writes and reads form `3` at an
+`1`. C, C++, C#, Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save`
+for a declared fixed table; Go's plain `<T>Load` and `ReadStrict` already
+refuse form `1` there, while C, C++, C#, Java, JavaScript and Rust still read
+form `1` through their plain load. The tool's engine now writes and reads form `3` at an
 admitted fixed root; the conformance corpus still pins its older fixed-root
 instances and reports as form `1` and awaits regeneration in its own layer. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a

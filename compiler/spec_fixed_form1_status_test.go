@@ -44,8 +44,10 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 				"`ReadStrict`",
 				"the retain load",
 				"`schema pack`",
-				"STATUS: SIX LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
-				"Dart, Elixir and Rust emit the fixed form alone",
+				"STATUS: SEVEN LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
+				"Dart and Elixir emit the fixed form alone",
+				"C, C++, C#, Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save`",
+				"C, C++, C#, Java, JavaScript and Rust still read form `1`",
 				"This is status, not the",
 				"<T>Save",
 				"<T>Load",
@@ -56,6 +58,8 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 			stales: []string{
 				"GO STATUS",
 				"SCHEDULED FOR REMOVAL once form `3` lands",
+				"STATUS: SIX LEGS STILL WRITE FORM `1`",
+				"Dart, Elixir and Rust emit the fixed form alone",
 			},
 		},
 		{
