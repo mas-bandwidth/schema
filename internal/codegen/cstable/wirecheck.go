@@ -85,6 +85,9 @@ const tableWireCheckSource = `
                 while (off < t.Length)
                 {
                     if (!Leb(t, ref off, out ulong reference) || reference == 0 || reference > (ulong)(Ids.Length / 8)) { Damage(); return; }
+                    // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3): the three ids
+                    // the language holds back are damage outside their own transport
+                    if (Read64(Ids, (int)(reference - 1) * 8) >= ulong.MaxValue - 2) { Damage(); return; }
                     if (!Leb(t, ref off, out ulong length) || length > (ulong)(t.Length - off)) { Damage(); return; }
                     off += (int)length; records++;
                 }
