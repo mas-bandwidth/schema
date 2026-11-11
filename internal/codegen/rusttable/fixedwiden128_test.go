@@ -219,6 +219,13 @@ func widen128BuildAndRun(t *testing.T, files map[string][]byte, mainSrc, name st
 	}
 	bin := filepath.Join(dir, name)
 	args := append([]string{"--edition", "2024"}, flags...)
+	// NAME THE SYSTEM LINKER ABSOLUTELY when one is present, so the build
+	// does not depend on how the toolchain searches PATH for `cc`.
+	if cc, err := exec.LookPath("cc"); err == nil {
+		if abs, err := filepath.Abs(cc); err == nil {
+			args = append(args, "-C", "linker="+abs)
+		}
+	}
 	args = append(args, "-o", bin, "main.rs")
 	build := exec.Command("rustc", args...)
 	build.Dir = dir
