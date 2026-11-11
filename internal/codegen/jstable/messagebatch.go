@@ -188,9 +188,8 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
       if (!ok) { return false; }
-      const width = s.Kind === 12 ? 8 : 16;
-      if (s.Kind === 12 && !r.Align()) { return false; }
-      return r.Skip(Number(n) * width);
+      if (!r.Align()) { return false; }
+      return r.Skip(Number(n) * 8);
     }
     case 31: {
       if (!r.Align()) { return false; }
