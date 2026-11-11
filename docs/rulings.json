@@ -259,6 +259,40 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "fixed-dead-bytes-are-zero",
+      "date": "2026-11-10",
+      "quotes": [
+        "take the strict approach and refuse.",
+        "Every dead byte"
+      ],
+      "source": "the owner's ruling of 2026-11-10: first on the bytes behind an absent optional in a fixed record, then, asked whether it held for every dead byte or only an absent optional's payload, extended to every dead byte. Recorded in docs/SPEC-TABLES.md §3.4 and §13.10 and docs/FIXED-FORM-ALGORITHM.md §3.1, §4.1, §4.5, §4.6, §5.3 and §5.4. The dead bytes are an absent optional's payload, a counted array's element slots past its live count, a string(N)'s or bytes(N)'s bytes past its used length, and an inactive union arm. The check is the CHECK pass of §5.3 step 11, over every record and before any record lands; the verdict is the contract and the reason is the per-language diagnostic. This ruling makes nothing not-applicable.",
+      "supersedes": [
+        "SPEC-TABLES.md §3.4 size-table rows for `[Min..Max]T`, `string(N)`, `bytes(N)`, a UNION and `?T`: \"UNSPECIFIED on read\" / \"IGNORED on read\" / \"never a refusal\"",
+        "SPEC-TABLES.md §3.4 the slack rule's \"UNSPECIFIED ON READ, AND NOT A REFUSAL\" and its deliberate exception to \"refuse what no writer produces\" (§13.10)",
+        "SPEC-TABLES.md §13.10 \"What it keeps on purpose, as an exception. Non-zero slack in a fixed record is unread and not refused\"",
+        "FIXED-FORM-ALGORITHM.md §3.1 \"Slack is UNSPECIFIED on read and not a refusal\"",
+        "FIXED-FORM-ALGORITHM.md §4.1's op table, which had no `present` op, and §4.5's count and text rows, which refused without saying which bytes are dead",
+        "FIXED-FORM-ALGORITHM.md §4.6's bounds pass, which walked live data \"and never slack\"",
+        "FIXED-FORM-ALGORITHM.md §5.3 step 11 and its LIVE paragraph, which read the used extent only",
+        "FIXED-FORM-ALGORITHM.md §5.4's CHECK row \"over LIVE data only\""
+      ]
+    },
+    {
+      "id": "supplied-or-default",
+      "date": "2026-11-10",
+      "quotes": [
+        "I mean bottom line is, if it's supplied, use the value there, otherwise, use the default."
+      ],
+      "source": "the owner's ruling of 2026-11-10, said of a deprecated field in the fixed form (a deprecated field is read and written like any other field), and applied as the general rule for every field a record does not supply: an absent optional's payload, a field an older layout lacks and a field the record leaves out read as their declared defaults, in every form and every leg (a required field refuses instead), and a union arm the tag does not name is not a value. Recorded in docs/SPEC-TABLES.md §4.4 (the one normative statement), §2.10, §3.4, §13.10, §21.2 and §22.6, and docs/FIXED-FORM-ALGORITHM.md §3.1, §4.1, §4.4, §4.5, §5.3 and the corpus manifest rules.",
+      "supersedes": [
+        "SPEC-TABLES.md §3.4 \"THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS THE DECLARED DEFAULT OUT OF IT\" for a deprecated field",
+        "SPEC-TABLES.md §2.10 \"The writer emits the field's default\" and \"The reader ignores it\"",
+        "SPEC-TABLES.md §21.2 \"In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field's declared default into its retained slot and the reader yields that default whatever the record carries\"",
+        "SPEC-TABLES.md §22.6 \"A `| deprecated` SLOT CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE\"",
+        "FIXED-FORM-ALGORITHM.md's corpus manifest rule that under an absent optional \"the bytes are the TEMPLATE'S ZEROS and not the declared default\" as what a reader produces"
+      ]
     }
   ]
 }
