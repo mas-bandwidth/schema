@@ -391,7 +391,7 @@ func (g *gen) emitReadFunction(name string, walk func(ind string)) {
 	g.bpf("    // family read verdict refusing the wire (bounds, ranges, wire constants,\n")
 	g.bpf("    // padding). Hostile bytes never throw. No slack past the payload is required.\n")
 	g.bpf("    public static int read%sBits(%s value, byte[] data, int bitOffset, int numBits) {\n", name, name)
-	g.bpf("        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {\n")
+	g.bpf("        if (bitOffset < 0 || numBits < 0 || bitOffset > numBits || numBits > (long) data.length * 8) {\n")
 	g.bpf("            return -1; // the payload cannot exceed the buffer behind data\n")
 	g.bpf("        }\n")
 	if g.usesPeek {

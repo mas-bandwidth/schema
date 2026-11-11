@@ -69,6 +69,9 @@ func TestJavaReadBoundsGuardsAreEmitted(t *testing.T) {
 	if !strings.Contains(readPing, "numBits < 0") {
 		t.Errorf("readPingBits lacks the entry validation for the zero-bit type:\n%s", readPing)
 	}
+	if !strings.Contains(readPing, "bitOffset > numBits") {
+		t.Errorf("readPingBits lacks the offset-past-payload validation:\n%s", readPing)
+	}
 	if !strings.Contains(readPing, "numBits > (long) data.length * 8") {
 		t.Errorf("readPingBits lacks the buffer-size validation:\n%s", readPing)
 	}
@@ -79,6 +82,9 @@ func TestJavaReadBoundsGuardsAreEmitted(t *testing.T) {
 	readBulk := funcBody(t, text, "public static int readBulkBits(")
 	if !strings.Contains(readBulk, "(long) bitsRead +") {
 		t.Errorf("readBulkBits bound check is not long arithmetic:\n%s", readBulk)
+	}
+	if !strings.Contains(readBulk, "bitOffset > numBits") {
+		t.Errorf("readBulkBits lacks the offset-past-payload validation:\n%s", readBulk)
 	}
 }
 
@@ -130,6 +136,15 @@ public final class Driver {
             }
         } catch (RuntimeException e) {
             fail("readBulkBits threw on a huge offset: " + e);
+        }
+
+        try {
+            int r = Hostile.readBulkBits(bulk, buf, Integer.MAX_VALUE - 5, 32);
+            if (r != -1) {
+                fail("readBulkBits did not refuse a non-byte-aligned huge offset: " + r);
+            }
+        } catch (RuntimeException e) {
+            fail("readBulkBits threw on a non-byte-aligned huge offset: " + e);
         }
 
         System.out.println("ok");
