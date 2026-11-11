@@ -1758,8 +1758,8 @@ tables-dart-discard:
 tables-dart-discard-negative-control:
 	@rm -rf $(DART_DISCARD_NC) && mkdir -p $(DART_DISCARD_NC)
 	@set -e; for c in \
-		'wireform.go|\tif (r.report.malformed) return %s();|\tif (false) return %s(); // NEGATIVE CONTROL: the discard is gone|fixed: WireLoad handed back' \
-		'retainwire.go|\tif (r.report.malformed) {|\tif (false) { // NEGATIVE CONTROL: the retain discard is gone|retain: WireLoadRetain handed back' \
+		'wireform.go|\tif (r.report.refused) return %s();|\tif (false) return %s(); // NEGATIVE CONTROL: the discard is gone|fixed: WireLoad handed back' \
+		'retainwire.go|\tif (r.report.refused) {|\tif (false) { // NEGATIVE CONTROL: the retain discard is gone|retain: WireLoadRetain handed back' \
 		'messageform_batch.go|  if (!tableMessageBatchClose(r)) {\n|  if (!tableMessageBatchClose(r) && false) { // NEGATIVE CONTROL: the batch discard is gone\n|messages: LoadMessages'; do \
 		file=$${c%%|*}; rest=$${c#*|}; from=$${rest%%|*}; rest=$${rest#*|}; to=$${rest%%|*}; want=$${rest#*|}; \
 		d=$(DART_DISCARD_NC)/$${file%.go}; mkdir -p $$d; \
