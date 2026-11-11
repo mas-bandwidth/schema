@@ -12,6 +12,7 @@ import (
 // A root's extent can require more alignment than the record itself. The
 // minimum is type-based for its own extent, but excludes absent pointer nodes.
 func TestCppCookOpenNodeAlignment(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, source, text string
 		align              int
@@ -67,6 +68,7 @@ func TestCppCookExtentCanonicalAlignment(t *testing.T) {
 		{"map-entry", "table Bucket { tiny []uint8\nwides []uint128 }\ntable Root { buckets map[uint8]Bucket }", "{\"buckets\":{\"2\":{\"tiny\":[1],\"wides\":[7]}}}"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			files, arrays := cppCookAlignmentFixture(t, tc.source, tc.text)
 			source := cppCookAlignmentPrelude + arrays + `
 int main() {
@@ -101,6 +103,7 @@ int main() {
 `
 			for _, portable := range []bool{false, true} {
 				t.Run(fmt.Sprintf("portable128=%v", portable), func(t *testing.T) {
+					t.Parallel()
 					var flags []string
 					if portable {
 						flags = append(flags, "-U__SIZEOF_INT128__")

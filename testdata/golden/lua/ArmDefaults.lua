@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local Wire_ = require("Wire")
 
@@ -202,7 +202,7 @@ end
 -- type DefaultArm (SPEC §6.1: the wire order is the declared order)
 function _M.WriteDefaultArm(stream, v)
   -- the count guards the loop (SPEC §6.3)
-  if type(v.EntriesCount) ~= "number" or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end
+  if math.type(v.EntriesCount) ~= "integer" or v.EntriesCount < 0 or v.EntriesCount > 2 then return false end
   if not stream:serializeBits({ value = v.EntriesCount }, 2) then return false end -- the count
   for _i = 1, v.EntriesCount do
     if not Wire_.WriteProbeConfig(stream, v.Entries[_i]) then return false end
