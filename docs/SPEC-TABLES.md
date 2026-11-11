@@ -4903,15 +4903,17 @@ one document rather than two.
   rule every other kind already takes.
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
-  For kinds `14` and `16` a reader compares the element kind it declares
-  against the one in the body and, when they differ, refuses
+  For kinds `14` and `16` a reader first holds the body's element kind to the
+  closed list below, then compares the kind it declares against the one in
+  the body and, when two kinds ON that list differ, refuses
   `kind_mismatch` (§4), exactly as it does for the field's own kind.
   Without that rule a `[3]int32` body would decode into a `[3]float32` field
   as three reinterpreted bit patterns, reported by nothing, which is the
-  field-level silent-corruption class one level down. **An element kind of
-  `31` or `32` takes that same rule and no other**: no declaration produces
-  one, so it can only disagree with what the reader declares, and the read
-  refuses `kind_mismatch`. **An element of an array of UNIONS is an arm header** and carries its
+  field-level silent-corruption class one level down. **An element kind OFF
+  the closed list is damage, not a mismatch**, because no declaration
+  produces one and so no reader can hold a declaration it agrees with: the
+  whole load refuses `wire_damaged` (§4) under ANY count, a count of `0`
+  included, in a declared field and in an unknown one alike. **An element of an array of UNIONS is an arm header** and carries its
   own kind, so the arm rules below apply once per element rather than once for
   the array.
 
@@ -5025,6 +5027,46 @@ one document rather than two.
     element kind `6` (u8). A fixed-extent array writes all its declared
     elements, so a reader that decodes fewer than its own bound leaves the
     tail at its declared defaults.
+  - **THE ELEMENT KINDS ARE CLOSED.** The element kind byte an array or an
+    enum-keyed body opens with is exactly one of the kinds below, and these
+    are the whole lists, one per body kind:
+    - **An array body (kind `14`)**: `1`–`13` (bool; i8, i16, i32, i64; u8,
+      u16, u32, u64; f32, f64; string; table), `15` (union), `17` (pointer),
+      `18`–`29` (i128, u128 and the fixed-point family) and `30` (enum).
+    - **An enum-keyed body (kind `16`)**: `1`–`11`, `13`, `18`–`29` and
+      `30` — the array list without `12`, `15` and `17`.
+
+    Those are exactly the element kinds a declaration the compiler accepts
+    can produce: `1`–`11` and `18`–`29` from a scalar, `flags` or fixed-point
+    element, `12` from a text list (§2.13), `13` from a table or
+    `type` element and from a map's entries (§2.8), `15` from an array of
+    unions, `17` from an array of pointers, and `30` from an enum element
+    (`bytes(N)` is kind `14` over element kind `6`; it is not an element kind
+    of its own; an array of `bytes(N)` or of `bits(N)` is refused, so
+    `bits(N)` rides as kinds `6`–`9` only on a bare field). A keyed body carries
+    none of `12`, `15` or `17` because the compiler refuses `[E]string`, an
+    enum-keyed array of unions and an enum-keyed array of pointers (§2.4,
+    §2.13, §15). Every OTHER element kind is damage — recommended name
+    `wire_damaged` — under ANY count, a count of `0` included, in a declared
+    field and in an unknown one alike: the header's element kind byte is read
+    and judged against its body kind's list even when the count is zero and
+    even when the reader cannot name the field, so no reader skips an array
+    or keyed body without this check. **No declaration produces `14`, `16`,
+    `31`, `32`, `33`, `34`, `35` or `36`** under either body kind: arrays of
+    arrays are refused, so no element is an array or a keyed body; `31` is
+    the escape, `32` the payload-free kind, `33` is retired, `34` is
+    reserved, `35` is the fixed layout's wrapper and never a wire kind, and
+    `36` (timestamp) is a bare table field with no array spelling. A kind ON
+    the body kind's list that differs from the reader's own element kind
+    stays a `kind_mismatch` (§4); the closed-list check comes first, so
+    damage is answered before any comparison. **This list is the element kind
+    byte's, and it does not move §4's ONE NESTING BOUND**: a keyed body
+    reached under a table element is element kind `13` and nests exactly as
+    §4 says, so the lawful keyed body of keyed bodies nests through a table
+    element or a map entry and never as a direct keyed element, which the
+    compiler refuses as an array of arrays. The message form's announcement
+    names the same ELEMENT kind, never the list's own kind (§3.3), so a
+    declaration announces only a kind on this list.
   - **An arm id of `0` is the empty union** and carries nothing after it, not
     even a kind byte. It rides in TWO places: a `None` element of an array of
     unions (above), and the payload of a NESTED-UNION arm whose inner union
@@ -8613,11 +8655,17 @@ hand-editable text form alone refuses an unknown name, §6.5):
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
   keyed or map body, and a union whose arm holds one of those or another union
   (so union inside union nests). A union whose arm is a scalar or None adds no
-  level. A keyed entry's framing adds nothing by itself; what it frames is a
-  structural payload inside the entry — a table body, an array, a keyed or map
-  body — and that payload is one level deeper like any other. So a field
-  holding a keyed body of keyed bodies of scalars is two levels below the body
-  that holds the field; 128 such levels pass and 129 refuse. The compiler
+  level. A keyed entry's framing adds nothing by itself; what it frames is
+  its element, and the one structural element a keyed body carries is a
+  table body (element kind `13`; THE ELEMENT KINDS ARE CLOSED, §3), which is
+  one level deeper like any other. So a keyed body of keyed bodies nests
+  through a table element or a map entry, never as a direct keyed element
+  (§3 makes element kind `16` damage): a field holding `[E]R`, where table
+  `R` holds a field `[F]int32`, puts the outer keyed body one level below the
+  body that holds the field, each `R` element body two, and the inner keyed
+  body three; a map whose value is `[F]int32` puts the map's body one level
+  below, each entry body two, and the keyed body three. Every such level
+  counts toward the one bound: 128 levels pass and 129 refuse. The compiler
   refuses a declaration whose by-value nesting passes it, so no conforming
   writer produces an input the bound refuses. A pointer does not nest: a node
   record is walked from depth 0. <!-- limit name=binary_max_depth value=128 -->
@@ -8703,7 +8751,10 @@ diagnostic name, which is not normative and is never compared:
   count, index or reference on the form-`1` wire, §3), a kind no reader can
   skip, an array, keyed or map body too short to carry its own header (fewer
   than two bytes: the element kind byte and the count), a count the body
-  cannot cover, a header that crosses its own `L`, bytes left inside an array's, keyed
+  cannot cover, a header that crosses its own `L`, an array or keyed body
+  whose element kind is not one a declaration produces (THE ELEMENT KINDS ARE
+  CLOSED, §3), under any count, `0` included, in a declared field and in an
+  unknown one alike, bytes left inside an array's, keyed
   array's or map's `L` after its count's elements (an `L` of 3 holding the
   element kind, a count of 0 and one byte more),
   the same field id twice in one body, the same keyed slot twice in
