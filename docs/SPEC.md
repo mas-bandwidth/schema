@@ -1228,9 +1228,9 @@ it (§4.6).
   the reason `non_finite_float`, before the field is written. Every finite
   `float32` widens to `float64` exactly, so a backend that holds a `float32`
   in a wider cell may use the ordinary conversion. **Backend status:** C++
-  (serialize v2.1.3), C (serialize.c v2.0.2), Rust (serialize.rs v5.0.0),
-  JavaScript (serialize.js v2.0.1), Go (serialize.go v2.1.1), C#
-  (serialize.cs v2.0.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
+  (serialize v2.1.3), C (serialize.c v2.1.1), Rust (serialize.rs v5.0.0),
+  JavaScript (serialize.js v2.1.2), Go (serialize.go v2.1.1), C#
+  (serialize.cs v2.1.1) and Squirrel (serialize.nut v2.1.2) enforce the rule
   through their serialize runtime,
   and Java, Dart and Elixir in their own generated float codecs. Lua
   (serialize.lua v2.1.1) enforces it through its vendored serialize runtime:
@@ -2281,7 +2281,7 @@ a caller can hold that the declaration does not admit:
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
 | 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
-| 10 | a compressed or ranged float off its range | refused (`invalid_value` on write; `out_of_range` on read) |
+| 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
@@ -2778,11 +2778,10 @@ or a file per declaration where the language demands one.
   `Object.values` enumerates variants. Beside it, **every schema file that
   declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
-  to the runtime tier by a standing gate. That tier owns the fork itself:
-  `NODE_ENV` is read ONCE at module load, exactly as `serialize.js`'s own
-  `src/mode.js` does, and whole write variants are selected at export, so a
-  bundler that statically replaces `NODE_ENV` tree-shakes the checked writers
-  out; a writer with no contract to check is one function for both builds.
+  to the runtime tier by a standing gate. The flat tier's writer holds its
+  checks in every build, whatever `NODE_ENV` says: it reads no `NODE_ENV`
+  and selects no production variant, so a value its declaration does not
+  admit refuses whether the bundle is checked or released.
   The READ side is never configurable in either tier. **Every packet module
   ships its TypeScript declarations beside it** — `<Base>.d.ts` and
   `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc
