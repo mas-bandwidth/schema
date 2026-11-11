@@ -11490,7 +11490,8 @@ fields would get wrong:
 
 **EVERY BYTE NO FIELD COVERS IS ZERO** — interior padding, a record's trailing
 padding, a string's or `bytes`' unused tail, the bytes of a union outside its
-set arm, and the slack between the last node and the rounded `data_length`.
+set arm, a counted array's slots past its count, an absent optional's payload,
+and the slack between the last node and the rounded `data_length`.
 It is not tidiness: a cooked artifact is CONTENT-ADDRESSED by (asset hash,
 build version, byte order) (§7), so two cooks of one wire for one target have
 to be one artifact, and one uninitialized pad byte would make them two.
@@ -11598,7 +11599,7 @@ and inside the region, PASS TWO NEEDS NO BOUNDS CHECK OF ITS OWN for a
 reference that lands on a directory entry — which is the economy §6.3 buys by
 making the directory's offsets the padded starts.
 
-**Pass two reads exactly four things**, and it decodes no payload and follows
+**Pass two reads exactly these things**, and it decodes no payload and follows
 no reference:
 
 1. **Every `*T` slot.** A delta of zero is null. Any other resolves to
@@ -11637,8 +11638,15 @@ no reference:
    and against every other element or entry array in that node, and then the
    elements' own slots, companions and tags walked as a bounded array's are.
    There is no fifth clause, because there are no keys and no order.
+6. **Every DEAD BYTE** (§7.2). Every byte no live value covers — interior
+   padding, a record's trailing padding, a string's or `bytes`' unused tail,
+   the bytes of a union outside its set arm, a counted array's slots past its
+   count, an absent optional's payload, and the slack after the last node — is
+   read as zero, and a non-zero one is refused: a conforming writer leaves
+   every dead byte zero, so a file that carries any other value there was not
+   written by this build.
 
-**Nothing else is read.** Not a scalar, not a string's bytes beyond a map
+**No other field value is read.** Not a scalar, not a string's bytes beyond a map
 key's, not an enum's ordinal, not a `flags` mask — none of them can steer a walker, so none of them
 is the check's business, and a value outside a declared RANGE is not a
 forgery: §4 refuses one on the wire, and a cook of a build's own data has
