@@ -15,7 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 )
 
-// offContractSchema carries one field per write-contract row the text writer
+// toJsonOffContractSchema carries one field per write-contract row the text writer
 // owes (docs/SPEC.md §5.1 rows 1 to 4 and 10): a ranged integer signed,
 // unsigned past 2^63 and 128 bits wide, a ranged array element, a bits(N), a
 // counted numeric array and a text-bearing array with a minimum, a fixed array,
@@ -24,7 +24,7 @@ import (
 // counted array of records whose JSON values contain bounded text fields.
 // A map key past its string(N), a float field holding a value that is not a
 // number and a bool field holding a value that is not a bool are refused too.
-const offContractSchema = `package probe
+const toJsonOffContractSchema = `package probe
 type TextEntry
 {
     value string(4)
@@ -49,15 +49,15 @@ table T
 }
 `
 
-// offContractCase is one value of one field: in Squirrel storage (an
+// toJsonOffContractCase is one value of one field: in Squirrel storage (an
 // expression), and as the JSON value an unchecked writer would spell it.
 // lawful says the declaration admits it: the twin at the boundary.
-type offContractCase struct {
+type toJsonOffContractCase struct {
 	name, field, squirrel, text string
 	lawful                      bool
 }
 
-var offContractCases = []offContractCase{
+var toJsonOffContractCases = []toJsonOffContractCase{
 	{"range_high", "r", "101", "101", false},
 	{"range_low", "r", "-6", "-6", false},
 	{"range_high_edge", "r", "100", "100", true},
@@ -187,7 +187,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "probe.schema")
-	writeFile(t, schemaPath, []byte(offContractSchema))
+	writeFile(t, schemaPath, []byte(toJsonOffContractSchema))
 	paths, err := compiler.GatherPaths([]string{schemaPath})
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +201,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		t.Parallel()
 		model := tabletext.NewModel(unit)
 		st := model.Lookup("T")
-		for _, c := range offContractCases {
+		for _, c := range toJsonOffContractCases {
 			prefix := `{"k":[0,0],"tm":[{"value":"a"},{"value":"b"}],`
 			if c.field == "k" {
 				prefix = `{"tm":[{"value":"a"},{"value":"b"}],`
@@ -240,8 +240,8 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 	for name, data := range tables {
 		writeFile(t, filepath.Join(out, name), data)
 	}
-	rows := make([]string, len(offContractCases))
-	for i, c := range offContractCases {
+	rows := make([]string, len(toJsonOffContractCases))
+	for i, c := range toJsonOffContractCases {
 		rows[i] = "[" + strconv.Quote(c.name) + ", " + strconv.Quote(c.field) + ", " + c.squirrel + "]"
 	}
 	writeFile(t, filepath.Join(dir, "main.nut"),
@@ -254,7 +254,7 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		}
 		got[name] = rest
 	}
-	for _, c := range offContractCases {
+	for _, c := range toJsonOffContractCases {
 		g, ok := got[c.name]
 		switch {
 		case !ok:
@@ -265,5 +265,5 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 			t.Errorf("%s: ToJson of %s = %s answered %q, want refused with ToJsonMeasure -1", c.name, c.field, c.squirrel, g)
 		}
 	}
-	t.Logf("compared %d values against the write contract", len(offContractCases))
+	t.Logf("compared %d values against the write contract", len(toJsonOffContractCases))
 }
