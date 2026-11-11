@@ -79,24 +79,26 @@ for (const line of readFileSync(join(inputs, "cases.txt"), "utf8").split("\n")) 
   if (eng != null) {
     say(root, name, "loadeng", call(() => loadVerdict(eng)));
   }
+  // THE FIXED FORM HOLDS ITS VALUE IN ANOTHER CLASS (<Package>Table.js), and
+  // the generated code carries no path between that class and the plain value
+  // the JSON reader and writer use. The probe does not bridge the two by hand:
+  // FixedSave(v) has no generated path from v, so it is answered as such, and
+  // FixedLoad(engine bytes) is run and held to the one thing generated code
+  // can show (that FixedSave of what it read is the engine's bytes) before it
+  // too is answered as having no generated path to compare it with v.
   const H = fixedHome[root];
   if (cls === "fixed" && H) {
-    say(root, name, "fixedsave", call(() => {
-      const out = new Uint8Array(H[root + "FixedMeasure"](1));
-      const n = H[root + "FixedSave"]([v], 1, out);
-      if (n !== out.length) return "refused:" + n;
-      keep(root, name, ".fixed", out);
-      return "ok";
-    }));
+    say(root, name, "fixedsave", "refused:no generated path from the plain value to the fixed value class");
     if (eng != null) {
       say(root, name, "fixedloadeng", call(() => {
         const x = new P[root]();
         P["Init" + root](x);
-        const values = [x];
         const report = new P.TableFixedReport();
-        const n = H[root + "FixedLoad"](values, 1, eng, eng.length, H[root + "FixedNewPlan"](), report);
+        const n = H[root + "FixedLoad"]([x], 1, eng, eng.length, H[root + "FixedNewPlan"](), report);
         if (n !== 1) return "refused:" + why(report);
-        return fn("ToJson")(values[0]) === want ? "ok" : "diff";
+        const out = new Uint8Array(H[root + "FixedMeasure"](1));
+        if (H[root + "FixedSave"]([x], 1, out) !== out.length || !same(out, eng)) return "diff:FixedSave of the loaded value is not the engine's bytes";
+        return "refused:no generated path from the fixed value class to the plain value";
       }));
     }
   }
