@@ -54,8 +54,8 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
 			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
 			b.WriteString("    }\n")
-			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
-			readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v, int depth) {\n", m, entry)
+			readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1], "depth")
 			b.WriteString("    }\n")
 		}
 
@@ -116,7 +116,7 @@ func writeJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	b.WriteString("        } if(!entries.isEmpty())TableJson.indent(b,depth); b.append('}'); }\n")
 }
 
-func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
@@ -144,7 +144,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} try {java.math.BigInteger n=new java.math.BigDecimal(token).toBigIntegerExact(); if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}catch(ArithmeticException|NumberFormatException invalid){accepted=false;in.rep.refuse(\"kind_mismatch\");}\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
-	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry);\n", st.Name, m)
+	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)
 	fmt.Fprintf(b, "                    if(in.bad)return; int found=-1;for(int i=0;i<v.%s.size();i++)if("+st.Name+"Variable.compare_%s(v.%s.get(i),entry)==0){found=i;break;} if(found>=0){v.%s.set(found,entry);in.rep.refuse(\"text_damaged\");}else v.%s.add(entry); }\n", m, m, m, m, m)
 	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
 }
