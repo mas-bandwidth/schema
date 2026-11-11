@@ -95,6 +95,10 @@ var legs = []*leg{
 		name: "dart", lang: "dart", tool: "dart (the generated Dart libraries)", retain: true,
 		run: runDart,
 	},
+	{
+		name: "java", lang: "java", tool: "javac and java (the generated Java package)", retain: true,
+		run: runJava,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -366,4 +370,17 @@ func runDart(t *testing.T, x *rowEnv) []byte {
 	sort.Strings(imports)
 	write(t, filepath.Join(x.gen, "roundtrip_probe.dart"), renderProbe(t, x, "dart", "probe.dart.tmpl", map[string]any{"FixedHome": home, "Imports": imports}))
 	return run(t, x.gen, nil, tool("DART", "dart"), "run", "roundtrip_probe.dart", x.in)
+}
+
+// runJava compiles the rendered probe with the generated package and runs it.
+func runJava(t *testing.T, x *rowEnv) []byte {
+	src := filepath.Join(x.work, "src")
+	write(t, filepath.Join(src, "Probe.java"), renderProbe(t, x, "java", "Probe.java.tmpl", nil))
+	files := []string{filepath.Join(src, "Probe.java")}
+	for _, f := range genFiles(t, x.gen, ".java") {
+		files = append(files, filepath.Join(x.gen, f+".java"))
+	}
+	classes := filepath.Join(x.work, "classes")
+	run(t, x.work, nil, tool("JAVAC", "javac"), append([]string{"-nowarn", "-encoding", "UTF-8", "-d", classes}, files...)...)
+	return run(t, x.work, nil, tool("JAVA", "java"), "-cp", classes, "Probe", x.in)
 }

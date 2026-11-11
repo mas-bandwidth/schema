@@ -1,0 +1,156 @@
+// The round-trip gate's Java probe (test/roundtrip). The gate renders this
+// template over the unit's root tables, compiles it with the generated
+// package, and runs
+//   java -cp <classes> Probe <inputs dir>
+// Every call is the generated API: per root, <Root>Variable (fromJson, toJson,
+// save, load), <Root>Retain (loadRetain, saveRetain) and, at a fixed root,
+// <Root>Fixed (load, save, measure, image).
+import [[.Package]].*;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Supplier;
+
+public final class Probe {
+    static String inputs;
+
+    static void say(String root, String name, String verb, String verdict) {
+        System.out.println("RT " + root + " " + name + " " + verb + " " + verdict.replaceAll("\\s+", " "));
+    }
+
+    static void keep(String root, String name, String ext, byte[] b) throws Exception {
+        Files.write(Paths.get(inputs, "out", root, name + ext), b);
+    }
+
+    // call answers f's verdict, and a throw as a refusal by name.
+    static String call(Supplier<String> f) {
+        try {
+            return f.get();
+        } catch (Throwable e) {
+            return "refused:threw " + e.getClass().getSimpleName();
+        }
+    }
+
+    static String why(TableVariable.Report r) {
+        return r.reason == null || r.reason.isEmpty() ? (r.damaged ? "damaged" : "?") : r.reason;
+    }
+
+    static boolean bad(TableVariable.Report r) {
+        return r.refused || r.damaged;
+    }
+
+    public static void main(String[] args) throws Exception {
+        inputs = args[0];
+        List<String> lines = Files.readAllLines(Paths.get(inputs, "cases.txt"));
+        for (String line : lines) {
+            String[] p = line.split(" ");
+            if (p.length < 3) {
+                continue;
+            }
+            String root = p[0], name = p[1];
+            byte[] text = Files.readAllBytes(Paths.get(inputs, "samples", root, name + ".json"));
+            Path ep = Paths.get(inputs, "engine", root, name + ".bin");
+            byte[] eng = Files.exists(ep) ? Files.readAllBytes(ep) : null;
+            switch (root) {
+[[range .Roots]]                case "[[.Name]]":
+                    probe[[.Name]](root, name, text, eng);
+                    break;
+[[end]]                default:
+                    say(root, name, "probe", "refused:the unit generated no such root");
+            }
+        }
+    }
+[[range .Roots]]
+    static void probe[[.Name]](String root, String name, byte[] text, byte[] eng) throws Exception {
+        final [[.Name]]Variable.Value[] v = {null};
+        say(root, name, "fromjson", call(() -> {
+            TableVariable.Report r = new TableVariable.Report();
+            [[.Name]]Variable.Value x = [[.Name]]Variable.fromJson(text, r);
+            if (x == null || bad(r)) {
+                return "refused:" + why(r);
+            }
+            v[0] = x;
+            return "ok";
+        }));
+        if (v[0] == null) {
+            return;
+        }
+        final String want = new String([[.Name]]Variable.toJson(v[0]));
+        final java.util.function.Function<[[.Name]]Variable.Value, String> same =
+                got -> call(() -> new String([[.Name]]Variable.toJson(got))).equals(want) ? "ok" : "diff";
+        final java.util.function.Function<byte[], String> loadVerdict = b -> {
+            TableVariable.Report r = new TableVariable.Report();
+            [[.Name]]Variable.Value got = [[.Name]]Variable.load(b, r);
+            return got == null || bad(r) ? "refused:" + why(r) : same.apply(got);
+        };
+        final byte[][] wire = {null};
+        say(root, name, "save", call(() -> {
+            byte[] w = [[.Name]]Variable.save(v[0]);
+            if (w == null) {
+                return "refused:save answered no bytes";
+            }
+            wire[0] = w;
+            try {
+                keep(root, name, ".save", w);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            return "ok";
+        }));
+        if (wire[0] != null) {
+            say(root, name, "load", call(() -> loadVerdict.apply(wire[0])));
+        }
+        if (eng != null) {
+            say(root, name, "loadeng", call(() -> loadVerdict.apply(eng)));
+        }
+[[if eq .Class "fixed"]]        // THE FIXED FORM HOLDS ITS VALUE IN ANOTHER CLASS ([[.Name]]Fixed.Value),
+        // and the generated code carries no path between it and
+        // [[.Name]]Variable.Value, the class fromJson and toJson use. The probe
+        // does not bridge the two by hand: FixedSave(v) is answered as having no
+        // generated path, and FixedLoad(engine bytes) is run and held to what
+        // generated code can show (FixedSave of what it read is the engine
+        // bytes) before it too is answered as having no path to compare with v.
+        say(root, name, "fixedsave", "refused:no generated path from the variable class to the fixed class");
+        if (eng != null) {
+            say(root, name, "fixedloadeng", call(() -> {
+                [[.Name]]Fixed.Value[] vals = {new [[.Name]]Fixed.Value()};
+                TableFixed.Report r = new TableFixed.Report();
+                TableFixed.Entry[] plan = TableFixed.plan(1 << 14);
+                int n = [[.Name]]Fixed.load(vals, 1, eng, plan, new short[1 << 14], [[.Name]]Fixed.image(), r);
+                if (n != 1) {
+                    return "refused:" + r.reason;
+                }
+                int size = [[.Name]]Fixed.measure(1);
+                byte[] o = new byte[size];
+                if ([[.Name]]Fixed.save(vals, 1, o) != o.length || !Arrays.equals(o, eng)) {
+                    return "diff:FixedSave of the loaded value is not the engine bytes";
+                }
+                return "refused:no generated path from the fixed class to the variable class";
+            }));
+        }
+[[end]][[if eq .Class "variable"]]        if (wire[0] != null) {
+            say(root, name, "retain", call(() -> {
+                TableRetain store = new TableRetain(1 << 20, 1 << 17);
+                TableVariable.Report r = new TableVariable.Report();
+                [[.Name]]Variable.Value got = [[.Name]]Retain.loadRetain(wire[0], store, r);
+                if (got == null || bad(r)) {
+                    return "refused:" + why(r);
+                }
+                TableVariable.Report sr = new TableVariable.Report();
+                byte[] back = [[.Name]]Retain.saveRetain(got, store, sr);
+                if (back == null || bad(sr)) {
+                    return "refused:" + why(sr);
+                }
+                return Arrays.equals(back, wire[0]) ? same.apply(got) : "diff";
+            }));
+        }
+        say(root, name, "json", call(() -> {
+            TableVariable.Report r = new TableVariable.Report();
+            [[.Name]]Variable.Value j = [[.Name]]Variable.fromJson(want.getBytes(), r);
+            return j == null || bad(r) ? "refused:" + why(r) : same.apply(j);
+        }));
+[[end]]    }
+[[end]]}
