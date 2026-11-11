@@ -331,7 +331,7 @@ fn announce_read_once(
                 return false;
             }
             let (framed, ok) = read_leb(body, &mut at);
-            if !ok || at + (framed as usize) > body.len() {
+            if !ok || at > body.len() || framed > (body.len() - at) as u64 {
                 report.damaged = true;
                 return false;
             }
@@ -344,7 +344,7 @@ fn announce_read_once(
             }
             let mut vat = begin + 1;
             let (length, ok) = read_leb(body, &mut vat);
-            if !ok || vat + (length as usize) != end_at {
+            if !ok || vat > end_at || length != (end_at - vat) as u64 {
                 report.damaged = true;
                 return false;
             }
