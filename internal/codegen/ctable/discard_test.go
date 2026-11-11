@@ -422,8 +422,8 @@ int main( void )
 // docs/SPEC-TABLES.md §3.1: no writer produces a cycle, so a pointer naming a
 // node whose descent is still open is damage and the whole load is refused.
 // The wire is a clean chain root -> 2 -> 3 with node 2's pointer turned back
-// at node 2 itself. Red if the region load or the builder load hands back the
-// cyclic graph.
+// at node 2 itself. Red if the region load, the retaining load or the builder
+// load hands back the cyclic graph.
 func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
@@ -458,6 +458,20 @@ func TestPointerNamingAnOpenNodeIsRefusedC(t *testing.T) {
     if ( !g.refused ) { printf( "cycle: the region load did not say malformed\n" ); free( region ); return 1; }
     for ( i = 0; i < ( need > 0 ? need : 4096 ); i++ ) { if ( region[i] != 0 ) { printf( "cycle: the region was not zeroed on refusal\n" ); free( region ); return 1; } }
     free( region );
+    {
+        static uint8_t store[1 << 12]; static TableRetainId ids[16];
+        uint8_t * retain_region = (uint8_t *) malloc( 1 << 16 );
+        TableRetain retain; TableReport rr; const Graph * kept;
+        if ( retain_region == NULL ) { return 1; }
+        memset( &retain, 0, sizeof( retain ) );
+        retain.bytes = store; retain.capacity = (int64_t) sizeof( store );
+        retain.ids = ids; retain.id_capacity = 16;
+        memset( &rr, 0, sizeof( rr ) );
+        kept = graph_load_retain( retain_region, 1 << 16, cyclic, (int64_t) sizeof( cyclic ), &retain, &rr );
+        free( retain_region );
+        if ( kept != NULL ) { printf( "cycle: the retaining load handed back a cyclic graph\n" ); return 1; }
+        if ( !rr.refused ) { printf( "cycle: the retaining load did not say malformed\n" ); return 1; }
+    }
     if ( !graph_builder_init( &builder ) ) { return 1; }
     memset( &br, 0, sizeof( br ) );
     if ( graph_load_builder( &builder, cyclic, (int64_t) sizeof( cyclic ), &br ) || !br.refused ) { printf( "cycle: the builder load did not refuse\n" ); graph_builder_shutdown( &builder ); return 1; }

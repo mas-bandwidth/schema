@@ -151,7 +151,7 @@ void main() {
 // runs it with the leg's own toolchain. The home carries the storage class and
 // the shared runtime, the root library carries the batch verbs, and the probe
 // imports both, so a defect in either is a compile error, never a green.
-func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) {
+func runBatchProbe(t *testing.T, u *ir.Unit, root, body string, edit ...func(map[string][]byte)) (string, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -164,6 +164,11 @@ func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) 
 		t.Fatalf("generate table: %v", err)
 	}
 	maps.Copy(files, tables)
+	for _, apply := range edit {
+		if apply != nil {
+			apply(files)
+		}
+	}
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
@@ -253,8 +258,8 @@ func TestMessageFormBatchDart(t *testing.T) {
 	})
 
 	// 2.2 "`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME" and "`M` ABOVE
-	// THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... The reader
-	// sets the returned count to the wire's `M`", and "A BODY FROM AN ENDPOINT THAT
+	// THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ... A refused
+	// batch returns a count of `0`", and "A BODY FROM AN ENDPOINT THAT
 	// NEVER ANNOUNCED IS REFUSED BY NAME" (`no_vocabulary`).
 	t.Run("batch_refusals", func(t *testing.T) {
 		t.Parallel()
@@ -332,8 +337,8 @@ const batchRefusalsBody = `
       hugeSaveRep.refused && hugeSaveRep.reason == 'batch_too_large',
       'save over 256 bodies did not refuse');
   // "'M' ABOVE THE CALLER'S CAPACITY ON THE READ SIDE IS A REFUSAL BY NAME ...
-  // The reader sets the returned count to the wire's 'M' before it returns the
-  // refusal."
+  // A refused batch returns a count of '0', as every refused batch does; a
+  // caller that needs room reads the wire's 'M' itself."
   final vocab = h.TableVocabulary(entries: List<h.TableMessageEntry>.generate(4096, (i) => h.TableMessageEntry(0, 0)));
   check(h.announceRead(vocab, h.tableAnnouncement, h.TableReport()), 'announce');
   final two = <h.Root>[h.Root(), h.Root()];
@@ -343,7 +348,7 @@ const batchRefusalsBody = `
   final oneStorage = <h.Root>[h.Root()];
   final readRep = h.TableReport();
   final readCount = r.rootLoadMessages(oneStorage, twoBuf, vocab, readRep);
-  check(readCount == 2 && readRep.refused && readRep.reason == 'batch_too_large',
+  check(readCount == 0 && readRep.refused && readRep.reason == 'batch_too_large',
       'read over capacity: count=$readCount refused=${readRep.refused} reason=${readRep.reason}');
 `
 

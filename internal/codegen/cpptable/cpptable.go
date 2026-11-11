@@ -1987,28 +1987,11 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		}
 		unions := tableUnionsOf(f)
 		if len(members) > 0 {
-			// a table-armed union is emitted before the first table that holds
-			// it and after its same-file arms, which orderTables placed ahead
-			// of that holder; one no same-file table holds follows the structs
-			emittedUnion := map[string]bool{}
-			for _, st := range members {
-				if !st.IsTable {
-					continue
-				}
-				for _, un := range tableUnionsHeldBy(st, unions) {
-					if !emittedUnion[un.Name] {
-						emittedUnion[un.Name] = true
-						g.emitTableUnion(un)
-					}
-				}
-				g.emitTableStruct(st)
-			}
-			for _, un := range unions {
-				if !emittedUnion[un.Name] {
-					emittedUnion[un.Name] = true
-					g.emitTableUnion(un)
-				}
-			}
+			// every table and table-armed union is emitted after the full
+			// by-value closure it names, not only after the tables orderTables
+			// can see from a field: an arm may hold another union, whose own
+			// arm holds a table or a third union.
+			g.emitTableShapes(members, unions)
 			for _, e := range tableEnums(members) {
 				g.emitEnumIdentity(e)
 			}
@@ -2120,9 +2103,7 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				}
 			}
 		} else {
-			for _, un := range unions {
-				g.emitTableUnion(un) // its arms are all cross-file: nothing here precedes it
-			}
+			g.emitTableShapes(nil, unions)
 			g.pf("// no tables declared or referenced in this file — codecs are emitted\n")
 			g.pf("// for the table closure only (`table` declarations and what they reach)\n")
 		}

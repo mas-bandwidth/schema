@@ -126,13 +126,14 @@ each leg, and each is held by its own tests.
   little-endian words) is integer arithmetic on the 64-bit scratch:
   `<<`, `>>` (logical), `&`, `|`.
 - **float32 rounding and patterns.** A float32 field holds the double that is
-  exactly its float32 value. Writing a bare float32 takes its 32-bit pattern
-  by `string.pack("<f", v)` for an ordinary value, but a NaN's payload and a
-  signalling NaN must ride bit for bit (SPEC §4.3; PORTING.md M21), and the
-  C conversion behind `string.pack("<f")` is a float conversion, so the
-  pattern is moved by integer bit surgery between the float32 and float64
-  layouts and never through a conversion. The type-wire cards own the helper
-  and its corpus check. The TABLE wire is the other case: it carries finite floats only
+  exactly its float32 value. **A BARE FLOAT IS FINITE ON THE TYPE WIRE
+  (SPEC.md §4.3):** a float32 is the 32 bits it holds and a float64 the 64, for
+  every finite value, negative zero and the subnormals included. A NaN (any
+  sign, any payload, quiet or signalling) and both infinities are not values of
+  the type: the vendored runtime refuses a NaN on write and refuses one on read
+  as `non_finite_float`, before the field is written. Every finite float32
+  widens to float64 exactly, so the ordinary conversion is exact. The TABLE
+  wire is the other case: it carries finite floats only
   (docs/SPEC-TABLES.md §3.3), every read tests a cell's raw bits for a NaN or an
   infinity before it converts, and the conversion is exact for every finite
   float32 (PORTING.md M21, retired; `TestLuaFloat32ConversionIsExactForEveryFinitePattern`).
@@ -146,7 +147,7 @@ Fixed now, for the pro cards. Never rename it.
 | `compiler/target_lua.go` | the target, a builtin of the ordinary `bin/schema` |
 | `internal/codegen/lua/lua.go` | the TYPE emitter; `RegisterPass` (a later file's `init()` adds its emission step) and `RegisterRuntime` (its embedded `runtime/*.lua`), so no later card edits lua.go |
 | `internal/codegen/lua/read.go`, `write.go` | the type wire, later; each embeds `runtime/*.lua` by glob and registers it |
-| `internal/codegen/lua/runtime/*.lua` | the type-wire runtime (`bitreader.lua`, `bitwriter.lua`), emitted beside the modules |
+| `internal/codegen/lua/runtime/*.lua` | the type-wire runtime, the vendored `serialize*.lua` set (`serialize.lua`, `serialize_bitpacker.lua`, `serialize_bits.lua`, `serialize_bytes.lua`, `serialize_compressed_float.lua`, `serialize_fixed.lua`, `serialize_float.lua`, `serialize_int.lua`, `serialize_int128.lua`, `serialize_int_relative.lua`, `serialize_stream.lua`), emitted beside the modules |
 | `internal/codegen/lua/runtime/serialize*.lua` | the serialize port vendored verbatim from `mas-bandwidth/serialize.lua` at release `v2.1.1` (format 2.0; `SERIALIZE_LUA_PIN` and `SERIALIZE_LUA_COMMIT` in `make/lua-serialize.mk`), pin `runtime/SERIALIZE_PIN` (the tag, the commit, one `sha256 <file>` line per file); `make vendor-serialize-lua` refreshes it. The type-wire cards call this library (serialize.WriteStream/ReadStream, serializeInt/serializeFloat/...) rather than a private bit reader or writer |
 | `internal/codegen/lua/luarun/luarun.go` | the test helper |
 | `internal/codegen/luatable/luatable.go` | ONE DESCRIPTOR per table as data a single runtime walks (the `jstable/variableruntime.go` shape), the constructors, `RegisterPass` for `fixedform.go` and `messageform.go`, and the `//go:embed runtime/*.lua` glob |
@@ -205,8 +206,8 @@ network, no clock, no service.
 A collection count is an unsigned 64-bit number ([SPEC-TABLES.md](SPEC-TABLES.md) §3).
 A **map** (§2.8) or an **unbounded array** (§2.9) whose count is past the
 int32 storage cap refuses the builder load by name, `count_over_extent_cap`.
-Every builder read answers it the same way: `L.LoadTolerant`, the plain
-`L.Load`, `ReadStrict` and `LoadRetain` answer nil, `report.refused` is `1`,
+Every read answers it the same way: the plain `L.Load`, `ReadStrict` and
+`LoadRetain` answer nil, `report.refused` is `1`,
 `report.reason` is `count_over_extent_cap`, `malformed` is not set and no
 counter moves. The walk runs to its end, so the load keeps the report as it
 stood at the first refusal and puts it back before it answers; nothing the walk
@@ -222,8 +223,8 @@ The table runtime's open techniques (2026-10-29; PORTING.md M1, M5, M13, M15,
 M18, M21, M22), each held by its own gate.
 
 **The load fills storage the caller owns** (M1, I1, I9, I14).
-`load.Load(T, name, bytes, report, state, into)` and
-`load.LoadTolerant(...)` take, after the report, an optional loader `state`
+`load.Load(T, name, bytes, report, state, into)` takes, after the report, an
+optional loader `state`
 (`load.NewState()`: the readers, the id table and its seen-set, the queue of
 pointer slots, the context) and an optional `into`, the caller's value, which
 the load puts back to its declared defaults IN PLACE (`D.reset`, deep-equal to
@@ -277,10 +278,10 @@ which the gates work carries.
 | card | surface | files |
 |---|---|---|
 | schema-lua-port-design | this page, the skeleton, both type and table surfaces without codecs | the files above |
-| schema-lua-type-wire-read | the type wire's read side: every type, union and array; the C++-pinned goldens | `lua/read.go`, `lua/runtime/bitreader.lua` |
-| schema-lua-type-wire-write | the type wire's write side, byte for byte with the goldens | `lua/write.go`, `lua/runtime/bitwriter.lua` |
-| schema-lua-table-wire-load | the variable form's tolerant load `LoadTolerant` and its report (§3.1, §4) | `luatable/runtime/load.lua` |
-| schema-lua-plain-load-is-strict | the plain `Load` is the strict read; `LoadTolerant` is the tolerant one (§6.5) | `luatable/runtime/load.lua`, `luatable/runtime/refusal.lua` |
+| schema-lua-type-wire-read | the type wire's read side: every type, union and array; the C++-pinned goldens | `lua/read.go`, `lua/runtime/serialize*.lua` |
+| schema-lua-type-wire-write | the type wire's write side, byte for byte with the goldens | `lua/write.go`, `lua/runtime/serialize*.lua` |
+| schema-lua-table-wire-load | the variable form's load and its report (§3.1, §4) | `luatable/runtime/load.lua` |
+| schema-lua-plain-load-is-strict | the plain `Load` is the strict read (§6.5) | `luatable/runtime/load.lua`, `luatable/runtime/refusal.lua` |
 | schema-lua-table-wire-save | the variable form's save, every instance byte for byte | `luatable/runtime/save.lua` |
 | schema-lua-fixed-form | form `3` against the byte oracle (docs/FIXED-FORM-ALGORITHM.md) | `luatable/fixedform.go`, `luatable/runtime/fixed.lua` |
 | schema-lua-message-form | form `2` against its goldens | `luatable/messageform.go`, `luatable/runtime/message.lua` |
@@ -301,14 +302,13 @@ the cook's `Open` is the header and the base alone (O(1)) and `Check` runs
 `MessageRoots`, which lists fixed tables alone, and the conformance driver
 answers the `graph_tree` row over the variable `Scene` with the named refusal.
 
-Owed and named, each a `port/lua/open/*` roadmap entry: cross-build
-payload-shape evolution and unknown-field skipping (`retain-message-cross-build`,
-§3.3), and the labelled bench board (`bench-board`: the leg and its gate are
-in, a measured sitting is not). `AnnounceRead` now keeps the sender's slot order
-and entry count, and batch reads use its reference width; an independent
-Go-engine batch tests a sender with extra unused fields against a smaller
-receiver. Reading payloads still uses the receiver's declared shape, so this
-slot repair does not close cross-build evolution.
+Owed and named, each a `port/lua/open/*` roadmap entry: the labelled bench
+board (`bench-board`: the leg and its gate are in, a measured sitting is not).
+`AnnounceRead` now keeps the sender's slot order and entry count, and batch
+reads use its reference width; an independent Go-engine batch tests a sender
+with extra unused fields against a smaller receiver. `runtime/message.lua`
+reads a ranged payload at the sender's announced width and base, as
+[SPEC-TABLES.md](SPEC-TABLES.md) §3.3 requires.
 
 The `arm-named-tag` item is closed: an arm named `tag` receives an unoccupied
 underscore-suffixed payload slot. `TestLuaArmSlotKeepsTheDiscriminator` checks

@@ -695,7 +695,7 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
 	if len(tags) == 0 {
 		return false
 	}
-	g.pf("    private static readonly string[] %s = { %s };\n", name, ir.QuotedTags(tags))
+	g.pf("    private static readonly string[] %s = { %s };\n", name, csQuoteList(tags))
 	return true
 }
 
@@ -704,7 +704,7 @@ func (g *tableGen) emitTagsStatic(name string, tags []string) bool {
 func annotationColumns(doc string, tags []string, tagsName string) (string, string, string) {
 	docColumn := "TableDocNone"
 	if doc != "" {
-		docColumn = ir.QuoteDoc(doc)
+		docColumn = csQuote(doc)
 	}
 	list := "null"
 	if len(tags) > 0 {
@@ -984,7 +984,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 		tags = armTags(f.Tags)
 	}
 
-	jsonName := fmt.Sprintf("%q", ir.TableFieldJsonKey(f))
+	jsonName := csQuote(ir.TableFieldJsonKey(f))
 	if g.outside {
 		jsonName = "null"
 	}
