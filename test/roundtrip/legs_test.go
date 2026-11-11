@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -90,6 +91,10 @@ var legs = []*leg{
 		name: "lobster", lang: "lobster", tool: "lobster (the generated Lobster modules)", retain: true,
 		run: runLobster,
 	},
+	{
+		name: "dart", lang: "dart", tool: "dart (the generated Dart libraries)", retain: true,
+		run: runDart,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -122,14 +127,14 @@ func renderProbe(t testing.TB, x *rowEnv, leg, file string, extra map[string]any
 	if err != nil {
 		t.Fatal(err)
 	}
-	type tmplRoot struct{ Name, Class, Snake string }
+	type tmplRoot struct{ Name, Class, Snake, Lower string }
 	data := map[string]any{"Package": x.pkg, "Title": title(x.pkg)}
 	for k, v := range extra {
 		data[k] = v
 	}
 	var roots []tmplRoot
 	for _, r := range x.roots {
-		roots = append(roots, tmplRoot{r.name, r.class, snake(r.name)})
+		roots = append(roots, tmplRoot{r.name, r.class, snake(r.name), lower(r.name)})
 	}
 	data["Roots"] = roots
 	tmpl, err := template.New(file).Delims("[[", "]]").Option("missingkey=error").Parse(string(src))
@@ -141,6 +146,37 @@ func renderProbe(t testing.TB, x *rowEnv, leg, file string, extra map[string]any
 		t.Fatalf("probe template %s/%s: %v", leg, file, err)
 	}
 	return out.Bytes()
+}
+
+// lower is s with its first letter lower case: the per-root function prefix
+// of the Dart, Java and C# legs.
+func lower(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToLower(r[0])
+	return string(r)
+}
+
+// homes is, per root, the generated file (stem) that defines it: the first
+// file with the extension whose text holds decl(root). A root no file defines
+// is absent, and the probe answers that it has no generated path.
+func homes(t testing.TB, x *rowEnv, ext string, decl func(root string) string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, f := range genFiles(t, x.gen, ext) {
+		src, err := os.ReadFile(filepath.Join(x.gen, f+ext))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range x.roots {
+			if _, done := out[r.name]; !done && bytes.Contains(src, []byte(decl(r.name))) {
+				out[r.name] = f
+			}
+		}
+	}
+	return out
 }
 
 func title(s string) string {
@@ -315,4 +351,19 @@ func runLobster(t *testing.T, x *rowEnv) []byte {
 	}
 	write(t, filepath.Join(x.gen, "roundtrip_probe.lobster"), renderProbe(t, x, "lobster", "probe.lobster.tmpl", map[string]any{"Modules": mods}))
 	return run(t, x.gen, nil, tool("LOBSTER", "lobster"), filepath.Join(x.gen, "roundtrip_probe.lobster"), "--", x.in)
+}
+
+// runDart renders the probe into the generated directory, importing each
+// <File>Fixed.dart that defines a fixed root's <root>FixedLoad.
+func runDart(t *testing.T, x *rowEnv) []byte {
+	home := homes(t, x, ".dart", func(r string) string { return "int " + lower(r) + "FixedLoad(" })
+	var imports []string
+	for _, f := range home {
+		if !slices.Contains(imports, f) {
+			imports = append(imports, f)
+		}
+	}
+	sort.Strings(imports)
+	write(t, filepath.Join(x.gen, "roundtrip_probe.dart"), renderProbe(t, x, "dart", "probe.dart.tmpl", map[string]any{"FixedHome": home, "Imports": imports}))
+	return run(t, x.gen, nil, tool("DART", "dart"), "run", "roundtrip_probe.dart", x.in)
 }

@@ -1,0 +1,130 @@
+// The round-trip gate's Dart probe (test/roundtrip). The gate renders this
+// template over the unit's root tables into the generated directory and runs
+//   dart run roundtrip_probe.dart <inputs dir>
+// Every call is the generated API: <Pkg>Wire.dart's per-root <root>FromJson,
+// <root>ToJson, <root>WireSave, <root>WireLoad, <root>WireLoadRetain and
+// <root>WireSaveRetain, and, at a fixed root, the <File>Fixed.dart that
+// defines <root>FixedLoad and <root>FixedSave.
+import 'dart:io';
+import 'dart:typed_data';
+import '[[.Title]]Wire.dart' as w;
+import '[[.Title]]Fixed.dart' as fx;
+[[range .Imports]]import '[[.]].dart' as [[.]];
+[[end]]
+late String inputs;
+
+void say(String root, String name, String verb, String verdict) {
+  print('RT $root $name $verb ${verdict.replaceAll(RegExp(r'\s+'), ' ')}');
+}
+
+void keep(String root, String name, String ext, Uint8List b) {
+  File('$inputs/out/$root/$name$ext').writeAsBytesSync(b);
+}
+
+bool same(Uint8List a, Uint8List b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+// call answers f's verdict, and a throw as a refusal by name.
+String call(String Function() f) {
+  try {
+    return f();
+  } catch (e) {
+    return 'refused:threw ${e.runtimeType}';
+  }
+}
+
+String wireVerdict(w.TableWireReport r, String Function() ok) {
+  if (r.refused) return 'refused:${r.refusal}';
+  return ok();
+}
+
+void main(List<String> args) {
+  inputs = args[0];
+  for (final line in File('$inputs/cases.txt').readAsLinesSync()) {
+    final p = line.split(' ');
+    if (p.length < 3) continue;
+    final root = p[0], name = p[1], cls = p[2];
+    final text = File('$inputs/samples/$root/$name.json').readAsStringSync();
+    final ef = File('$inputs/engine/$root/$name.bin');
+    final Uint8List? eng = ef.existsSync() ? ef.readAsBytesSync() : null;
+    switch (root) {
+[[range .Roots]]      case '[[.Name]]':
+        {
+          w.[[.Name]]? v;
+          say(root, name, 'fromjson', call(() {
+            final r = w.TableTextReport();
+            final x = w.[[.Lower]]FromJson(text, r);
+            if (r.refused) return 'refused:${r.refusal}';
+            v = x;
+            return 'ok';
+          }));
+          if (v == null) break;
+          final want = call(() => w.[[.Lower]]ToJson(v!));
+          String sameValue(w.[[.Name]] got) => call(() => w.[[.Lower]]ToJson(got)) == want ? 'ok' : 'diff';
+          String loadVerdict(Uint8List b) {
+            final r = w.TableWireReport();
+            final got = w.[[.Lower]]WireLoad(b, r);
+            return wireVerdict(r, () => sameValue(got));
+          }
+          Uint8List? wire;
+          say(root, name, 'save', call(() {
+            final b = w.[[.Lower]]WireSave(v!);
+            wire = b;
+            keep(root, name, '.save', b);
+            return 'ok';
+          }));
+          if (wire != null) say(root, name, 'load', call(() => loadVerdict(wire!)));
+          if (eng != null) say(root, name, 'loadeng', call(() => loadVerdict(eng)));
+[[if eq .Class "fixed"]][[$home := index $.FixedHome .Name]]          // THE FIXED FORM HOLDS ITS VALUE IN ANOTHER CLASS ([[$.Title]]Fixed.dart's
+          // [[.Name]]), and the generated code carries no path between it and the
+          // wire class FromJson and ToJson use. The probe does not bridge the
+          // two by hand: FixedSave(v) is answered as having no generated path,
+          // and FixedLoad(engine bytes) is run and held to what generated code
+          // can show (FixedSave of what it read is the engine bytes) before it
+          // too is answered as having no path to compare with v.
+          say(root, name, 'fixedsave', 'refused:no generated path from the wire class to the fixed class');
+          if (eng != null) {
+            say(root, name, 'fixedloadeng', call(() {
+[[if $home]]              final vals = [fx.[[.Name]]()];
+              final r = fx.TableFixedReport();
+              final n = [[$home]].[[.Lower]]FixedLoad(vals, 1, eng, eng.length, [[$home]].[[.Lower]]FixedNewPlan(), r);
+              if (n != 1) return 'refused:fixed load ${r.refused}';
+              final o = Uint8List([[$home]].[[.Lower]]FixedMeasure(1));
+              if ([[$home]].[[.Lower]]FixedSave(vals, 1, o) != o.length || !same(o, eng)) {
+                return 'diff:FixedSave of the loaded value is not the engine bytes';
+              }
+              return 'refused:no generated path from the fixed class to the wire class';
+[[else]]              return 'refused:the unit generated no fixed form for this root';
+[[end]]            }));
+          }
+[[end]][[if eq .Class "variable"]]          if (wire != null) {
+            say(root, name, 'retain', call(() {
+              final store = w.TableRetain(1 << 20, 1 << 17);
+              final r = w.TableWireReport();
+              final got = w.[[.Lower]]WireLoadRetain(wire!, store, r);
+              if (r.refused) return 'refused:${r.refusal}';
+              final sr = w.TableWireReport();
+              final back = w.[[.Lower]]WireSaveRetain(got, store, sr);
+              if (sr.refused) return 'refused:${sr.refusal}';
+              if (!same(back, wire!)) return 'diff';
+              return sameValue(got);
+            }));
+          }
+          say(root, name, 'json', call(() {
+            final r = w.TableTextReport();
+            final j = w.[[.Lower]]FromJson(want, r);
+            if (r.refused) return 'refused:${r.refusal}';
+            return sameValue(j);
+          }));
+[[end]]        }
+        break;
+[[end]]      default:
+        say(root, name, 'probe', 'refused:the unit generated no such root');
+    }
+  }
+}
