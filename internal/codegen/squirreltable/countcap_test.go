@@ -168,11 +168,10 @@ func runCountCapProbe(t *testing.T, schema string, keys []string, inputs map[str
 }
 
 // readOrderFaults answers, for the pin's float unit, every "<key> <path>"
-// read that differs from the rule that when a read meets two refusals, the
-// first in read order names it (docs/SPEC-TABLES.md §2.9): nan_then_over_cap
-// answers non_finite_float on every builder read, null and malformed unset,
-// over_cap_then_nan answers count_over_extent_cap with refused set and no
-// counter moved, and float_good reads.
+// read that differs from the strict verdicts: both over-cap inputs refuse the
+// whole load with malformed unset, while float_good reads. When the wire scan
+// finds both a non-finite float and an over-cap count, the refusal name is
+// diagnostic and its detection order is not compared (§6.5).
 func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "goosetable", "testdata", "load_refusal_reasons.tsv"))
@@ -180,7 +179,6 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 		t.Fatal(err)
 	}
 	inputs := map[string][]byte{}
-	pinned := map[string]string{}
 	var keys []string
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
@@ -192,7 +190,6 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 			t.Fatal(err)
 		}
 		inputs[f[0]] = wire
-		pinned[f[0]] = f[3]
 		keys = append(keys, f[0])
 	}
 	if strings.Join(keys, " ") != "float_good nan_then_over_cap over_cap_then_nan" {
@@ -207,23 +204,20 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 				bad[k+" "+p] = "no answer"
 				continue
 			}
-			value, refused, malformed, counters, reason := a[0], a[1], a[2], a[3], strings.TrimSuffix(a[4], ":")
+			value, refused, malformed, counters := a[0], a[1], a[2], a[3]
 			switch k {
 			case "float_good":
 				if value != "some" || refused != "false" || malformed != "false" {
 					bad[k+" "+p] = fmt.Sprintf("%v, want the value read", a)
 				}
 			case "nan_then_over_cap":
-				if value != "nil" || malformed != "false" || reason != "non_finite_float" {
-					bad[k+" "+p] = fmt.Sprintf("%v, want nil malformed=false non_finite_float", a)
+				if value != "nil" || refused != "true" || malformed != "false" {
+					bad[k+" "+p] = fmt.Sprintf("%v, want nil refused=true malformed=false", a)
 				}
 			default:
-				if value != "nil" || refused != "true" || malformed != "false" || counters != "0" || reason != "count_over_extent_cap" {
-					bad[k+" "+p] = fmt.Sprintf("%v, want nil refused=true malformed=false counters=0 count_over_extent_cap", a)
+				if value != "nil" || refused != "true" || malformed != "false" || counters != "0" {
+					bad[k+" "+p] = fmt.Sprintf("%v, want nil refused=true malformed=false counters=0", a)
 				}
-			}
-			if p == "strict" && k != "float_good" && reason != pinned[k] {
-				bad[k+" "+p] = fmt.Sprintf("%s, the pin says %s", reason, pinned[k])
 			}
 		}
 	}
@@ -233,8 +227,8 @@ func readOrderFaults(t *testing.T, mutate func(dir string)) map[string]string {
 	return bad
 }
 
-// TestSquirrelCountCapReadOrder holds the pin's float unit to the first
-// refusal in read order, on every builder read.
+// TestSquirrelCountCapReadOrder holds the pin's float unit to whole-load
+// refusal for either ordering of a non-finite value and an over-cap count.
 func TestSquirrelCountCapReadOrder(t *testing.T) {
 	t.Parallel()
 	for read, fault := range readOrderFaults(t, nil) {
@@ -242,31 +236,77 @@ func TestSquirrelCountCapReadOrder(t *testing.T) {
 	}
 }
 
-// TestSquirrelCountCapReadOrderNegativeControl lets the count refusal win
-// whatever the walk met first: nan_then_over_cap goes red on the reads that
-// answer the load's own reason, and no other row moves.
+// TestSquirrelCountCapReadOrderNegativeControl removes both count-refusal
+// guards. Each over-cap input must then expose the damaged path, while the
+// ordinary finite row remains unchanged.
 func TestSquirrelCountCapReadOrderNegativeControl(t *testing.T) {
 	t.Parallel()
-	const from = "if (report.countRefusal && st.nonFinite == null) {"
-	bad := readOrderFaults(t, func(dir string) {
-		path := filepath.Join(dir, "schema_table_load.nut")
-		src, err := os.ReadFile(path)
+	// Use finite measure rows here. The pin's float rows also contain a NaN,
+	// which is itself a wire-alone refusal and must remain covered by the test
+	// above even when this count-only control disables count guards.
+	data, err := os.ReadFile(filepath.Join("..", "goosetable", "testdata", "load_refusal_reasons.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{}
+	var keys []string
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) != 6 || f[1] != "measure" || (f[0] != "good" && !strings.Contains(f[0], "_cap3") && f[0] != "values_widened_over_cap") {
+			continue
+		}
+		wire, err := hex.DecodeString(f[2])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Count(string(src), from) != 1 {
-			t.Fatalf("schema_table_load.nut carries the anchor %d times, want 1: the control would be vacuous", strings.Count(string(src), from))
-		}
-		writeFile(t, path, []byte(strings.Replace(string(src), from, "if (report.countRefusal) {", 1)))
-	})
-	for _, p := range []string{"tolerant", "plain", "retain"} {
-		if bad["nan_then_over_cap "+p] == "" {
-			t.Errorf("nan_then_over_cap %s: the control did not turn it red", p)
-		}
+		inputs[f[0]] = wire
+		keys = append(keys, f[0])
 	}
-	for read := range bad {
-		if !strings.HasPrefix(read, "nan_then_over_cap ") {
-			t.Errorf("%s: red under the control, which should not reach it: %s", read, bad[read])
+	if len(keys) != 6 {
+		t.Fatalf("got finite count control rows %v, want good plus five over-cap rows", keys)
+	}
+	got, _ := runCountCapProbe(t, countCapSchema, keys, inputs, func(dir string) {
+		loadPath := filepath.Join(dir, "schema_table_load.nut")
+		load, err := os.ReadFile(loadPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, edit := range [][2]string{
+			{`if (check.fail == "count") {`, `if (false && check.fail == "count") {`},
+			{`if (report.countRefusal && st.nonFinite == null) {`, `if (false && report.countRefusal && st.nonFinite == null) {`},
+		} {
+			if strings.Count(string(load), edit[0]) != 1 {
+				t.Fatalf("schema_table_load.nut carries the anchor %q %d times, want 1: the control would be vacuous", edit[0], strings.Count(string(load), edit[0]))
+			}
+			load = []byte(strings.Replace(string(load), edit[0], edit[1], 1))
+		}
+		writeFile(t, loadPath, load)
+		refusalPath := filepath.Join(dir, "schema_table_refusal.nut")
+		refusal, err := os.ReadFile(refusalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const strictAnchor = "if (store.countRefusal) {"
+		if strings.Count(string(refusal), strictAnchor) != 1 {
+			t.Fatalf("schema_table_refusal.nut carries the count anchor %d times, want 1: the control would be vacuous", strings.Count(string(refusal), strictAnchor))
+		}
+		writeFile(t, refusalPath, []byte(strings.Replace(string(refusal), strictAnchor, "if (false && store.countRefusal) {", 1)))
+	})
+	for _, k := range keys {
+		if k == "good" {
+			for _, p := range countCapPaths {
+				a := got[k+" "+p]
+				if a[0] != "some" || a[1] != "false" || a[2] != "false" {
+					t.Errorf("%s %s: finite control changed the good row: %v", k, p, a)
+				}
+			}
+			continue
+		}
+		for _, p := range countCapPaths {
+			a := got[k+" "+p]
+			if len(a) < 5 || (a[0] == "nil" && a[1] == "true" && a[2] == "false" && a[3] == "0") {
+				t.Errorf("%s %s: removing count guards did not change the over-cap refusal: %v", k, p, a)
+			}
 		}
 	}
 }

@@ -1933,6 +1933,46 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     table.append(id);
   }
 
+  // PHASE ONE (docs/SPEC-TABLES.md §6.5): check every condition decidable
+  // from the wire before constructing or decoding any declared value. The id
+  // table is the only declaration-independent input this walk needs.
+  local check = wireCheck(bytes, 1, end, table, false);
+  if (check.fail == "damage") { report.bodyDamaged = true; return retainClear(retain, report, "malformed"); }
+  if (check.fail == "count") {
+    report.countRefusal = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "count_over_extent_cap";
+    }
+    return retainClear(retain, report, "count_over_extent_cap", true);
+  }
+  if (check.fail == "blob_shared") {
+    if (report.getdelegate() == null) {
+      report.sharedBlob <- 1;
+      report.reason <- "blob_shared";
+      return retainClear(retain, report, "blob_shared", true);
+    }
+    local shared = ::getstackinfos(2);
+    if (shared != null && ("_strictFrame" in shared.locals)) {
+      shared.locals.report.sharedBlob <- 1;
+      shared.locals.report.reason = "blob_shared";
+    }
+    return null;
+  }
+  if (check.nonFinite) {
+    local unnamed = "a float the wire carries";
+    retainClear(retain, report, null, true);
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.nonFiniteFloat = unnamed;
+      report.reason <- "non_finite_float: " + unnamed;
+      return null;
+    }
+    local nf = ::getstackinfos(2);
+    if (nf != null && ("_strictFrame" in nf.locals)) nf.locals.report.nonFiniteFloat <- unnamed;
+    return null;
+  }
+
   // the root body's own framing: an early terminator is damage
   local w = newReader(bytes, 1, end);
   for (;;) {
@@ -2044,52 +2084,6 @@ _M.loadWalk <- function(T, rootName, bytes, report, retain = null, trailerChecke
     // without requiring this walk API to hand it a partial record.
     local frame = ::getstackinfos(2);
     if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
-    return null;
-  }
-  // THE WIRE-ALONE CHECK (docs/SPEC-TABLES.md §6.5), over EVERY byte of the
-  // file, after the walk accepted it (decodeWalk's wire-last order): a field
-  // this reader cannot name, a node record the root never reaches and the
-  // bytes the walk skips are held to the same wire rules as the ones it
-  // decodes. Damage is the file's wire_damaged; a count past the storage cap
-  // and a shared blob refuse by name; a non-finite float the walk could not
-  // name refuses last.
-  // A read the walk already refuses (a refusing counter moved, a required
-  // field missing) answers the walk's own name and field.
-  local walkRefused = report.oor > 0 || report.mismatch > 0 || report.missingRequired;
-  local check = walkRefused ? { fail = null, nonFinite = false } : wireCheck(bytes, 1, end, table, false);
-  if (check.fail == "damage") { report.bodyDamaged = true; return retainClear(retain, report, "malformed"); }
-  if (check.fail == "count") {
-    report.countRefusal = true;
-    if (report.getdelegate() == null) {
-      report.refused = true;
-      report.reason <- "count_over_extent_cap";
-    }
-    return retainClear(retain, report, "count_over_extent_cap", true);
-  }
-  if (check.fail == "blob_shared") {
-    if (report.getdelegate() == null) {
-      report.sharedBlob <- 1;
-      report.reason <- "blob_shared";
-      return retainClear(retain, report, "blob_shared", true);
-    }
-    local shared = ::getstackinfos(2);
-    if (shared != null && ("_strictFrame" in shared.locals)) {
-      shared.locals.report.sharedBlob <- 1;
-      shared.locals.report.reason = "blob_shared";
-    }
-    return null;
-  }
-  if (check.nonFinite) {
-    local unnamed = "a float the wire carries";
-    retainClear(retain, report, null, true);
-    if (report.getdelegate() == null) {
-      report.refused = true;
-      report.nonFiniteFloat = unnamed;
-      report.reason <- "non_finite_float: " + unnamed;
-      return null;
-    }
-    local nf = ::getstackinfos(2);
-    if (nf != null && ("_strictFrame" in nf.locals)) nf.locals.report.nonFiniteFloat <- unnamed;
     return null;
   }
   if (report.getdelegate() == null) {
