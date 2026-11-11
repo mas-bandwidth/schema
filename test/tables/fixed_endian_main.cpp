@@ -27,7 +27,7 @@ static void fill( ByteOrderProbe & v )
     v.vals[2] = 3;
     v.wide[0] = -5;
     v.wide[1] = 0x0102030405060708ll;
-    std::memcpy( v.label, "hi", 2 );
+    std::memcpy( (void *) v.label, "hi", 2 );
     v.label_length = 2;
     v.ok = true;
     v.tail = 0x7F;
