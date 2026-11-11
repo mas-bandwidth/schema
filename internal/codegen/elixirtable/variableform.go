@@ -203,7 +203,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		cook = cookWithoutUnions(cook, anyExtent)
 		retain = withoutRetainUnions(retain)
 	}
-	if len(unionNames) == 0 && len(ir.VariableTables(u)) == 0 {
+	if len(unionNames) == 0 {
 		runtime = withoutInertEmpty(runtime)
 	}
 	if len(unionNames) > 0 {
@@ -252,8 +252,8 @@ func withoutArrayRoots(source string) string {
 	return source
 }
 
-// withoutInertEmpty drops the arm helper a unit with no union and no variable
-// root can never call, so the emitted module carries no unused function.
+// withoutInertEmpty drops the arm helper a unit with no union can never call,
+// so the emitted module carries no unused function.
 func withoutInertEmpty(source string) string {
 	const block = `  # An inert arm keeps the empty value its kind declares (docs/SPEC-TABLES.md §4).
   defp inert_empty(%{t: :bytes}), do: <<>>
@@ -5927,22 +5927,6 @@ const variableRetainSource = `
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
-  # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
-  # array, map or keyed body too short to carry its own header, fewer than two
-  # bytes, decodes nothing, counts nothing, and the field keeps the value it
-  # has. The field rode, so an optional one is present: empty, when no earlier
-  # occurrence set it.
-  defp inert_field(f, value) do
-    if Map.get(f, :optional, false) and not Map.has_key?(value, f.name),
-      do: Map.put(value, f.name, inert_empty(f)),
-      else: value
-  end
-
-  defp inert_required_field(%{required: true} = f, value),
-    do: Map.put_new(value, f.name, f.default)
-
-  defp inert_required_field(f, value), do: inert_field(f, value)
-
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
     missing_before = Map.get(report, :missing_required, 0)
@@ -6448,9 +6432,6 @@ const variableRetainSource = `
 
               kind == f.kind ->
                 case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
-                  {:cont, :inert, report, retain} ->
-                    {:cont, {:cont, inert_required_field(f, value), report, retain}}
-
                   {:cont, v, report, retain} ->
                     {:cont, {:cont, put_wire_field(value, f, v), report, retain}}
 
@@ -6483,18 +6464,19 @@ const variableRetainSource = `
     desc.name <> ".0x" <> hex
   end
 
-  # Inert headers preserve both the prior value and its retained records.
+  # Array, map, keyed and byte bodies must carry their full two-byte header
+  # (docs/SPEC-TABLES.md §3, §4).
   defp read_payload_retain(
          %{t: t},
          <<len, body::binary>>,
          _nodes,
          _ids,
-         report,
-         retain,
+         _report,
+         _retain,
          _path
        )
        when t in [:list, :map, :keyed, :bytes] and len < 2 and byte_size(body) == len,
-       do: {:cont, :inert, report, retain}
+       do: throw(:wire_damaged)
 
   # an array of tables: element i is the step pair {ordinal, i}. A later
   # occurrence of the field resets the earlier one's records (§6.6).
@@ -6968,7 +6950,6 @@ const variableRetainSource = `
     {nodes, ids, report, retain} = c
 
     case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
-      {:cont, :inert, report, retain} -> {:cont, {name, inert_empty(a)}, report, retain}
       {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
     end
   end

@@ -14,9 +14,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func TestInertArrayHeadersElixir(t *testing.T) {
+func TestShortCollectionBodiesRefuseElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header are inert in both read modes")
+	slowtest.Gate(t, "Elixir array, keyed, map and byte bodies shorter than two bytes are refused by both read modes")
 	u := unitFrom(t, `package inertarray
  enum Key { A, B }
  table Inner { value int32 }
@@ -53,42 +53,30 @@ check=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failure
 			if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
 				t.Fatalf("%s/%x oracle: %v %v %+v", f.name, body, ok, e, report)
 			}
-			text, e := m.Write(m.New(u.Tables["Root"]))
-			if e != nil {
-				t.Fatal(e)
-			}
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  report=elem(result,2)
- if %t do
-  check.(elem(result,0)==:error and report.reason != "",%q<>inspect(result))
- else
-  check.(elem(result,0)==:ok and report.reason == "",%q<>inspect(result))
-  if elem(result,0)==:ok do
-   {:ok,text}=T.to_json("Root",elem(result,1))
-   check.(text==%q,"inert values "<>text)
-  end
- end
+ check.(elem(result,0)==:error and report.reason != "",%q<>inspect(result))
 end
-`, hex.EncodeToString(wire), len(body) == 2, fmt.Sprintf("%s/%x ", f.name, body), fmt.Sprintf("%s/%x ", f.name, body), string(text)+"\n")
+			`, hex.EncodeToString(wire), fmt.Sprintf("%s/%x ", f.name, body))
 		}
 	}
 	probe.WriteString(`case Process.get(:failures) do
- []->IO.puts("INERT_ARRAY_HEADERS_OK")
+ []->IO.puts("SHORT_ARRAY_HEADERS_REFUSED_OK")
  errors->raise(Enum.join(Enum.reverse(errors),"\n"))
 end
 `)
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe.String())
-	if e != nil || !strings.Contains(out, "INERT_ARRAY_HEADERS_OK") || strings.Contains(out, "warning:") {
-		t.Fatalf("native inert headers: %v\n%s", e, out)
+	if e != nil || !strings.Contains(out, "SHORT_ARRAY_HEADERS_REFUSED_OK") || strings.Contains(out, "warning:") {
+		t.Fatalf("native short array headers: %v\n%s", e, out)
 	}
 }
 
-func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
+func TestRepeatedArrayFieldRefusesRetainedElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "an inert later array header preserves the previous body and its retained records")
+	slowtest.Gate(t, "a repeated array field is refused before retained values are applied")
 	u := unitFrom(t, `package inertretain
  table Inner { value int32 }
  table Root { items []Inner }`)
@@ -116,27 +104,27 @@ func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
 		var load tabletext.Report
 		ok, e := tablewire.DecodeRetain(m, v, wire, &store, &load)
 		if ok || !tablewire.ReadRefusal(e) || !load.Refused || load.Reason == "" {
-			t.Fatalf("inert occurrence oracle: %v %v %+v", ok, e, load)
+			t.Fatalf("repeated array occurrence oracle: %v %v %+v", ok, e, load)
 		}
 		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 case T.load_retain("Root",wire,store,zero) do
- {:error,_reason,report,_store}->unless report.reason != "",do: raise("inert occurrence load "<>inspect(report))
- other->raise("inert occurrence load "<>inspect(other))
+ {:error,_reason,report,_store}->unless report.reason != "",do: raise("repeated array occurrence load "<>inspect(report))
+ other->raise("repeated array occurrence load "<>inspect(other))
 end
 `, hex.EncodeToString(wire))
 	}
-	probe.WriteString("IO.puts(\"INERT_RETAINED_OCCURRENCE_OK\")\n")
+	probe.WriteString("IO.puts(\"REPEATED_ARRAY_FIELD_REFUSED_OK\")\n")
 	out, e := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe.String())
-	if e != nil || !strings.Contains(out, "INERT_RETAINED_OCCURRENCE_OK") || strings.Contains(out, "warning:") {
-		t.Fatalf("native inert occurrence: %v\n%s", e, out)
+	if e != nil || !strings.Contains(out, "REPEATED_ARRAY_FIELD_REFUSED_OK") || strings.Contains(out, "warning:") {
+		t.Fatalf("native repeated array occurrence: %v\n%s", e, out)
 	}
 }
 
-func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
+func TestPinnedShortByteArrayHeaderElixir(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "Elixir stream bytes header replays the permanent enumerated report divergence")
+	slowtest.Gate(t, "Elixir stream byte-array short header matches the permanent framing refusal pin")
 	u := loadUnit(t, "../../../tables/stream/Stream.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin")
@@ -147,19 +135,19 @@ func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
 	if ok || !tablewire.ReadRefusal(e) || !report.Refused || report.Reason == "" {
-		t.Fatalf("stream inert oracle: %v %v %+v", ok, e, report)
+		t.Fatalf("stream short-header oracle: %v %v %+v", ok, e, report)
 	}
 	probe := fmt.Sprintf(`alias Streamdemo.Table,as: T
 wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
 for result<-[T.load("Feed",wire),T.load_retain("Feed",wire,store,zero)] do
- unless elem(result,0)==:error and elem(result,2).reason != "",do: raise("stream inert report "<>inspect(result))
+	unless elem(result,0)==:error and elem(result,2).reason != "",do: raise("stream short-header report "<>inspect(result))
 end
-IO.puts("PINNED_INERT_BYTES_OK")
+IO.puts("PINNED_SHORT_BYTES_REFUSED_OK")
 `, hex.EncodeToString(wire))
 	out := runCompleteUnitProbe(t, u, probe)
-	if !strings.Contains(out, "PINNED_INERT_BYTES_OK") {
-		t.Fatalf("native inert bytes pin: %s", out)
+	if !strings.Contains(out, "PINNED_SHORT_BYTES_REFUSED_OK") {
+		t.Fatalf("native short-header bytes pin: %s", out)
 	}
 }
