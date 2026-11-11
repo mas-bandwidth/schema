@@ -22,8 +22,8 @@ import (
 // (KeyedConfig, HullConfig) and plain type structs (ScoreBoard, SlotBundle,
 // SparseHolder) — exposes a 1-based keyed accessor pair (<field>_at/2,
 // put_<field>_at/3) and a key-element iterator (<field>_entries/1) on the
-// struct's own module, refusing None (key 0), keys past E.Max (including
-// headroom enums with | max = M), negative keys, and non-integer keys with an
+// struct's own module, refusing None (key 0), keys past E.Max (including a
+// key past every named variant), negative keys, and non-integer keys with an
 // ArgumentError that names the field, the key, and the bound.
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
 func TestKeyedAccessorCoversBothEndsElixir(t *testing.T) {
@@ -42,10 +42,12 @@ func TestKeyedAccessorCoversBothEndsElixir(t *testing.T) {
 enum Slot { Alpha, Beta, Gamma }
 enum Tier { Low, High }
 
-enum Spare | max = 4
+enum Spare
 {
     One
     Two
+    Three
+    Four
 }
 
 type SlotPair
@@ -76,10 +78,12 @@ fixed table KeyedConfig
 
 	pktUnit := unitFrom(t, `package keyedpkt
 
-enum Spare | max = 4
+enum Spare
 {
     One
     Two
+    Three
+    Four
 }
 
 type SparsePacket
@@ -237,7 +241,7 @@ KeyedCheck.check(
   "KeyedFixed round-trip preserves keyed slots"
 )
 
-# 2. Keyedprobe (tokens, tiers, per_slot, nested.pairs, SparseHolder.sparse | max = 4, and Keyedpkt.SparsePacket)
+# 2. Keyedprobe (tokens, tiers, per_slot, nested.pairs, SparseHolder.sparse over a four-variant enum, and Keyedpkt.SparsePacket)
 alias Keyedprobe.{Slot, Tier, Spare, SlotPair, SlotBundle, SparseHolder, ProbeFixed}
 alias Keyedprobe.KeyedConfig, as: PConfig
 alias Keyedpkt.SparsePacket
@@ -416,6 +420,7 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 // element bytes without decoding them, and a damaged slot key ref must stop the
 // keyed-array body immediately (docs/SPEC-TABLES.md §3.2, §4, §6.6).
 func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	v2Path := filepath.Join("..", "..", "..", "test", "tables", "V2.schema")
 	u := loadUnit(t, v2Path)

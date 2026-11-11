@@ -1498,6 +1498,85 @@ func (in *reader) readTimestamp(cell *Cell, f *ir.Field) bool {
 	return true
 }
 
+// maxFloatDecimalDigits bounds the significant digits a platform float
+// conversion is handed. Binary64's correctly rounded value is decided by far
+// fewer digits than this; the extra room lets a truncated mantissa carry one
+// sticky digit past the digits that decide it. The bound also keeps the whole
+// mantissa inside the conversion's own fixed working precision, so a token's
+// length never changes the value it lands (§16.2 Numbers).
+const maxFloatDecimalDigits = 799
+
+// boundedFloatToken rewrites a valid JSON number token to the same exact
+// decimal value with its insignificant zeros folded into one exponent and its
+// significant digits capped at maxFloatDecimalDigits plus a sticky digit.
+// strconv reads the result correctly where an unbounded token can exceed its
+// working precision.
+func boundedFloatToken(token string) string {
+	if len(token) <= maxFloatDecimalDigits {
+		return token // shorter than the conversion's working precision
+	}
+	i := 0
+	negative := false
+	if i < len(token) && token[i] == '-' {
+		negative = true
+		i++
+	}
+	intAt := i
+	for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+		i++
+	}
+	intDigits := token[intAt:i]
+	fracDigits := ""
+	if i < len(token) && token[i] == '.' {
+		i++
+		fracAt := i
+		for i < len(token) && token[i] >= '0' && token[i] <= '9' {
+			i++
+		}
+		fracDigits = token[fracAt:i]
+	}
+	exp := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		expNegative := false
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			expNegative = token[i] == '-'
+			i++
+		}
+		for ; i < len(token) && token[i] >= '0' && token[i] <= '9'; i++ {
+			if exp < 100000 {
+				exp = exp*10 + int(token[i]-'0')
+			}
+		}
+		if expNegative {
+			exp = -exp
+		}
+	}
+	digits := intDigits + fracDigits
+	exp -= len(fracDigits)
+	digits = strings.TrimLeft(digits, "0")
+	if digits == "" {
+		if negative {
+			return "-0"
+		}
+		return "0"
+	}
+	trimmed := strings.TrimRight(digits, "0")
+	exp += len(digits) - len(trimmed)
+	digits = trimmed
+	if len(digits) > maxFloatDecimalDigits {
+		drop := len(digits) - maxFloatDecimalDigits
+		// The sticky digit keeps a nonzero tail from looking like an exact
+		// shorter decimal; the exponent carries the digits dropped.
+		digits = digits[:maxFloatDecimalDigits] + "1"
+		exp += drop - 1
+	}
+	if negative {
+		return "-" + digits + "e" + strconv.Itoa(exp)
+	}
+	return digits + "e" + strconv.Itoa(exp)
+}
+
 // placeFloat converts a number token into a float field. A magnitude the
 // field's format cannot hold is the WRONG SHAPE for the kind and never reaches
 // storage: storing the infinity the conversion produced would leave an
@@ -1516,7 +1595,7 @@ func (in *reader) placeFloat(cell *Cell, f *ir.Field, token string, single bool)
 	if single {
 		bits = 32
 	}
-	value, err := strconv.ParseFloat(token, bits)
+	value, err := strconv.ParseFloat(boundedFloatToken(token), bits)
 	if err != nil && !errors.Is(err, strconv.ErrRange) {
 		in.bad = true
 		return false
@@ -1798,7 +1877,7 @@ func interpretInteger(token string, integral bool) jsonInteger {
 		}
 		return out
 	}
-	d, err := strconv.ParseFloat(token, 64)
+	d, err := strconv.ParseFloat(boundedFloatToken(token), 64)
 	if (err != nil && !errors.Is(err, strconv.ErrRange)) || math.IsInf(d, 0) || math.IsNaN(d) {
 		out.finite = false
 		return out

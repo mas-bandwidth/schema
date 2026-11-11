@@ -489,12 +489,15 @@ public static partial class TableWire
 {
     public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
-    // A null report is DISCARDED, not created: one cached instance carries the
-    // ledger for a caller who supplies no report, so a null-report read
-    // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
-    // resets it exactly as it resets a caller-supplied report, so no earlier
-    // read's verdict leaks into the next.
-    public static readonly TableReport Ignored = new TableReport();
+    // A null report is DISCARDED, not created: the ledger for a caller who
+    // supplies no report is per thread, so no read on another thread can reach
+    // it, and a read never re-enters on its own thread. Each thread caches its
+    // ledger on first use, so a null-report read allocates nothing after that
+    // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
+    // it resets a caller-supplied report.
+    [ThreadStatic]
+    static TableReport ignored;
+    static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }
 
     // One schema-bounded vocabulary lives on the caller's stack for a save.
     // Collect follows the emitted fields in order. Measuring and writing then
@@ -643,12 +646,12 @@ public static partial class TableWire
         {
             switch (n)
             {
-                case 1: Byte((byte)v); return;
-                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                case 1: Byte(unchecked((byte)v)); return;
+                case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                 case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                 default:
-                    for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                    for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                     return;
             }
             Offset += n;
@@ -672,9 +675,9 @@ public static partial class TableWire
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
-            if (v < 128) { Byte((byte)v); return; }
-            while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-            Byte((byte)v);
+            if (v < 128) { Byte(unchecked((byte)v)); return; }
+            while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+            Byte(unchecked((byte)v));
         }
     }
 
@@ -1012,7 +1015,7 @@ public static partial class TableWire
         else if (f.GetWide != null)
         {
             UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-            w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+            w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
         }
         else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
     }
@@ -1690,7 +1693,7 @@ public static partial class TableWire
     static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
     public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        if (report == null) { report = Ignored; }
+        if (report == null) { report = IgnoredReport(); }
         type.Reset(value);
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }

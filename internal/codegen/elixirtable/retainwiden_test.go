@@ -17,6 +17,7 @@ import (
 )
 
 func TestRetainingUnionArmWideningElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir retaining union arms share widening and malformed-width rules with plain reads")
 	u := unitFrom(t, `package armwiden
  union Pick {
@@ -117,6 +118,7 @@ end
 }
 
 func TestPinnedUnionArmWideningElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir known-arm widening replays its permanent plain and retaining input")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
