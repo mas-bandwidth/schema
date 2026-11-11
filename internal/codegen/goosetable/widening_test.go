@@ -378,8 +378,6 @@ func TestGooseWideningNegativeControl(t *testing.T) {
 			"            if entry_widened { widened = true; c.report.widened += 1; }\n", []func(*testing.T, map[string][]byte) []string{mapReports}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
-			if ctl.name != "leb-tenth" {
-			}
 			t.Parallel()
 			o := sabotage(t, "wire_load.goose", ctl.from, ctl.to)
 			for i, gate := range ctl.gates {
