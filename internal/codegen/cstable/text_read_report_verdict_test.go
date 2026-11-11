@@ -39,6 +39,7 @@ var csTextVerdictCases = []csTextVerdictCase{
 	{"leading-zero", "{\"value\":01}\n", false, csTextVerdictDamaged},
 	{"kind-mismatch", "{\"value\":\"x\"}\n", false, csTextVerdictRefused},
 	{"out-of-range", "{\"value\":101}\n", false, csTextVerdictRefused},
+	{"text-holds-zero", "{\"value\":1,\"name\":\"\\u0000\"}\n", false, csTextVerdictRefused},
 }
 
 const csTextVerdictSchema = `package probe
@@ -46,6 +47,7 @@ const csTextVerdictSchema = `package probe
 table Root {
     value int32 = 1 | min = 0, max = 100
     count int32 = 2
+    name string(16) = ""
 }
 `
 
