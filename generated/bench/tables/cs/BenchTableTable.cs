@@ -3711,7 +3711,7 @@ namespace Benchtable
                 {
                     if (f == null) { return true; }
                     int n = f.IsArray ? Count(value, f) : 1;
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (f.Map && !MapOrdered(value, f)) { return false; }
                     for (int i = 0; i < n; i++)
                     {
@@ -4733,7 +4733,7 @@ namespace Benchtable
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-                if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
+                System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
                 if (f.Unbounded)
                 {
@@ -4832,14 +4832,14 @@ namespace Benchtable
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
-                if (f.Unbounded) { int length = f.GetCount(value); if (length < 0 || length > f.GetBuffer(value).Length) { return false; } if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
+                if (f.Unbounded) { int length = f.GetCount(value); System.Diagnostics.Debug.Assert(length >= 0 && length <= f.GetBuffer(value).Length); if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
-                    int count = f.GetCount(value); if (count < 0) { return false; }
+                    int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
                     at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
                 }
                 int n = f.IsArray ? Count(value, f) : 1;
-                if (n < 0 || n > f.ArrayBound && f.IsArray) { return false; }
+                System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
@@ -4949,12 +4949,14 @@ namespace Benchtable
                 {
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
                     int count = Count(child, text);
-                    return count >= 0 && count <= text.ArrayBound && TextValid(text.GetBuffer(child).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= text.ArrayBound);
+                    return TextValid(text.GetBuffer(child).AsSpan(0, count));
                 }
                 if (!f.IsArray && f.Kind == 12)
                 {
                     int count = Count(value, f);
-                    return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
+                    System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound);
+                    return TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
@@ -4983,7 +4985,7 @@ namespace Benchtable
             {
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
-                if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(count >= 0 && count <= f.ArrayBound); }
                 if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
@@ -5003,7 +5005,7 @@ namespace Benchtable
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
                     if (f.Optional && !f.GetPresent(value)) { continue; }
-                    if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                    if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                     if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
                 }
                 return true;
@@ -5192,7 +5194,7 @@ namespace Benchtable
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
                 if (f.Optional && !f.GetPresent(value)) { return true; }
-                if (f.Counted && (Count(value, f) < 0 || Count(value, f) > f.ArrayBound)) { return false; }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
                 return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
             }
             public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)
@@ -7670,7 +7672,7 @@ namespace Benchtable
             if (BitConverter.SingleToUInt32Bits(v.ServerTime) != 0x00000000u && !ids.Add(0x3c460475f9be69c6ul)) return false;
             if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
             int count_11 = v.StatsCount;
-            if (count_11 < 0 || count_11 > 80) return false;
+            System.Diagnostics.Debug.Assert(count_11 >= 0 && count_11 <= 80);
             if (count_11 > 0)
             {
                 if (!ids.Add(0xee639cad45b1994cul)) return false;

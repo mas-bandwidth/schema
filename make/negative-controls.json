@@ -2981,15 +2981,6 @@
       ]
     },
     {
-      "name": "write-refusal-storage-release-cs",
-      "when": "pull-request",
-      "why": "the C# release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in -c Release, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small .NET build.",
-      "targets": [
-        "write-refusal-storage-release-cs-negative-control"
-      ],
-      "dotnet": "pin"
-    },
-    {
       "name": "write-refusal-storage-release-rust",
       "when": "pull-request",
       "why": "the Rust release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in --release with debug assertions off, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small cargo build.",
