@@ -195,6 +195,11 @@ in the `go-test` job of `ci-full.yml`.
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
 
+`SIBLINGS` at the repository root lists the pinned sibling checkouts the build
+reads beside the worktree (path, clone URL, tag, commit), as data a tool can
+stage without running the build; `make deps` stages any that are missing at
+those pins and leaves a present one alone.
+
 ## How to run the tests, and the rule that sets their shape
 
 The owner's rule, said twice in one day:
@@ -335,9 +340,12 @@ than toolchains.
 A control that does not fit the rule **on its own** is not made to fit by
 grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
 runs on the schedule it already carries. Today that is one control:
-`tables-message-form-negative-control`, which drives 49 sabotage rows one
-submake each and takes 124 seconds. The message form's other blades stay on
-the pull request. Each group in `make/negative-controls.json` names its tier in a
+`tables-message-form-negative-control`, which drives 44 sabotage rows, one
+submake each and four at a time. Run one after another the rows took 124
+seconds on the runner; four at a time they take 108 seconds on a loaded
+bench, and no runner measurement has placed them under the rule yet. The
+message form's other blades stay on the pull request. Each group in
+`make/negative-controls.json` names its tier in a
 `when` field and says why in a `why` field, and `tools/negativecontrols`
 refuses a group that names neither tier, so a control cannot leave the pull
 request without landing on the nightly.

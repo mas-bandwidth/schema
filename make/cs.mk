@@ -435,8 +435,8 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 	@sed -e 's|File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte\[0\]);|/* SABOTAGED: no per-case answer */|' \
 	     -e 's|File.WriteAllText(Path.Combine(outDir, f\[1\] + ".absent"), "blob_shared");|/* SABOTAGED: no per-case answer */|' \
 		test/conformance/cs/src/Program.cs > $(CS_ABSENT)-nc/proj/src/Program.cs
-	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 2 || \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both absent writes"; exit 1; }
+	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 3 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch every absent write"; exit 1; }
 	@$(DOTNET) build $(CS_ABSENT)-nc/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/build/tables-generated-cs \
 		-p:CardsGeneratedDir=$(CURDIR)/build/tables-generated-cs/cards -o $(CS_ABSENT)-nc/checker > $(CS_ABSENT)-nc/build.log 2>&1 || \
 		{ cat $(CS_ABSENT)-nc/build.log; echo "NEGATIVE CONTROL FAILED: the sabotaged driver does not compile"; exit 1; }
@@ -497,8 +497,12 @@ generated/bench/cs/.stamp: bin/schema $(SCHEMAS_BENCH)
 # tables-cs-clean runs dotnet format and dotnet build with EnableNETAnalyzers=true
 # over this same project; skipping the analyzer pass here avoids paying it a
 # second time on every conformance and wire-fuzz driver build (card green-fit-fuzz-smoke).
+# The cards prerequisite is a real stamp rather than the phony cards-cs-generate
+# target: a restored driver must not rebuild only because the phony target is
+# always considered out of date.
+CARDS_CS_STAMP := build/tables-generated-cs/cards/.stamp
 .PHONY: build-conformance-cs
-build-conformance-cs: build/tables-generated-cs/.stamp cards-cs-generate
+build-conformance-cs: build/tables-generated-cs/.stamp $(CARDS_CS_STAMP)
 	cd test/conformance/cs && $(DOTNET) build -v q --nologo -p:RunAnalyzers=false
 
 # THE NEGATIVE CONTROL FOR THE C# WALK (docs/SPEC-TABLES.md §16.5), and it is a
@@ -1257,11 +1261,20 @@ test-cs: packet-finite-cs-negative-control
 
 # cards-cs-generate produces ONLY build/tables-generated-cs/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
+# It is a phony alias for the stamp, not a second copy of the recipe: under
+# make -j the driver and the cards test both reach the tree, and two recipes
+# would clean it under each other.
 .PHONY: cards-cs-generate
-cards-cs-generate: bin/schema
+cards-cs-generate: $(CARDS_CS_STAMP)
+
+# The stamp the driver depends on, so a cached build is not invalidated by the
+# phony regenerator above. It still cleans its owned output whenever bin/schema
+# or the Card schemas move, so a deleted symbol cannot survive regeneration.
+$(CARDS_CS_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 	@rm -rf build/tables-generated-cs/cards
 	@mkdir -p build/tables-generated-cs/cards
 	./bin/schema generate --lang cs --out build/tables-generated-cs/cards tables/cards
+	@touch $@
 
 # cards-cs-test builds the generated unit with the facade in Debug and
 # Release and runs the facade test program in both. It depends on bin/schema

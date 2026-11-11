@@ -1050,12 +1050,19 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                report.unknown += 1;\n")
 	fmt.Fprintf(b, "                let start = *off;\n")
 	fmt.Fprintf(b, "                if !leb_skip(wire, off, end, kind) { report.damaged = true; return false; }\n")
+	fmt.Fprintf(b, "                let unknown_was_damaged = report.damaged;\n")
 	fmt.Fprintf(b, "                nodes.note_unknown_payload(ids, kind, &wire[start..*off], 0, report);\n")
 	fmt.Fprintf(b, "                if let Some(ret) = retain.as_deref_mut() {\n")
 	// A RETAINED UNKNOWN FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
 	// §3.3, §6.6, ruling 3 of 2026-10-27): a NaN or an infinity is not kept and
 	// refuses the read as non_finite_float, named <owner>.0x<id>.
 	fmt.Fprintf(b, "                    if !table_retained_float_finite(kind, &wire[start..*off]) { report.non_finite_unknown(%q, id); continue; }\n", st.DeclaredName())
+	// THE STRICT WALK GATES THE CAPTURE (docs/SPEC-TABLES.md §5, §6.6): when
+	// THIS payload's strict walk refused it or its count, the retaining read
+	// stops here instead of walking the same bytes again, so both reads answer
+	// the same verdict. Damage already carried by the report is history and
+	// does not stand in for this payload's own walk.
+	fmt.Fprintf(b, "                    if (report.damaged && !unknown_was_damaged) || nodes.count_refused { return false; }\n")
 	fmt.Fprintf(b, "                    match retain_capture(ids, kind, &wire[start..*off]) {\n")
 	fmt.Fprintf(b, "                        Some(resolved) => {\n")
 	fmt.Fprintf(b, "                            let need = 17 + 8 * path.depth as usize + resolved.len();\n")
@@ -1757,9 +1764,8 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "}\n\n")
 
 	// SAVE-CHECKED: the same file, or the writer's refusal BY NAME when a
-	// value is over its declared bound (docs/SPEC-TABLES.md §3, SPEC.md
-	// §4.12: a wstring(N) over N code units), as the Go leg's save refuses
-	// (internal/codegen/gotable/write.go).
+	// value is over its declared bound (docs/SPEC-TABLES.md §3), as the Go
+	// leg's save refuses (internal/codegen/gotable/write.go).
 	fmt.Fprintf(b, "/// %s_save_checked — %s_save, or the refusal by name of a value over its bound\n", fnName, fnName)
 	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3): nothing is returned for a refused value.\n")
 	fmt.Fprintf(b, "pub fn %s_save_checked(v: &%s) -> Result<Vec<u8>, String> {\n", fnName, st.Name)

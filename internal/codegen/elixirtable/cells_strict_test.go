@@ -420,6 +420,7 @@ func runCellsVTProbe(t *testing.T, edit func(map[string][]byte)) (string, error)
 }
 
 func TestElixirCellsStrict(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	out, err := runCellsVTProbe(t, nil)
 	if err != nil || !strings.Contains(out, "ELIXIR_CELLS_VT_OK") || strings.Contains(out, "warning:") {
@@ -530,6 +531,7 @@ func runCellsFixedProbe(t *testing.T, edit func(map[string][]byte)) (string, err
 // generated artifacts and requires the strict probes to go red on the rows
 // those faults touch.
 func TestElixirCellsStrictNegativeControl(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 
 	// Clean first: the unplanted artifacts must hold, or a red below is noise.

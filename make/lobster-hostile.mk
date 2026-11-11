@@ -19,10 +19,13 @@
 # The planted-bad-pattern control inverts the variable walk's root body
 # verdict and makes the fixed read answer nothing, in a copy of the generated
 # units, so a clean wire of either form reads as damaged, and requires the
-# runner to go red naming the accepted wire case before the unplanted run is
-# green again.
+# runner to go red naming the accepted wire case. It also plants a packet
+# reader that accepts the nonzero reserved bits it must refuse, in the
+# generated packet unit, and requires the runner to go red naming that packet
+# row. The unplanted run must be green again.
 
 LOBSTER_HOSTILE_BUILD ?= build/lobster-hostile
+LOBSTER_HOSTILE_PACKET := internal_ci_hostilecorpus_corpus_packet_hostile_schema/hostile.lobster
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
 schema-lobster-runs-hostile-corpus: lobster-dist-present
@@ -38,6 +41,10 @@ schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile
 		-e 's/^        return fixed_record_codec(root)\.read_fixed(data, report)$$/        return nil/' $(LOBSTER_HOSTILE_BUILD)-plant/*/load.lobster
 	@if cmp -s $(LOBSTER_HOSTILE_BUILD)/tables_examples/load.lobster $(LOBSTER_HOSTILE_BUILD)-plant/tables_examples/load.lobster; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted reader bug did not apply'; exit 1; fi
+	@sed -i.orig -e 's/^\( *\)if rv != 0: return stream.fail(serialize_refusal_value_out_of_range).*/\1if rv != 0: return true/' \
+		$(LOBSTER_HOSTILE_BUILD)-plant/$(LOBSTER_HOSTILE_PACKET)
+	@if cmp -s $(LOBSTER_HOSTILE_BUILD)/$(LOBSTER_HOSTILE_PACKET) $(LOBSTER_HOSTILE_BUILD)-plant/$(LOBSTER_HOSTILE_PACKET); then \
+		echo 'NEGATIVE CONTROL FAILED: the planted packet reader bug did not apply'; exit 1; fi
 	@if go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_BUILD)-plant --no-generate \
 			> $(LOBSTER_HOSTILE_BUILD)-plant.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a load that calls a clean wire damaged left the corpus green'; \
@@ -45,5 +52,8 @@ schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile
 	@grep -q '^FAIL wire-valid ' $(LOBSTER_HOSTILE_BUILD)-plant.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming the accepted wire case'; \
 		  cat $(LOBSTER_HOSTILE_BUILD)-plant.log; exit 1; }
+	@grep -q '^FAIL packet-reserved-nonzero ' $(LOBSTER_HOSTILE_BUILD)-plant.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming the packet row the planted reader accepts'; \
+		  cat $(LOBSTER_HOSTILE_BUILD)-plant.log; exit 1; }
 	@$(MAKE) --no-print-directory schema-lobster-runs-hostile-corpus
-	@echo 'lobster hostile-corpus negative control: a load that calls a clean wire damaged reds the corpus; unplanted it is green'
+	@echo 'lobster hostile-corpus negative control: planted table and packet reader faults red the corpus; unplanted it is green'

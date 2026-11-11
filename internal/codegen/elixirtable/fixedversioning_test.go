@@ -200,6 +200,7 @@ var versionRows = []versionRow{
 // ---- NEW-READS-OLD ----------------------------------------------------------
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	nonFinite := manifestNonFinite(t, corpus)
@@ -278,6 +279,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 // ---- OLD-REFUSES-NEW --------------------------------------------------------
 
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	nonFinite := manifestNonFinite(t, corpus)
@@ -374,6 +376,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	oldFile := filepath.Join(corpus, "old_floor.bin")
@@ -426,6 +429,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 // ---- the hash ---------------------------------------------------------------
 
 func TestFixedVersioningHash(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	old := filepath.Join(corpus, "old_field_append.bin")
@@ -482,6 +486,7 @@ func TestFixedVersioningHash(t *testing.T) {
 // read on the merged build (the name-subset rule, bill §8a.1).
 
 func TestFixedVersioningLineageMerge(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	body := fmt.Sprintf(`  for path <- [%s, %s] do
@@ -509,6 +514,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 // and a caller's capacity of one is smaller than any real plan.
 
 func TestFixedVersioningPlanTooLarge(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	body := `  data = File.read!(file())
@@ -545,6 +551,7 @@ func TestFixedVersioningPlanTooLarge(t *testing.T) {
 // ENTRY IS HANDED IN as the lock, which is the only way §5 reads it at all.
 
 func TestFixedVersioningUnionArmText(t *testing.T) {
+	t.Parallel()
 	fixedCorpus(t) // the leg's gate promises the oracle; this case needs only Elixir
 	elixirBin := elixirBinary(t)
 	file := filepath.Join(t.TempDir(), "ut1_arm_b.bin")
@@ -1106,6 +1113,7 @@ func indentBody(body string) string {
 // NEW-READS-OLD row, and its brackets must be the bytes'. A disagreement is a
 // dump that moved, which is the thing the brackets exist to catch.
 func TestFixedVersioningReadsTheManifest(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
