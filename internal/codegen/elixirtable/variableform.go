@@ -2671,12 +2671,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  # bytes left inside a keyed array's L after its count's triples are damage
-  # (§3, §4), as at an array and a map
-  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
-    if bin != <<>>, do: throw(:wire_damaged)
-    {:cont, acc, report}
-  end
+  # a keyed body ends at its last counted pair (docs/SPEC-TABLES.md §3, §4):
+  # bytes left inside its L after the counted pairs are damage
+  defp read_keyed_pairs(_f, <<>>, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+
+  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, _acc, _report),
+    do: {:cont, %{}, throw(:wire_damaged)}
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -7017,10 +7017,11 @@ const variableRetainSource = `
     end
   end
 
-  defp read_keyed_retain(_f, bin, 0, _nodes, _ids, acc, report, retain, _path) do
-    if bin != <<>>, do: throw(:wire_damaged)
-    {:cont, acc, report, retain}
-  end
+  defp read_keyed_retain(_f, <<>>, 0, _nodes, _ids, acc, report, retain, _path),
+    do: {:cont, acc, report, retain}
+
+  defp read_keyed_retain(_f, _bin, 0, _nodes, _ids, _acc, _report, retain, _path),
+    do: {:cont, %{}, throw(:wire_damaged), retain}
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),
