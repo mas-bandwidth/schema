@@ -591,7 +591,7 @@ func cT08GuardChain(t *testing.T) {
 	cppHeader := string(cpp["ProbeTable.h"])
 	if !strings.Contains(cppHeader, "constexpr TableFixedGuardLink RootFixedGuards[] = {") ||
 		!strings.Contains(cppHeader, fmt.Sprintf("    { %du, %du, %d },\n", links[0].Guard, links[0].Arg, links[0].ArgW)) ||
-		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ) },", leaf.GuardIndex)) ||
+		!strings.Contains(cppHeader, fmt.Sprintf(", 3, %d * (int) sizeof( TableFixedGuardLink ),", leaf.GuardIndex)) ||
 		!strings.Contains(cppHeader, "report, RootFixedGuards );") {
 		t.Fatal("the C++ reference does not pass the three-link identity plan through its guard pool")
 	}
