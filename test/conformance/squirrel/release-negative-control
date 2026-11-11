@@ -3,12 +3,17 @@
 # make/squirrel-fuzz.mk, tables-squirrel-release).
 #
 # The release tier scales the leg's wire fuzzer over both of its arms. This
-# control overlays the emitted load runtime so a builder whose root body
-# stopped is reported as finished (the caller is never told to discard a
-# partial value, docs/SPEC-TABLES.md §4.2), regenerates the corpus into
-# build/, and runs the release tier's builder-arm fuzz against it through
-# $SCHEMA_SQUIRREL_CONFORMANCE. It must go red on the builder's completion.
-# No tracked file is written to.
+# control overlays the emitted load runtime so a body that stops early is read
+# as finished: an array field's frame length past its body is clamped to the
+# body instead of counted malformed (docs/SPEC-TABLES.md §3, §4), with the
+# wire-alone check that holds the same frame rule taken out too (the plant
+# TestSquirrelWireFuzzNegativeControl uses). It regenerates the corpus into
+# build/ and runs the release tier's builder-arm fuzz against it through
+# $SCHEMA_SQUIRREL_CONFORMANCE, which must go red on the read's verdict. Under
+# the strict read the verdict is the contract (docs/plans/strict-only.md): a
+# stopped root body is damage and refuses, so the builder's `stopped` flag no
+# longer moves anything the harness compares, and the plant goes where the
+# verdict is decided. No tracked file is written to.
 #
 # usage: release-negative-control <harness flags...>
 # The working directory is the repository root; $SQ is the pinned interpreter.
@@ -18,9 +23,10 @@ rm -rf "$out"
 mkdir -p "$out"
 runtime=load.nut
 source=internal/codegen/squirreltable/runtime/$runtime
-sed 's/report.stopped = !finished;/report.stopped = false;/' "$source" > "$out/$runtime"
-if cmp -s "$source" "$out/$runtime"; then
-	echo "NEGATIVE CONTROL FAILED (release): the sabotage patched nothing" >&2
+perl -0pe 's/(readFieldArray = function\(fd, r, T, table, v, report, st, selection = null\) \{\n  local L = leb\(r\);\n)  if \(r\.bad \|\| r\.at \+ L > r\.end\) \{ report\.bodyDamaged = true; return false; \}\n/$1  if (r.bad) { report.bodyDamaged = true; return false; }\n  if (r.at + L > r.end) L = r.end - r.at;\n/; s/wireCheck\(bytes, 1, end, table, false\)/{ fail = null, nonFinite = false }/' "$source" > "$out/$runtime"
+if [ "$(grep -c 'if (r.at + L > r.end) L = r.end - r.at;' "$out/$runtime")" != 1 ] ||
+	grep -q 'wireCheck(bytes, 1, end, table, false)' "$out/$runtime"; then
+	echo "NEGATIVE CONTROL FAILED (release): the sabotage did not patch both anchors" >&2
 	exit 1
 fi
 root=$(pwd)
@@ -41,9 +47,9 @@ if SCHEMA_SQUIRREL_CONFORMANCE="$root/$out/conformance-squirrel" ./build/conform
 	cat "$out/log" >&2
 	exit 1
 fi
-if ! grep -q "builder completion differs from the oracle" "$out/log"; then
+if ! grep -q "read acceptance differs: the leg says true, the oracle says false" "$out/log"; then
 	echo "NEGATIVE CONTROL FAILED (release): the builder arm went red for another reason" >&2
 	cat "$out/log" >&2
 	exit 1
 fi
-echo "Squirrel release negative control: a stopped builder reported finished turns the release tier's builder arm red"
+echo "Squirrel release negative control: a body that stops early read as finished turns the release tier's builder arm red"
