@@ -15,6 +15,7 @@ import (
 )
 
 func TestRetainedReplacementCorpusElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir retained replacement follows the independent C++ shared corpus")
 	base := "../../../testdata/conformance/feature-witnesses/retained-replacement"
 	for _, shape := range []string{"table", "union", "fixed_table", "fixed_union", "keyed_table"} {

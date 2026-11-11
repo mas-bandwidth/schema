@@ -34,10 +34,13 @@ func main() {
 			fmt.Println("REFUSE")
 			continue
 		}
+		// An accepted value the writer refuses is its own verdict, which the
+		// harness reports as a disagreement with C++ on that line.
 		var encoded [256]byte
 		w := serialize.NewWriteStream(encoded[:])
 		if err := p.WriteNarrow(w, &v); err != nil {
-			panic(err)
+			fmt.Printf("ACCEPTED-UNWRITABLE %d %s\n", r.BitsProcessed(), hexBytes(v.Text[:v.TextLength]))
+			continue
 		}
 		w.Flush()
 		if err := w.Err(); err != nil {

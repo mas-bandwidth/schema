@@ -432,3 +432,50 @@ do -- joins
   print(table.concat(parts))
 end
 `
+
+// TestLuaTypeWireRefusesNonIntegerArrayCount pins the counted array's count
+// guard: a NaN (0/0) or a fractional count is not an integer, so Write<Name>
+// returns false without raising from the runtime's bit writer (SPEC §5.1,
+// row 3).
+func TestLuaTypeWireRefusesNonIntegerArrayCount(t *testing.T) {
+	t.Parallel()
+	u := luarun.LoadUnit(t, filepath.Join("..", "..", "..", "examples"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	luarun.WriteFiles(t, dir, files)
+	probe := `local serialize = require("serialize")
+local C = require("Clauses")
+local function refuses(count)
+  local v = C.NewW13()
+  v.ItemsCount = count
+  local stream = serialize.WriteStream.new(2048)
+  local ok, result = pcall(C.WriteW13, stream, v)
+  if not ok then
+    print("raised: " .. tostring(result))
+  elseif result ~= false then
+    print("accepted")
+  else
+    print("refused")
+  end
+end
+refuses(0/0)
+refuses(1.5)
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(probe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := luarun.Run(t, dir, "main.lua", nil)
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	want := []string{"refused", "refused"}
+	if len(lines) != len(want) {
+		t.Fatalf("probe produced %d lines, want %d:\n%s", len(lines), len(want), out)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("count case %d: %q, want %q", i, lines[i], want[i])
+		}
+	}
+}

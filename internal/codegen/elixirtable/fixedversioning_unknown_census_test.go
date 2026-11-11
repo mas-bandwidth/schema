@@ -18,6 +18,7 @@ import (
 )
 
 func TestFixedVersioningUnknownCensus(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	file := filepath.Join(corpus, "old_unknown_census.bin")
