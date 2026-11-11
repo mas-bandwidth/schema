@@ -53,7 +53,7 @@ func checkConformanceShared(wf, makefile string) []string {
 	dl := strings.Index(leg, "actions/download-artifact@")
 	touch := strings.Index(leg, conformanceSharedTouch)
 	build := strings.Index(leg, "make -j\"$(nproc)\" ${{ matrix.targets }} ${{ matrix.env }}")
-	if dl < 0 || touch < 0 || build < 0 || !(dl < touch && touch < build) {
+	if dl < 0 || touch < 0 || build < 0 || dl >= touch || touch >= build {
 		errs = append(errs, "a conformance leg does not freshen the shared inputs before building only its own driver")
 	}
 	if strings.Contains(leg, "build the harness and the") {
@@ -158,7 +158,7 @@ func TestConformanceSharedInputsNegativeControls(t *testing.T) {
 		}
 		// The fleet-cache control matches both jobs. Gate the leg's restore,
 		// which is the second one, so the matrix job is not what the check names.
-		got := wf
+		var got string
 		if c.name == "fleet cache restore gated off" {
 			jobs := yamlJobs(wf)
 			leg := jobs["conformance"]
