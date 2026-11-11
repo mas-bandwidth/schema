@@ -43,15 +43,6 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 					return nil, fmt.Errorf("testgen: table %s does not carry the %s form, and its generated tests spell the sample in JSON and cross the wire (docs/SPEC-TABLES.md §16.11)", st.Name, form)
 				}
 			}
-			if field := ltgUnreadableUint64(st, map[*ir.Struct]bool{}); field != "" {
-				// THE JSON READER'S BOUND (§16.2): an unsigned 64-bit bound
-				// above 2^63-1 is a Lua integer with the same bits, and the
-				// tolerating read reads it as a negative bound, so no sample
-				// can be silent. The gap is written down, not skipped in
-				// silence.
-				fmt.Fprintf(&body, "\n-- not generated: %s — field %s has an unsigned 64-bit bound above 2^63-1,\n-- which the Lua JSON reader cannot read (docs/PORT-LUA.md)\n", st.Name, field)
-				continue
-			}
 			samples, err := ltgSamples(st)
 			if err != nil {
 				return nil, err
@@ -222,58 +213,6 @@ func ltgSamples(st *ir.Struct) ([]ltgSample, error) {
 		out = append(out, ltgSample{m.name, j.expr()})
 	}
 	return out, nil
-}
-
-// ltgUnreadableUint64 names a declared unsigned 64-bit bound above 2^63-1 in
-// st's closure. The Lua reader keeps that bound as a negative Lua integer and
-// reads every value against it as past the bound (§16.2), so no sample of the
-// table can be silent.
-func ltgUnreadableUint64(st *ir.Struct, seen map[*ir.Struct]bool) string {
-	if st == nil || seen[st] {
-		return ""
-	}
-	seen[st] = true
-	maxInt64 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 63), big.NewInt(1))
-	var field func(f *ir.Field) string
-	field = func(f *ir.Field) string {
-		if f == nil {
-			return ""
-		}
-		t := f.Type
-		if t.Kind == ir.TInt && t.Width == 64 && !t.Signed {
-			if _, hi, ok := ir.TableRawRange(f); ok && hi.Cmp(maxInt64) > 0 {
-				return f.Name
-			}
-		}
-		if f.IsMap() {
-			if name := field(ir.MapValueField(f)); name != "" {
-				return name
-			}
-		}
-		if t.Kind == ir.TNamed {
-			switch ref := t.Ref.(type) {
-			case *ir.Struct:
-				for _, inner := range ref.Fields {
-					if name := field(inner); name != "" {
-						return name
-					}
-				}
-			case *ir.Union:
-				for _, v := range ref.Variants {
-					if name := field(v.F); name != "" {
-						return name
-					}
-				}
-			}
-		}
-		return ""
-	}
-	for _, f := range st.Fields {
-		if name := field(f); name != "" {
-			return name
-		}
-	}
-	return ""
 }
 
 // ltgMaxArms is the largest arm count of any union the table reaches.

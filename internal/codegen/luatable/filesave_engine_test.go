@@ -13,7 +13,6 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
-	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestLuaFileSaveLoadAgreesWithTheEngine holds the plain file save and load
@@ -37,7 +36,7 @@ func TestLuaFileSaveLoadAgreesWithTheEngine(t *testing.T) {
 
 	var names []string
 	for name, st := range unit.Tables {
-		if st.IsMapEntry() || ltgUnreadableUint64(st, map[*ir.Struct]bool{}) != "" {
+		if st.IsMapEntry() {
 			continue
 		}
 		names = append(names, name)

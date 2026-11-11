@@ -76,8 +76,10 @@ func TestLuaTestgenWritesPassingTests(t *testing.T) {
 			t.Fatalf("no generated file carries Test%sGenRoundTrip and Test%sGenDamage, and no file writes down why", root, root)
 		}
 	}
-	if !strings.Contains(string(tests["RangesTable_gen_test.lua"]), "not generated: RangedUnsigned") {
-		t.Fatal("the unsigned 64-bit bounds the Lua reader cannot read are not written down")
+	// an unsigned 64-bit bound above 2^63-1 is read unsigned (§16.2): the
+	// table whose bounds reach 2^64-1 gets its generated tests like any other
+	if !strings.Contains(string(tests["RangesTable_gen_test.lua"]), "TestRangedUnsignedGenRoundTrip") {
+		t.Fatal("RangedUnsigned, whose unsigned 64-bit bounds reach 2^64-1, has no generated round trip")
 	}
 	again, err := Testgen(u)
 	if err != nil {

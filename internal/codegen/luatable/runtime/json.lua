@@ -687,7 +687,11 @@ local function interpret_integer(token, integral)
   return out
 end
 
-local function int_less(n, bound)
+-- An unsigned 64-bit bound past 2^63-1 is held as its bit pattern, a negative
+-- Lua integer: at an unsigned field the bounds compare unsigned, as the wire
+-- read compares them, and a clamp to one is a magnitude.
+local function int_less(n, bound, unsigned)
+  if unsigned then return n.neg or math.ult(n.mag, bound) end
   if n.neg then
     if bound >= 0 then return true end
     local bm = 0 - bound
@@ -697,7 +701,8 @@ local function int_less(n, bound)
   return math.ult(n.mag, bound)
 end
 
-local function int_greater(n, bound)
+local function int_greater(n, bound, unsigned)
+  if unsigned then return not n.neg and math.ult(bound, n.mag) end
   if bound < 0 then
     if not n.neg then return true end
     return math.ult(0 - bound, n.mag)
@@ -706,8 +711,8 @@ local function int_greater(n, bound)
   return math.ult(bound, n.mag)
 end
 
-local function set_from_bound(n, bound)
-  if bound < 0 then
+local function set_from_bound(n, bound, unsigned)
+  if bound < 0 and not unsigned then
     n.neg, n.mag = true, 0 - bound
   else
     n.neg, n.mag = false, bound
@@ -721,11 +726,12 @@ local function place_integer(fd, n, report)
   end
   if n.sat then report.outOfRange = report.outOfRange + 1 end
   if fd.lo ~= nil and fd.hi ~= nil then
-    if int_less(n, fd.lo) then
-      set_from_bound(n, fd.lo)
+    local u = not fd.signed
+    if int_less(n, fd.lo, u) then
+      set_from_bound(n, fd.lo, u)
       report.outOfRange = report.outOfRange + 1
-    elseif int_greater(n, fd.hi) then
-      set_from_bound(n, fd.hi)
+    elseif int_greater(n, fd.hi, u) then
+      set_from_bound(n, fd.hi, u)
       report.outOfRange = report.outOfRange + 1
     end
   end
