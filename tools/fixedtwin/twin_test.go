@@ -340,7 +340,7 @@ func TestCDamagedRefusalStillEmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []*regexp.Regexp{reOwedBoolByte, reCDamagedRefusal} {
+	for _, want := range []*regexp.Regexp{reOwedBoolByte, reOwedPresentByte, reCDamagedRefusal} {
 		if !want.MatchString(cPlain) {
 			t.Fatalf("the real C artifact no longer carries %q: the wire_damaged rule the twin map strips is gone from the C leg", want)
 		}
@@ -351,6 +351,9 @@ func TestCDamagedRefusalStillEmitted(t *testing.T) {
 // disagreement's marker is named with its rule, and a leftover that carries
 // none is named as nothing.
 func TestOpenDisagreementsAreNamed(t *testing.T) {
+	saved := openDisagreements
+	t.Cleanup(func() { openDisagreements = saved })
+	openDisagreements = []disagreement{{name: "ABSENT PAYLOAD (a fixture rule)", markers: []string{"kTableFixedPresentDefaults"}}}
 	named := nameDisagreements([]string{
 		"runtime:cpp:13 - kTableFixedPresentDefaults = 9;",
 	})

@@ -863,7 +863,8 @@ enum
     BLOCKDEMO_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BLOCKDEMO_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BLOCKDEMO_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BLOCKDEMO_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (docs/SPEC-TABLES.md §3.4) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1295,7 +1296,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_store_native( uint8_t * dst, uin
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_apply( const blockdemo_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults, int32_t * damaged )
 {
     switch ( p->op )
     {
@@ -1421,6 +1422,21 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
             dst[p->dst] = 1;
             break;
         }
+        case BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT
+               (docs/SPEC-TABLES.md §3.4): the payload copy above laid the
+               wire's bytes down; when the flag is 0 those bytes are dead and
+               never a value, so the reader overwrites them with the caller's
+               own reset image. aux is the payload's storage offset and size
+               its storage bytes. A flag byte past 1 is wire damage, as for a
+               bool (fix 2). */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            if ( src[p->src] > 1 ) { (*damaged)++; }
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { blockdemo_table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1433,7 +1449,8 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void blockdemo_table_fixed_ap
 static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           blockdemo_table_report_t * report, const blockdemo_table_fixed_guard_link_t * guard_pool )
+                                           blockdemo_table_report_t * report, const blockdemo_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
@@ -1449,7 +1466,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        blockdemo_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1472,10 +1489,15 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_run( const blockdemo_table_fixed
         }
         else
         {
-            if ( blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is kTableFixedNoGuard
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD && blockdemo_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        blockdemo_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
     }
     if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
@@ -1567,6 +1589,7 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_entry_lands( const blockdemo_tab
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case BLOCKDEMO_K_TABLE_FIXED_WIDEN:
         case BLOCKDEMO_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -2017,7 +2040,13 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_push( blockdemo_table_fixed_comp
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
        plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+    /* THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (docs/FIXED-FORM-ALGORITHM.md §4.4). The run loop
+       applies a guardless entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD ) || e.op == BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2193,10 +2222,17 @@ static SCHEMA_UNUSED void blockdemo_table_fixed_compile_entry( blockdemo_table_f
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                blockdemo_table_fixed_entry_t e = blockdemo_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = BLOCKDEMO_K_TABLE_FIXED_BOOL; e.arg = arg;
-                blockdemo_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's dead
+                   bytes (docs/SPEC-TABLES.md §3.4). The payload's storage starts
+                   at the child's own destination and runs to the present
+                   companion, which the reader's layout puts after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 blockdemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                blockdemo_table_fixed_entry_t e = blockdemo_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = BLOCKDEMO_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                blockdemo_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -12916,9 +12952,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_camera_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_camera_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -13112,7 +13152,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_fixed_load( blockdemo_rende
     {
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_camera_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -13235,9 +13275,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_ship_fix
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_ship_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -13436,7 +13480,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_load( blockdemo_render_
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_ship_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -13554,9 +13598,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_turret_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_turret_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -13752,7 +13800,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_load( blockdemo_rende
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_turret_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -13876,9 +13924,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_missile_
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_missile_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -14074,7 +14126,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_load( blockdemo_rend
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_missile_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -14200,9 +14252,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_dynamic_
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_dynamic_prop_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -14398,7 +14454,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_load( blockdemo
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_dynamic_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -14524,9 +14580,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_static_p
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_static_prop_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -14722,7 +14782,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_load( blockdemo_
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_static_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -14850,9 +14910,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_cosmetic
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_cosmetic_prop_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -15049,7 +15113,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_load( blockdem
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_cosmetic_prop_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -15169,9 +15233,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_laser_fi
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_laser_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -15365,7 +15433,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_load( blockdemo_render
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_laser_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
@@ -15489,9 +15557,13 @@ static SCHEMA_UNUSED const blockdemo_table_fixed_dst_t blockdemo_render_explosio
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const blockdemo_table_fixed_entry_t blockdemo_render_explosion_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
     { 8u, 8u, 8u, 0u, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, BLOCKDEMO_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BLOCKDEMO_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 8 }, /* x */
@@ -15687,7 +15759,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
         int32_t rec_widened = report->widened;
         if ( blockdemo_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_NO_LAYOUT; return -1; }
         blockdemo_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        blockdemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { blockdemo_render_explosion_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no

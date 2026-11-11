@@ -1194,7 +1194,7 @@ int main(void)
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */
     body = w2 + need - fxnew_fixed_body_bytes;
     memset(&wrong, 0x5A, sizeof(wrong));
-    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards);
+    table_fixed_run(fxold_fixed_plan, fxold_fixed_plan_count, fxold_fixed_plan_guarded, body, (uint8_t *) &wrong, &r, fxold_fixed_guards, NULL);
     if (wrong.renamed == 808)
         { fprintf(stderr, "NEGATIVE CONTROL FAILED: Fxold's identity plan reproduced an Fxnew record (renamed=%d)\n", (int)wrong.renamed); return 1; }
 
