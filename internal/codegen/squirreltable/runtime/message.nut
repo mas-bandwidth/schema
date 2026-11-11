@@ -508,6 +508,17 @@ local readScalar = function(r, T, v, fd, shape) {
       if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, "out_of_range"); return 0; }
     } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
   }
+  // A plain integer has the domain of its declared kind even when the
+  // announcing peer supplies a wider ranged packing (§3.3). The sender's
+  // base and offset cannot widen the receiver's storage type.
+  if (fd.shape == "int") {
+    if ((fd.kind == 2 && (x < -128 || x > 127)) ||
+        (fd.kind == 3 && (x < -32768 || x > 32767)) ||
+        (fd.kind == 4 && (x < -2147483648 || x > 2147483647)) ||
+        (fd.kind == 6 && (x < 0 || x > 255)) ||
+        (fd.kind == 7 && (x < 0 || x > 65535)) ||
+        (fd.kind == 8 && (x < 0 || x > 4294967295)) ) { refuseRead(r, "out_of_range"); return 0; }
+  }
   // bits(N) holds N bits: a value past them is outside the reader's range
   if (fd.shape == "int" && fd.bits > 0 && fd.bits < 64 && (x < 0 || x > (1 << fd.bits) - 1)) { refuseRead(r, "out_of_range"); return 0; }
   return x;
