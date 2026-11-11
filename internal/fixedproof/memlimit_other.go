@@ -8,9 +8,15 @@ func addressSpaceLimit() (uint64, bool) {
 	return 0, false
 }
 
-// setAddressSpaceLimit has no kernel address-space limit on this platform, so
-// it leaves the process untouched. The Go GC target from SetMemoryCeiling
-// still applies.
-func setAddressSpaceLimit(uint64) func() {
-	return func() {}
+// addressSpaceCeilingInclude has no kernel address-space limit on this
+// platform: there is nothing to include.
+func addressSpaceCeilingInclude() string {
+	return ""
+}
+
+// addressSpaceCeilingApply has no kernel address-space limit on this platform:
+// spawned probes run with the host default limits, and the Go GC target from
+// SetMemoryCeiling still bounds the test process.
+func addressSpaceCeilingApply() string {
+	return ""
 }
