@@ -1172,18 +1172,27 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 	@echo "negative control: one byte off the fixed write template reds the reference byte match"
 
 # THE ARM-TEXT CONTROL, and it plants the ENCODING this form replaced: the
-# text op's flavour written over `arg`, which is the ARM ORDINAL a guarded
-# entry is selected by. Under it a `string(N)` under a union's SECOND arm is
-# dropped on every compiled-plan read — the field never lands and no counter
-# moves — and nothing else about the record changes, which is why it went
-# unseen. So the control requires the arm-text conformance case
-# (test/tables/UT.schema) to go RED and to name the check that caught it.
+# text op's flavour written over the ARM ORDINAL a guarded entry is selected
+# by. Under it a `string(N)` under a union's SECOND arm is dropped on every
+# compiled-plan read — the field never lands and no counter moves — and nothing
+# else about the record changes, which is why it went unseen. So the control
+# requires the arm-text conformance case (test/tables/UT.schema) to go RED and
+# to name the check that caught it.
+#
+# THE PLANT MOVES WITH THE ENCODING. The guard chain now stamps the arm's own
+# ordinal onto every guarded entry after `push`, so writing the flavour into
+# `push`'s `arg` alone is overwritten and plants nothing. The fault is placed
+# where the ordinal is finally chosen: a TEXT entry takes its flavour as the
+# value its guard compares, while every other guarded entry takes the chain's
+# arm ordinal.
 JAVA_ARM_SABOTAGE := build/java-arm-sabotage
+JAVA_ARM_SABOTAGE_SED := s|e\.arg = chainArg\[chainLen - 1\];|e.arg = op == opText ? e.meta : chainArg[chainLen - 1]; // SABOTAGED: the flavour over the arm ordinal|
 .PHONY: tables-java-fixedform-arm-negative-control
 tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.stamp
 	@rm -rf $(JAVA_ARM_SABOTAGE) && mkdir -p $(JAVA_ARM_SABOTAGE)
-	go run ./tools/sabotage -name fixed-form-java-arm-text-flavour \
-		-out $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext internal/codegen/javatable/fixedruntime.go
+	@sed '$(JAVA_ARM_SABOTAGE_SED)' internal/codegen/javatable/fixedruntime.go > $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext
+	@cmp -s internal/codegen/javatable/fixedruntime.go $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext && \
+		{ echo "NEGATIVE CONTROL: the arm-text sabotage did not apply"; exit 1; } || true
 	@grep -q SABOTAGED $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedruntime.go":"%s/$(JAVA_ARM_SABOTAGE)/fixedruntime.gotext"}}\n' \
@@ -1205,14 +1214,14 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 		$(JAVA_ARM_SABOTAGE)/src/*/*.java test/java-fixedform/src/Main.java
 	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main build/fixedform-corpus \
 			> $(JAVA_ARM_SABOTAGE)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a text entry on the guard's own lane left the fixed form green"; \
+		echo "NEGATIVE CONTROL FAILED: a text entry guarded on its flavour instead of its arm ordinal left the fixed form green"; \
 		cat $(JAVA_ARM_SABOTAGE)/log; exit 1; \
 	fi
 	@grep -q "arm text: a COMPILED plan lands a text field under the SECOND arm" $(JAVA_ARM_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the arm's text"; \
 		  cat $(JAVA_ARM_SABOTAGE)/log; exit 1; }
 	@grep -m1 "FAILED:" $(JAVA_ARM_SABOTAGE)/log
-	@echo "negative control: a text entry that borrows the guard's own byte drops the SECOND arm's text and reds"
+	@echo "negative control: a text entry guarded on its flavour instead of its arm ordinal drops the SECOND arm's text and reds"
 
 # THE BYTE-ORDER LEG. Java reads a block and a cook explicitly little-endian, so
 # this reader's order is a CONSTANT rather than the host's — and a file of the
