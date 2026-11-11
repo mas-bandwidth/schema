@@ -189,17 +189,17 @@ func pythonRoadmapRead(text string) ([]any, error) {
 	}
 	for i := 0; i < len(text); {
 		ch := text[i]
-		switch {
-		case ch == ';':
+		switch ch {
+		case ';':
 			for i < len(text) && text[i] != '\n' {
 				i++
 			}
-		case ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r':
+		case ' ', '\t', '\n', '\r':
 			i++
-		case ch == '(':
+		case '(':
 			stack = append(stack, []any{})
 			i++
-		case ch == ')':
+		case ')':
 			if len(stack) == 0 {
 				return nil, fmt.Errorf("unbalanced ) at byte %d", i)
 			}
@@ -207,7 +207,7 @@ func pythonRoadmapRead(text string) ([]any, error) {
 			stack = stack[:len(stack)-1]
 			push(list)
 			i++
-		case ch == '"':
+		case '"':
 			var b strings.Builder
 			i++
 			for {
