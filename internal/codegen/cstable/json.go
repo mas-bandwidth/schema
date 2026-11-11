@@ -627,9 +627,9 @@ public static class TableJson
     {
         if (f.TextList)
         {
-            object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
-            if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
-            return WriteField(ref o,child,text,depth);
+            object child = f.GetChild(owner, index); TableFieldInfo text = f.Table.Fields[0];
+            if (text.Optional && !text.GetPresent(child)) { o.Text("null"); return true; }
+            return WriteField(ref o, child, text, depth);
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
@@ -737,11 +737,11 @@ public static class TableJson
 
     static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
     {
-        if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
+        if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 12 && !f.TextList)
         {
-            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -1354,12 +1354,12 @@ public static class TableJson
     // place one scalar at one storage slot
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
-        if(f.TextList)
+        if (f.TextList)
         {
-            object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
-            if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
-            if(field.Optional){field.SetPresent(child,true);}
-            return ReadField(text,ref input,child,field,depth);
+            object child = f.GetChild(owner, index); TableFieldInfo field = f.Table.Fields[0]; f.Table.Reset(child);
+            if (field.Optional && ValueShape(text, ref input) == 'z') { return Literal(text, ref input, "null"); }
+            if (field.Optional) { field.SetPresent(child, true); }
+            return ReadField(text, ref input, child, field, depth);
         }
         if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -1656,9 +1656,9 @@ public static class TableJson
         if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
         if (f.Unbounded)
         {
-            if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
-            if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
-            f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
+            if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+            if (!TableWire.TextValid(body)) { return RefuseText(ref input, "text_holds_zero"); }
+            f.EnsureCount(value, body.Length); body.CopyTo(f.GetBuffer(value)); f.SetCount(value, body.Length); return true;
         }
         if (f.Kind == 12 && !f.TextList)
         {
@@ -1832,10 +1832,11 @@ public static class TableJson
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
-                    if(f.TextTotal>0){
-                        object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
-                        int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                        if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
+                    if (f.TextTotal > 0)
+                    {
+                        object child = f.GetChild(value, placed); TableFieldInfo element = f.Table.Fields[0];
+                        int length = element.Optional && !element.GetPresent(child) ? 0 : Count(child, element);
+                        if (!TableWire.TextTotalKeep(f, length, ref textSpent, input.Report)) { return false; }
                     }
                     placed++;
                 }
