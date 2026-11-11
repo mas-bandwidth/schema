@@ -1248,6 +1248,13 @@ local newIn = function(text, report, graph) {
   return { t = t, n = t.len(), p = 0, bad = false, report = report, graph = graph };
 };
 
+// A leading UTF-8 byte-order mark is skipped and the rest reads as the text
+// after it (docs/SPEC-TABLES.md §16.2, §16.12): EF BB BF as the text's first
+// three bytes, and nowhere else. No writer emits one.
+local byteOrderMark = function(r) {
+  if (r.p == 0 && r.n >= 3 && r.t[0] == 0xef && r.t[1] == 0xbb && r.t[2] == 0xbf) r.p = 3;
+};
+
 // whitespace and comments: accepted on read, never written (§16.2); an
 // unclosed /* is malformed, and a lone slash is not JSON
 local space = function(r) {
@@ -2384,6 +2391,7 @@ _M.fromJsonWalk <- function(T, rootName, text, report) {
   if (!("refused" in report)) report.refused <- false;
   local c = tableDesc(T, rootName);
   local r = newIn(text, report, c.variable ? {} : null);
+  byteOrderMark(r);
   local v = c.make();
   local ok = readTable(T, c, r, v, 0);
   if (ok) {
