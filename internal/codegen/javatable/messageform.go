@@ -1012,6 +1012,7 @@ public final class TableMessage {
                     return skipRun(r, n, run);
                 }
                 for (long i = 0; i < n; i++) {
+                    long at = r.at;
                     if (s.kind == 16) {
                         long kref = r.get(r.vocab.refBits);
                         if (r.err || kref < 0L || kref > (long) r.vocab.count) {
@@ -1021,6 +1022,20 @@ public final class TableMessage {
                     }
                     if (!skipAt(r, elem, null, depth + 1)) {
                         return false;
+                    }
+                    // A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array
+                    // whose inner run is itself zero-width, steps the rest of
+                    // the run in one (docs/SPEC-TABLES.md §3.3). A remaining
+                    // count the bits left could not back is damage, so a
+                    // hostile count is refused here rather than walked, and
+                    // the skip is bounded by the batch's bits whatever the
+                    // count says.
+                    if (r.at == at) {
+                        if (n - i - 1 > r.totalBits - r.at) {
+                            r.err = true;
+                            return false;
+                        }
+                        return true;
                     }
                 }
                 return true;
