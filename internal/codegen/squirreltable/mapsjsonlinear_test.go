@@ -47,7 +47,7 @@ func mapLinearRepeated(field string, n int, stringKey bool) string {
 }
 
 // mapLinearProbe reads each input with a counter planted in the runtime's
-// repeated-key test and prints the counter's final value and the verdict.
+// key comparison and prints the counter's final value and the verdict.
 const mapLinearProbe = `local inputs = dofile("inputs.nut", true);
 local schema = dofile("maplinear/schema_module.nut", true);
 local T = schema.require(%q);
@@ -64,8 +64,8 @@ foreach (key in %s) {
 
 // TestSquirrelJsonMapReadIsLinear pins the repeated-key test of the JSON read
 // (docs/SPEC-TABLES.md §2.8, §16.2): its cost is linear in the number of keys,
-// measured as counted steps at n and 2n keys with the counter planted in a
-// copy of the emitted runtime, and a repeated key still refuses the whole
+// measured as counted key comparisons at n and 2n keys with the counter
+// planted in a copy of the emitted runtime, and a repeated key still refuses the whole
 // read. The Go engine answers the same inputs first: distinct keys read, one
 // repeated key refuses.
 func TestSquirrelJsonMapReadIsLinear(t *testing.T) {
@@ -123,12 +123,15 @@ func TestSquirrelJsonMapReadIsLinear(t *testing.T) {
 		mod := emitUnit(t, dir, "maplinear", u)
 
 		runtime := string(squirreltable.Runtime()["schema_table_json.nut"])
-		const anchor = "      if (ent[kd.member] in seen) { r.bad = true; return false; }\n"
+		// Every key comparison the read makes, the repeated-key test's and
+		// the ordering sort's, is one step: a scan of the keys read so far is
+		// quadratic in them, a lookup plus the sort is n log n.
+		const anchor = "local mapKeyOrder = function(kd, a, b) {\n"
 		if got := strings.Count(runtime, anchor); got != 1 {
-			t.Fatalf("the repeat test's anchor appears %d times in the emitted runtime, want exactly once", got)
+			t.Fatalf("the key comparison's anchor appears %d times in the emitted runtime, want exactly once", got)
 		}
 		patched := strings.Replace(runtime, anchor,
-			"      ::mapRepeatSteps = ::mapRepeatSteps + 1;\n"+anchor, 1)
+			anchor+"  ::mapRepeatSteps = ::mapRepeatSteps + 1;\n", 1)
 		writeFile(t, filepath.Join(dir, "maplinear", "schema_table_json.nut"), []byte(patched))
 
 		var keys []string
@@ -175,11 +178,11 @@ func TestSquirrelJsonMapReadIsLinear(t *testing.T) {
 		} {
 			small, large := got[kind.small].steps, got[kind.large].steps
 			if small <= 0 {
-				t.Fatalf("%s: the repeated-key test counted no steps", kind.small)
+				t.Fatalf("%s: the read counted no key comparisons", kind.small)
 			}
 			// under three: n to 2n is two when one key costs one step
 			if large >= 3*small {
-				t.Fatalf("%s to %s: the repeated-key test counted %d steps at n keys and %d at 2n, a ratio of %.2f, want under 3",
+				t.Fatalf("%s to %s: the read counted %d key comparisons at n keys and %d at 2n, a ratio of %.2f, want under 3",
 					kind.small, kind.large, small, large, float64(large)/float64(small))
 			}
 		}
