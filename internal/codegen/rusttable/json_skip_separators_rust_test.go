@@ -127,7 +127,14 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(root, "probe")
-	build := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	args := []string{"--edition", "2024"}
+	// pass the host's cc by its absolute path: rustc then runs that file
+	// directly instead of resolving the linker name itself
+	if cc, err := exec.LookPath("cc"); err == nil {
+		args = append(args, "-C", "linker="+cc)
+	}
+	args = append(args, "-o", bin, "main.rs")
+	build := exec.Command("rustc", args...)
 	build.Dir = root
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build (modules %v): %v\n%s", mods, err, out)
