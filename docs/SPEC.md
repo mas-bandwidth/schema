@@ -840,9 +840,10 @@ FloatExpr   = float expression over float literals, int literals and const names
     constant per variant (`1 << bit`),
     because mask tests are how flag state is consumed, **plus the `Count`
     constant** — the declared variant count, the one `.Count` in the
-    language — the spelling is each target's own, and C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go emit it:
-    `CapsCount` in C++, C#, Go and JS; `CAPS_COUNT` in C, Rust and Java;
-    `capsCount` in Dart; `caps_count/0` in Elixir.
+    language — every packet target emits it in its own spelling:
+    `CapsCount` in C++, C#, Go, JavaScript, Lua, Luau, Squirrel, MOO,
+    Goose and Lobster; `CAPS_COUNT` in C, Rust and Java; `capsCount` in Dart;
+    `caps_count/0` in Elixir.
     **`flags` is a
     contextual keyword, not reserved** — it introduces a declaration at file
     scope only, so a *field* named `flags` stays fully legal; declarations at
