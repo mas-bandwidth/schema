@@ -23,11 +23,25 @@ GOOSE_DIST    := $(CURDIR)/dist/goose-$(GOOSE_VERSION)-linux-x64
 GOOSE        ?= $(GOOSE_DIST)/goose
 export GOOSE
 
-# dist-goose fetches the pinned release and REFUSES any archive whose sha256
-# is not the pin's, by name: the archive is checked before it is unpacked, so
-# a wrong download never reaches dist/.
-.PHONY: dist-goose
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has the release unpacked at goose-<version>/, from the same release
+# archive, held to its digest when it was installed, and a sandboxed bench job
+# has no network to download it. When that directory holds the compiler,
+# dist-goose copies it to GOOSE_DIST; otherwise, or with no NOVA_SDK, it
+# fetches the archive as before (dist-goose-fetch).
+GOOSE_SDK = $(NOVA_SDK)/goose-$(GOOSE_VERSION)
+
+.PHONY: dist-goose dist-goose-fetch
 dist-goose:
+	@if [ -n "$(NOVA_SDK)" ] && [ -x "$(GOOSE_SDK)/goose" ]; then \
+		rm -rf $(GOOSE_DIST) && mkdir -p dist && cp -pR "$(GOOSE_SDK)" $(GOOSE_DIST) && \
+		echo "dist-goose: goose $(GOOSE_VERSION) from the fleet SDK $(GOOSE_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-goose-fetch; fi
+
+# dist-goose-fetch fetches the pinned release and REFUSES any archive whose
+# sha256 is not the pin's, by name: the archive is checked before it is
+# unpacked, so a wrong download never reaches dist/.
+dist-goose-fetch:
 	@mkdir -p dist build/dist-goose
 	@curl -fsSL -o build/dist-goose/$(GOOSE_TGZ) $(GOOSE_TGZ_URL)
 	@got=$$(sha256sum build/dist-goose/$(GOOSE_TGZ) | cut -d' ' -f1); \

@@ -20,11 +20,27 @@ LUAU         ?= $(LUAU_DIST)/luau
 LUAU_ANALYZE ?= $(LUAU_DIST)/luau-analyze
 export LUAU LUAU_ANALYZE
 
-# dist-luau fetches the pinned release and REFUSES any archive whose sha256 is
-# not the pin's: the archive is checked before it is unpacked, so a wrong
-# download never reaches dist/.
-.PHONY: dist-luau
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has the four tools at luau-<version>/bin/, built from the release's
+# tag at its pinned commit, and a sandboxed bench job has no network to
+# download the archive. When that directory holds them, dist-luau copies them
+# to LUAU_DIST; otherwise, or with no NOVA_SDK, it fetches the archive as before
+# (dist-luau-fetch).
+LUAU_SDK = $(NOVA_SDK)/luau-$(LUAU_VERSION)
+LUAU_TOOLS := luau luau-analyze luau-ast luau-compile
+
+.PHONY: dist-luau dist-luau-fetch
 dist-luau:
+	@if [ -n "$(NOVA_SDK)" ] && $(foreach t,$(LUAU_TOOLS),[ -x "$(LUAU_SDK)/bin/$(t)" ] &&) true; then \
+		rm -rf $(LUAU_DIST) && mkdir -p $(LUAU_DIST) && \
+		$(foreach t,$(LUAU_TOOLS),cp -p "$(LUAU_SDK)/bin/$(t)" $(LUAU_DIST)/ &&) \
+		echo "dist-luau: luau $(LUAU_VERSION) from the fleet SDK $(LUAU_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-luau-fetch; fi
+
+# dist-luau-fetch fetches the pinned release and REFUSES any archive whose
+# sha256 is not the pin's: the archive is checked before it is unpacked, so a
+# wrong download never reaches dist/.
+dist-luau-fetch:
 	@mkdir -p $(LUAU_DIST) build/dist-luau
 	@curl -fsSL -o build/dist-luau/luau-ubuntu.zip $(LUAU_ZIP_URL)
 	@got=$$(sha256sum build/dist-luau/luau-ubuntu.zip 2>/dev/null | cut -d' ' -f1); \

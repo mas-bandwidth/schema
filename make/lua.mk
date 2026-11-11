@@ -29,8 +29,24 @@ LUA ?= $(CURDIR)/dist/lua-$(LUA_VERSION)/src/lua
 # the pin from the environment
 export LUA
 
-.PHONY: dist-lua
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has the same tarball, held to the same sha256, built and installed at
+# lua-<version>/, and a sandboxed bench job has no network to download it. When
+# that interpreter reports exactly the pinned release, dist-lua copies it to
+# dist/lua-<version>/src/lua, the path LUA names; any other answer, or no
+# NOVA_SDK, builds from the tarball as before (dist-lua-fetch).
+LUA_SDK = $(NOVA_SDK)/lua-$(LUA_VERSION)
+
+.PHONY: dist-lua dist-lua-fetch
 dist-lua:
+	@if [ -n "$(NOVA_SDK)" ] && [ -x "$(LUA_SDK)/bin/lua" ] && \
+		"$(LUA_SDK)/bin/lua" -v 2>&1 | grep -q "^Lua $(LUA_VERSION) "; then \
+		rm -rf dist/lua-$(LUA_VERSION) && mkdir -p dist/lua-$(LUA_VERSION)/src && \
+		cp -p "$(LUA_SDK)/bin/lua" dist/lua-$(LUA_VERSION)/src/lua && \
+		echo "dist-lua: Lua $(LUA_VERSION) from the fleet SDK $(LUA_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-lua-fetch; fi
+
+dist-lua-fetch:
 	@mkdir -p dist
 	@if [ ! -f dist/$(LUA_TARBALL) ]; then \
 		fetched=; \

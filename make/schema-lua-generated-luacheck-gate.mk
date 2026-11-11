@@ -163,8 +163,23 @@ STYLUA_SHA256_macos-aarch64 := 92ff0889e16324801bc072692974bb67f8161e62010fc90f9
 STYLUA_ZIP     := stylua-$(STYLUA_VERSION)-$(STYLUA_PLATFORM).zip
 STYLUA_URL     := https://github.com/JohnnyMorganz/StyLua/releases/download/v$(STYLUA_VERSION)/stylua-$(STYLUA_PLATFORM).zip
 
-.PHONY: dist-stylua
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has this platform's release zip, held to the same sha256, unpacked at
+# stylua-<version>/, and a sandboxed bench job has no network to download it.
+# When that stylua reports exactly the pinned release, dist-stylua copies it to
+# STYLUA_DIR; any other answer, or no NOVA_SDK, fetches the zip as before
+# (dist-stylua-fetch).
+STYLUA_SDK = $(NOVA_SDK)/stylua-$(STYLUA_VERSION)
+
+.PHONY: dist-stylua dist-stylua-fetch
 dist-stylua:
+	@if [ -n "$(NOVA_SDK)" ] && [ -x "$(STYLUA_SDK)/stylua" ] && \
+		[ "$$("$(STYLUA_SDK)/stylua" --version 2>/dev/null)" = "stylua $(STYLUA_VERSION)" ]; then \
+		rm -rf $(STYLUA_DIR) && mkdir -p $(STYLUA_DIR) && cp -p "$(STYLUA_SDK)/stylua" $(STYLUA_DIR)/stylua && \
+		echo "dist-stylua: StyLua $(STYLUA_VERSION) from the fleet SDK $(STYLUA_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-stylua-fetch; fi
+
+dist-stylua-fetch:
 	@mkdir -p dist
 	@if [ ! -f dist/$(STYLUA_ZIP) ]; then curl -fsSL -o dist/$(STYLUA_ZIP).part $(STYLUA_URL) && mv dist/$(STYLUA_ZIP).part dist/$(STYLUA_ZIP); fi
 	@got=$$(sha256sum dist/$(STYLUA_ZIP) 2>/dev/null | cut -d" " -f1); \

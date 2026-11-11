@@ -21,8 +21,26 @@ SQ ?= $(CURDIR)/$(SQUIRREL_DIR)/bin/sq
 # are processes this make spawns, so they read the pin from the environment
 export SQ
 
-.PHONY: dist-squirrel
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has the same tag's archive, held to the same sha256, built as sq64 with
+# SQUSEDOUBLE at squirrel-<version>-double/bin/sq, and a sandboxed bench job has
+# no network to download it. When that sq reports the pinned release and an
+# 8-byte float and integer, dist-squirrel copies it to SQUIRREL_DIR/bin/sq;
+# any other answer, or no NOVA_SDK, builds from the tarball as before
+# (dist-squirrel-fetch).
+SQUIRREL_SDK = $(NOVA_SDK)/squirrel-$(SQUIRREL_VERSION)-double
+
+.PHONY: dist-squirrel dist-squirrel-fetch
 dist-squirrel:
+	@mkdir -p build && printf 'print(_floatsize_ + " " + _intsize_)' > build/squirrel-sdk-probe.nut; \
+	if [ -n "$(NOVA_SDK)" ] && [ -x "$(SQUIRREL_SDK)/bin/sq" ] && \
+		"$(SQUIRREL_SDK)/bin/sq" -v 2>&1 | grep -q "^Squirrel $(SQUIRREL_VERSION) " && \
+		[ "$$("$(SQUIRREL_SDK)/bin/sq" build/squirrel-sdk-probe.nut 2>/dev/null)" = "8 8" ]; then \
+		rm -rf $(SQUIRREL_DIR) && mkdir -p $(SQUIRREL_DIR)/bin && cp -p "$(SQUIRREL_SDK)/bin/sq" $(SQUIRREL_DIR)/bin/sq && \
+		echo "dist-squirrel: squirrel $(SQUIRREL_VERSION) (sq64, SQUSEDOUBLE) from the fleet SDK $(SQUIRREL_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-squirrel-fetch; fi
+
+dist-squirrel-fetch:
 	@mkdir -p dist
 	@if [ ! -f dist/squirrel-$(SQUIRREL_VERSION).tar.gz ]; then \
 		curl -fsSL -o dist/squirrel-$(SQUIRREL_VERSION).tar.gz.part $(SQUIRREL_URL) && \
