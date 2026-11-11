@@ -132,11 +132,15 @@ pub fn fixed_table_save_message_body(w: &mut TableBitWriter, value: &FixedTableR
 /// kind is a kind mismatch, skipped.
 pub fn fixed_table_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut FixedTableRow) -> bool {
     *value = fixed_table_message_default();
+    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can name it or not.
+    let mut seen_ids: Vec<u64> = Vec::new();
     loop {
         let Some(reference) = r.get(v.ref_bits) else { report.damaged = true; return false; };
         if reference == 0 { return true; }
         let Some(entry) = v.entry(reference).copied() else { report.damaged = true; return false; };
         if entry.id >= 0xffff_ffff_ffff_fffd { report.damaged = true; return false; }
+        if seen_ids.contains(&entry.id) { report.damaged = true; return false; }
+        seen_ids.push(entry.id);
         match entry.id {
             0x7ce4fd9430e80cea => {
                 let mut widened = false;

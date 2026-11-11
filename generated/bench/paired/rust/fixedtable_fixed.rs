@@ -461,7 +461,9 @@ fn fixed_table_fixed_load_records(
     // The REMAP lane is the build's too, laid beside the plan it belongs to;
     // the caller's slice stays in the signature as the capacity it always was.
     let _ = remap;
-    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
+    // A ROOT IS ONE RECORD (§3.4): a caller with room for exactly one and a
+    // file carrying none has no value to read, which is truncation.
+    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) || (rest.len() == 0 && values.len() == 1) {
         report.damaged = true;
         return None;
     }
