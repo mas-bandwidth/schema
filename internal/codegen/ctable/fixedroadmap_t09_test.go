@@ -78,8 +78,8 @@ const t09Check = `#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s
 
 // TestFixedRoadmapCT09IntegersFloats proves each value row by a compiled
 // round trip: save a value holding non-default and boundary bytes, load it
-// back, and assert the loaded value (and report.clamped at each declared
-// bound).
+// back, and assert the loaded value (and an `out_of_range` refusal past each
+// declared bound).
 func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 

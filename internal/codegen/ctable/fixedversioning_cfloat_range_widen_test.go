@@ -12,8 +12,7 @@ import (
 // so the old writer's bound has nowhere to live once the record is resolved.
 // old_ (0.5) lands 0.5 whole; hostile_ (forged 1.5, past the writer but inside
 // the reader) lands 1.5 WHOLE; past_ (forged 5.0) is past the READER too and
-// clamps to the reader's own 2.0. clamped is EXACT — 0, 0, 1 across the three
-// — because a leg that counts twice or counts the wrong read would move it. The
+// the strict read REFUSES the whole load `out_of_range`, landing nothing. The
 // hostile_ read alone proves nothing: delete the pass and it stays green, and
 // only the past_ read goes red.
 //
@@ -43,18 +42,14 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 		"the writer's own value, from the corpus manifest")
 	hostileAim := aimCheck("hostile_", cManifestFloatBits(t, corpus, "hostile_cfloat_range_widen.bin", "forged", "r0.aim"),
 		"the manifest's own forged value, landed WHOLE because the bounds pass is the READER's")
-	pastAim := aimCheck("past_", 0x40000000,
-		"THIS READER'S OWN declared max 2.0, not a manifest value: the file carries 5.0")
 
 	oldBody := `
     if ( n != 1 ) { printf( "cfloat_range_widen old_: n == %lld, not 1\n", (long long) n ); return 1; }
     if ( back[0].lead != 1 || back[0].trail != 2 )
         { printf( "cfloat_range_widen old_: a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
 @AIM@
-    if ( r.clamped != 0 ) { printf( "cfloat_range_widen old_: clamped == %d, not 0\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen old_: a counter moved on a clean read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.refused || r.refused ) { printf( "cfloat_range_widen old_: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK )
+        { printf( "cfloat_range_widen old_: a counter moved on a clean read: u=%d w=%d refused=%d rr=%d\n", r.unknown, r.widened, r.refused, r.refuse_reason ); return 1; }
     if ( r.reason != 0 ) { printf( "cfloat_range_widen old_: reason == %d, not 0\n", r.reason ); return 1; }
 `
 
@@ -69,10 +64,8 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
     if ( back[0].lead != 1 || back[0].trail != 2 )
         { printf( "cfloat_range_widen hostile_: a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
 @AIM@
-    if ( r.clamped != 0 ) { printf( "cfloat_range_widen hostile_: clamped == %d, not 0\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen hostile_: a counter moved on a clean read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.refused || r.refused ) { printf( "cfloat_range_widen hostile_: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK )
+        { printf( "cfloat_range_widen hostile_: a counter moved on a clean read: u=%d w=%d refused=%d rr=%d\n", r.unknown, r.widened, r.refused, r.refuse_reason ); return 1; }
     if ( r.reason != 0 ) { printf( "cfloat_range_widen hostile_: reason == %d, not 0\n", r.reason ); return 1; }
 `
 
@@ -83,19 +76,17 @@ func TestFixedVersioningCfloatRangeWiden(t *testing.T) {
 	}
 
 	pastBody := `
-    if ( n != 1 ) { printf( "cfloat_range_widen past_: n == %lld, not 1\n", (long long) n ); return 1; }
-    if ( back[0].lead != 1 || back[0].trail != 2 )
-        { printf( "cfloat_range_widen past_: a bracket moved: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
-@AIM@
-    if ( r.clamped != 1 ) { printf( "cfloat_range_widen past_: clamped == %d, not exactly 1\n", r.clamped ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 )
-        { printf( "cfloat_range_widen past_: a counter moved on a clean read: u=%d km=%d w=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.duplicate ); return 1; }
-    if ( r.refused || r.refused ) { printf( "cfloat_range_widen past_: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
-    if ( r.reason != 0 ) { printf( "cfloat_range_widen past_: reason == %d, not 0\n", r.reason ); return 1; }
+    if ( n != -1 ) { printf( "cfloat_range_widen past_: n == %lld, want -1 (refused)\n", (long long) n ); return 1; }
+    if ( !r.refused || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_OUT_OF_RANGE )
+        { printf( "cfloat_range_widen past_: refused=%d reason=%d rr=%d, want out_of_range\n", r.refused, r.reason, r.refuse_reason ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.layout_hash != 0 )
+        { printf( "cfloat_range_widen past_: a counter moved on a refusal: u=%d w=%d hash=%llx\n", r.unknown, r.widened, (unsigned long long) r.layout_hash ); return 1; }
+    if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 )
+        { printf( "cfloat_range_widen past_: a refused read kept a value: aim lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }
 `
 
 	out, err = cRunVersionProbe(t, newer, []string{older}, 0,
-		filepath.Join(corpus, "past_cfloat_range_widen.bin"), strings.ReplaceAll(pastBody, "@AIM@", pastAim), "")
+		filepath.Join(corpus, "past_cfloat_range_widen.bin"), pastBody, "")
 	if err != nil {
 		t.Fatalf("cfloat_range_widen past_: %v\n%s", err, out)
 	}

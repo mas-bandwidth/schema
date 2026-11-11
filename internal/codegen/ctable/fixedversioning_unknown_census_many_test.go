@@ -32,9 +32,8 @@ func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
     if ( back[2].items[0].a != 30 || back[2].items[1].a != 31 || back[2].items[2].a != 32 || back[2].items[3].a != 33 )
         { printf( "unknown_census_many: record 2's four a values did not land: %d %d %d %d\n", back[2].items[0].a, back[2].items[1].a, back[2].items[2].a, back[2].items[3].a ); return 1; }
     if ( r.unknown != 1 ) { printf( "unknown_census_many: unknown == %d, not exactly 1\n", r.unknown ); return 1; }
-    if ( r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 )
-        { printf( "unknown_census_many: a counter moved on a clean backward read: u=%d km=%d w=%d c=%d d=%d\n", r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate ); return 1; }
-    if ( r.refused || r.refused ) { printf( "unknown_census_many: a clean read refused: malformed=%d refused=%d\n", r.refused, r.refused ); return 1; }
+    if ( r.widened != 0 || r.refused || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK )
+        { printf( "unknown_census_many: a counter moved on a clean backward read: u=%d w=%d refused=%d rr=%d\n", r.unknown, r.widened, r.refused, r.refuse_reason ); return 1; }
     if ( r.reason != 0 ) { printf( "unknown_census_many: reason == %d, not 0\n", r.reason ); return 1; }
     {
         int64_t n2;

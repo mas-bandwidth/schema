@@ -31,10 +31,10 @@ func TestFixedVersioningUnionUnselectedArm(t *testing.T) {
     if ( back[0].pick.type != PICK_TYPE_ALPHA ) { printf( "pick.type is the writer's alpha arm (1), not %d\n", (int) back[0].pick.type ); return 1; }
     if ( back[0].pick.as.alpha.m != 7 ) { printf( "pick.alpha.m is the writer's 7, not %d\n", (int) back[0].pick.as.alpha.m ); return 1; }
     if ( back[0].seq != 15 ) { printf( "seq is the writer's 15, not %d\n", (int) back[0].seq ); return 1; }
-    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 || r.widened != 0 || r.retained != 0 || r.retain_lost != 0 )
-        { printf( "a clean backward read moved a counter: unknown=%d kind_mismatch=%d clamped=%d duplicate=%d widened=%d retained=%d retain_lost=%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.widened, r.retained, r.retain_lost ); return 1; }
-    if ( r.refused ) { printf( "a clean backward read is not malformed\n" ); return 1; }
-    if ( r.refused || r.reason != 0 ) { printf( "a clean backward read is not a refusal: refused=%d reason=%d\n", r.refused, r.reason ); return 1; }
+    if ( r.unknown != 0 || r.widened != 0 || r.retained != 0 || r.retain_lost != 0 )
+        { printf( "a clean backward read moved a counter: unknown=%d widened=%d retained=%d retain_lost=%d\n", r.unknown, r.widened, r.retained, r.retain_lost ); return 1; }
+    if ( r.refused || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK )
+        { printf( "a clean backward read is not a refusal: refused=%d reason=%d rr=%d\n", r.refused, r.reason, r.refuse_reason ); return 1; }
 `
 
 	// probe 1, the compiled column: reader VNEW, older VOLD.

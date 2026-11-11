@@ -45,15 +45,15 @@ const cT01Macros = `
 #define EXPECT_REFUSED( WHO, REASON, HASH ) do { TableReport e_; \
     memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.layout_hash = (HASH); \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
-    if ( r.refused ) { printf( "%s: malformed set beside a refusal by name\n", (WHO) ); return 1; } \
+    if ( r.refuse_reason != SCHEMA_TABLE_REFUSE_OK ) { printf( "%s: a typed reason beside a layout refusal\n", (WHO) ); return 1; } \
     if ( r.refused != 1 || r.reason != (REASON) ) { printf( "%s: refused=%d reason=%d, not reason %d\n", (WHO), r.refused, r.reason, (int) (REASON) ); return 1; } \
-    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason(+layout_hash): u=%d km=%d c=%d d=%d w=%d layout_hash=%llx\n", (WHO), r.unknown, r.kind_mismatch, r.clamped, r.duplicate, r.widened, (unsigned long long) r.layout_hash ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason(+layout_hash): u=%d w=%d rr=%d layout_hash=%llx\n", (WHO), r.unknown, r.widened, r.refuse_reason, (unsigned long long) r.layout_hash ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
 #define EXPECT_MALFORMED( WHO ) do { TableReport e_; \
-    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; \
+    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \
     if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
-    if ( r.refused || r.reason != 0 ) { printf( "%s: refused=%d reason=%d beside malformed\n", (WHO), r.refused, r.reason ); return 1; } \
-    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly malformed\n", (WHO) ); return 1; } \
+    if ( r.refused != 1 || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED ) { printf( "%s: refused=%d reason=%d rr=%d beside wire_damaged\n", (WHO), r.refused, r.reason, r.refuse_reason ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly wire_damaged\n", (WHO) ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
 `
 
