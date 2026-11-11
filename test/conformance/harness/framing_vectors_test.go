@@ -139,9 +139,71 @@ func listNodeRecordNext(v int32, next byte) []byte {
 	return cat(b(5, 10, 1, 4), i32(v), b(3, 17, next), b(0))
 }
 
+// listNodeRecordNextIndex is a node record of `ListNode { next = k }` for a
+// node index of any width: the pointer field, then the terminator. The value
+// stays at its default, so the index's LEB128 is the only part that grows with
+// the chain.
+func listNodeRecordNextIndex(next uint64) []byte {
+	payload := cat(b(3, 17), leb(next), b(0))
+	return cat(b(5), leb(uint64(len(payload))), payload)
+}
+
+// listNodeChain is a Scene whose head names record 1 and whose record k names
+// record k+1, with record n's next absent. The records ride in index order, so
+// the chain costs the node count and not its length in stack (docs/SPEC-TABLES.md §3.1).
+func listNodeChain(n int) []byte {
+	records := make([][]byte, n)
+	for k := 1; k <= n; k++ {
+		if k == n {
+			records[k-1] = cat(b(5, 1, 0))
+			continue
+		}
+		records[k-1] = listNodeRecordNextIndex(uint64(k + 2))
+	}
+	return cat(b(6, 17, 2), nodeTable(uint64(n), records...), b(0))
+}
+
+// The graphdemo Scene-to-ListNode chain id table: 1 value, 2 name, 3 next,
+// 4 the reserved node-table id, 5 ListNode's type id, 6 Scene.head.
+var sceneListNodeIds = []string{"value", "name", "next", "node-table", "type:ListNode", "head"}
+
 // The graphdemo Scene-to-TreeNode id table: 1 tree, 2 left, 3 right, 4 the
 // reserved node-table id, 5 TreeNode's type id.
 var sceneTreeIds = []string{"tree", "left", "right", "node-table", "type:TreeNode"}
+
+// The graphdemo Scene id table for the reserved-type vectors: 1 head, 2 name,
+// 3 next, 4 the reserved node-table id, 5 the record's TYPE id. A vector
+// carries the reserved id it pins in slot 5 like a declared type id (§3.1,
+// §3.3).
+var sceneNodeTypeIds = []string{"head", "name", "next", "node-table", "type:ListNode"}
+
+// sceneNodeTypeRecord is one empty ListNode record whose TYPE reference is
+// `ref`.
+func sceneNodeTypeRecord(ref byte) []byte { return cat(b(ref, 1), b(0)) }
+
+// sceneNodeTypeBody is a Scene whose head names the record at node index 2.
+func sceneNodeTypeBody(ref byte) []byte {
+	return cat(b(1, 17, 2), nodeTable(1, sceneNodeTypeRecord(ref)), b(0))
+}
+
+// The graphdemo Scene id table the held graph vectors share: 1 head, 2 tree,
+// 3 alias, 4 the reserved node-table id, 5 ListNode's type id, 6 value,
+// 7 next, 8 TreeNode's type id, 9 left, 10 right, 11 mystery and 12 mystery2
+// (ids Scene does not declare), 13 graphUnknown (a type id no graphdemo table
+// hashes to), 14 string and 15 bytes (the reserved blob type ids), 16 mystery3,
+// 17 armystery (an arm Scene does not declare), and 18 key (a key reference in
+// a slot key position).
+var sceneGraphIds = []string{
+	"head", "tree", "alias", "node-table", "type:ListNode", "value",
+	"next", "type:TreeNode", "left", "right", "mystery", "mystery2",
+	"graphUnknown", "string", "bytes", "mystery3", "armystery", "key",
+}
+
+// graphNodeRecord is one node record of type ref typ: the type reference, its
+// length, and the body given (§3.1).
+func graphNodeRecord(typ byte, body []byte) []byte {
+	return cat(b(typ), leb(uint64(len(body))), body)
+}
 
 // diamondLevels is the diamond chain's depth: 2^40 root-to-leaf paths over 82
 // nodes, so a check that re-enters a shared node never finishes.
@@ -163,6 +225,53 @@ func diamondChain() []byte {
 		}
 	}
 	return cat(b(1, 17, 2), nodeTable(uint64(len(records)), records...), b(0))
+}
+
+// The held depth vectors name one field id graphdemo does not declare; it is
+// carried in the id table like a declared type id, and every nested body names
+// it by reference 1.
+var depthIds = []string{"held_depth_unknown"}
+
+// depthTables is a root body whose one unknown field holds `levels` table
+// bodies nested by value: the innermost body sits at depth `levels`.
+func depthTables(levels int) []byte {
+	body := b(0)
+	for range levels {
+		body = cat(b(1, 13), leb(uint64(len(body))), body, b(0))
+	}
+	return body
+}
+
+// depthArrays is a root body whose one unknown field holds `levels` arrays
+// nested by value: each array carries one element of kind 14.
+func depthArrays(levels int) []byte {
+	content := b(14, 0)
+	for i := 1; i < levels; i++ {
+		content = cat(b(14, 1), leb(uint64(len(content))), content)
+	}
+	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+}
+
+// depthKeyed is a root body whose one unknown field holds `levels` keyed
+// bodies nested by value: each slot's element is the next keyed body.
+func depthKeyed(levels int) []byte {
+	content := b(16, 0)
+	for i := 1; i < levels; i++ {
+		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	}
+	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+}
+
+// depthUnionTables is a root body whose one unknown field is a union whose arm
+// is a table holding the next union: `pairs` unions with a table arm each, so
+// the innermost table body sits at depth 2*pairs.
+func depthUnionTables(pairs int) []byte {
+	body := b(0)
+	for range pairs {
+		union := cat(b(1, 13), leb(uint64(len(body))), body)
+		body = cat(b(1, 15), union, b(0))
+	}
+	return body
 }
 
 var rootValue1 = cat(b(1, 4), i32(1))
@@ -286,6 +395,8 @@ var framingVectors = []framingVector{
 	{name: "array_count_bound_plus_one", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 7, 30, 5, 2, 9, 11, 2, 9, 0)},
 	// H5: a count of two over one element's bytes.
 	{name: "array_count_over_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 30, 2, 2, 0)},
+	// L6: two complete elements inside L, the count saying one.
+	{name: "array_elements_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 4, 30, 1, 9, 11, 0)},
 	// H3, H5: the count's second byte is the parent's next reference (ref 2,
 	// `past`): count = 2 + 2·128 = 258, the elements bounded by L cover none,
 	// and the parent resumes at that byte.
@@ -325,6 +436,8 @@ var framingVectors = []framingVector{
 	{name: "map_descending", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(9, 90), squadEntry(2, 20), name50, b(0))},
 	// H5 at a map: a count of two over one entry.
 	{name: "map_count_over_length", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 17, 13, 2), squadEntry(2, 20), name50, b(0))},
+	// L6 at a map: two complete ascending entries inside L, the count saying one.
+	{name: "map_entries_past_count", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 1), squadEntry(2, 20), squadEntry(3, 30), name50, b(0))},
 	// H2 at a map.
 	{name: "map_L1_inert", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 1, 13), name50, b(0))},
 	// THE KNOWN WITNESS, verbatim: the Dart wire-fuzz mutant #2400 fixed (ci-full
@@ -351,6 +464,8 @@ var framingVectors = []framingVector{
 	{name: "keyed_triple_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(9, 9), i32(3), b(0))},
 	// H5 at kind 16: a count of two over one triple.
 	{name: "keyed_count_over_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 4, 2, 2, 4), i32(7), b(0))},
+	// L6 at kind 16: two complete triples inside L, the count saying one.
+	{name: "keyed_slots_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 1, 2, 4), i32(7), b(3, 4), i32(3), b(0))},
 	// H4 at kind 16, inside L.
 	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
 	// H2 at kind 16.
@@ -381,6 +496,9 @@ var framingVectors = []framingVector{
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.
 	{name: "node_record_L_past_field", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(5, 9, 1, 4), i32(2), b(0))), b(0))},
+	// L3 at a record: the body ends at its terminator, with a further byte
+	// still inside the record's L.
+	{name: "node_record_bytes_after_terminator", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(5, 8, 1, 4), i32(2), b(0), b(0xFF))), b(0))},
 	// T2: bytes left over inside the field.
 	{name: "node_bytes_left_over", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2), b(0xFF)), b(0))},
 	// T2: the field under a kind other than 12.
@@ -411,10 +529,95 @@ var framingVectors = []framingVector{
 	// T8's legal twin: a chain of two records, each pointer naming a node not
 	// yet reached, reads clean.
 	{name: "node_chain_two", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecordNext(2, 3), listNodeRecord(3)), b(0))},
+	// §3.1: a legal chain of 200,000 records, each next naming the following
+	// record and the last next absent. The node table is flat, so the chain's
+	// length is not a depth and no pass recurses per pointer. Held out of the
+	// manifest on this file's held rule.
+	{name: "node_chain_200000", unit: "graphdemo", root: "Scene", ids: sceneListNodeIds, body: listNodeChain(200000), held: true},
 	// T6: a reader that cannot name the reserved id counts one unknown.
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
+	// §3.1, §3.3, §5: a node record whose TYPE reference resolves to one of
+	// the three reserved ids is malformed, and the whole load refuses. The
+	// node-table id is already slot 4, so its record names that slot directly;
+	// the build-version and vocabulary ids ride in slot 5 like a declared type
+	// id. The two blob type ids are a blob record's lawful type (§2.5).
+	{name: "node_type_node_table_id", unit: "graphdemo", root: "Scene", ids: sceneNodeTypeIds, body: sceneNodeTypeBody(4), held: true},
+	{name: "node_type_build_version_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "build-version"}, body: sceneNodeTypeBody(5), held: true},
+	{name: "node_type_vocabulary_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "vocabulary"}, body: sceneNodeTypeBody(5), held: true},
+
+	// ---------------------------------------------------------------- X. the nesting bound
+	// §4, ONE NESTING BOUND (binary_max_depth): the root body is depth 0 and
+	// each structural payload inside it is one level deeper. Depth 128 passes
+	// and 129 refuses in every walk, unknown fields included (§6.5). A union
+	// whose arm is a table adds two levels: the union, then the table body
+	// inside it. HELD out of the manifest until every leg answers them.
+	{name: "depth_tables_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(128), held: true},
+	{name: "depth_arrays_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(128), held: true},
+	{name: "depth_union_tables_64", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(64), held: true},
+	{name: "depth_keyed_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(128), held: true},
+	{name: "depth_tables_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(129), held: true},
+	{name: "depth_arrays_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(129), held: true},
+	{name: "depth_union_tables_65", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(65), held: true},
+	{name: "depth_keyed_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(129), held: true},
+	{name: "depth_tables_5000", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(5000), held: true},
+
+	// ---------------------------------------------------------------- G. the graph through unknown pointers
+	// THE GRAPH IS EVERY KIND 17 PAYLOAD (§6.5), in every field and record,
+	// declared by this reader or not. These vectors reach it through pointers
+	// Scene does not declare, so a reader that walks only its own pointer
+	// fields sees none of them. Each is held out of the manifest until every
+	// leg carries the walk.
+	//
+	// REFUSED: an unknown type's own kind-17 field names itself, and two such
+	// records name each other, so a walk from the root meets an OPEN node.
+	{name: "graph_unknown_type_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
+	{name: "graph_unknown_type_pair", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(2,
+			graphNodeRecord(13, cat(b(7, 17, 3), b(0))),
+			graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
+	// REFUSED: a ListNode's UNKNOWN kind-17 field names the same ListNode.
+	{name: "graph_listnode_unknown_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(1, 17, 2), nodeTable(1, graphNodeRecord(5, cat(b(11, 17, 2), b(0)))), b(0))},
+	// REFUSED: an unknown kind-17 root field names index 1, the root, whose
+	// descent is open for the whole walk.
+	{name: "graph_unknown_to_root", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 1), b(0))},
+	// REFUSED: one bytes blob record named from two unknown kind-17 root
+	// fields (blob_shared), and the same record named twice from one unknown
+	// array of element kind 17.
+	{name: "graph_blob_two_unknown_fields", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), b(12, 17, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
+	{name: "graph_blob_two_unknown_elements", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 14, 4, 17, 2, 2, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
+	// REFUSED: a string blob record's bytes are well-formed UTF-8 with no zero
+	// byte wherever it is reached from; graphdemo declares no *string, so only
+	// an unknown kind-17 root field names these.
+	{name: "graph_string_blob_ill_formed", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0xFF))), b(0))},
+	{name: "graph_string_blob_zero_byte", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0))), b(0))},
+	// REFUSED: a record of an undeclared type, and a string blob record, that
+	// no pointer reaches.
+	{name: "graph_unknown_type_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_string_blob_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(nodeTable(1, graphNodeRecord(14, b('o', 'k'))), b(0))},
+	//
+	// READ: a record of a type this reader cannot name reads null and counts
+	// unknown, reached from an unknown kind-17 root field, from inside an
+	// unknown nested table, from the kind-17 arm of an unknown union, and from
+	// a kind-17 slot of an unknown enum-keyed body.
+	{name: "graph_reach_unknown_field", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_nested", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
+	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+		body: cat(b(11, 16, 5, 17, 1, 18, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and
@@ -460,6 +663,8 @@ func framingId(u *units, unitKey, name string) (uint64, error) {
 		return ir.TableNodeWireId, nil
 	case name == "build-version":
 		return ir.TableBuildVersionWireId, nil
+	case name == "vocabulary":
+		return ir.TableMessageVocabularyWireId, nil
 	case len(name) > 5 && name[:5] == "type:":
 		unit, err := u.get(unitKey)
 		if err != nil {

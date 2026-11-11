@@ -268,17 +268,33 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		case *ir.Struct:
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a payload-free arm names no type (§2.6)
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
+			fixedCollectUnion(r, seen, order)
 		}
 	}
 	*order = append(*order, st)
+}
+
+// fixedCollectUnion descends an ARM exactly as a field is descended (§2.6): an
+// arm may hold a struct or another union by value, so the closure reaches
+// through every nested union rather than only the structs a union names
+// directly. The union's own name is marked so a legal cycle cannot revisit it.
+func fixedCollectUnion(un *ir.Union, seen map[string]bool, order *[]*ir.Struct) {
+	key := "union:" + un.Name
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue // a payload-free arm names no type (§2.6)
+		}
+		switch r := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedCollectTypes(r, seen, order)
+		case *ir.Union:
+			fixedCollectUnion(r, seen, order)
+		}
+	}
 }
 
 // ---- the writer ------------------------------------------------------------

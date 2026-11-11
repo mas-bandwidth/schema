@@ -9,6 +9,7 @@ import (
 // SPEC-TABLES §16.2: null alone means optional absence. Any other
 // incompatible value is present-default and replaces a duplicate entry.
 func TestElixirMapValueShapePreservesPresence(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir map value presence")
 	u := unitFrom(t, `package mapshape
  table Leaf { n int32 }

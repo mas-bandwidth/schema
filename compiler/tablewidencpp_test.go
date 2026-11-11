@@ -207,38 +207,48 @@ var (
 // predicate every unit owns.
 func widenBothWays(t *testing.T, src string, want widenHelper, absent []string) {
 	t.Helper()
-	with, files := deadCppHeader(t, src)
-	if !strings.Contains(with, want.def) {
-		t.Errorf("a unit that declares the kind must define %s", want.symbol)
-	}
-	if !strings.Contains(with, want.call) {
-		t.Errorf("%s must be CALLED by the unit that carries it; no %q in the header", want.symbol, want.call)
-	}
-	for _, sym := range absent {
-		if strings.Contains(with, sym) {
-			t.Errorf("this unit declares no kind that reaches %s and must carry none of it", sym)
+	// The unit and its nearest neighbour compile side by side, each in a
+	// parallel subtest of its own: one after the other they were a minute on
+	// a busy runner.
+	t.Run("with", func(t *testing.T) {
+		t.Parallel()
+		with, files := deadCppHeader(t, src)
+		if !strings.Contains(with, want.def) {
+			t.Errorf("a unit that declares the kind must define %s", want.symbol)
 		}
-	}
-	deadCppCompile(t, files)
-
-	without, base := deadCppHeader(t, widenNoneSrc)
-	if strings.Contains(without, want.symbol) {
-		t.Errorf("the nearest neighbour reaches no %s call site and must carry none of it", want.symbol)
-	}
-	// the ladder predicate is EVERY unit's: a kind comparison is what every
-	// reader does, and it is named by the walks
-	if !strings.Contains(without, "inline bool TableKindWidens") {
-		t.Error("TableKindWidens is every unit's and left one")
-	}
-	deadCppCompile(t, base)
+		if !strings.Contains(with, want.call) {
+			t.Errorf("%s must be CALLED by the unit that carries it; no %q in the header", want.symbol, want.call)
+		}
+		for _, sym := range absent {
+			if strings.Contains(with, sym) {
+				t.Errorf("this unit declares no kind that reaches %s and must carry none of it", sym)
+			}
+		}
+		deadCppCompile(t, files)
+	})
+	t.Run("without", func(t *testing.T) {
+		t.Parallel()
+		without, base := deadCppHeader(t, widenNoneSrc)
+		if strings.Contains(without, want.symbol) {
+			t.Errorf("the nearest neighbour reaches no %s call site and must carry none of it", want.symbol)
+		}
+		// the ladder predicate is EVERY unit's: a kind comparison is what every
+		// reader does, and it is named by the walks
+		if !strings.Contains(without, "inline bool TableKindWidens") {
+			t.Error("TableKindWidens is every unit's and left one")
+		}
+		deadCppCompile(t, base)
+	})
 }
 
 func TestCppTableWidenSignedFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenSignedSrc, widenSignedHelper,
 		[]string{"TableReadUnsignedAt", "TableWidenF32", "TableKindWidth"})
 }
 
 func TestCppTableWidenUnsignedFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenUnsignedSrc, widenUnsignedHelper,
 		[]string{"TableReadSignedAt", "TableWidenF32", "TableKindWidth"})
 }
@@ -248,6 +258,7 @@ func TestCppTableWidenUnsignedFollowsTheCensus(t *testing.T) {
 // the ordinary conversion, carries no TableWidenF32 and none of the other
 // three, and compiles and runs.
 func TestCppTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
+	t.Parallel()
 	with, files := deadCppHeader(t, widenF32Src)
 	for _, sym := range []string{"TableWidenF32", "TableReadSignedAt", "TableReadUnsignedAt", "TableKindWidth"} {
 		if strings.Contains(with, sym) {
@@ -270,6 +281,7 @@ func TestCppTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 // rides with it, because that is what the arm's payload decodes through — so
 // it is not named absent here.
 func TestCppTableWidenArmWidthFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenArmSrc, widenWidthArm,
 		[]string{"TableReadUnsignedAt", "TableWidenF32"})
 }
@@ -277,6 +289,7 @@ func TestCppTableWidenArmWidthFollowsTheCensus(t *testing.T) {
 // A LIST is the other half, and it is reached with nothing in the unit
 // widening at all.
 func TestCppTableWidenListWidthFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	widenBothWays(t, widenListSrc, widenWidthList,
 		[]string{"TableReadSignedAt", "TableReadUnsignedAt", "TableWidenF32"})
 }
@@ -285,6 +298,7 @@ func TestCppTableWidenListWidthFollowsTheCensus(t *testing.T) {
 // sits at the bottom of its ladder carries none of the four names, and still
 // compiles and runs. It is the claim the five cases above each lean on.
 func TestCppTableWidenRuntimeAbsentFromALadderlessUnit(t *testing.T) {
+	t.Parallel()
 	header, files := deadCppHeader(t, widenNoneSrc)
 	for _, sym := range []string{
 		"TableKindWidth", "TableReadSignedAt", "TableReadUnsignedAt", "TableWidenF32",

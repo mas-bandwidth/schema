@@ -13,6 +13,7 @@ import (
 // the read this row exists to catch, a reader that ran the plan before the hash
 // check refused.
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
+	t.Parallel()
 	corpus := fixedCorpus(t)
 	elixirBin := elixirBinary(t)
 	body := `  data = File.read!(file())
