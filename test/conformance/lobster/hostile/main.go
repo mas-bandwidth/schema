@@ -228,7 +228,7 @@ func packetDispatch(namespace string, types []string) string {
 	b.WriteString("def packet_answer(name:string, table:string, data:string) -> string:\n")
 	for _, t := range types {
 		fmt.Fprintf(&b, "    if table == %q:\n", t)
-		fmt.Fprintf(&b, "        var v = %s.New%s()\n", namespace, t)
+		fmt.Fprintf(&b, "        let v = %s.New%s()\n", namespace, t)
 		b.WriteString("        let r = serialize_read_stream_padded(data)\n")
 		fmt.Fprintf(&b, "        if not %s.Read%s(r, v):\n", namespace, t)
 		b.WriteString("            return name + \" refuse packet_refused\\n\"\n")
