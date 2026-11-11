@@ -6610,7 +6610,14 @@ namespace Benchtable
                             // OWN guard and ordinal — unguarded at top level, guarded
                             // under an outer arm — which is one rule and not two
                             // (§5.9 #13).
-                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
+                            //
+                            // IT ALSO HOLDS THE WRITER'S ARM SET (§4.6): DstSize carries
+                            // THE WRITER'S ARM COUNT and Meta the writer's tag width, and
+                            // the run refuses a raw tag past that count out_of_range, so
+                            // the compiled plan refuses what the identity plan's bounds
+                            // pass refuses. A count past a byte carries 0: no check.
+                            byte their_arms = (te.Children >= 1u && te.Children <= 255u) ? (byte)te.Children : (byte)0;
+                            c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, their_arms, meta: c.ArgW));
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -7029,9 +7036,10 @@ namespace Benchtable
                 if (e.Op == Const)
                 {
                     // a constant reads no source at all, EXCEPT the union's None
-                    // const, which reads the writer's raw tag to count a clamp
-                    // past DstSize arms — it has a source reach.
-                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + e.Size : 0u;
+                    // const, which reads the writer's raw tag, at the writer's tag
+                    // width in Meta, to refuse a tag past DstSize arms — it has a
+                    // source reach.
+                    end = (e.Aux == 0 && e.DstSize != 0) ? e.Src + ArgWidth(e.Meta) : 0u;
                 }
                 else if (e.Op == Count)
                 {
@@ -7308,6 +7316,10 @@ namespace Benchtable
                             }
                         case Const:
                             {
+                                // THE UNION'S None CONST HOLDS THE WRITER'S ARM SET
+                                // (§4.6): a raw tag past DstSize arms names nothing the
+                                // writer wrote, and the load refuses it out_of_range.
+                                if (p.Aux == 0 && p.DstSize != 0 && TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                                 if (slots[(int)p.Dst].SetRaw != null)
                                 {
                                     slots[(int)p.Dst].SetRaw(dst, p.Aux);
@@ -9399,6 +9411,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableEntityFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -9975,6 +9988,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableStatFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
@@ -11589,6 +11603,7 @@ namespace Benchtable
                         }
                     case TableFixedWire.Const:
                         {
+                            if (p.Aux == 0 && p.DstSize != 0 && TableFixedWire.TagAt(src, p.Src, p.Meta) > p.DstSize) { return "out_of_range"; }
                             TableMixedFixedSetRaw(dst, p.Dst, p.Aux, report);
                             break;
                         }
