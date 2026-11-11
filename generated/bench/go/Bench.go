@@ -1325,7 +1325,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f41 = uint64(uint32(float32(normalizedValue*200.0)+0.5)) & 0xff
+	integerValue := uint32(float32(normalizedValue*200.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 200 {
+		integerValue = 200
+	}
+	f41 = uint64(integerValue) & 0xff
 	f42 := uint64(0)
 	normalizedValue2 := (value.AimY + 1.0) / 2.0
 	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -1333,7 +1338,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	} else if !(normalizedValue2 <= 1) {
 		normalizedValue2 = 1
 	}
-	f42 = uint64(uint32(float32(normalizedValue2*200.0)+0.5)) & 0xff
+	integerValue2 := uint32(float32(normalizedValue2*200.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue2 > 200 {
+		integerValue2 = 200
+	}
+	f42 = uint64(integerValue2) & 0xff
 	f43 := uint64(0)
 	normalizedValue3 := (value.AimZ + 1.0) / 2.0
 	if !(normalizedValue3 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -1341,7 +1351,12 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	} else if !(normalizedValue3 <= 1) {
 		normalizedValue3 = 1
 	}
-	f43 = uint64(uint32(float32(normalizedValue3*200.0)+0.5)) & 0xff
+	integerValue3 := uint32(float32(normalizedValue3*200.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue3 > 200 {
+		integerValue3 = 200
+	}
+	f43 = uint64(integerValue3) & 0xff
 	f44 := uint64(math.Float32bits(value.Recoil)) & 0xffffffff
 	f45 := math.Float64bits(value.Drift)
 	w12 := f41 | f42<<8 | f43<<16 | f44<<24 | f45<<56
