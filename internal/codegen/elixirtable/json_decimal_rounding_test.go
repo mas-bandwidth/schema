@@ -15,6 +15,7 @@ import (
 // Exact decimal midpoints and their neighbours distinguish direct binary32
 // rounding from the lossy decimal -> binary64 -> binary32 route.
 func TestJSONDecimalBinary32Elixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package decimalprobe
 table Root {

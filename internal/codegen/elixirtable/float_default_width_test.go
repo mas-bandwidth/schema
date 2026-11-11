@@ -17,6 +17,7 @@ import (
 // floats, text reads and wire reads must agree on elision at that same width;
 // signed zero remains a distinct stored value in every scalar container.
 func TestFloatDefaultWidthElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	u := unitFrom(t, `package floatdefault
 enum Slot { A, B }
