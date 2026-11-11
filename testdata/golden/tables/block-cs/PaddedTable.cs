@@ -466,7 +466,7 @@ namespace Blockdemo
             b[0] = unchecked((byte)value.Tag);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1), value.Value);
             b.Slice(9)[0] = (byte)(value.Flag ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(10), (int)value.Id);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(10), unchecked((int)value.Id));
             int len_label = value.Label != null ? value.LabelLength : 0;
             System.Diagnostics.Debug.Assert(len_label <= 15);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(14), len_label);
@@ -486,7 +486,7 @@ namespace Blockdemo
         {
             if (value == null) return;
             b[0] = unchecked((byte)value.Marker);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(1), (long)value.Stamp);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(1), unchecked((long)value.Stamp));
             int count_rows = value.RowsCount;
             System.Diagnostics.Debug.Assert(count_rows >= 0 && count_rows <= 64); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(9), count_rows);
@@ -779,12 +779,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PaddedRowFixedSetBytes(dst, p.Dst, wide, need);
@@ -846,12 +846,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PaddedRowFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -3951,12 +3951,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PaddedFrameFixedSetBytes(dst, p.Dst, wide, need);
@@ -4018,12 +4018,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PaddedFrameFixedSetWide(dst, p.Dst, w);
                             }
                             else
