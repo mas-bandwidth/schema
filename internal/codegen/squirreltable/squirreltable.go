@@ -173,9 +173,15 @@ func assemble(m *Module, name string) []byte {
 	fmt.Fprintf(&h, "//   local %s = dofile(dir + \"/%smodule.nut\", true).require(%q);\n\n", name, squirrel.RuntimePrefix, name)
 	h.WriteString("local _M = vargv[0];\n")
 	h.WriteString("local _require = vargv[1];\n")
+	// THE PIN FIRST (docs/PORT-SQUIRREL.md): schema_table_descriptor refuses
+	// a VM that is not the pin, so it is required before every other table
+	// runtime, and the refusal comes before any runtime defines anything.
+	fmt.Fprintf(&h, "local _rt_descriptor = _require(%q);\n", RuntimePrefix+"descriptor")
 	names := make([]string, 0, len(m.runtimes))
 	for k := range m.runtimes {
-		names = append(names, k)
+		if k != "descriptor" {
+			names = append(names, k)
+		}
 	}
 	sort.Strings(names)
 	for _, k := range names {
