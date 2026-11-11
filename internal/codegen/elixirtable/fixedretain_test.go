@@ -16,6 +16,7 @@ import (
 )
 
 func TestFixedRootRetainRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir fixed-root retention refusals and variable-root controls")
 	for _, mixed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("mixed_%t", mixed), func(t *testing.T) {
@@ -128,6 +129,7 @@ func loadVariableRetainFixture(t *testing.T, paths ...string) *ir.Unit {
 }
 
 func TestFixedMessageRootRetainRefusalElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir published fixed ToolMessage keeps plain wire behavior and refuses retention")
 	u := loadUnit(t, "../../../tables/messages/Messages.schema")
 	wire, err := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin")
