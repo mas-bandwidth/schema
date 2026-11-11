@@ -1766,16 +1766,26 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       # THE C DRIVER'S TOOLCHAIN-DEPENDENT BUILD, kept between runs. The C
-      # leg's single translation-unit link is what ran to 66-108 s (job
-      # 121-139 in the runs the card names); the shared inputs above do not
-      # include build/tables-generated-c or build/conformance-c, so the leg
-      # rebuilt both. A warm hit turns that build into a timestamp check.
+      # leg's per-unit compile and link is what ran to 66-108 s (job 121-139
+      # in the runs the card names); the shared inputs above do not include
+      # build/tables-generated-c, build/conformance-c-objs or
+      # build/conformance-c, so the leg rebuilt all of them. A warm hit turns
+      # that build into a timestamp check.
+      #
+      # The driver links from build/conformance-c-objs, so a cache that omits
+      # the objects restores the linked driver and make recompiles every
+      # translation unit. The hit step below stands the stamp, then the
+      # restored generated sources, then the objects, then the driver newer in
+      # that order: a stamp newer than a generated unit remakes that unit
+      # through its empty stamp prerequisite and recompiles its object even
+      # when the object itself was touched.
       - id: conformance-c-cache
         if: matrix.lang == 'c'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             build/tables-generated-c
+            build/conformance-c-objs
             build/conformance-c
           key: conformance-c-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
 
@@ -1784,6 +1794,8 @@ jobs:
         run: |
           touch build/tables-generated-c/collections.stamp
           touch build/tables-generated-c/.stamp
+          find build/tables-generated-c \( -name '*.c' -o -name '*.h' \) -type f -exec touch {} +
+          find build/conformance-c-objs -type f -exec touch {} +
           touch build/conformance-c
 
       # Its own step so the run log carries the build cost and the run cost
@@ -1800,6 +1812,7 @@ jobs:
         with:
           path: |
             build/tables-generated-c
+            build/conformance-c-objs
             build/conformance-c
           key: ${{ steps.conformance-c-cache.outputs.cache-primary-key }}
 

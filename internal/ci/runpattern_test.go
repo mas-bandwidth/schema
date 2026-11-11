@@ -472,6 +472,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 		"'test/c-tables/**'",
 		"touch build/tables-generated-c/collections.stamp",
 		"touch build/tables-generated-c/.stamp",
+		"build/conformance-c-objs",
 		"touch build/conformance-c",
 		"actions/cache/save@",
 		"cache-primary-key",
@@ -479,6 +480,49 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 		if !strings.Contains(conf, want) {
 			t.Errorf("conformance does not carry %q: the C leg rebuilds its driver over the new checkout", want)
 		}
+	}
+
+	// The C driver links from build/conformance-c-objs. If either cache path
+	// list omits that directory, a hit restores the linked driver without its
+	// objects and make recompiles all 98 translation units; if the hit step
+	// touches only the stamp and the driver, the restored objects stay older
+	// than the checkout and make recompiles them anyway. Both path lists must
+	// carry the objects, and the hit step must stand the generated sources and
+	// every object newer than the generated stamp and older than the linked
+	// driver: the generated units carry an empty stamp prerequisite, so a
+	// stamp newer than them is remade at make time and recompiles its object
+	// even when the object itself was touched.
+	pathLines := 0
+	for _, l := range strings.Split(conf, "\n") {
+		if strings.TrimSpace(l) == "build/conformance-c-objs" {
+			pathLines++
+		}
+	}
+	if pathLines < 2 {
+		t.Errorf("conformance lists build/conformance-c-objs on %d cache path lines, want it in both the restore and save lists: a hit restores the driver without its objects and make recompiles all of them", pathLines)
+	}
+	stampAt := strings.Index(conf, "touch build/tables-generated-c/.stamp")
+	driverAt := strings.Index(conf, "touch build/conformance-c")
+	generatedAt, objectsAt := -1, -1
+	for _, l := range strings.Split(conf, "\n") {
+		if strings.Contains(l, "find build/tables-generated-c ") &&
+			strings.Contains(l, "-exec touch") {
+			generatedAt = strings.Index(conf, l)
+		}
+		if strings.Contains(l, "find build/conformance-c-objs") &&
+			strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
+			objectsAt = strings.Index(conf, l)
+		}
+	}
+	if generatedAt < 0 {
+		t.Error("conformance does not refresh the restored generated C sources after touching the stamp: the empty stamp rule remakes them at make time and recompiles every generated unit's object")
+	}
+	if objectsAt < 0 {
+		t.Error("conformance does not stand every restored object under build/conformance-c-objs newer than the checkout: make recompiles all of the C driver's translation units on a cache hit")
+	}
+	if stampAt < 0 || driverAt < 0 || generatedAt < 0 || objectsAt < 0 ||
+		!(stampAt < generatedAt && generatedAt < objectsAt && objectsAt < driverAt) {
+		t.Error("conformance refreshes the C driver inputs out of order: the stamp, then the generated sources, then the objects, then the linked driver must each stand newer than the last, or make recompiles or relinks on a hit")
 	}
 
 	dartMK := readCI(t, root, "make/dart.mk")
