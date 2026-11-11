@@ -631,8 +631,12 @@ const tableRegionSource = `
 
     public static long LoadMeasureParts(TableTypeInfo type, ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out string reason)
     {
+        return LoadMeasurePartsWalk(type, bytes, out dataBytes, out attributionBytes, out reason, out _);
+    }
+    static long LoadMeasurePartsWalk(TableTypeInfo type, ReadOnlySpan<byte> bytes, out long dataBytes, out long attributionBytes, out string reason, out bool nonFinite)
+    {
         dataBytes = attributionBytes = 0;
-        long total = LoadMeasure(type, bytes, out reason); if (total < 0) { return -1; }
+        long total = LoadMeasureWalk(type, bytes, out reason, out nonFinite); if (total < 0) { return -1; }
         if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         int idsCount = (int)Read64(bytes, bytes.Length - 8), end = bytes.Length - 8 - idsCount * 8;
         Reader root = new Reader(bytes.Slice(1, end - 1), bytes.Slice(end, idsCount * 8));
@@ -643,16 +647,16 @@ const tableRegionSource = `
     // only data. The caller keeps both allocations stable during this call.
     public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        long total = LoadMeasureParts(type, bytes, out long dataBytes, out long attributionBytes, out string reason);
+        long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out long attributionBytes, out string reason, out bool wireNonFinite);
         if (total >= 0 && capacity < total) { return IntPtr.Zero; }
-        return NativeLoadRegion(type, region, dataBytes, (IntPtr)((byte*)region + dataBytes), attributionBytes, bytes, report, total, dataBytes, reason);
+        return NativeLoadRegion(type, region, dataBytes, (IntPtr)((byte*)region + dataBytes), attributionBytes, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
     public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
-        long total = LoadMeasureParts(type, bytes, out long dataBytes, out _, out string reason);
-        return NativeLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, dataBytes, reason);
+        long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out _, out string reason, out bool wireNonFinite);
+        return NativeLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
-    static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason)
+    static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason, bool wireNonFinite)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
@@ -715,6 +719,7 @@ const tableRegionSource = `
         }
         state.Next = Align(type.StorageSize, type.RegionAlign); state.End = state.Next + rootExtent;
         bool complete = NativeReadBody(ref state, ref root, new NativeValue(data, 0), type, report, false);
+        if (wireNonFinite && report.NonFiniteFloat == null) { report.NonFiniteFloat = "a float the wire carries"; report.NonFiniteReason = "non_finite_float: a float the wire carries"; }
         // a non-finite float refuses the load and lands nothing (docs/SPEC-TABLES.md §3.3)
         if (NonFiniteRefused(report) || report.Refused) { report.Damaged |= damagedBefore; System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Refused); return IntPtr.Zero; }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
