@@ -482,6 +482,14 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	files := generateElixir(t, u)
 	retainFiles := generateElixir(t, retainUnit)
 	files["RetainTable.ex"] = retainFiles["Table.ex"]
+	// both units compile whole and together: a Table names its unit's fixed
+	// modules (a fixed root's save is the fixed form's), and the retaining
+	// unit's modules sit in their own namespace beside the plain unit's
+	for name, data := range retainFiles {
+		if name != "Table.ex" {
+			files["Retain"+name] = data
+		}
+	}
 
 	probe := fmt.Sprintf(`
 mutant = Base.decode16!(%q, case: :lower)
@@ -491,7 +499,7 @@ if Tblv2.Table.load_measure("Cfg", mutant) != 320 do
   raise("expected 320 for mutant load_measure, got " <> inspect(Tblv2.Table.load_measure("Cfg", mutant)))
 end
 
-case Tblv2.Table.load("Cfg", mutant) do
+case Tblv2.Table.variable_load("Cfg", mutant) do
   {:error, _reason, r} ->
     if r.reason == "" do
       raise("unexpected plain report: " <> inspect(r))
@@ -511,7 +519,7 @@ case Tblv2retain.Table.load_retain("Cfg", mutant, store, empty) do
     raise("unexpected retain load result: " <> inspect(other))
 end
 
-case Tblv2.Table.load("Cfg", bad_key) do
+case Tblv2.Table.variable_load("Cfg", bad_key) do
   {:error, _reason, r} when r.reason != "" -> :ok
   other -> raise("expected bad_key plain refusal, got " <> inspect(other))
 end
@@ -527,7 +535,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 		hex.EncodeToString(badKey),
 	)
 
-	out, err := runArmProbe(t, elixirBinary(t), files, probe)
+	out, err := runCompleteFilesProbe(t, files, probe)
 	if err != nil || !strings.Contains(out, "UNKNOWN_KEYED_SLOT_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("unknown keyed slot probe failed: %v\n%s", err, out)
 	}
@@ -545,8 +553,8 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 	}
 	badFiles := make(map[string][]byte, len(files))
 	maps.Copy(badFiles, files)
-	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
-	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
+	badFiles["Table.ex"] = []byte(strings.ReplaceAll(tableEx, target, sabotage))
+	if badOut, badErr := runCompleteFilesProbe(t, badFiles, probe); badErr == nil {
 		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
 	}
 }

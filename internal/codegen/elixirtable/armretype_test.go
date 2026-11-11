@@ -51,20 +51,20 @@ defmodule Probe do
   def counters(r), do: {r.unknown, r.widened}
 end
 
-{:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_moved_width") + `))
+{:ok, v, r} = Tbla2.Table.variable_load("Root", File.read!(` + wire("a1_arm_moved_width") + `))
 Probe.check(v["value"] == {"a", 7}, "the widened arm lands the writer's value: #{inspect(v)}")
 Probe.check(Probe.counters(r) == {0, 1}, "one widened, nothing else: #{inspect(r)}")
 Probe.check(v["id"] == 11 and v["tail"] == 22, "the siblings read: #{inspect(v)}")
 
-{tag, reason, r} = Tbla2.Table.load("Root", File.read!(` + wire("a2_arm_length_off_width") + `))
+{tag, reason, r} = Tbla2.Table.variable_load("Root", File.read!(` + wire("a2_arm_length_off_width") + `))
 Probe.check({tag, reason} == {:error, :malformed}, "a damaged arm discards the whole load: #{inspect({tag, reason})}")
 Probe.check(r.reason == "wire_damaged", "the arm's L off its width is damage: #{inspect(r)}")
 
-{tag, reason, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_one_width") + `))
+{tag, reason, r} = Tbla2.Table.variable_load("Root", File.read!(` + wire("a1_arm_one_width") + `))
 Probe.check({tag, reason} == {:error, :malformed} and r.reason == "wire_damaged",
   "int32 under a float32 arm refuses the whole load: #{inspect({tag, reason, r})}")
 
-{:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_body") + `))
+{:ok, v, r} = Tbla2.Table.variable_load("Root", File.read!(` + wire("a1_arm_body") + `))
 Probe.check(v["value"] == {"e", %{"n" => 5}} and Probe.counters(r) == {0, 0},
   "the sane body arm still round-trips: #{inspect({v, r})}")
 IO.puts("ok")
