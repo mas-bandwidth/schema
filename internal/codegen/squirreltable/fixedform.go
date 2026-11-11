@@ -475,6 +475,11 @@ func fixedEmitWritePayload(m *Module, f *ir.Field, at int64, expr, ind string) {
 			// alone, born at its min length, so len() is the live extent and
 			// the slack stays the template's zeros.
 			m.Printf("%sif (%s.len() < 0 || %s.len() > %d) return \"count_over_bound\";\n", ind, expr, expr, f.ArrayBound)
+			// a count under the declared minimum refuses before it is stored
+			// (docs/SPEC.md §5.1 row 3)
+			if f.ArrayMin > 0 {
+				m.Printf("%sif (%s.len() < %d) %s\n", ind, expr, f.ArrayMin, fixedWriteRefusal(m, f))
+			}
 			m.Printf("%s_rt_fixed.puti32(b, at + %d, %s.len());\n", ind, at, expr)
 			count = expr + ".len()"
 		}
@@ -568,6 +573,9 @@ func fixedEmitWriteElement(m *Module, f *ir.Field, at int64, expr, ind, dyn stri
 						fixedEmitWriteArrayGuard(m, v.F, armExpr, armInd, -1)
 						m.Printf("%slocal c = %s.len();\n", armInd, armExpr)
 						m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", armInd, v.F.ArrayBound)
+						if v.F.ArrayMin > 0 {
+							m.Printf("%sif (c < %d) %s\n", armInd, v.F.ArrayMin, fixedWriteRefusal(m, v.F))
+						}
 						m.Printf("%s_rt_fixed.puti32(b, at + %s + %d, c);\n", armInd, off, tag)
 						base += fixedCountBytes
 						m.Printf("%sfor (local i = 0; i < c; i++) {\n", armInd)

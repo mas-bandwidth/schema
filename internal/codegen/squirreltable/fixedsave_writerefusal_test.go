@@ -14,9 +14,10 @@ import (
 
 // fixedSaveRefusalUnit holds one field per row of docs/SPEC.md §5.1 that a
 // fixed record carries: a ranged integer (row 1), a bits(N) (row 2), a counted
-// array (row 3), a string(N) (rows 4 and 8), an enum (row 5), a union (row 6),
-// a plain float (row 7), a ranged float (row 10), and a bare int8 and an
-// optional int32 whose storage width bounds them.
+// array past its bound and one under its minimum (row 3), a string(N) (rows 4
+// and 8), an enum (row 5), a union (row 6), a plain float (row 7), a ranged
+// float (row 10), a bare int8 and an optional int32 whose storage width
+// bounds them, and a bool.
 const fixedSaveRefusalUnit = `package fsw
 
 enum Mode { Idle, Run }
@@ -32,6 +33,7 @@ fixed table Rec
     r     uint64 = 1 | min = 1, max = 10
     bi    bits(6)
     arr   [..3]uint16
+    ca    [2..3]uint16
     s     string(4)
     mode  Mode
     pick  Pick
@@ -39,6 +41,7 @@ fixed table Rec
     small int8
     oi    ?int32
     plain float64
+    flag  bool
 }
 `
 
@@ -84,6 +87,9 @@ local rows = [
   ["arr_element_over", false, function(r) { r.Arr = [65536]; }, null],
   ["arr_element_negative", false, function(r) { r.Arr = [-1]; }, null],
   ["arr_at_bound", true, function(r) { r.Arr = [0, 1, 65535]; }, function(r) { return r.Arr; }],
+  // row 3: a counted array under its declared minimum
+  ["ca_under", false, function(r) { r.Ca = [1]; }, null],
+  ["ca_at_min", true, function(r) { r.Ca = [7, 65535]; }, function(r) { return r.Ca; }],
   // rows 4 and 8: a string(4) past its bound, and ill-formed text
   ["s_over", false, function(r) { r.S = "abcde"; }, null],
   ["s_ill_formed", false, function(r) { r.S = "\xff"; }, null],
@@ -120,6 +126,10 @@ local rows = [
   ["pick_tag_string", false, function(r) { r.Pick.Type = "a"; }, null],
   ["ratio_string", false, function(r) { r.Ratio = "a"; }, null],
   ["oi_string", false, function(r) { r.OiPresent = true; r.Oi = "x"; }, null],
+  ["plain_string", false, function(r) { r.Plain = "x"; }, null],
+  ["flag_string", false, function(r) { r.Flag = "x"; }, null],
+  ["flag_integer", false, function(r) { r.Flag = 1; }, null],
+  ["flag_true", true, function(r) { r.Flag = true; }, function(r) { return r.Flag; }],
 ];
 foreach (row in rows) {
   local verdict = "";
@@ -201,6 +211,12 @@ func TestSquirrelFixedSaveRefusesOffContract(t *testing.T) {
 				f.Count = 3
 				f.Elems[2].U = 65535
 			}},
+			{"ca_under", false, func(i *tabletext.Instance) { field(i, "ca").Count = 1 }},
+			{"ca_at_min", true, func(i *tabletext.Instance) {
+				f := field(i, "ca")
+				f.Count = 2
+				f.Elems[1].U = 65535
+			}},
 			{"s_over", false, func(i *tabletext.Instance) { field(i, "s").Cell.Str = []byte("abcde") }},
 			{"s_ill_formed", false, func(i *tabletext.Instance) { field(i, "s").Cell.Str = []byte{0xff} }},
 			{"s_at_bound", true, func(i *tabletext.Instance) { field(i, "s").Cell.Str = []byte("abcd") }},
@@ -211,6 +227,7 @@ func TestSquirrelFixedSaveRefusesOffContract(t *testing.T) {
 			{"plain_nan", false, func(i *tabletext.Instance) { field(i, "plain").Cell.F = math.NaN() }},
 			{"plain_inf", false, func(i *tabletext.Instance) { field(i, "plain").Cell.F = math.Inf(1) }},
 			{"plain_large", true, func(i *tabletext.Instance) { field(i, "plain").Cell.F = 1e308 }},
+			{"flag_true", true, func(i *tabletext.Instance) { field(i, "flag").Cell.U = 1 }},
 			{"ratio_over", false, func(i *tabletext.Instance) { field(i, "ratio").Cell.F = 1.5 }},
 			{"ratio_under", false, func(i *tabletext.Instance) { field(i, "ratio").Cell.F = -0.5 }},
 			{"ratio_at_max", true, func(i *tabletext.Instance) { field(i, "ratio").Cell.F = 1 }},
@@ -233,6 +250,9 @@ func TestSquirrelFixedSaveRefusesOffContract(t *testing.T) {
 		}
 		for _, row := range rows {
 			inst := m.New(root)
+			// the Go instance is born with every count at zero: start ca at its
+			// declared minimum, as the Squirrel table is born
+			field(inst, "ca").Count = 2
 			row.set(inst)
 			out, err := tablewire.EncodeFixed(m, inst)
 			if row.lawful {
