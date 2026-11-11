@@ -55,12 +55,22 @@ $(LOBSTER_WIRE_FUZZ_ILL_TEXT): testdata/wire/tables/store_full_message.bin
 	@mkdir -p $(@D)
 	@perl -0777 -pe 's/\x63oins\.pack/\xffoins.pack/ or die "the message golden carries no sku text\n"' $< > $@
 
-# lobster-dist-present fetches the pinned toolchain (sha256 checked by
-# dist-lobster) where none resolves: the negative-control rows run on a runner
-# that installs no Lobster of its own.
+# lobster-dist-present resolves the pinned toolchain: a bench that installs the
+# pin beside the repo puts `lobster` on PATH, so link that at the default dist
+# path when dist is absent and LOBSTER is the default; a LOBSTER the caller
+# named is never replaced. Where none resolves, dist-lobster fetches the pin
+# (sha256 checked by dist-lobster), as the negative-control rows run on a
+# runner that installs no Lobster of its own.
 .PHONY: lobster-dist-present
 lobster-dist-present:
-	@[ -x "$(LOBSTER)" ] || $(MAKE) --no-print-directory dist-lobster
+	@if [ -x "$(LOBSTER)" ]; then exit 0; fi; \
+	if [ "$(origin LOBSTER)" = "file" ]; then \
+		lob=$$(command -v lobster 2>/dev/null) || true; \
+		if [ -n "$$lob" ]; then \
+			mkdir -p "$(dir $(LOBSTER))" && ln -sf "$$lob" "$(LOBSTER)" && exit 0; \
+		fi; \
+	fi; \
+	$(MAKE) --no-print-directory dist-lobster
 
 # lobster_wire_fuzz_vectors replays every pinned vector of the builder arm
 # over the units in $(1), with an explicit unit/root assignment per vector
