@@ -90,6 +90,9 @@ import 'dart:typed_data';
 import 'ProbeFixed.dart' as f;
 import 'ProbeCook.dart' as c;
 void check(bool ok,String what){if(!ok)throw StateError(what);}
+// a storage check is a debug assert (docs/SPEC.md §5.1): this probe runs
+// with asserts on, so an over-long count or length must end in one
+bool asserted(bool Function() write){try{write();}on AssertionError{return true;}return false;}
 String hex(Uint8List b,int length)=>b.take(length).map((v)=>v.toRadixString(16).padLeft(2,'0')).join();
 void main(){
  final value=f.Root();
@@ -106,15 +109,13 @@ void main(){
   check(bytes.every((x)=>x==0xa5),'short capacity changed output');
   for(final count in [-1,3]){
    value.rowsCount=count;
-   check(!c.RootCook.cook(value,bytes,order,report:report),'invalid count accepted');
-   check(report.reason=='invalid_value','invalid count lost refusal reason');
+   check(asserted(()=>c.RootCook.cook(value,bytes,order,report:report)),'invalid count missed the assert');
    check(bytes.every((x)=>x==0xa5),'invalid count changed output');
   }
   value.rowsCount=1;
   for(final length in [-1,5]){
    value.titleLength=length;
-   check(!c.RootCook.cook(value,bytes,order,report:report),'invalid length accepted');
-   check(report.reason=='invalid_value','invalid length lost refusal reason');
+   check(asserted(()=>c.RootCook.cook(value,bytes,order,report:report)),'invalid length missed the assert');
    check(bytes.every((x)=>x==0xa5),'invalid length changed output');
   }
   value.titleLength=2;

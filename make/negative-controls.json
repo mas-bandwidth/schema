@@ -3008,11 +3008,11 @@
       "java": "21"
     },
     {
-      "name": "write-refusal-storage-release-dart",
+      "name": "write-refusal-storage-debug-dart",
       "when": "pull-request",
-      "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
+      "why": "the Dart debug storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs the cook writer with asserts on, and requires a count and a length past their storage to hit the assert. The control runs that gate first, then strips the generated asserts and requires the same debug gate to go red. Two small Dart runs.",
       "targets": [
-        "write-refusal-storage-release-dart-negative-control"
+        "write-refusal-storage-debug-dart-negative-control"
       ],
       "dart": "3.13.2"
     },

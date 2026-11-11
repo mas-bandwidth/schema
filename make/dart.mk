@@ -1833,35 +1833,38 @@ tables-dart-forged-ordinal-negative-control: tables-fixedform-corpus
 		  cat $(DART_ORDINAL_NC)/log; exit 1; }
 	@echo "negative control: a Dart compiled plan that lands a forged ordinal turns TestFixedVersioningForgedOrdinalBothPlans RED"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A counted array whose count is
-# past the storage it indexes is refused in EVERY build, so this gate compiles
-# the generated writer AOT, where every assert is gone, and requires the cook
-# writer to refuse before the first byte. The control strips the generated
-# guard and requires the same release gate to go red.
-STORAGE_RELEASE_DART := build/storage-release-dart
-.PHONY: write-refusal-storage-release-dart write-refusal-storage-release-dart-negative-control
-write-refusal-storage-release-dart: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_release.dart
-	@rm -rf $(STORAGE_RELEASE_DART) && mkdir -p $(STORAGE_RELEASE_DART)/generated
-	./bin/schema generate --lang dart --out $(STORAGE_RELEASE_DART)/generated $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/dart/storage_release.dart $(STORAGE_RELEASE_DART)/generated/storage_release_main.dart
-	$(DART) compile exe -o $(STORAGE_RELEASE_DART)/gate $(STORAGE_RELEASE_DART)/generated/storage_release_main.dart >/dev/null
-	./$(STORAGE_RELEASE_DART)/gate
+# THE DEBUG STORAGE GATE (docs/SPEC.md §5.1). Dart is an assert leg: a count or
+# a length past the storage it indexes is a debug assert in the cook writer and
+# nothing in a release build. This gate runs the generated writer with asserts
+# on and requires each over-long case to end in the assert, which the driver
+# answers as refused. The control runs the gate first, then strips the
+# generated count and length asserts and requires the same gate to go red on
+# both.
+STORAGE_DEBUG_DART := build/storage-debug-dart
+.PHONY: write-refusal-storage-debug-dart write-refusal-storage-debug-dart-negative-control
+write-refusal-storage-debug-dart: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_debug.dart
+	@rm -rf $(STORAGE_DEBUG_DART) && mkdir -p $(STORAGE_DEBUG_DART)/generated
+	./bin/schema generate --lang dart --out $(STORAGE_DEBUG_DART)/generated $(STORAGE_RELEASE_SCHEMA)
+	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)/generated/storage_debug_main.dart
+	$(DART) --enable-asserts $(STORAGE_DEBUG_DART)/generated/storage_debug_main.dart
 
-write-refusal-storage-release-dart-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_release.dart
-	@rm -rf $(STORAGE_RELEASE_DART)-negative && mkdir -p $(STORAGE_RELEASE_DART)-negative/generated
-	./bin/schema generate --lang dart --out $(STORAGE_RELEASE_DART)-negative/generated $(STORAGE_RELEASE_SCHEMA)
-	@sed -i.bak 's/if (value.itemsCount < 0 || value.itemsCount > 8) return false;/if (false) return false; \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_DART)-negative/generated/StorageCook.dart
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_DART)-negative/generated/StorageCook.dart || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@cp test/conformance/dart/storage_release.dart $(STORAGE_RELEASE_DART)-negative/generated/storage_release_main.dart
-	$(DART) compile exe -o $(STORAGE_RELEASE_DART)-negative/gate $(STORAGE_RELEASE_DART)-negative/generated/storage_release_main.dart >/dev/null
-	@if ./$(STORAGE_RELEASE_DART)-negative/gate > $(STORAGE_RELEASE_DART)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_DART)-negative/log; exit 1; \
+write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-dart bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/dart/storage_debug.dart
+	@rm -rf $(STORAGE_DEBUG_DART)-negative && mkdir -p $(STORAGE_DEBUG_DART)-negative/generated
+	./bin/schema generate --lang dart --out $(STORAGE_DEBUG_DART)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak -e 's/assert(value.itemsCount <= 8);/\/\/ SABOTAGED count/' \
+		-e 's/assert(value.nameLength <= 16);/\/\/ SABOTAGED length/' \
+		-e 's/assert(value.nameLength <= value.name.length);/\/\/ SABOTAGED storage/' \
+		$(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart
+	@test "$$(grep -c 'SABOTAGED' $(STORAGE_DEBUG_DART)-negative/generated/StorageCook.dart)" = 3 || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
+	@cp test/conformance/dart/storage_debug.dart $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart
+	@if $(DART) --enable-asserts $(STORAGE_DEBUG_DART)-negative/generated/storage_debug_main.dart > $(STORAGE_DEBUG_DART)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the debug storage gate passed with the asserts removed"; \
+		cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; \
 	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_DART)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_DART)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_DART)-negative/log
-	@echo "negative control: removing the Dart storage guard turns the release gate RED"
+	@grep -q 'FAIL storage debug count' $(STORAGE_DEBUG_DART)-negative/log && \
+		grep -q 'FAIL storage debug length' $(STORAGE_DEBUG_DART)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on both storage asserts"; \
+		  cat $(STORAGE_DEBUG_DART)-negative/log; exit 1; }
+	@grep 'FAIL storage debug' $(STORAGE_DEBUG_DART)-negative/log
+	@echo "negative control: removing the Dart storage asserts turns the debug gate RED"

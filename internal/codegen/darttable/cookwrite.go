@@ -146,14 +146,13 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		if f.KeyEnum != "" {
 			bound = f.KeyEnumRef.Max
 		}
-		g.pf("%sif (%s.length < %d) return false;\n", ind, expr, bound)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1): Dart is an
+		// assert leg, so a list shorter than its storage or a count past it
+		// is the programmer's error, caught by `assert` and gone in release.
+		g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, bound))
 		if f.Array == ir.ArrayCounted {
-			chk := fmt.Sprintf("%sif (%sCount < 0 || %sCount > %d) return false;", ind, expr, expr, bound)
-			if len(chk) <= 80 {
-				g.pf("%s\n", chk)
-			} else {
-				g.pf("%sif (%sCount < 0 || %sCount > %d)\n%s  return false;\n", ind, expr, expr, bound, ind)
-			}
+			g.cookAssert(ind, fmt.Sprintf("%sCount >= 0", expr))
+			g.cookAssert(ind, fmt.Sprintf("%sCount <= %d", expr, bound))
 			g.pf("%sif (out != null) out.setInt32(at + %d, %sCount, order);\n", ind, pieces[1].Offset, expr)
 		}
 		stride := int64(0)
@@ -190,7 +189,9 @@ func (g *cookGen) emitCookFixedField(f *ir.Field, offset int64, expr, ind string
 		return
 	}
 	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		g.pf("%sif (%sLength < 0 ||\n%s    %sLength > %d ||\n%s    %sLength > %s.length)\n%s  return false;\n", ind, expr, ind, expr, f.Type.Size, ind, expr, expr, ind)
+		g.cookAssert(ind, fmt.Sprintf("%sLength >= 0", expr))
+		g.cookAssert(ind, fmt.Sprintf("%sLength <= %d", expr, f.Type.Size))
+		g.cookAssert(ind, fmt.Sprintf("%sLength <= %s.length", expr, expr))
 		g.pf("%sif (out != null) {\n", ind)
 		g.pf("%s  out.setInt32(at + %d, %sLength, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%s  for (var i = 0; i < %sLength; i++) {\n", ind, expr)
@@ -234,6 +235,17 @@ func (g *cookGen) cookRefuseUnless(ind, cond, ret string) {
 		return
 	}
 	g.pf("%sif (!%s)\n%s  return %s;\n", ind, cond, ind, ret)
+}
+
+// cookAssert writes a write-side storage check as `assert(<cond>);` the way
+// dart format does: one line while it fits eighty columns, the condition on
+// its own line past it.
+func (g *cookGen) cookAssert(ind, cond string) {
+	if line := fmt.Sprintf("%sassert(%s);", ind, cond); len(line) <= 80 {
+		g.pf("%s\n", line)
+		return
+	}
+	g.pf("%sassert(\n%s  %s,\n%s);\n", ind, ind, cond, ind)
 }
 
 // emitCookScalarStore is emitCookFixedScalar's store with no null test on
