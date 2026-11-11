@@ -37,6 +37,35 @@ func TestJsRetainKeepsDepth128(t *testing.T) {
 		}
 		files[v.Name+".bin"] = data
 	}
+	// Two more legal shapes at exactly 128, counted as §4 counts: a keyed
+	// slot adds a level only when its element is structural, and a union adds
+	// one for a structural arm while its own frame adds none. Each reuses
+	// depth_tables_128's id table and count, the file's last sixteen bytes.
+	tables128 := files["depth_tables_128.bin"]
+	tail := tables128[len(tables128)-16:]
+	framed := func(prefix []byte, content []byte) []byte {
+		out := append([]byte{}, prefix...)
+		out = depthBoundaryAppendLeb(out, uint64(len(content)))
+		return append(out, content...)
+	}
+	file := func(body []byte) []byte {
+		out := append([]byte{tables128[0]}, body...)
+		return append(out, tail...)
+	}
+	// 128 keyed bodies nested by value; the innermost body's one slot is an i32
+	keyed := []byte{4, 1, 1, 4, 7, 0, 0, 0}
+	for i := 1; i < 128; i++ {
+		keyed = framed([]byte{16, 1, 1}, keyed)
+	}
+	files["depth_keyed_scalar_128.bin"] = file(append(framed([]byte{1, 16}, keyed), 0))
+	vectors = append(vectors, vector{Name: "depth_keyed_scalar_128", Read: true})
+	// 127 tables, then a union whose arm is a union whose arm is an i32
+	body := append(framed([]byte{1, 15, 1, 15}, []byte{1, 4, 4, 7, 0, 0, 0}), 0)
+	for range 127 {
+		body = append(framed([]byte{1, 13}, body), 0)
+	}
+	files["depth_tables_union_union_128.bin"] = file(body)
+	vectors = append(vectors, vector{Name: "depth_tables_union_union_128", Read: true})
 	rows, err := json.Marshal(vectors)
 	if err != nil {
 		t.Fatal(err)
