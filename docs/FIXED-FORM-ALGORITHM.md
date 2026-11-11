@@ -378,6 +378,20 @@ READ( plan, split, record, out ):
 
 `split` is the number of UNGUARDED entries — the index the second half starts at, not a count of guarded ones.
 
+**ONE GUARDLESS ENTRY RIDES THE SECOND HALF: the deferred present-defaults entry.** An absent optional's declared
+defaults must land AFTER the guarded arm entries of the payload they replace, or an arm's wire bytes overwrite them.
+So a present-defaults entry that answers to no tag is not counted in `split`: the coalescer lays it in a third pass,
+after every guarded entry, and the second loop applies a guardless entry unconditionally (its guard lane is "no
+guard" and is never read as an offset). A present-defaults entry that carries a guard (an optional inside an arm)
+keeps its guard and its place after its own payload's guarded entries. The plan's partition is then exactly this:
+
+- below `split`: no entry carries a guard, and no entry is a deferred (guardless) present-defaults entry;
+- at and above `split`: every entry carries a guard, or is a guardless present-defaults entry;
+- no guarded entry follows a guardless present-defaults entry.
+
+The C++ reference emits this order (`internal/codegen/cpptable/fixedruntime.go`, the coalescer and `TableFixedRun`)
+and `test/tables/fixedform_main.cpp` W6 checks it on every identity plan it reads.
+
 ### 4.5 The scatter
 
 The reader validates on load in **every** build, release included; a count or length past its bound REFUSES BY NAME before any destination byte is written, and every other condition refuses by its one name too (SPEC-TABLES §6.5). Nothing is clamped.
