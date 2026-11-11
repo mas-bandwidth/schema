@@ -56,6 +56,16 @@ PYTHON_MYPY_WHEELS := \
 # sha256 of a file, on Linux (sha256sum) or macOS (shasum)
 python_sha256 = { sha256sum $(1) 2>/dev/null || shasum -a 256 $(1); } | cut -d" " -f1
 
+# THE FLEET'S BENCHES ALREADY HOLD THE PINS. Their SDK (the directory
+# $NOVA_SDK names) has CPython <v> at python-<v>/, built from the same
+# python.org tarball, with the locked mypy in the floor interpreter, and a
+# sandboxed bench job has no network to download them. A pin whose SDK
+# interpreter reports exactly its release is staged at dist/python-<v>/bin as
+# links to that interpreter, so every path below is unchanged; any other
+# answer, or no NOVA_SDK, builds from the tarball as before.
+python_sdk_version = $(shell $(NOVA_SDK)/python-$(1)/bin/python$(basename $(1)) -I -c 'import platform;print(platform.python_version())' 2>/dev/null)
+PYTHON_SDK_STAGED := $(if $(NOVA_SDK),$(foreach v,$(PYTHON_VERSIONS),$(if $(filter $(v),$(call python_sdk_version,$(v))),$(v))))
+
 .PHONY: dist-python
 dist-python: $(foreach v,$(PYTHON_VERSIONS),dist/python-$(v)/PIN)
 	@$(MAKE) --no-print-directory dist/python-$(PYTHON_FLOOR_VERSION)/MYPY
@@ -86,16 +96,30 @@ dist/python-%/PIN:
 		{ tail -40 ../build.log; echo "dist-python: CPython $* did not build"; exit 1; }
 	@echo "$* $(PYTHON_SHA256_$*)" > $@
 
+ifneq ($(PYTHON_SDK_STAGED),)
+$(foreach v,$(PYTHON_SDK_STAGED),dist/python-$(v)/PIN): dist/python-%/PIN:
+	@rm -rf dist/python-$* && mkdir -p dist/python-$*/bin
+	@ln -s $(NOVA_SDK)/python-$*/bin/* dist/python-$*/bin/
+	@echo "dist-python: CPython $* from the fleet SDK $(NOVA_SDK)/python-$*, no download"
+	@echo "$* $(PYTHON_SHA256_$*) $(NOVA_SDK)/python-$*" > $@
+endif
+
 # The analyzer, into the floor interpreter: each wheel fetched by URL, then pip
 # installs from that directory alone (--no-index), every wheel held to the
 # lock's sha256 (--require-hashes). No index is consulted and nothing is
 # resolved: the lock names every dependency.
 dist/python-$(PYTHON_FLOOR_VERSION)/MYPY: dist/python-$(PYTHON_FLOOR_VERSION)/PIN $(PYTHON_MYPY_LOCK)
+ifneq ($(filter $(PYTHON_FLOOR_VERSION),$(PYTHON_SDK_STAGED)),)
+	@got=$$(dist/python-$(PYTHON_FLOOR_VERSION)/bin/mypy --version 2>/dev/null); case "$$got" in \
+		"mypy $(PYTHON_MYPY_VERSION) "* | "mypy $(PYTHON_MYPY_VERSION)") ;; \
+		*) echo "dist-python REFUSES: the fleet SDK's mypy reports \"$$got\", the lock is mypy $(PYTHON_MYPY_VERSION)"; exit 1;; esac
+else
 	@mkdir -p dist/python-wheels
 	@for u in $(PYTHON_MYPY_WHEELS); do f=dist/python-wheels/$${u##*/}; \
 		if [ ! -f $$f ]; then curl -fsSL -o $$f.part $$u && mv $$f.part $$f || exit 1; fi; done
 	@$(PYTHON_FLOOR) -I -m pip install --quiet --no-index --no-cache-dir --disable-pip-version-check \
 		--require-hashes --find-links dist/python-wheels -r $(PYTHON_MYPY_LOCK)
+endif
 	@cp $(PYTHON_MYPY_LOCK) $@
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599): one probe per pin.
