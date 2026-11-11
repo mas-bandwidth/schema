@@ -1,0 +1,206 @@
+// The round-trip gate's Go probe (test/roundtrip). The gate renders this
+// template once per generated unit, one block per root table, and runs it as a
+// test of the generated package: every call below is the generated API.
+package [[.Package]]
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type rtProbe struct {
+	in  string
+	out *bufio.Writer
+}
+
+func (p *rtProbe) say(root, name, verb, verdict string) {
+	fmt.Fprintf(p.out, "RT %s %s %s %s\n", root, name, verb, verdict)
+}
+
+func (p *rtProbe) read(parts ...string) []byte {
+	b, err := os.ReadFile(filepath.Join(append([]string{p.in}, parts...)...))
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+func (p *rtProbe) keep(root, name, ext string, b []byte) {
+	if err := os.WriteFile(filepath.Join(p.in, "out", root, name+ext), b, 0o644); err != nil {
+		panic(err)
+	}
+}
+
+func rtVerdict(ok, same bool, why error) string {
+	switch {
+	case !ok:
+		return fmt.Sprintf("refused:%v", why)
+	case !same:
+		return "diff"
+	}
+	return "ok"
+}
+
+// rtCall runs f, turning a panic into a refusal: a generated call that panics
+// is answered, not allowed to take the probe down.
+func rtCall(f func() string) (s string) {
+	defer func() {
+		if r := recover(); r != nil {
+			s = fmt.Sprintf("refused:panic %v", r)
+		}
+	}()
+	return f()
+}
+[[range .Roots]][[if eq .Class "variable"]]
+func rtProbe[[.Name]](p *rtProbe, name string) {
+	const root = "[[.Name]]"
+	toJSON := func(x *[[.Name]]) string {
+		b := make([]byte, max([[.Name]]ToJSONMeasure(x), 0))
+		[[.Name]]ToJSON(x, b)
+		return string(b)
+	}
+	var sb [[.Name]]Builder
+	sb.Init()
+	var r TableReport
+	if ![[.Name]]FromJSON(&sb, p.read("samples", root, name+".json"), &r) || !sb.Lock() {
+		p.say(root, name, "fromjson", fmt.Sprintf("refused:%v", r.Err()))
+		return
+	}
+	p.say(root, name, "fromjson", "ok")
+	v := sb.AsConst()
+	want := toJSON(v)
+	loads := func(tag string, wire []byte) {
+		p.say(root, name, "load"+tag, rtCall(func() string {
+			region := make([]byte, max([[.Name]]LoadMeasure(wire), 0)+64)
+			var lr TableReport
+			got := [[.Name]]Load(region, wire, &lr)
+			return rtVerdict(got != nil, got != nil && toJSON(got) == want, lr.Err())
+		}))
+		p.say(root, name, "load.region"+tag, rtCall(func() string {
+			region := make([]byte, max([[.Name]]LoadMeasure(wire), 0)+64)
+			var lr TableReport
+			got := [[.Name]]LoadRegion(region, wire, &lr)
+			return rtVerdict(got != nil, got != nil && toJSON(got) == want, lr.Err())
+		}))
+		p.say(root, name, "load.builder"+tag, rtCall(func() string {
+			var b [[.Name]]Builder
+			b.Init()
+			var lr TableReport
+			ok := [[.Name]]LoadBuilder(&b, wire, &lr) && b.Lock()
+			return rtVerdict(ok, ok && toJSON(b.AsConst()) == want, lr.Err())
+		}))
+		p.say(root, name, "load.strict"+tag, rtCall(func() string {
+			got, err := [[.Name]]ReadStrict(wire)
+			return rtVerdict(err == nil && got != nil, got != nil && toJSON(got) == want, err)
+		}))
+	}
+	wire := make([]byte, max([[.Name]]Measure(v), 0))
+	if n := [[.Name]]Save(v, wire); n <= 0 || n != int64(len(wire)) {
+		p.say(root, name, "save", fmt.Sprintf("refused:%d", n))
+	} else {
+		p.keep(root, name, ".save", wire)
+		p.say(root, name, "save", "ok")
+		loads("", wire)
+		p.say(root, name, "retain", rtCall(func() string {
+			store := TableRetain{Bytes: make([]byte, 1<<16), Ids: make([]TableRetainID, 1<<13)}
+			region := make([]byte, max([[.Name]]LoadMeasure(wire), 0)+64)
+			var lr TableReport
+			got := [[.Name]]LoadRetain(region, wire, &store, &lr)
+			if got == nil {
+				return rtVerdict(false, false, lr.Err())
+			}
+			out := make([]byte, max([[.Name]]MeasureRetain(got, &store), 0))
+			var sr TableReport
+			n := [[.Name]]SaveRetain(got, &store, out, &sr)
+			return rtVerdict(n == int64(len(out)), toJSON(got) == want && string(out) == string(wire), sr.Err())
+		}))
+	}
+	if eng := p.read("engine", root, name+".bin"); eng != nil {
+		loads("eng", eng)
+	}
+	p.say(root, name, "json", rtCall(func() string {
+		var jb [[.Name]]Builder
+		jb.Init()
+		var jr TableReport
+		ok := [[.Name]]FromJSON(&jb, []byte(want), &jr) && jb.Lock()
+		return rtVerdict(ok, ok && toJSON(jb.AsConst()) == want, jr.Err())
+	}))
+}
+[[else]]
+func rtProbe[[.Name]](p *rtProbe, name string) {
+	const root = "[[.Name]]"
+	toJSON := func(x *[[.Name]]) string {
+		b := make([]byte, max([[.Name]]ToJSONMeasure(x), 0))
+		[[.Name]]ToJSON(x, b)
+		return string(b)
+	}
+	v := &[[.Name]]{}
+	var r TableReport
+	if ![[.Name]]FromJSON(v, p.read("samples", root, name+".json"), &r) {
+		p.say(root, name, "fromjson", fmt.Sprintf("refused:%v", r.Err()))
+		return
+	}
+	p.say(root, name, "fromjson", "ok")
+	want := toJSON(v)
+	wire := make([]byte, max([[.Name]]Measure(v), 0))
+	if n := [[.Name]]Save(v, wire); n <= 0 || n != int64(len(wire)) {
+		p.say(root, name, "save", fmt.Sprintf("refused:%d", n))
+	} else {
+		p.keep(root, name, ".save", wire)
+		p.say(root, name, "save", "ok")
+		p.say(root, name, "load", rtCall(func() string {
+			back := &[[.Name]]{}
+			var lr TableReport
+			ok := [[.Name]]Load(back, wire, &lr)
+			return rtVerdict(ok, ok && toJSON(back) == want, lr.Err())
+		}))
+	}
+	eng := p.read("engine", root, name+".bin")
+	if eng != nil {
+		p.say(root, name, "loadeng", rtCall(func() string {
+			back := &[[.Name]]{}
+			var lr TableReport
+			ok := [[.Name]]Load(back, eng, &lr)
+			return rtVerdict(ok, ok && toJSON(back) == want, lr.Err())
+		}))
+	}
+[[if eq .Class "fixed"]]	p.say(root, name, "fixedsave", rtCall(func() string {
+		fw := make([]byte, [[.Name]]FixedMeasure(1))
+		if n, err := [[.Name]]FixedSaveReason([][[.Name]]{*v}, fw); n != int64(len(fw)) {
+			return fmt.Sprintf("refused:%d %v", n, err)
+		}
+		p.keep(root, name, ".fixed", fw)
+		return "ok"
+	}))
+	if eng != nil {
+		p.say(root, name, "fixedloadeng", rtCall(func() string {
+			backs := make([][[.Name]], 1)
+			plan := make([]TableFixedEntry, int([[.Name]]FixedPlanMax))
+			var fr TableReport
+			n := [[.Name]]FixedLoad(backs, eng, plan, &fr)
+			return rtVerdict(n == 1, n == 1 && toJSON(&backs[0]) == want, fr.Err())
+		}))
+	}
+[[end]]}
+[[end]][[end]]
+func TestRoundTripProbe(t *testing.T) {
+	p := &rtProbe{in: os.Getenv("ROUNDTRIP_IN"), out: bufio.NewWriter(os.Stdout)}
+	defer p.out.Flush()
+	cases := p.read("cases.txt")
+	if cases == nil {
+		t.Fatal("ROUNDTRIP_IN names no cases.txt")
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(cases)), "\n") {
+		f := strings.Fields(line)
+		switch f[0] {
+[[range .Roots]]		case "[[.Name]]":
+			rtProbe[[.Name]](p, f[1])
+[[end]]		default:
+			p.say(f[0], f[1], "probe", "refused:the unit generated no such root")
+		}
+	}
+}

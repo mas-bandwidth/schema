@@ -1,0 +1,5 @@
+# The round-trip gate's ratchet (test/roundtrip): the (leg, assertion, root
+# class) pairs that are red today, one per line, `<leg> <check> <class>`.
+# A row fails when a pair it measures red is not listed here, and when a
+# listed pair measures green: remove the line in the change that turns it
+# green. Nothing is added to this list to make a row pass.

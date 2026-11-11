@@ -111,6 +111,22 @@ func testgenSamples(st *ir.Struct) ([]tgSample, error) {
 	return out, nil
 }
 
+// TestgenSamples is a root table's §16.11 samples as the generated tests spell
+// them: each sample's name and a Go expression whose value is its JSON text.
+// The round-trip gate (test/roundtrip) evaluates the expressions, so every
+// language leg is driven by exactly the samples the generated tests use.
+func TestgenSamples(st *ir.Struct) (names, exprs []string, err error) {
+	samples, err := testgenSamples(st)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, s := range samples {
+		names = append(names, s.name)
+		exprs = append(exprs, s.expr)
+	}
+	return names, exprs, nil
+}
+
 // testgenMaxArms is the largest arm count of any union the table reaches.
 func testgenMaxArms(st *ir.Struct, seen map[*ir.Struct]bool, useen map[*ir.Union]bool) int {
 	if st == nil || seen[st] {
