@@ -744,6 +744,36 @@ public final class TableVariable {
         report.wireNonFinite = false;
         WireCheck wc = WIRE_CHECK.get();
         wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, false);
+    }
+
+    // openAnnouncement is the same form-1 open for the one body whose transport
+    // the announcement's two reserved ids are (docs/SPEC-TABLES.md §3.3). The
+    // announcement is an ordinary form-1 file, so it takes the same trailer,
+    // distinctness and wire-alone checks a file takes; only the two reserved
+    // ids in the root body are admitted where a file refuses them.
+    static Reader openAnnouncement(byte[] data, Report report) {
+        if (report == null) {
+            report = new Report();
+        }
+        int base = trailerBase(data, report);
+        if (base < 0) {
+            return null;
+        }
+        int count = (data.length - 8 - base) / 8;
+        long[] ids = new long[count];
+        for (int i = 0; i < count; i++) {
+            ids[i] = u64(data, base + i * 8);
+        }
+        report.wireNonFinite = false;
+        WireCheck wc = WIRE_CHECK.get();
+        wc.reset(data, ids);
+        return openChecked(data, base, ids, report, wc, true);
+    }
+
+    private static Reader openChecked(
+            byte[] data, int base, long[] ids, Report report, WireCheck wc, boolean announcement) {
+        wc.announcement = announcement;
         switch (wc.file(base)) {
             case WireCheck.DAMAGED:
                 report.damaged = true;
@@ -761,8 +791,14 @@ public final class TableVariable {
                 }
                 return null;
             case WireCheck.NON_FINITE:
-                // the decode names the field where this reader declares it;
-                // settleNonFinite refuses for one it does not
+                // AN ANNOUNCEMENT IS A FILE'S WIRE CHECK, and a float it cannot
+                // name is damage there (§3.3); a file's decode names the field
+                // where this reader declares it and settleNonFinite refuses for
+                // one it does not
+                if (announcement) {
+                    report.damaged = true;
+                    return null;
+                }
                 report.wireNonFinite = true;
                 break;
             default:
@@ -821,6 +857,9 @@ public final class TableVariable {
         int depth;
         int fail;
         boolean nonFinite;
+        // announcement admits the two reserved announcement ids in the root body,
+        // the one body whose transport they are (docs/SPEC-TABLES.md §3.3)
+        boolean announcement;
         // edges are the kind 17 payloads met, in wire order; edgeStart[k] is
         // where node k's begin (node 0 the root, node k record k - 1)
         long[] edges = new long[64];
@@ -1103,7 +1142,9 @@ public final class TableVariable {
                 long id = ids[(int) ref - 1];
                 int kind = buf[p++] & 0xff;
                 if (id == BUILD_ID || id == VOCAB_ID) {
-                    return damage();
+                    if (!root || !announcement) {
+                        return damage();
+                    }
                 }
                 if (id == NODE_ID) {
                     if (!root || kind != 12) {
@@ -3694,7 +3735,13 @@ func unitCarriesForm(u *ir.Unit, form string) bool {
 
 func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 	tables := cardVariableTables(u)
-	if len(tables) == 0 {
+	// THE ANNOUNCEMENT IS AN ORDINARY FORM-1 FILE (docs/SPEC-TABLES.md §3.3),
+	// so a unit with a fixed root needs the form-1 reader even when every table
+	// it declares is fixed: the message form's announcement opens with that
+	// reader's own open and steps its unknown fields with that reader's own
+	// skip. A unit with neither a variable table nor a fixed root carries
+	// neither.
+	if len(tables) == 0 && len(fixedRoots(u)) == 0 {
 		return map[string][]byte{}, nil
 	}
 	out := map[string][]byte{
