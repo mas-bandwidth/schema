@@ -159,6 +159,7 @@ table lower {
 	assertCompiles(t, u, surfaces, `package probe
 import "testing"
 func TestLowercaseEntryPoints(t *testing.T) {
+    t.Parallel()
     _ = lowerReset
     _ = lowerTableType
     _ = lowerMeasure
@@ -201,6 +202,7 @@ fixed table blocklower | forms = "wire,block" {
 		assertCompiles(t, u, DefaultSurfaces(), `package probe
 import "testing"
 func TestBlockEntryPoints(t *testing.T) {
+    t.Parallel()
     _ = blocklowerBlockOpen
     _ = blocklowerBlockBegin
     _ = blocklowerBlockBytes
