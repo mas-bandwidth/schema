@@ -137,9 +137,14 @@ enum
        the rule the ten above already state: the C enum numbers a set the C++
        enum orders, so a leg agrees on the NAME an endpoint is refused by and never
        on the integer. layout_unknown and layout_unsupported take 18 and 19 in
-       the order §5.3 names them. */
+       the order §5.3 names them; layout_newer keeps the retired name's
+       ordinal. */
     SCHEMA_TABLE_LAYOUT_UNKNOWN = 18,
     SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
+    /* layout_newer is RETIRED (docs/SPEC-TABLES.md §21.3): it keeps
+       layout_unknown's ordinal so a locked caller's spelling still compiles,
+       and no read answers it. */
+    SCHEMA_TABLE_LAYOUT_NEWER = SCHEMA_TABLE_LAYOUT_UNKNOWN,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
        string(N)'s used bytes that are not well-formed UTF-8 refuse the read
        by name, the verdict the packet reader gives, this form having no L to

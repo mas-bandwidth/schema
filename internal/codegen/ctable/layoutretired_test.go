@@ -5,18 +5,18 @@ import (
 	"testing"
 )
 
-// TestCFixedRuntimeRetiresLayoutNewer holds the C fixed runtime to
-// docs/VERSIONING.md and SPEC-TABLES §21.3: a hash in no lineage entry is
-// layout_unknown, and the retired layout_newer name is gone rather than kept
-// as a second spelling.
-func TestCFixedRuntimeRetiresLayoutNewer(t *testing.T) {
+// TestCFixedRuntimeReservesLayoutNewer holds the C fixed runtime to
+// SPEC-TABLES §21.3: a hash in no lineage entry is layout_unknown, while the
+// retired layout_newer member keeps its ordinal as an alias so locked callers
+// still compile. No read answers the retired name.
+func TestCFixedRuntimeReservesLayoutNewer(t *testing.T) {
 	t.Parallel()
-	for _, retired := range []string{"SCHEMA_TABLE_LAYOUT_NEWER", "layout_newer"} {
-		if strings.Contains(tableFixedRuntime, retired) {
-			t.Errorf("the C fixed runtime still carries the retired %s; a hash in no lineage entry is layout_unknown", retired)
+	for _, want := range []string{
+		"SCHEMA_TABLE_LAYOUT_UNKNOWN = 18",
+		"SCHEMA_TABLE_LAYOUT_NEWER = SCHEMA_TABLE_LAYOUT_UNKNOWN",
+	} {
+		if !strings.Contains(tableFixedRuntime, want) {
+			t.Errorf("the C fixed runtime is missing %q", want)
 		}
-	}
-	if !strings.Contains(tableFixedRuntime, "SCHEMA_TABLE_LAYOUT_UNKNOWN") {
-		t.Error("the C fixed runtime has no layout_unknown refusal")
 	}
 }
