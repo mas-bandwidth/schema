@@ -1605,6 +1605,17 @@ code. The admission is limited to the observed kinds in `make/cpp-warn-allow.txt
 the normal shrink-only rule, new-kind rejection, stale-entry rejection and source
 negative control remain in force. The format inventory is unchanged.
 
+**One-time features warning inventory.** The feature-witness unit
+(`testdata/conformance/feature-witnesses/full/Features.schema`, generated into
+`build/tables-generated/features`) brought three warning-bearing paths that were
+absent from the census. Their initial 16 path/kind pairs come from existing
+table, view, reflection, list and map emitter forms; every kind among them is
+already listed for the other table units. This records inherited warning debt
+without changing layout or runtime code. The admission is limited to the
+observed kinds in `make/cpp-warn-allow.txt`; the normal shrink-only rule,
+new-kind rejection, stale-entry rejection and source negative control remain in
+force. The format inventory is unchanged.
+
 **Targets:** clean
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python |
