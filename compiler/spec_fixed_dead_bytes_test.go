@@ -47,6 +47,8 @@ func TestSpecFixedDeadBytesAreZero(t *testing.T) {
 	bounds := specSection(t, algorithm, "### 4.6 The bounds pass", "## 5. Evolution")
 	load := specSection(t, algorithm, "### 5.3 LOAD", "### 5.4 The counter")
 	perOp := specSection(t, algorithm, "### 5.4 The counter", "### 5.5 The closure")
+	compile := specSection(t, algorithm, "### 5.2 COMPILE", "### 5.3 LOAD")
+	answered := specSection(t, algorithm, "### 5.9 The twelve", "## 6. The bounds")
 
 	rows := []struct {
 		row    string
@@ -165,6 +167,27 @@ func TestSpecFixedDeadBytesAreZero(t *testing.T) {
 			},
 			stales: []string{
 				"over LIVE data only",
+			},
+		},
+		{
+			row:  "§5.2: the entries past a live count describe dead slots",
+			text: compile,
+			wants: []string{
+				"Entries past that count describe DEAD slots",
+				"refuses the whole load as `wire_damaged`",
+			},
+			stales: []string{
+				"they validate nothing, refuse nothing",
+			},
+		},
+		{
+			row:  "§5.9 #33: the slots past a live count are dead, held to zero",
+			text: answered,
+			wants: []string{
+				"those slots are dead, and the CHECK pass holds them to zero",
+			},
+			stales: []string{
+				"require reading bytes past the live count.",
 			},
 		},
 	}

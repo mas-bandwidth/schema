@@ -226,10 +226,9 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
-**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
-and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
-and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
-2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
+**The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks use each language's own idiom, and that decides the build** ([SPEC.md](SPEC.md) §5.1's per-leg table; `docs/rulings.json`, `write-refusal`): a debug-only assert in C, C++, C#, Rust, Java and Dart, and a refusal in every build in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose. `count <= Max`
+and `length <= N` are a caller contract; a release build of a debug-only leg removes its check exactly as it removes `assert`, pays nothing,
+and **clamps nothing**. The Go fixed writer REFUSES in every build: `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its
 set, and a `string` whose used bytes are not UTF-8 or hold a NUL. The check is over the LIVE extent only (a counted array's `count` elements, an
 absent optional's payload not at all, a union's taken arm), the same extent the read-side bounds pass walks
@@ -415,7 +414,7 @@ The reader validates on load in **every** build, release included; a count or le
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
 | `count` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE count_over_bound` — before any destination byte is written. Else `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written. **The element slots past its count are DEAD**, and a non-zero one refuses `wire_damaged` in the CHECK pass (§5.3 step 11) |
-| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)`; if `v < 0` or `v > cap` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The bytes past the used length are DEAD**, and a non-zero one refuses `wire_damaged` in the CHECK pass (§5.3 step 11). **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
+| `text` | `v := SLE(4, record+src)`; if `v < 0` or `v > size` then `REFUSE length_over_bound` — before any destination byte is written. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The bytes past the used length are DEAD**, and a non-zero one refuses `wire_damaged` in the CHECK pass (§5.3 step 11). **The length unit is BYTES, and the CONTENT RULES apply to the USED BYTES and nothing else**: UTF-8 validity over `v` bytes, never over `N` (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`, the WRITER's variant count; if `raw == 0`, `PUT(dstsize, out+dst, 0)` (None); if `raw <= n`, `PUT(dstsize, out+dst, table[raw])`; otherwise the op writes NOTHING and sets the record's FORGED FLAG for that field, so no forged value is ever landed or needs a representation. The op refuses nothing itself: the BOUNDS PASS refuses on the flag (§4.6), the one place ordinals are checked |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction (a non-finite f32 never reaches `widenf`: the read refuses it, SPEC-TABLES.md §3.3) |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
@@ -443,8 +442,9 @@ defaults are in range by construction and the CHECK pass has already held every 
 
 **THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
 for** (bill §12.5), and never the reader's: the reader's range is the wider one, so holding to it would admit a
-value the old writer could not have written. The reference carries them per entry for ranges and still owes the
-rest (§5.8 row 4).
+value the old writer could not have written. **They ride per lineage entry in the plan the generator lays down**, as the reference's
+`TableFixedKnownRange` carries them per entry, and **a backend's lineage input must carry them**; the
+reference still owes the rest (§5.8 row 4).
 
 - **A RANGED SCALAR** outside the min and max the plan carries: `REFUSE out_of_range`, naming the field.
   **A fixed-point field's bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by
@@ -801,7 +801,7 @@ EMIT(te, their_at, me, my_at, guard, arg):
                  else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
                        variant j
     12 / 33 text: emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
-                  aux := the BUFFER, flavour from the READER's field (1 utf8, 2 wide, 3 bytes)
+                  aux := the BUFFER, flavour from the READER's field (1 utf8, 3 bytes)
     every other leaf: te.size == me.size -> `copy` ; te.size < me.size and me.size <= 8 -> `widen` ;
                       otherwise UNLAWFUL
 ```
@@ -876,9 +876,10 @@ fixture asserts on a full widened run is the EXACT `min(their_n, my_n)`** (§5.9
 **COMPILED ENTRIES AND LIVE EXECUTION ARE DISTINCT.** The `min(their_n, my_n)`
 above is the number of element entries emitted from the two schema bounds. For
 an array with a count, execution visits only entries inside the record's live
-count (held to the admitted bounds). Entries past that count describe slack:
-they validate nothing, refuse nothing, and move no counter, as SPEC-TABLES
-§3.4 requires. In particular, a widened counted array reports one `widened`
+count (held to the admitted bounds). Entries past that count describe DEAD
+slots: they land nothing as a value and move no counter, and the CHECK pass
+(§5.3 step 11) refuses the whole load as `wire_damaged` when any byte of a
+dead slot is not zero, as SPEC-TABLES §3.4 requires. In particular, a widened counted array reports one `widened`
 per live element, not per reserved slot. The four-element case in §5.9 #33
 sends all four elements and still requires exactly four widenings.
 
@@ -1098,15 +1099,15 @@ declaration, so every entry a build holds is the reader's own or older (a `retir
 every step-5 miss is `layout_unknown`, in every leg, with no variation (decided 2026-11-03); `layout_newer`
 keeps its ordinal and no read answers it.
 
-**`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
-to `layout_newer` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the
+**`layout_unsupported` fills `layout_hash` too** — both live layout refusals report the file's hash, and what
+belongs to `layout_unknown` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the
 last member of the report (§5.9 #15). **There is no COMPILE census to land**: on a LAWFUL lineage it is zero, always (§5.9 #30), and an
 entry that would raise one is UNLAWFUL and carries `layout_malformed` (§5.2).
 
 **THE NAMES ARE RECOMMENDED AND THE INTEGERS ARE EACH LEG PAIR'S OWN** (§5.9 #14). Neither is compared
-across legs; the verdict is. The C and C++ pair's values are **`18` `layout_newer` and `19`
-`layout_unsupported`**, taken in the order §5.3 names them — the order is the contract too, so a second leg
-pair numbering its own set numbers them in the same order.
+across legs; the verdict is. The C and C++ pair keeps **`18`** for the retired `layout_newer` and answers
+**`19` `layout_unsupported`** — **the ORDER is the contract**, so a second leg
+pair numbering its own set keeps the retired member's ordinal and numbers its live refusals in the same order.
 
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
 — `record_bytes` is the BUILD's, the lock's body with the eight hash bytes already added (§5.2), but `rest`,
@@ -1244,7 +1245,7 @@ are recorded as **OWED BY THE C LEG** and stripped, each naming the §5 section 
 | `TableFixedWidens` rungs `20..24` and `25..29`, and `TableFixedSignedKind` over `20..24` | the signed and unsigned `fixed(I,F)` ladders, and a signed fixed-point's sign for the widening | §5.1 `fixed(I,F)` |
 | the enum case `te.size < me.size` emitted as `kTableFixedWiden` | a grown ordinal or tag width is a `widen`, unsigned, and counts `widened` | §5.2 EMIT kind 30, §5.4 |
 | `struct TableFixedKnownLayout` | the known-layout table itself: per entry the hash, the layout bytes, the record size | §5.2, §5.3 |
-| `layout_newer`, `layout_unsupported` and the floor, in the per-type codec rather than the shared extract | the version-range gates: refuse a hash the lineage does not hold, and a hash below the floor | §5.3 |
+| `layout_unknown`, `layout_unsupported` and the floor, in the per-type codec rather than the shared extract | the version-range gates: refuse a hash the lineage does not hold, and a hash below the floor | §5.3 |
 
 Five rows, and the C leg takes each from THIS PAGE rather than from the C++ text beside it. The twin's own
 note says so: do not port the C from the C++. **All five are CLOSED as of #917**, and what closing them
@@ -1323,7 +1324,7 @@ said "no lineage in the lock, no monotone check, no `--retire`" is closed, and w
 and 2 above, which are about the BACKEND not reading what the lock now holds. The digest is no longer a
 second argument a leg can omit — it is computed inside the hash from the schema (§5.2) — and the reference's
 properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
-named `layout_newer` rather than compiled both ways (§5.7).
+named `layout_unknown` rather than compiled both ways (§5.7).
 
 ### 5.9 The twelve the pilot port had to guess, answered — and thirty-six the legs after it found
 
@@ -1392,9 +1393,9 @@ The one counter a fixed read moves is `widened`, and it lands per executed entry
 **7. WHETHER `layout_unsupported` SETS THE HASH FIELD.** **YES.** Both named layout refusals report the file's
 hash: §5.3's condition table says `layout_unsupported` reports it, and the bill's ruling that "the retired
 hashes are emitted for `layout_unsupported`" (§12, ruling 9) is what the field is FOR — an operator who must
-decide between "upgrade the client" and "ship the reader" needs the number in both answers. What belongs to
-`layout_newer` alone is the words **AND NOTHING ELSE** (bill §12.4): its report carries the hash and no other
-fact. The joint-answer table's phrasing is about what else a row may carry, not about which rows fill the hash
+decide between "upgrade the client" and "ship the reader" needs the number in both answers. The retired
+`layout_newer` answers no read; what belongs to `layout_unknown` alone is the words **AND NOTHING ELSE**
+([SPEC-TABLES](SPEC-TABLES.md) §21.3): its report carries the hash and no other fact. The joint-answer table's phrasing is about what else a row may carry, not about which rows fill the hash
 field. The pilot's choice is the rule. (The ruling is bill §12.4 with §12's ruling 9; §12.12 is the bool and
 present-byte normalisation, a different row.)
 
@@ -1450,12 +1451,12 @@ and is fixed. What "constant" means in both sentences is the VALUE — a `1` tha
 The reference agrees in code (`e.guard = guard; e.arg = arg` at `fixedruntime.go:980`, under a comment that
 says unguarded), and so do all three ports.
 
-**14. THE TWO NEW REFUSALS' NUMBERS.** **The NAMES are the contract and the integers are each leg pair's own**,
-which is the rule the ten names before these two already state. "Pick the numbers the pilot uses" has no source:
-the Go leg spells a reason as a STRING, so there is no integer there to agree with. The C and C++ pair's values
-are **18 `layout_newer` and 19 `layout_unsupported`**, in the order §5.3 names them — **the ORDER is the
-contract**, so a leg pair numbering its own set lands the same two in the same sequence and a reader diffing two
-legs' headers sees one shape.
+**14. THE LAYOUT REFUSALS' NUMBERS.** **The NAMES are the contract and the integers are each leg pair's own**,
+which is the rule the ten names before these already state. "Pick the numbers the pilot uses" has no source:
+the Go leg spells a reason as a STRING, so there is no integer there to agree with. The C and C++ pair keeps
+**`18`** for the retired `layout_newer` and answers **`19` `layout_unsupported`** — **the ORDER is the
+contract**, so a leg pair numbering its own set keeps the retired member's ordinal and lands its live refusal in
+the same sequence, and a reader diffing two legs' headers sees one shape.
 
 **15. WHERE THE FILE'S HASH LANDS ON THE REPORT.** **`layout_hash`**, LAST on the report, zero on every other
 path — a new member at the end rather than a field inserted among the counters, because the report is a struct
@@ -1663,7 +1664,8 @@ with count zero executes zero widenings; count one executes one; the example
 above has count four and executes four. Plan compilation still emits the
 bound-many entries because the per-record count is not known at compile time.
 This ruling forbids folding away a widening; it does not override §3.4's slack
-rule or require reading bytes past the live count. The native regression is
+rule or require reading bytes past the live count as values: those slots are
+dead, and the CHECK pass holds them to zero (§5.3 step 11). The native regression is
 `TestFixedCountedArrayLiveExtent` in `internal/codegen/elixirtable`.
 
 **34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
