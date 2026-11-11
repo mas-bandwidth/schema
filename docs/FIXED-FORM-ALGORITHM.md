@@ -1,11 +1,11 @@
 # The fixed form as an algorithm
 
 **This is the document a port implements form `3` from.** §3.4 of `docs/SPEC-TABLES.md` states the wire and its
-reasons; this page states the same wire as steps, in one notation, so nine languages write the same code. Where
-the two disagree §3.4 is the law and this page is the bug — except at the footnotes, which are rulings neither
-§3.4 nor the C++ reference has caught up to. **The reference is not the specification**: it has accidents, and
-the ports that transliterated it inherited them as law. Implement from this page, prove against the oracle (§7),
-open the C++ only for a byte question.
+reasons; this page states the same wire as steps, in one notation, so every language the compiler emits writes
+the same code. Where the two disagree §3.4 is the law and this page is the bug — except at the footnotes, which
+are rulings neither §3.4 nor the C++ reference has caught up to. **The reference is not the specification**: it
+has accidents, and the ports that transliterated it inherited them as law. Implement from this page, prove
+against the oracle (§7), open the C++ only for a byte question.
 
 ## 0. The notation
 
@@ -1834,56 +1834,33 @@ not transliterate.** Then **prove against the oracle, in this order**:
 | 5 | **a byte-flip fuzz over the whole file, under a sanitizer, and it is not optional** — every offset is arithmetic over sizes a stranger wrote down, so every byte, one bit at a time, is answered one of two ways and never a third: a refusal by one name, or a read that lands values |
 | 6 | **the fixtures**, beside the corpus: `test/tables/FX1`/`FX2` (widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)`), `V1`/`V2` (a variant and an arm inserted mid-list, keyed slots sliding, an optional, a moved kind), `P1`/`P3` (value against `?T`), `UT1`/`UT2` (the guard and flavour lanes), and `bench/corpus/FixedTable.schema` |
 
-## 8. Coverage matrix stub
+## 8. Coverage
 
-Nine languages, one wire. Fill a cell when that port has proved the construct against the
-fixture in §7; leave it blank until it has. **C++ is the reference writer of the dump corpus,
-not an exemption from the proof.** This table is a stub: the fixtures exist, the per-language
-ticks are the work. It is not a second coverage page; every cell points at a fixture §7
-already names.
+Per-leg status is `ROADMAP.md`'s and `docs/roadmap.sexp`'s, not this page's: a leg ticks §7's proofs there, and
+those ticks are the status. **C++ is the reference writer of the dump corpus, not an exemption from the proof.**
+This page states the rules a leg proves; it keeps no second status table.
 
-| construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
-|---|---|---|---|---|---|---|---|---|---|---|
-| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fu1`/`fu2` | golden | | | | | | | | |
-| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3`, `fu1` into FU2 (NEW-READS-OLD) | golden | | | | | | | | |
-| the two widening rungs asserted after the compiled read | `fu1` into FU2: `mark int16`→`int32` SIGN-EXTENDED, `heat float32`→`float64` on the payload bits | golden | | | | | | | | |
-| OLD-REFUSES-NEW | `fu2` under FU1: `layout_unknown`, the file's hash, nothing decoded (COMPILE from the lock) | golden | | | | | | | | |
-| widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)` | `test/tables/FX1`/`FX2` | golden | | | | | | | | |
-| variant/arm inserted mid-list, keyed slots sliding, optional, moved kind | `V1`/`V2` | golden | | | | | | | | |
-| `?T` against a plain nesting | `P1`/`P3` | golden | | | | | | | | |
-| guard ordinal and text flavour as two lanes | `UT1`/`UT2` | golden | | | | | | | | |
-| keyed arrays nesting keyed arrays | dump `keyed` | golden | | | | | | | | |
-| counted arrays, enum off default, optionals in elements | dump `pack` | golden | | | | | | | | |
-| `FixedTable` wrapping `BenchMixed` | `bench/corpus/FixedTable.schema` | golden | | | | | | | | |
-| seven layout rules, each by own name | §7 item 3 | golden | | | | | | | | |
-| form bytes `1`/`2`/`6` | `previous_form`, `message_form_as_file`, `newer_form` | golden | | | | | | | | |
-| `plan_too_large` / `no_layout` / ragged tail | §7 item 3 | golden | | | | | | | | |
-| wrong plan, swapped `bytes(N)`, shared `arg`/`meta` | §7 item 4 | golden | | | | | | | | |
-| byte-flip fuzz, sanitizer, three answers never a fourth | §7 item 5 | | | | | | | | | |
+## Reference fixes
 
-A blank cell is not a skip. It is a cell nobody has ticked on this page yet.
+Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**.
 
-## Reference fixes pending
-
-Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**. Four landed while it was written.
-
-| fix | what it is | where it stands |
+| fix | what it is | where the rule is stated |
 |---|---|---|
-| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | LANDED, `860d9f6f` |
-| 2 | **Bool and present flags** — a byte other than `0` or `1` refuses `wire_damaged` (2026-11-03); the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | pending, every leg |
-| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | validation LANDED, `3e3da58d`; the names pending |
-| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
-| 5 | **The ranged bound** — a ranged integer outside the writer's range refuses `out_of_range` on load, fixed-point on the raw scale (2026-11-03; it clamped and counted before) | pending, every leg — §4.6 |
-| 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | pending |
-| 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | LANDED, `22a161c5` |
-| 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | in flight (JS) |
-| 9 | **The Envelope tag** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy; it now refuses `out_of_range` | pending, every leg — §4.6 |
-| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED, `79e34542` |
-| 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound refused where §3.4 says otherwise. The ruling: the length REFUSES BY NAME (`length_over_bound`), and the CONTENT refuses by name as the packet reader does (`text_ill_formed`) | pending |
-| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED, `8c15973d` |
-| 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | LANDED, `db52975f` |
-| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant REFUSE `out_of_range` (2026-11-03), on the identity path as well as the compiled one | pending, every leg — §4.5, §4.6 |
-| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | in flight (C #838, Rust #837) |
+| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | §3.1 |
+| 2 | **Bool and present flags** — a byte other than `0` or `1` refuses `wire_damaged` (2026-11-03); the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | §4.5 |
+| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | §1.1, §4.2 |
+| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | §6 |
+| 5 | **The ranged bound** — a ranged integer outside the writer's range refuses `out_of_range` on load, fixed-point on the raw scale (2026-11-03; it clamped and counted before) | §4.6 |
+| 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | docs/SPEC-TABLES.md §3.4 |
+| 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | docs/SPEC-TABLES.md §15 |
+| 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | §1 |
+| 9 | **The Envelope tag** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy; it now refuses `out_of_range` | §4.6 |
+| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | §4.5 |
+| 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound refused where §3.4 says otherwise. The ruling: the length REFUSES BY NAME (`length_over_bound`), and the CONTENT refuses by name as the packet reader does (`text_ill_formed`) | §4.5 |
+| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | §4.1 |
+| 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | §3.1, §4.3 |
+| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant REFUSE `out_of_range` (2026-11-03), on the identity path as well as the compiled one | §4.5, §4.6 |
+| 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | §4.3 |
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
 width as `1, 2 or 4`, where the compiler and the reader both admit `8`, derived from the enum's top wire value.
