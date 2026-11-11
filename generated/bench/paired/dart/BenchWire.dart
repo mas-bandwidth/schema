@@ -5532,7 +5532,11 @@ String _jsonPrepare(String text, TableTextReport r) {
     if (c == 0x2c) {
       var j = i + 1;
       while (j < stripped.length && stripped[j] <= 0x20) j++;
-      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) continue;
+      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) {
+        var k = i - 1;
+        while (k >= 0 && stripped[k] <= 0x20) k--;
+        if (k >= 0 && stripped[k] != 0x7b && stripped[k] != 0x5b && stripped[k] != 0x2c && stripped[k] != 0x3a) continue;
+      }
     }
     clean.add(c);
   }
