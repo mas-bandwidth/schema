@@ -2803,8 +2803,8 @@ or a file per declaration where the language demands one.
   inlined at every field with no runtime import at all, held byte-identical
   to the runtime tier by a standing gate. The flat tier's writer holds its
   checks in every build, whatever `NODE_ENV` says: it reads no `NODE_ENV`
-  and emits one writer per type, so a value its declaration does not admit
-  refuses in every build.
+  and selects no production variant. It emits one writer per type, so a value
+  its declaration does not admit refuses in every build.
   The READ side is never configurable in either tier. **Every packet module
   ships its TypeScript declarations beside it** — `<Base>.d.ts` and
   `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc
