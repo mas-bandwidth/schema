@@ -23,6 +23,12 @@ import (
 // so a load's allocation is exact bytes and a path that allocates and frees the
 // same bytes every iteration still counts.
 //
+// The rows are walked through load.loadWalk, the read walk Load wraps: a fixed
+// root's fixture wire is its historical form 1, which the strict read refuses
+// as previous_form before the walk, while the walk itself still fills the
+// caller's storage and is what the instrument measures. The strict verdict of
+// those rows is the conformance surfaces' (the fixed form's own reader).
+//
 // What a Lua load can allocate nothing for is its whole tree: a counted or
 // unbounded array, a list, a map and a union arm are tables the load builds,
 // and a pointer's node is a table, a boxed blob is a table, a wide integer is
@@ -43,7 +49,7 @@ var allocRows = []allocRow{
 	{"by-value record, keyed arrays, strings", "tabledemo", "KeyedConfig", "keyed_config", 0, ""},
 	{"scalars and strings", "backenddemo", "LoginRequest", "login_full", 0, ""},
 	{"nested records", "backenddemo", "MatchResult", "match_full", 0, ""},
-	{"a variable root that reads nothing", "tabledemo", "RootConfig", "root_default", 0, ""},
+	{"a root that reads nothing", "tabledemo", "RootConfig", "root_default", 0, ""},
 	{"counted arrays of records, union arms", "tabledemo", "RootConfig", "root_full", 4096,
 		"one table per counted element, per array and per union arm"},
 	{"pointer nodes and slots", "graphdemo", "Scene", "graph_tree", 3840,
@@ -52,7 +58,7 @@ var allocRows = []allocRow{
 }
 
 // allocProbe is the Lua main of one unit's rows: row i is inputs.wI under the
-// root named, loaded N times through one state into one value.
+// root named, walked N times through one state into one value.
 func allocProbe(module string, rows []allocRow) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "local T = require(%q)\n", module)
@@ -71,12 +77,12 @@ local rows = {
 for i, row in ipairs(rows) do
   local root, wire = row[1], inputs[row[2]]
   local rep, state, into = report(), load.NewState(), T["New" .. root]()
-  assert(load.Load(T, root, wire, rep, state, into) ~= nil, root .. " does not load: " .. tostring(rep.reason))
+  assert(load.loadWalk(T, root, wire, rep, state, into) ~= nil, root .. " does not walk: " .. tostring(rep.reason))
   collectgarbage("collect")
-  for _ = 1, 20 do load.Load(T, root, wire, rep, state, into) end
+  for _ = 1, 20 do load.loadWalk(T, root, wire, rep, state, into) end
   collectgarbage("stop")
   local before = collectgarbage("count")
-  for _ = 1, N do load.Load(T, root, wire, rep, state, into) end
+  for _ = 1, N do load.loadWalk(T, root, wire, rep, state, into) end
   local after = collectgarbage("count")
   collectgarbage("restart")
   print(i, string.format("%.1f", (after - before) * 1024 / N))

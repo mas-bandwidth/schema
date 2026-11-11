@@ -783,7 +783,7 @@ func (e *msgEmit) getElement(ind int, el *ir.Field, en, dst string) {
 	}
 }
 
-// getValue lands a field's payload from the entry `en`: text and wstring
+// getValue lands a field's payload from the entry `en`: text and bytes
 // refuse length_over_bound past this reader's bound, an array refuses
 // count_over_bound past its bound, a keyed array's present slots, or one
 // element.
