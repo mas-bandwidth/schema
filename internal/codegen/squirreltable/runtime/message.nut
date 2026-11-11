@@ -27,13 +27,18 @@ local readU64 = function(b, at) {
   local hi = (b[at+4]&0xff) | ((b[at+5]&0xff)<<8) | ((b[at+6]&0xff)<<16) | ((b[at+7]&0xff)<<24);
   return lo | (hi << 32);
 };
+// LEB128 on the announcement's bytes (docs/SPEC-TABLES.md §3): canonical,
+// seven value bits a byte, at most ten bytes, and the tenth byte carries only
+// the sixty-fourth value bit. The value is kept in all sixty-four bits, so a
+// value at or above 2^63 is negative in the signed local and every caller
+// below refuses it wherever it is out of range.
 local readLeb = function(b, state) {
   local value = 0, shift = 0, start = state.at;
   for (local i=0; i<10; i++) {
     if (state.at >= state.end) { state.bad=true; state.at=start; return 0; }
     local x=b[state.at]&0xff; state.at++;
     if (i==9 && x>1) { state.bad=true; state.at=start; return 0; }
-    if (i<9) value = value | ((x&0x7f)<<shift);
+    value = value | ((x&0x7f)<<shift);
     if ((x&0x80)==0) { if(i>0 && x==0){state.bad=true;state.at=start;return 0;} return value; }
     shift += 7;
   }
@@ -50,7 +55,7 @@ parseShape = function(b, state, kind) {
     if(state.at>=state.end){state.bad=true;return s;}
     s.Packing=b[state.at]&0xff;state.at++;
     if(s.Packing==0)return s;
-    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>1)^(-(raw&1))):raw;}return s;}
+    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits<0||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>>1)^(-(raw&1))):raw;}return s;}
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
       local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
@@ -67,8 +72,8 @@ parseShape = function(b, state, kind) {
     state.bad=true;return s;
   }
   if(kind==11)return s;
-  if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
-  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
+  if(kind==12){s.Max=readLeb(b,state);if(state.bad||s.Max<0||s.Max>2147483647){state.bad=true;return s;}s.Bits=0;local m=s.Max;while(m>0){s.Bits++;m=m>>1;}return s;}
+  if(kind==14||kind==16){if(kind==14)s.Min=readLeb(b,state);s.Max=readLeb(b,state);if(state.bad||s.Min<0||s.Max<0||s.Max>4294967295||s.Min>s.Max||state.at>=state.end){state.bad=true;return s;}s.Bits=0;local m=s.Max-s.Min;while(m>0){s.Bits++;m=m>>1;}s.ElemKind=b[state.at]&0xff;state.at++;if(s.ElemKind>32||s.ElemKind==12){state.bad=true;return s;}s.Element=parseShape(b,state,s.ElemKind);return s;}
   if(kind==0||kind==13||kind==15||kind==17||kind==30||kind==31||kind==32){return s;}
   state.bad=true;return s;
 };
@@ -98,7 +103,7 @@ skipFileKind = function(b,state,kind) {
   switch(kind){case 1:case 2:case 6:case 20:case 25:width=1;break;case 3:case 7:case 21:case 26:width=2;break;case 4:case 8:case 10:case 22:case 27:width=4;break;case 5:case 9:case 11:case 23:case 28:width=8;break;case 18:case 19:case 24:case 29:width=16;break;}
   if(width>0){if(state.at+width>state.end){state.bad=true;return;}state.at+=width;return;}
   if(kind==17 || kind==30){readLeb(b,state);return;}
-  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
+  if(kind==12 || kind==13 || kind==14 || kind==16 || kind==31 || kind==32){local n=readLeb(b,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;return;}state.at+=n;return;}
   if(kind==15){local tag=readLeb(b,state);if(state.bad||tag==0)return;if(state.at>=state.end){state.bad=true;return;}local arm=b[state.at]&0xff;state.at++;skipFileKind(b,state,arm);return;}
   state.bad=true;
 };
@@ -130,15 +135,15 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
   for(;;){
     local ref=readLeb(bytes,state);if(state.bad){break;}if(ref==0)break;
-    if(ref>ids.len()||state.at>=state.end){state.bad=true;break;}
+    if(ref<0||ref>ids.len()||state.at>=state.end){state.bad=true;break;}
     local id=ids[ref-1],kind=bytes[state.at]&0xff;state.at++;
     if(id==0xfffffffffffffffe){if(kind!=9||state.at+8>state.end){state.bad=true;break;}build=readU64(bytes,state.at);state.at+=8;versionCount++;}
     else if(id==0xfffffffffffffffd){
       if(kind!=14){state.bad=true;break;}
-      local n=readLeb(bytes,state);if(state.bad||n>state.end-state.at){state.bad=true;break;}
+      local n=readLeb(bytes,state);if(state.bad||n<0||n>state.end-state.at){state.bad=true;break;}
       local fieldEnd=state.at+n;
       if(state.at>=fieldEnd||(bytes[state.at]&0xff)!=6){state.bad=true;break;}state.at++;
-      local wn=readLeb(bytes,state);if(state.bad||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
+      local wn=readLeb(bytes,state);if(state.bad||wn<0||wn>fieldEnd-state.at||state.at+wn!=fieldEnd){state.bad=true;break;}
       if(wn>maxBytes)return refuseAnnouncement(v,report,"vocabulary_too_large");
       words=blob(wn);for(local j=0;j<wn;j++)words[j]=bytes[state.at+j]&0xff;
       state.at=fieldEnd;wordsCount++;
