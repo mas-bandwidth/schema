@@ -8523,8 +8523,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
   keyed or map body, and a union whose arm holds one of those or another union
   (so union inside union nests). A union whose arm is a scalar or None adds no
-  level, and neither does a keyed entry by itself. Depth 128 passes and 129
-  refuses. The compiler
+  level. A keyed entry's framing adds nothing by itself; what it frames is a
+  structural payload inside the entry — a table body, an array, a keyed or map
+  body — and that payload is one level deeper like any other. So a field
+  holding a keyed body of keyed bodies of scalars is two levels below the body
+  that holds the field; 128 such levels pass and 129 refuse. The compiler
   refuses a declaration whose by-value nesting passes it, so no conforming
   writer produces an input the bound refuses. A pointer does not nest: a node
   record is walked from depth 0. <!-- limit name=binary_max_depth value=128 -->
