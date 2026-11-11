@@ -121,8 +121,9 @@ status, not the rule above. `<T>FixedLoad` refuses form `1` as
 `previous_form` in every leg. Beside it, every leg still emits a form-`1`
 `<T>Save` for a declared fixed table and a `<T>Load` and `ReadStrict` that
 read form `1` there. The tool's engine now writes and reads form `3` at an
-admitted fixed root; the conformance corpus still pins its older fixed-root
-instances and reports as form `1` and awaits regeneration in its own layer. A
+admitted fixed root; the conformance corpus's historical form-1 fixed-root
+files are now `previous_form` refusal rows that owe `refused`, and its
+fixed-root positives are form `3`. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
 no form `3` at all. A declared root above the record ceiling has no file
