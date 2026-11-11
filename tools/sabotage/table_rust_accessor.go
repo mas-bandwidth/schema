@@ -9,8 +9,9 @@ package main
 //
 // Both controls read the cook images in build/cook-fuzz, so the make targets
 // that run them depend on build/cook-fuzz/.stamp. Without that corpus the gate
-// reports every cook root missing, and a control goes red on fields other than
-// the one its sabotage moved.
+// prints one `DISAGREE <root>: build/cook-fuzz/<root>.cook is missing` line per
+// absent image; the control reads those five lines as fields other than the one
+// its sabotage moved.
 func init() {
 	// The ACCESSOR control swaps the declaration order of RenderCamera's two
 	// adjacent u32 members camera_id and camera_type, so each accessor reads where
