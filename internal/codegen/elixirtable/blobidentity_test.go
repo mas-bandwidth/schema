@@ -42,19 +42,22 @@ func TestBlobIsNumberedByItsSlotElixir(t *testing.T) {
 			return fmt.Sprintf(`
 wire = File.read!(%[1]q)
 {:ok, value, report} = %[3]s.load("Catalog", wire)
+{root, nodes} = value
 Probe.check(report.blob_shared == 0, "blob_equal_bytes", "no sharing counted: " <> inspect(report))
-Probe.check(is_binary(value["thumb"]) and value["thumb"] == value["alias"], "blob_equal_bytes", "both slots read the bytes: " <> inspect(value))
+Probe.check(is_binary(root["thumb"]) and root["thumb"] == root["alias"], "blob_equal_bytes", "both slots read the bytes: " <> inspect(root))
 Probe.check(%[3]s.save("Catalog", value) == {:ok, wire}, "blob_equal_bytes", "two nodes, byte for byte")
-fresh = Map.merge(value, %%{"thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>})
+fresh = {Map.merge(root, %%{"thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>}), nodes}
 {:ok, out} = %[3]s.save("Catalog", fresh)
 {:ok, back, _} = %[3]s.load("Catalog", out)
+{back_root, _} = back
 {:ok, again} = %[3]s.save("Catalog", back)
-Probe.check(again == out and back["alias"] == <<1, 2, 3>>, "fresh equal blobs", "round trip as two nodes")
+Probe.check(again == out and back_root["alias"] == <<1, 2, 3>>, "fresh equal blobs", "round trip as two nodes")
 
 swire = File.read!(%[2]q)
 {:ok, svalue, sreport} = %[3]s.load("Catalog", swire)
+{sroot, _snodes} = svalue
 Probe.check(sreport.blob_shared == 1, "blob_shared", "one extra naming counted: " <> inspect(sreport))
-Probe.check(svalue["alias"] == {:blob_shared, svalue["thumb"]}, "blob_shared", "the second slot is marked: " <> inspect(svalue))
+Probe.check(sroot["alias"] == {:blob_shared, sroot["thumb"]}, "blob_shared", "the second slot is marked: " <> inspect(sroot))
 Probe.check(%[3]s.save("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "save refuses by name")
 Probe.check(%[3]s.to_json("Catalog", svalue) == {:error, :blob_shared}, "blob_shared", "text refuses by name")
 `, equal, shared, mod)

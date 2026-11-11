@@ -16,10 +16,10 @@ import (
 
 // TestCyclicWireIsDamageElixir holds docs/SPEC-TABLES.md §3.1 and §4 at
 // both native entry points. The graph is the FINAL stored slots: a cycle
-// outside the root's reach is damage, but a pointer overwritten by null is
-// not an edge. The forty-level diamond has 2^40 paths over 82 nodes; checking
-// actual BEAM term sharing along one path avoids expanding those paths in
-// the test itself. There is no wall-clock cutoff on the native probe.
+// outside the root's reach is damage, and the same field id twice in one body
+// is damage too (§4). The forty-level diamond has 2^40 paths over 82 nodes;
+// checking the shared node numbers along one path avoids expanding those
+// paths in the test itself. There is no wall-clock cutoff on the native probe.
 func TestCyclicWireIsDamageElixir(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
@@ -81,8 +81,9 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 	if len(base) < 10 || !bytes.Equal(base[7:10], []byte{3, 17, 2}) {
 		t.Fatal("node_cycle_self root-next fixture moved")
 	}
-	// Root next=self followed by next=null. Also clear the original node's
-	// self edge, so this fixture has only the overwritten root cycle.
+	// Root next=self followed by next=null: the same field id twice in one
+	// body is damage (§4), so the whole load is discarded before any cycle
+	// check runs. The original node's self edge is cleared as well.
 	overwritten := append(bytes.Clone(base[:7]), 3, 17, 1, 3, 17, 0)
 	tail := bytes.Clone(base[10:])
 	self := []byte{3, 17, 2}
@@ -99,95 +100,68 @@ func TestCyclicWireIsDamageElixir(t *testing.T) {
 		fmt.Fprintf(&probe, "CycleProbe.damage(Graphdemo.Table, \"ListNode\", File.read!(%q), %q)\n", filepath.Join(framing, name+".bin"), name)
 	}
 	fmt.Fprintf(&probe, "CycleProbe.damage(Graphdemo.Table, \"ListNode\", File.read!(%q), \"unreached_cycle\")\n", unreachedPath)
+	fmt.Fprintf(&probe, "CycleProbe.damage(Graphdemo.Table, \"ListNode\", File.read!(%q), \"overwritten_self_cycle\")\n", overwrittenPath)
 	fmt.Fprintf(&probe, `
-for value <- CycleProbe.clean(Graphdemo.Table, "ListNode", File.read!(%q), "overwritten_self_cycle") do
-  CycleProbe.check(value["next"] == nil, "overwritten_self_cycle: final next is not null")
-end
 for value <- CycleProbe.clean(Graphdemo.Table, "ListNode", File.read!(%q), "node_chain_two") do
-  CycleProbe.check(is_map(value["next"]), "node_chain_two: next was lost")
+  {root, _nodes} = value
+  CycleProbe.check(is_integer(root["next"]), "node_chain_two: next was lost")
 end
 started = System.monotonic_time()
 diamond_values = CycleProbe.clean(Graphdemo.Table, "Scene", File.read!(%q), "node_diamond_chain")
-for value <- diamond_values, do: CycleProbe.diamond(value["tree"], 40)
+for value <- diamond_values, do: CycleProbe.diamond(value, 40)
 elapsed = System.convert_time_unit(System.monotonic_time() - started, :native, :microsecond)
 IO.puts("diamond: both loads preserve shared nodes across 2^40 paths in #{elapsed} us")
 IO.puts("ok: Elixir cycle and final-slot graph contract")
-`, overwrittenPath, filepath.Join(framing, "node_chain_two.bin"), filepath.Join(framing, "node_diamond_chain.bin"))
+`, filepath.Join(framing, "node_chain_two.bin"), filepath.Join(framing, "node_diamond_chain.bin"))
 	fmt.Fprintf(&probe, `
-# Public map equality stays deterministic across independent loads. Use the
-# small chain here: comparing independent forty-level DAGs structurally would
-# make the witness itself expand paths, contrary to the graph contract.
+# A pointered value is {root, nodes}; node numbers are deterministic across
+# independent loads (§3.1): one node, one number.
 small_wire = File.read!(%q)
-{:ok, first, first_report} = Graphdemo.Table.load("ListNode", small_wire)
-{:ok, second, second_report} = Graphdemo.Table.load("ListNode", small_wire)
-CycleProbe.check(true and true, "identity: chain refused")
+{:ok, first, _first_report} = Graphdemo.Table.load("ListNode", small_wire)
+{:ok, second, _second_report} = Graphdemo.Table.load("ListNode", small_wire)
 CycleProbe.check(first == second, "identity: identical loads changed public value equality")
-CycleProbe.check(not Map.has_key?(first, :__wire_identity__), "identity: root was tagged")
-CycleProbe.check(first["next"][:__wire_identity__] == 2, "identity: first pointee has no deterministic index")
-CycleProbe.check(first["next"]["next"][:__wire_identity__] == 3, "identity: second pointee has no deterministic index")
-CycleProbe.check(Graphdemo.Table.save("ListNode", first) == {:ok, File.read!(%q)}, "identity: metadata changed canonical chain bytes")
+{first_root, first_nodes} = first
+CycleProbe.check(is_tuple(first_nodes), "identity: loaded value has no node directory")
+CycleProbe.check(first_root["next"] == 2, "identity: first pointee has no deterministic number")
+CycleProbe.check(Graphdemo.Table.deref(first, 2)["next"] == 3, "identity: second pointee has no deterministic number")
+CycleProbe.check(Graphdemo.Table.save("ListNode", first) == {:ok, File.read!(%q)}, "identity: numbers changed canonical chain bytes")
 
-# The same metadata bucket cannot make an edited copy alias its original.
-node = first["next"]
+# Two fields naming one number is sharing (§3.1); an edited copy is a distinct
+# number, and the distinction survives save and text.
+node = Graphdemo.Table.deref(first, 2)
 edited = Map.put(node, "value", 777)
-scene = %%{"head" => node, "alias" => edited}
-{:ok, edited_wire} = Graphdemo.Table.save("Scene", scene)
-for value <- CycleProbe.clean(Graphdemo.Table, "Scene", edited_wire, "edited_copy") do
-  CycleProbe.check(value["head"]["value"] == 2 and value["alias"]["value"] == 777,
-    "edited_copy: same metadata aliased different content")
-  CycleProbe.check(:erts_debug.same(value["head"]["next"], value["alias"]["next"]),
-    "edited_copy: unchanged shared tail was duplicated")
-end
-{:ok, edited_text} = Graphdemo.Table.to_json("Scene", scene)
-{:ok, parsed_edit, parsed_report} = Graphdemo.Table.from_json("Scene", edited_text)
-CycleProbe.check(true and parsed_edit["head"]["value"] == 2 and
-  parsed_edit["alias"]["value"] == 777, "edited_copy: text lost an edited value")
+edited_nodes = Tuple.insert_at(first_nodes, tuple_size(first_nodes), edited)
+scene = %%{"head" => 2, "alias" => 4}
+{:ok, edited_wire} = Graphdemo.Table.save("Scene", {scene, edited_nodes})
+{:ok, shared_wire} = Graphdemo.Table.save("Scene", {%%{"head" => 2, "alias" => 2}, first_nodes})
+CycleProbe.check(edited_wire != shared_wire, "identity: distinct node numbers were collapsed")
+{:ok, edited_text} = Graphdemo.Table.to_json("Scene", {scene, edited_nodes})
+{:ok, parsed_edit, _} = Graphdemo.Table.from_json("Scene", edited_text)
 CycleProbe.check(Graphdemo.Table.save("Scene", parsed_edit) == {:ok, edited_wire},
   "edited_copy: text round trip moved bytes")
-
-# Different directory indices name DISTINCT loaded nodes, even when their
-# contents agree. Their distinction survives save and text output (§3.1).
-retagged = Map.put(node, :__wire_identity__, 999)
-same = %%{"head" => node, "alias" => node}
-different_tags = %%{"head" => node, "alias" => retagged}
-{:ok, same_wire} = Graphdemo.Table.save("Scene", same)
-{:ok, distinct_wire} = Graphdemo.Table.save("Scene", different_tags)
-CycleProbe.check(distinct_wire != same_wire, "identity: different directory indices were collapsed")
-CycleProbe.check(Graphdemo.Table.to_json("Scene", different_tags) != Graphdemo.Table.to_json("Scene", same),
-  "identity: distinct loaded nodes lost their text distinction")
-for value <- CycleProbe.clean(Graphdemo.Table, "Scene", distinct_wire, "distinct_indices") do
-  CycleProbe.check(not :erts_debug.same(value["head"], value["alias"]), "identity: distinct nodes were aliased")
-  CycleProbe.check(value["head"]["value"] == 2 and value["alias"]["value"] == 2,
-    "identity: preserving distinct nodes changed their content")
+for value <- CycleProbe.clean(Graphdemo.Table, "Scene", edited_wire, "edited_copy") do
+  {r, _n} = value
+  alias_ = Graphdemo.Table.deref(value, r["alias"])
+  CycleProbe.check(r["head"] == 2 and r["alias"] == 4 and alias_["value"] == 777,
+    "edited_copy: distinct nodes lost their numbers or content")
+end
+for value <- CycleProbe.clean(Graphdemo.Table, "Scene", shared_wire, "shared_number") do
+  {r, _n} = value
+  CycleProbe.check(r["head"] == r["alias"], "identity: shared node number was copied")
 end
 
-# Untagged authored maps keep the language's content-sharing behavior. The
-# fixture copies come from separate small loads and have every private marker
-# removed; they are physically different maps with the same authored value.
-fresh_a = CycleProbe.untag_small(first["next"])
-fresh_b = CycleProbe.untag_small(second["next"])
-CycleProbe.check(not :erts_debug.same(fresh_a, fresh_b), "authored fixture did not create two maps")
-authored = %%{"head" => fresh_a, "alias" => fresh_b}
-CycleProbe.check(Graphdemo.Table.save("Scene", authored) == {:ok, same_wire}, "authored: equal untagged content stopped sharing")
-for value <- CycleProbe.clean(Graphdemo.Table, "Scene", same_wire, "equal_content") do
-  CycleProbe.check(:erts_debug.same(value["head"], value["alias"]), "identity: same node was not shared")
-end
-
-# The large shared graph also reaches the save and text writers. Their result
-# sizes are bounded by nodes, and the saved graph still has actual sharing.
-# Never inspect or compare the complete DAG recursively in a failure message.
+# The large shared graph reaches save and text. Their result sizes are bounded
+# by nodes, and the saved graph still names one node by one number.
 diamond = hd(diamond_values)
-CycleProbe.check(not Map.has_key?(diamond, :__wire_identity__), "diamond: root was tagged")
 {:ok, diamond_text} = Graphdemo.Table.to_json("Scene", diamond)
 CycleProbe.check(byte_size(diamond_text) < 100_000 and String.contains?(diamond_text, "&node"),
   "diamond: text expanded paths rather than naming shared nodes")
-CycleProbe.check(not String.contains?(diamond_text, "__wire_identity__"), "diamond: metadata escaped into text")
 CycleProbe.check(diamond_text == File.read!(%q), "diamond: text disagrees with the canonical reference")
 {:ok, diamond_saved} = Graphdemo.Table.save("Scene", diamond)
 CycleProbe.check(byte_size(diamond_saved) < 100_000, "diamond: saved wire expanded paths")
 CycleProbe.check(diamond_saved == File.read!(%q), "diamond: wire disagrees with the independent canonical writer")
 for value <- CycleProbe.clean(Graphdemo.Table, "Scene", diamond_saved, "diamond_saved") do
-  CycleProbe.diamond(value["tree"], 40)
+  CycleProbe.diamond(value, 40)
   CycleProbe.check(Graphdemo.Table.save("Scene", value) == {:ok, diamond_saved}, "diamond: save round trip moved bytes")
   CycleProbe.check(Graphdemo.Table.to_json("Scene", value) == {:ok, diamond_text}, "diamond: text changed after save round trip")
 end
@@ -214,48 +188,47 @@ defmodule CycleProbe do
 
   def damage(module, root, wire, label) do
     case module.load(root, wire) do
-      {:error, :malformed, %{malformed: true}} -> :ok
+      {:error, :malformed, %{reason: "wire_damaged"}} -> :ok
       _ -> check(false, label <> ": plain load did not discard")
     end
     case module.load_retain(root, wire, retain(), report()) do
-      {:error, :malformed, %{malformed: true}, %{records: [], used: 0, ids: [], cap: 1_048_576, id_cap: 131_072}} -> :ok
+      {:error, :malformed, %{reason: "wire_damaged"}, %{records: [], used: 0, ids: [], cap: 1_048_576, id_cap: 131_072}} -> :ok
       _ -> check(false, label <> ": retaining load did not discard")
     end
   end
 
   def clean(module, root, wire, label) do
     plain = case module.load(root, wire) do
-      {:ok, value, %{malformed: false}} -> value
+      {:ok, value, %{reason: ""}} -> value
       _ -> check(false, label <> ": plain load refused")
     end
     retained = case module.load_retain(root, wire, retain(), report()) do
-      {:ok, value, %{malformed: false}, %{records: [], used: 0, ids: []}} -> value
+      {:ok, value, %{reason: ""}, %{records: [], used: 0, ids: []}} -> value
       _ -> check(false, label <> ": retaining load refused or kept prior state")
     end
     [plain, retained]
   end
 
-  # This helper is used only on the tiny authored-value fixture, never the
-  # large shared DAG. It deliberately returns ordinary untagged maps.
-  def untag_small(value) when is_map(value) do
-    value |> Map.delete(:__wire_identity__) |> Map.new(fn {key, child} -> {key, untag_small(child)} end)
+  # At each level L and R name the SAME two next-level nodes, so their node
+  # numbers are equal (§3.1). Recurse down one branch only: the witness costs
+  # O(levels), not O(paths).
+  def diamond(value, levels) when levels > 0 do
+    {root, _nodes} = value
+    diamond(value, Graphdemo.Table.deref(value, root["tree"]), levels)
   end
-  def untag_small(value), do: value
 
-  # At each level L and R name the SAME two next-level nodes. Compare BEAM
-  # identity, not structural equality (which itself expands a diamond).
-  # Recurse down one branch only: the witness costs O(levels), not O(paths).
-  def diamond(node, levels) when levels > 0 do
-    left = node["left"]
-    right = node["right"]
+  def diamond(value, node, levels) when levels > 0 do
+    left = Graphdemo.Table.deref(value, node["left"])
+    right = Graphdemo.Table.deref(value, node["right"])
     check(is_map(left) and is_map(right), "diamond: missing branch")
+
     if levels == 1 do
       check(left["left"] == nil and left["right"] == nil and
             right["left"] == nil and right["right"] == nil, "diamond: wrong leaf level")
     else
-      check(:erts_debug.same(left["left"], right["left"]), "diamond: left child was copied")
-      check(:erts_debug.same(left["right"], right["right"]), "diamond: right child was copied")
-      diamond(left, levels - 1)
+      check(left["left"] == right["left"], "diamond: left child was copied")
+      check(left["right"] == right["right"], "diamond: right child was copied")
+      diamond(value, left, levels - 1)
     end
   end
 end
@@ -411,7 +384,7 @@ func TestCycleSlotKindsElixir(t *testing.T) {
 				if sample.bad {
 					fmt.Fprintf(&probe, "CycleProbe.damage(Cycleslots.Table, \"Node\", File.read!(%q), %q)\n", file, sample.name)
 				} else {
-					fmt.Fprintf(&probe, "for value <- CycleProbe.clean(Cycleslots.Table, \"Node\", File.read!(%q), %q), do: CycleProbe.check(is_map(value[\"left\"]), %q)\n", file, sample.name, sample.name+": left was lost")
+					fmt.Fprintf(&probe, "for value <- CycleProbe.clean(Cycleslots.Table, \"Node\", File.read!(%q), %q), do: CycleProbe.check(is_integer(elem(value, 0)[\"left\"]), %q)\n", file, sample.name, sample.name+": left was lost")
 				}
 			}
 			probe.WriteString("IO.puts(\"ok: Elixir cycle slot kinds\")\n")

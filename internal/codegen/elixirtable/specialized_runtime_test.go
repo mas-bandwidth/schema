@@ -52,7 +52,7 @@ table Outer
 			t.Errorf("a unit with no union still emits %q", gone)
 		}
 	}
-	if !strings.Contains(src, "      if not is_map(value) do\n") {
+	if !strings.Contains(src, "          _ -> throw(:invalid)\n") {
 		t.Error("the cook plan lost its value check")
 	}
 	for _, kept := range []string{"  defp cook_extent(_desc, _value), do: 0\n", "  defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf\n"} {

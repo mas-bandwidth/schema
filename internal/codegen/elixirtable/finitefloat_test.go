@@ -138,7 +138,7 @@ defmodule FiniteProbe do
     {"-nan", 0xFFF8000000000001}
   ]
 
-  @var %{
+  @var {%{
     "a" => 1.25,
     "b" => 1.125,
     "q" => 0.5,
@@ -149,8 +149,8 @@ defmodule FiniteProbe do
     "pair" => %{"s" => 4.25, "d" => 3.125},
     "u" => {"r", 4.125},
     "keyed" => %{"A" => 5.25},
-    "child" => %{"c" => 5.125}
-  }
+    "child" => 2
+  }, {%{"c" => 5.125}}}
 
   # every float position of the variable Root: the sentinel a save writes
   # there, its width, and the name the refusal gives it
@@ -168,12 +168,12 @@ defmodule FiniteProbe do
     {"child.c", 5.125, 8, "Child.c"}
   ]
 
-  @plain %{
+  @plain {%{
     "a" => 1.25,
     "b" => 1.125,
     "pair" => %{"s" => 4.25, "d" => 3.125},
-    "child" => %{"c" => 5.125}
-  }
+    "child" => 2
+  }, {%{"c" => 5.125}}}
 
   @plain_slots [
     {"a", 1.25, 4, "Plain.a"},
@@ -294,7 +294,7 @@ defmodule FiniteProbe do
     row("variable -0 rides by its bits", fn ->
       {:ok, zero} = V.save("Root", %{"a" => 0.0})
       {:ok, minus} = V.save("Root", %{"a" => -0.0, "ys" => [-0.0, -0.0]})
-      {:ok, v, _} = V.load("Root", minus)
+      {:ok, {v, _}, _} = V.load("Root", minus)
 
       expect(
         minus != zero and same_bits?(v["a"], -0.0) and Enum.all?(v["ys"], &same_bits?(&1, -0.0)),
@@ -305,7 +305,7 @@ defmodule FiniteProbe do
     row("variable subnormal rides", fn ->
       <<tiny::little-float-32>> = <<1::little-32>>
       {:ok, wire} = V.save("Root", %{"a" => tiny})
-      {:ok, v, _} = V.load("Root", wire)
+      {:ok, {v, _}, _} = V.load("Root", wire)
       expect(same_bits?(v["a"], tiny), "the subnormal did not ride")
     end)
 
@@ -336,7 +336,7 @@ defmodule FiniteProbe do
     end)
 
     row("json -0 keeps its sign", fn ->
-      {:ok, v, report} = V.from_json("Root", ~s({"a": -0, "n": -0, "ns": [-0]}))
+      {:ok, {v, _}, report} = V.from_json("Root", ~s({"a": -0, "n": -0, "ns": [-0]}))
 
       expect(
         same_bits?(v["a"], -0.0) and v["n"] == 0 and v["ns"] == [0] and true,

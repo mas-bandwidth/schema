@@ -41,8 +41,8 @@ end
 bytes = File.read!(` + elixirString(wire) + `)
 
 # the older, narrower writer through the newer reader: widened, landed, a read
-{:ok, value, report} = Listdemo.Table.load("Save", bytes)
-Probe.check(value["scores"] == [10, 0, 0], "the narrow scores land exactly: #{inspect(value)}")
+{:ok, {root, _nodes}, report} = Listdemo.Table.load("Save", bytes)
+Probe.check(root["scores"] == [10, 0, 0], "the narrow scores land exactly: #{inspect(root)}")
 Probe.check(report.widened == 1, "one widening is counted: #{inspect(report)}")
 Probe.check(Map.has_key?(report, :reason), "the report carries a reason: #{inspect(report)}")
 Probe.check(report.reason == "", "a widened read finished, so its reason is empty: #{inspect(report)}")

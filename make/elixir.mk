@@ -320,8 +320,8 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #   mapsort (M19) the writer sorts a map's entries DESCENDING: wire and report
 #          red; framing green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
-ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if length(acc) > 16 and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
-ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
+ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if MapSet.member?(seen, n) do|    if MapSet.size(seen) > 16 and MapSet.member?(seen, n) do|'
+ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if m < 2 do$$|    if true or m < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
 ELIXIR_CONFORMANCE_ARM_SED    := -e 's|arm_framing_damaged?(a, inner) ->|false and arm_framing_damaged?(a, inner) ->|'
 ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'

@@ -1714,21 +1714,28 @@ defmodule Benchtable.Table do
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
 
-  def save(table, value) when is_map(value),
-    do: with_node_identities(fn -> save_identity(table, value) end)
+  # A table with table pointers loads and saves as {root, nodes} — the root
+  # value plus a tuple of the table nodes in §3.1's index order (position
+  # index - 2, nil at a blob's index) — and every pointer field holds the node
+  # number, nil for null. A table without pointers is a plain map. A pointer
+  # field's number IS its identity: save numbers nodes by it, never by scanning
+  # collected nodes or by a node's whole value.
+  def save(table, value) when is_map(value), do: save_graph(table, value, nil)
 
-  defp save_identity(table, value) do
+  def save(table, {root, nodes}) when is_map(root) and is_tuple(nodes),
+    do: save_graph(table, root, nodes)
+
+  defp save_graph(table, value, directory) do
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
-    # DISTINCT node: a table node two fields share is numbered once, so the
-    # saved wire matches the reference backends byte for byte (§3.1), and a
-    # blob is a node of its own SLOT (§2.5), so two slots holding equal bytes
-    # are two records. A blob the strict read found named from two slots
-    # refuses the save by name, blob_shared (§2.5).
+    # DISTINCT node: a table node two fields share is numbered once by its
+    # node number, so the saved wire matches the reference backends byte for
+    # byte (§3.1), and a blob is a node of its own SLOT (§2.5), so two slots
+    # holding equal bytes are two records. A blob the strict read found named
+    # from two slots refuses the save by name, blob_shared (§2.5).
     try do
-      nodes = collect_root(desc, value)
-      idx_map = node_index(nodes)
+      {nodes, idx_map} = with_save_directory(directory, fn -> collect_root(desc, value) end)
 
       blob_site_begin(:root)
       {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
@@ -1745,22 +1752,63 @@ defmodule Benchtable.Table do
       :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
+      Process.delete(:elixir_save_directory)
     end
   end
 
-  # collect_root numbers the value's nodes in §3.1's first-visit order, with
-  # each blob keyed by the SLOT that holds it (blob_site/1).
+  # collect_root numbers the value's nodes in §3.1's first-visit order. A table
+  # node's identity is its stored node number, so a shared node is the one
+  # record found by its number, never by scanning collected nodes; a blob is
+  # keyed by the SLOT that holds it (blob_site/1).
   defp collect_root(desc, value) do
     blob_site_begin(:root)
-    collect_nodes(desc, value, []) |> Enum.reverse()
+    {nodes, _seen} = save_collect_nodes(desc, value, [], MapSet.new())
+    nodes = Enum.reverse(nodes)
+    {nodes, node_index(nodes)}
+  end
+
+  # the directory a pointer field's node number names, live only for this save
+  defp with_save_directory(directory, fun) do
+    prior = Process.get(:elixir_save_directory)
+    Process.put(:elixir_save_directory, directory)
+
+    try do
+      fun.()
+    after
+      if prior == nil,
+        do: Process.delete(:elixir_save_directory),
+        else: Process.put(:elixir_save_directory, prior)
+    end
+  end
+
+  # a pointer field's number must name a table node in the directory
+  defp save_node_lookup(nil, _n), do: throw(:invalid_value)
+
+  defp save_node_lookup(directory, n) do
+    at = n - 2
+
+    if at < 0 or at >= tuple_size(directory) do
+      throw(:invalid_value)
+    else
+      case elem(directory, at) do
+        nil -> throw(:invalid_value)
+        value -> value
+      end
+    end
   end
 
   defp node_index(nodes),
-    do: nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_content(n), i} end)
+    do: nodes |> Enum.with_index(2) |> Map.new(fn {n, i} -> {node_key(n), i} end)
+
+  # A table node's index key is its stored number; a blob's is its slot
+  # (docs/SPEC-TABLES.md §2.5, §3.1). The two keys never collide: a number is
+  # not a slot tuple.
+  defp node_key({_type_id, :blob, site, _bytes}), do: site
+  defp node_key({_type_id, :table, _elem, n, _value}), do: n
 
   # A BLOB IS NUMBERED BY ITS SLOT, never by its content (docs/SPEC-TABLES.md
   # §2.5, §3.1): a BEAM binary has no identity, so the slot is the identity —
-  # the body that holds it (the root, or the table node by its content) and its
+  # the body that holds it (the root, or the table node by its number) and its
   # position among that body's blob slots in declaration order. The node walk
   # and the body writer meet a body's blob slots in the same order, so the two
   # name the same site. A {:blob_shared, bytes} slot is the strict read's
@@ -1779,7 +1827,7 @@ defmodule Benchtable.Table do
 
   # a table node's body is its own holder: its blob slots count from zero
   defp in_node_holder(node, fun) do
-    prev = Process.put(:elixir_blob_site, {node_content(node), 0})
+    prev = Process.put(:elixir_blob_site, {node_key(node), 0})
 
     try do
       fun.()
@@ -1788,12 +1836,130 @@ defmodule Benchtable.Table do
     end
   end
 
-  # collect_nodes is the declaration-order DFS walk of every node this value
-  # reaches — a *string/*bytes blob and a table a pointer names — the flat node
-  # table's records, in the order §3.1 numbers them (root is index 1, the first
-  # node is 2). A node reached twice is one record. A node is {type_id, kind,
-  # table_name, content}: kind :blob for a byte buffer, :table for a pointer
-  # pointee.
+  # save_collect_nodes is the declaration-order DFS walk of every node this
+  # value reaches — a *string/*bytes blob and a table a pointer names by number
+  # — the flat node table's records, in the order §3.1 numbers them (root is
+  # index 1, the first node is 2). A node reached twice is one record. A node
+  # is {type_id, kind, table_name, number, content}: kind :blob for a byte
+  # buffer, :table for a pointer pointee.
+  defp save_collect_nodes(desc, value, acc, seen) do
+    Enum.reduce(desc.fields, {acc, seen}, fn f, {acc, seen} ->
+      if field_active?(f, desc, value) do
+        case f.t do
+          :blob ->
+            case Map.get(value, f.name) do
+              nil -> {acc, seen}
+              v -> {[{f.type_id, :blob, blob_site(v), v} | acc], seen}
+            end
+
+          :pointer ->
+            case Map.get(value, f.name) do
+              nil ->
+                {acc, seen}
+
+              n ->
+                save_push_node(acc, seen, {f.type_id, :table, f.elem, n})
+            end
+
+          :table ->
+            # an absent optional (nil) owns no edge (§2.3), and a by-value
+            # table left nil holds its defaults, which name no node
+            case Map.get(value, f.name) do
+              nil -> {acc, seen}
+              v -> save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen)
+            end
+
+          :list ->
+            save_collect_list_nodes(f, Map.get(value, f.name) || [], acc, seen)
+
+          :map ->
+            Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), {acc, seen}, fn entry,
+                                                                                     {acc, seen} ->
+              save_collect_nodes(Map.fetch!(@tables, f.elem), entry, acc, seen)
+            end)
+
+          :union ->
+            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen)
+
+          :keyed ->
+            slots = Map.get(value, f.name) || %{}
+
+            Enum.reduce(f.key_names, {acc, seen}, fn name, {acc, seen} ->
+              case Map.get(slots, name) do
+                nil -> {acc, seen}
+                v -> save_collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc, seen)
+              end
+            end)
+
+          _ ->
+            {acc, seen}
+        end
+      else
+        {acc, seen}
+      end
+    end)
+  end
+
+  # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
+  # its nodes are visited where the union sits, exactly as a field's are.
+  defp save_collect_union_nodes(_union, nil, acc, seen), do: {acc, seen}
+
+  defp save_collect_union_nodes(union, {arm, payload}, acc, seen) do
+    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
+      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen)
+    end
+  end
+
+  # save_push_node numbers a TABLE node a pointer names, once, by its stored
+  # number, and walks its body the first time only: a node reached again is the
+  # one record (§3.1). The directory gives the node's value in constant time,
+  # so a shared node is never found by scanning collected nodes or by content.
+  defp save_push_node(acc, seen, {type_id, :table, elem, n}) do
+    if MapSet.member?(seen, n) do
+      {acc, seen}
+    else
+      value = save_node_lookup(Process.get(:elixir_save_directory), n)
+      node = {type_id, :table, elem, n, value}
+      seen = MapSet.put(seen, n)
+
+      in_node_holder(node, fn ->
+        save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
+      end)
+    end
+  end
+
+  # save_collect_list_nodes numbers an unbounded array's elements: table
+  # elements recurse, pointer elements are node numbers, union elements read
+  # their set arm.
+  defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen) do
+    Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
+      save_collect_nodes(Map.fetch!(@tables, f.elem), e, acc, seen)
+    end)
+  end
+
+  defp save_collect_list_nodes(%{elem_kind: 17} = f, elements, acc, seen) do
+    Enum.reduce(elements, {acc, seen}, fn
+      nil, {acc, seen} ->
+        {acc, seen}
+
+      n, {acc, seen} ->
+        save_push_node(acc, seen, {f.elem_type_id, :table, f.elem, n})
+    end)
+  end
+
+  defp save_collect_list_nodes(%{elem_kind: 15} = f, elements, acc, seen) do
+    Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
+      save_collect_union_nodes(f.elem, e, acc, seen)
+    end)
+  end
+
+  defp save_collect_list_nodes(_f, _elements, acc, seen), do: {acc, seen}
+
+  # collect_nodes is the read side's walk of a decoded record, whose pointer
+  # fields still hold private %{__wire_node__: index} markers and whose blobs
+  # hold {:__wire_blob__, index, order, bytes} markers (docs/SPEC-TABLES.md
+  # §2.5, §3.1). It is used only by the blob-ownership walk (live_blob_owners),
+  # which names the slot that owns each blob before the shared ones are marked.
   defp collect_nodes(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
       if field_active?(f, desc, value) do
@@ -1814,8 +1980,6 @@ defmodule Benchtable.Table do
             end
 
           :table ->
-            # an absent optional (nil) owns no edge (§2.3), and a by-value
-            # table left nil holds its defaults, which name no node
             case Map.get(value, f.name) do
               nil -> acc
               v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
@@ -1851,8 +2015,6 @@ defmodule Benchtable.Table do
     end)
   end
 
-  # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
-  # its nodes are visited where the union sits, exactly as a field's are.
   defp collect_union_nodes(_union, nil, acc), do: acc
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
@@ -1861,82 +2023,10 @@ defmodule Benchtable.Table do
     end
   end
 
-  # push_node numbers a TABLE node a pointer names, once, and walks its body
-  # the first time only: a node reached again is the one record (§3.1).
-  # Unassembled read markers are queued once by the live ownership walk.
+  # push_node queues an unassembled read marker once, for the live ownership
+  # walk (§2.5): a decoded record's pointer fields are markers until the whole
+  # node table is read.
   defp push_node(acc, {_tid, :table, _elem, %{__wire_node__: _}} = node), do: [node | acc]
-
-  defp push_node(acc, {_type_id, :table, elem, v} = node) do
-    c = node_content(node)
-
-    if Enum.any?(acc, fn n -> node_content(n) == c end) do
-      acc
-    else
-      in_node_holder(node, fn -> collect_nodes(Map.fetch!(@tables, elem), v, [node | acc]) end)
-    end
-  end
-
-  # A loaded table node keeps its directory identity (§3.1); untagged
-  # authored maps share by content. A blob's identity is its slot
-  # (blob_site/1), so equal bytes in two slots are
-  # two nodes, and an empty *bytes and an empty *string are two nodes.
-  defp node_content({_type_id, :blob, site, _bytes}), do: site
-  defp node_content({type_id, _kind, _ref, c}), do: {type_id, node_identity(c)}
-
-  # Intern local shapes, replacing each child map by a small structural id.
-  # Loaded directory indices remain part of the shape: two equal records
-  # are still two nodes (§3.1). Exact comparisons distinguish edited copies
-  # sharing an index; untagged authored maps retain content-based sharing.
-  defp with_node_identities(fun) do
-    prior = Process.get(:elixir_node_identities)
-    Process.put(:elixir_node_identities, %{seen: %{}, shapes: %{}})
-
-    try do
-      fun.()
-    after
-      if prior == nil,
-        do: Process.delete(:elixir_node_identities),
-        else: Process.put(:elixir_node_identities, prior)
-    end
-  end
-
-  defp node_identity(value) when is_map(value) do
-    state = Process.get(:elixir_node_identities)
-    bucket = Map.get(value, :__wire_identity__)
-    seen = if bucket == nil, do: [], else: Map.get(state.seen, bucket, [])
-
-    case Enum.find(seen, fn {previous, _id} -> previous === value end) do
-      {_previous, id} ->
-        id
-
-      nil ->
-        shape = Map.new(value, fn {key, v} -> {key, identity_term(v)} end)
-        state = Process.get(:elixir_node_identities)
-        id = Map.get(state.shapes, shape, map_size(state.shapes))
-
-        seen =
-          if bucket == nil,
-            do: state.seen,
-            else: Map.update(state.seen, bucket, [{value, id}], fn xs -> [{value, id} | xs] end)
-
-        Process.put(:elixir_node_identities, %{
-          seen: seen,
-          shapes: Map.put(state.shapes, shape, id)
-        })
-
-        id
-    end
-  end
-
-  defp node_identity(value), do: value
-
-  defp identity_term(value) when is_map(value), do: {:map, node_identity(value)}
-  defp identity_term(value) when is_list(value), do: {:list, Enum.map(value, &identity_term/1)}
-
-  defp identity_term(value) when is_tuple(value),
-    do: {:tuple, value |> Tuple.to_list() |> Enum.map(&identity_term/1)}
-
-  defp identity_term(value), do: {:scalar, value}
 
   # SPEC-TABLES §2.8: textual string keys compare bytewise, integer keys by
   # numeric value. The entry table holds an ordinary key and value field.
@@ -2113,9 +2203,9 @@ defmodule Benchtable.Table do
           {idx_map, ids, order, acc}
         end
 
-      v ->
+      n ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, {f.type_id, node_identity(v)})
+        idx = Map.fetch!(idx_map, n)
         {idx_map, ids, order, [acc, leb_encode(ref), <<17>>, leb_encode(idx)]}
     end
   end
@@ -2342,8 +2432,8 @@ defmodule Benchtable.Table do
     {leb_encode(0), ids, order}
   end
 
-  defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
-    idx = Map.fetch!(idx_map, {f.elem_type_id, node_identity(e)})
+  defp emit_element(%{elem_kind: 17} = _f, e, idx_map, ids, order) do
+    idx = Map.fetch!(idx_map, e)
     {leb_encode(idx), ids, order}
   end
 
@@ -2408,7 +2498,7 @@ defmodule Benchtable.Table do
   defp node_body({_type_id, :blob, _ref, bytes}, _idx_map, ids, order),
     do: {bytes, ids, order}
 
-  defp node_body({_type_id, :table, ref, v} = node, idx_map, ids, order) do
+  defp node_body({_type_id, :table, ref, _n, v} = node, idx_map, ids, order) do
     desc = Map.fetch!(@tables, ref)
 
     {_idx, ids, order, body} =
@@ -2778,7 +2868,12 @@ defmodule Benchtable.Table do
             {:error, :missing_required, report}
 
           true ->
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            {root, directory} = value
+            root = Map.merge(defaults(desc), root)
+
+            if map_size(desc.node_types) > 0,
+              do: {:ok, {root, directory}, reasoned(report, :ok)},
+              else: {:ok, root, reasoned(report, :ok)}
         end
     end
   catch
@@ -2833,7 +2928,12 @@ defmodule Benchtable.Table do
             {:error, :missing_required, report}
 
           true ->
-            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            {root, directory} = value
+            root = Map.merge(defaults(desc), root)
+
+            if map_size(desc.node_types) > 0,
+              do: {:ok, {root, directory}, reasoned(report, :ok)},
+              else: {:ok, root, reasoned(report, :ok)}
         end
     end
   catch
@@ -3303,9 +3403,17 @@ defmodule Benchtable.Table do
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields, true}
-      {:stop, fields, [], _} -> {desc, fields, false}
-      _ -> throw(:wire_damaged)
+      {:ok, fields, []} ->
+        # a node record whose body reaches its terminator before its length
+        # ends carries bytes no field claims (§3.1, the framing layer's L3)
+        if ends_early?(body, ids), do: throw(:wire_damaged)
+        {desc, fields, true}
+
+      {:stop, fields, [], _} ->
+        {desc, fields, false}
+
+      _ ->
+        throw(:wire_damaged)
     end
   end
 
@@ -3359,13 +3467,16 @@ defmodule Benchtable.Table do
     strict_wire_reachable!(fields, node_fields, nodes, ids)
 
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
-    {assemble_directory(records), report}
+    {assemble_directory(records, length(nodes)), report}
   end
 
-  # Kahn's pass starts at leaves. Each final stored pointer contributes one
-  # dependency, including false guards and records unreachable from the root.
-  # The by-value walk never follows a marker, sorts a map, or expands a DAG.
-  defp assemble_directory(records) do
+  # assemble_directory resolves the private %{__wire_node__: index} markers to
+  # plain node numbers and returns {root, directory}: the root value plus a
+  # tuple of the table nodes in §3.1's index order (position index - 2, nil at
+  # a blob's index). Kahn's pass starts at leaves and refuses a cycle, exactly
+  # as §3.1 requires; the by-value walk never follows a marker, sorts a map, or
+  # expands a DAG.
+  defp assemble_directory(records, node_count) do
     {pending, parents, ready} =
       Enum.reduce(records, {%{}, %{}, :queue.new()}, fn
         {idx, value}, {pending, parents, ready} ->
@@ -3380,20 +3491,35 @@ defmodule Benchtable.Table do
           {Map.put(pending, idx, length(refs)), parents, ready}
       end)
 
-    assembled = assemble_ready(ready, pending, parents, records, %{})
+    assembled = assemble_ready(ready, pending, parents, %{})
     if map_size(assembled) != map_size(records), do: throw(:wire_damaged)
-    Map.get(assembled, 1, %{})
+
+    root = resolve_stored(Map.fetch!(records, 1), nil)
+    {root, build_directory(records, node_count)}
   end
 
-  defp assemble_ready(ready, pending, parents, records, assembled) do
+  # build_directory is the directory tuple: the resolved table node at each
+  # index, nil where the node table held a blob or a record this reader could
+  # not place (§3.1).
+  defp build_directory(_records, node_count) when node_count <= 0, do: {}
+
+  defp build_directory(records, node_count) do
+    for idx <- 2..(node_count + 1) do
+      case Map.fetch(records, idx) do
+        {:ok, value} -> resolve_stored(value, nil)
+        :error -> nil
+      end
+    end
+    |> List.to_tuple()
+  end
+
+  defp assemble_ready(ready, pending, parents, assembled) do
     case :queue.out(ready) do
       {:empty, _} ->
         assembled
 
       {{:value, idx}, ready} ->
-        value = resolve_stored(Map.fetch!(records, idx), assembled)
-        value = if idx == 1, do: value, else: Map.put(value, :__wire_identity__, idx)
-        assembled = Map.put(assembled, idx, value)
+        assembled = Map.put(assembled, idx, true)
 
         {pending, ready} =
           Enum.reduce(Map.get(parents, idx, []), {pending, ready}, fn
@@ -3403,7 +3529,7 @@ defmodule Benchtable.Table do
               {Map.put(pending, parent, left), ready}
           end)
 
-        assemble_ready(ready, pending, parents, records, assembled)
+        assemble_ready(ready, pending, parents, assembled)
     end
   end
 
@@ -3420,7 +3546,7 @@ defmodule Benchtable.Table do
 
   defp stored_references(_value, acc), do: acc
 
-  defp resolve_stored(%{__wire_node__: idx}, assembled), do: Map.fetch!(assembled, idx)
+  defp resolve_stored(%{__wire_node__: idx}, _assembled), do: idx
 
   defp resolve_stored(value, assembled) when is_map(value),
     do: Map.new(value, fn {key, v} -> {key, resolve_stored(v, assembled)} end)
@@ -4033,7 +4159,12 @@ defmodule Benchtable.Table do
   defp retyped_arm(_a, _name, _k, _inner, _report),
     do: {:cont, nil, throw(:wire_damaged)}
 
-  defp read_keyed_pairs(_f, _bin, 0, _nodes, _ids, acc, report), do: {:cont, acc, report}
+  defp read_keyed_pairs(_f, bin, 0, _nodes, _ids, acc, report) do
+    # a further complete element after the count's elements is bytes the count
+    # does not cover (docs/SPEC-TABLES.md §3.2, the framing layer's L6)
+    if bin != <<>>, do: throw(:wire_damaged)
+    {:cont, acc, report}
+  end
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
@@ -4906,45 +5037,68 @@ defmodule Benchtable.Table do
   # maps share by content, just as save does. A blob named from two slots refuses
   # the text by name, blob_shared (§2.5, §16.7).
 
-  def to_json(table, value) when is_map(value),
-    do: with_node_identities(fn -> to_json_identity(table, value) end)
+  def to_json(table, value) when is_map(value), do: to_json_graph(table, value, nil)
 
-  defp to_json_identity(table, value) do
+  def to_json(table, {root, nodes}) when is_map(root) and is_tuple(nodes),
+    do: to_json_graph(table, root, nodes)
+
+  defp to_json_graph(table, value, directory) do
     desc = Map.fetch!(@tables, table)
     value = Map.merge(defaults(desc), value)
-    counts = tally_refs(desc, value, %{})
+    Process.put(:elixir_json_directory, directory)
 
-    shared_blob =
-      Enum.any?(counts, fn
-        {{:blob, _, _}, n} -> n > 1
-        _ -> false
-      end)
+    try do
+      counts = tally_refs(desc, value, %{})
 
-    if shared_blob do
-      # a blob's text is a string, which has no first key for "&node" (§16.7)
-      {:error, :blob_shared}
-    else
-      Process.put(:elixir_json_refs, counts)
-      Process.put(:elixir_json_labels, %{})
-      Process.put(:elixir_json_next, 0)
-      Process.put(:elixir_json_refuse, false)
+      shared_blob =
+        Enum.any?(counts, fn
+          {{:blob, _, _}, n} -> n > 1
+          _ -> false
+        end)
 
-      try do
-        text = IO.iodata_to_binary([json_object(desc, value, 0), "\n"])
+      if shared_blob do
+        # a blob's text is a string, which has no first key for "&node" (§16.7)
+        {:error, :blob_shared}
+      else
+        Process.put(:elixir_json_refs, counts)
+        Process.put(:elixir_json_labels, %{})
+        Process.put(:elixir_json_next, 0)
+        Process.put(:elixir_json_refuse, false)
 
-        if Process.get(:elixir_json_refuse) do
-          {:error, :shared}
-        else
-          {:ok, text}
+        try do
+          text = IO.iodata_to_binary([json_object(desc, value, 0), "\n"])
+
+          if Process.get(:elixir_json_refuse) do
+            {:error, :shared}
+          else
+            {:ok, text}
+          end
+        catch
+          :non_finite_float -> {:error, :non_finite_float}
+          :invalid_value -> {:error, :invalid_value}
+        after
+          Process.delete(:elixir_json_refs)
+          Process.delete(:elixir_json_labels)
+          Process.delete(:elixir_json_next)
+          Process.delete(:elixir_json_refuse)
         end
-      catch
-        :non_finite_float -> {:error, :non_finite_float}
-        :invalid_value -> {:error, :invalid_value}
-      after
-        Process.delete(:elixir_json_refs)
-        Process.delete(:elixir_json_labels)
-        Process.delete(:elixir_json_next)
-        Process.delete(:elixir_json_refuse)
+      end
+    after
+      Process.delete(:elixir_json_directory)
+    end
+  end
+
+  # a pointer field's node number names a table node in the text's directory
+  defp json_node_value(n) do
+    directory = Process.get(:elixir_json_directory)
+    at = n - 2
+
+    if directory == nil or at < 0 or at >= tuple_size(directory) do
+      throw(:invalid_value)
+    else
+      case elem(directory, at) do
+        nil -> throw(:invalid_value)
+        value -> value
       end
     end
   end
@@ -4962,6 +5116,8 @@ defmodule Benchtable.Table do
     Process.put(:elixir_json_open, %{})
     Process.put(:elixir_json_bad, false)
     Process.put(:elixir_json_variable, desc.variable)
+    Process.put(:elixir_json_nodes, %{})
+    Process.put(:elixir_json_next, 2)
     outer_table = Process.get(:elixir_json_table)
 
     try do
@@ -4980,7 +5136,12 @@ defmodule Benchtable.Table do
               {:error, :malformed, report}
 
             true ->
-              {:ok, Map.merge(defaults(desc), value), report}
+              root = Map.merge(defaults(desc), value)
+              directory = json_directory_tuple()
+
+              if map_size(desc.node_types) > 0,
+                do: {:ok, {root, directory}, report},
+                else: {:ok, root, report}
           end
         end
       else
@@ -5000,6 +5161,22 @@ defmodule Benchtable.Table do
       Process.delete(:elixir_json_open)
       Process.delete(:elixir_json_bad)
       Process.delete(:elixir_json_variable)
+      Process.delete(:elixir_json_nodes)
+      Process.delete(:elixir_json_next)
+    end
+  end
+
+  # json_directory_tuple is the directory a pointered text read built: the
+  # node values in the order their numbers were handed out (2, 3, ...).
+  defp json_directory_tuple() do
+    nodes = Process.get(:elixir_json_nodes, %{})
+    count = Process.get(:elixir_json_next, 2) - 2
+
+    if count <= 0 do
+      {}
+    else
+      (for n <- 2..(count + 1), do: Map.get(nodes, n))
+      |> List.to_tuple()
     end
   end
 
@@ -5019,8 +5196,8 @@ defmodule Benchtable.Table do
     end)
   end
 
-  defp tally_field(%{t: :pointer, elem: name}, v, acc) when is_map(v),
-    do: tally_node(name, v, acc)
+  defp tally_field(%{t: :pointer, elem: name}, n, acc) when is_integer(n),
+    do: tally_node(name, n, acc)
 
   # a blob is its slot's own (§2.5), so equal bytes in two slots are two
   # strings; only the strict read's {:blob_shared, bytes} mark is a sharing
@@ -5035,7 +5212,7 @@ defmodule Benchtable.Table do
   defp tally_field(%{t: :list, elem_kind: 17, elem: name}, elements, acc)
        when is_list(elements) do
     Enum.reduce(elements, acc, fn
-      v, acc when is_map(v) -> tally_node(name, v, acc)
+      n, acc when is_integer(n) -> tally_node(name, n, acc)
       _, acc -> acc
     end)
   end
@@ -5071,13 +5248,14 @@ defmodule Benchtable.Table do
 
   defp tally_field(_f, _v, acc), do: acc
 
-  defp tally_node(name, v, acc) do
-    key = {:table, name, node_identity(v)}
+  defp tally_node(name, n, acc) do
+    key = {:table, name, n}
     prev = Map.get(acc, key, 0)
     acc = Map.put(acc, key, prev + 1)
 
     if prev == 0 do
       child = Map.fetch!(@tables, name)
+      v = json_node_value(n)
       tally_refs(child, Map.merge(defaults(child), v), acc)
     else
       acc
@@ -5137,14 +5315,15 @@ defmodule Benchtable.Table do
     end
   end
 
-  # json_node writes one pointer target. A node named once is a plain object.
-  # A node named again is defined at the first write, label from 1, and every
-  # later write is {"&node": N} alone (§16.7).
-  defp json_node(table, value, depth) do
-    key = {:table, table, node_identity(value)}
-    n = Map.get(Process.get(:elixir_json_refs, %{}), key, 1)
+  # json_node writes one pointer target, named by its node number. A node
+  # named once is a plain object. A node named again is defined at the first
+  # write, label from 1, and every later write is {"&node": N} alone (§16.7).
+  defp json_node(table, n, depth) do
+    key = {:table, table, n}
+    value = json_node_value(n)
+    m = Map.get(Process.get(:elixir_json_refs, %{}), key, 1)
 
-    if n < 2 do
+    if m < 2 do
       json_object(Map.fetch!(@tables, table), value, depth)
     else
       labels = Process.get(:elixir_json_labels, %{})
@@ -6404,11 +6583,13 @@ defmodule Benchtable.Table do
     {nil, throw(:wire_damaged)}
   end
 
-  # json_read_node reads one pointer object (§16.7). "&node" alone, after the
-  # label is defined, is that node. "&node" plus fields defines it. A label
-  # with no definition, a second definition, or a reference while the
-  # definition is still open is malformed. A label of another table is a kind
-  # mismatch and the pointer reads null.
+  # json_read_node reads one pointer object and returns its node number
+  # (§16.7). "&node" alone, after the label is defined, is that node's number.
+  # "&node" plus fields defines it and hands it the next number. A label with
+  # no definition, a second definition, or a reference while the definition is
+  # still open is malformed. A label of another table is a kind mismatch and
+  # the pointer reads null. A plain object (no label) is a fresh node, numbered
+  # in the order the text first meets it.
   defp json_read_node(table, [{"&node", label}], report) when is_integer(label) and label > 0 do
     if Map.has_key?(Process.get(:elixir_json_open, %{}), label) do
       Process.put(:elixir_json_bad, true)
@@ -6418,8 +6599,8 @@ defmodule Benchtable.Table do
         %{^label => :dropped} ->
           {nil, report}
 
-        %{^label => {^table, value}} ->
-          {value, report}
+        %{^label => {^table, n}} ->
+          {n, report}
 
         %{^label => _} ->
           {nil, throw(:wire_damaged)}
@@ -6447,12 +6628,14 @@ defmodule Benchtable.Table do
 
       Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
 
+      n = json_next_node(v)
+
       Process.put(
         :elixir_json_defs,
-        Map.put(Process.get(:elixir_json_defs, %{}), label, {table, v})
+        Map.put(Process.get(:elixir_json_defs, %{}), label, {table, n})
       )
 
-      {v, merge_report(report, elem_report)}
+      {n, merge_report(report, elem_report)}
     end
   end
 
@@ -6460,7 +6643,16 @@ defmodule Benchtable.Table do
     {v, elem_report} =
       carry_count_report(report, fn -> json_fields(Map.fetch!(@tables, table), pairs) end)
 
-    {v, merge_report(report, elem_report)}
+    {json_next_node(v), merge_report(report, elem_report)}
+  end
+
+  # json_next_node places a pointer target in the directory and hands back its
+  # node number, handed out in the order the text first meets nodes (§16.7).
+  defp json_next_node(value) do
+    n = Process.get(:elixir_json_next, 2)
+    Process.put(:elixir_json_next, n + 1)
+    Process.put(:elixir_json_nodes, Map.put(Process.get(:elixir_json_nodes, %{}), n, value))
+    n
   end
 
   # merge_report folds one nested value's report into the enclosing one
@@ -7262,6 +7454,19 @@ defmodule Benchtable.Table do
     end
   end
 
+  # deref follows one pointer reference: node 1 is the root, node 2 and up name
+  # the directory's records in order, and nil is null. A caller never indexes
+  # the directory by hand.
+  def deref({_root, _nodes}, nil), do: nil
+  def deref({root, _nodes}, 1), do: root
+
+  def deref({_root, nodes}, ref) when is_integer(ref) and ref >= 2 do
+    at = ref - 2
+    if at < tuple_size(nodes), do: elem(nodes, at), else: nil
+  end
+
+  def deref(_, _), do: nil
+
   # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   def cook_measure(table, value) do
@@ -7313,26 +7518,37 @@ defmodule Benchtable.Table do
 
   defp cook_plan(table, value) do
     try do
-      if not is_map(value) do
-        throw(:invalid)
-      end
+      {value, directory} =
+        case value do
+          {r, d} when is_map(r) and is_tuple(d) -> {r, d}
+          r when is_map(r) -> {r, nil}
+          _ -> throw(:invalid)
+        end
 
       desc = Map.fetch!(@tables, table)
-      {body, children} = cook_collect(desc, value, [])
+      Process.put(:elixir_cook_directory, directory)
+      Process.put(:elixir_cook_seen, MapSet.new())
 
-      root = %{
-        id: desc.type_id,
-        key: {desc.type_id, value},
-        kind: :table,
-        string: false,
-        value: body,
-        elem: table,
-        desc: desc
-      }
+      try do
+        {body, children} = cook_collect(desc, value, [])
 
-      {data, align, laid} = cook_lay([root | Enum.reverse(children)])
-      total = 64 + data + length(laid) * 16
-      {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+        root = %{
+          id: desc.type_id,
+          key: {desc.type_id, 1},
+          kind: :table,
+          string: false,
+          value: body,
+          elem: table,
+          desc: desc
+        }
+
+        {data, align, laid} = cook_lay([root | Enum.reverse(children)])
+        total = 64 + data + length(laid) * 16
+        {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+      after
+        Process.delete(:elixir_cook_directory)
+        Process.delete(:elixir_cook_seen)
+      end
     catch
       :invalid -> {:error, :invalid_value}
       :invalid_value -> {:error, :invalid_value}
@@ -7383,8 +7599,8 @@ defmodule Benchtable.Table do
     {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
   end
 
-  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, v, acc) when is_map(v),
-    do: {v, cook_push(acc, id, elem, v)}
+  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc) when is_integer(n),
+    do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
     do: cook_collect(Map.fetch!(@tables, elem), v, acc)
@@ -7431,8 +7647,8 @@ defmodule Benchtable.Table do
   defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e),
     do: cook_collect(Map.fetch!(@tables, elem), e, acc)
 
-  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, e, acc) when is_map(e),
-    do: {e, cook_push(acc, id, elem, e)}
+  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, n, acc) when is_integer(n),
+    do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_elem(%{elem_kind: 15, elem: union}, e, acc),
     do: cook_collect_arm(union, e, acc)
@@ -7456,19 +7672,39 @@ defmodule Benchtable.Table do
     end
   end
 
-  # cook_push numbers a TABLE node once and walks its body the first time
-  # only: a node named again is the one record, blobs and all (§3.1). The node
-  # is placed before what its body reaches, then given the walked body.
-  defp cook_push(acc, id, elem, v) do
-    key = {id, v}
+  # cook_push numbers a TABLE node once, by its stored node number, and walks
+  # its body the first time only: a node named again is the one record, blobs
+  # and all (§3.1). The directory gives the node's value in constant time, so a
+  # shared node is never found by scanning collected nodes or by its whole
+  # value. The node is placed before what its body reaches, then given the
+  # walked body.
+  defp cook_push(acc, id, elem, n) do
+    key = {id, n}
 
-    if Enum.any?(acc, fn n -> n.key == key end) do
+    if MapSet.member?(Process.get(:elixir_cook_seen, MapSet.new()), key) do
       acc
     else
-      node = %{id: id, key: key, kind: :table, string: false, value: v, elem: elem}
+      Process.put(:elixir_cook_seen, MapSet.put(Process.get(:elixir_cook_seen), key))
+      value = cook_node_lookup(n)
+      node = %{id: id, key: key, kind: :table, string: false, value: value, elem: elem}
       before = length(acc)
-      {body, acc} = cook_collect(Map.fetch!(@tables, elem), v, [node | acc])
+      {body, acc} = cook_collect(Map.fetch!(@tables, elem), value, [node | acc])
       List.update_at(acc, length(acc) - before - 1, &%{&1 | value: body})
+    end
+  end
+
+  # a pointer field's number must name a table node in the directory
+  defp cook_node_lookup(n) do
+    directory = Process.get(:elixir_cook_directory)
+    at = n - 2
+
+    if directory == nil or at < 0 or at >= tuple_size(directory) do
+      throw(:invalid)
+    else
+      case elem(directory, at) do
+        nil -> throw(:invalid)
+        value -> value
+      end
     end
   end
 

@@ -54,13 +54,13 @@ func TestRetainedRecordsReturnToTheirOwnBody(t *testing.T) {
 data = File.read!(` + elixirString(input) + `)
 retain = %{records: [], used: 0, cap: 1048576, ids: [], id_cap: 131072}
 zero = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
-{:ok, value, load, retain} = Tblrt1.Table.load_retain("Node", data, retain, zero)
-{:ok, bytes, save, retain} = Tblrt1.Table.save_retain("Node", value, retain, zero)
-size = Tblrt1.Table.measure_retain("Node", value, retain)
+{:ok, {root, nodes}, load, retain} = Tblrt1.Table.load_retain("Node", data, retain, zero)
+{:ok, bytes, save, retain} = Tblrt1.Table.save_retain("Node", {root, nodes}, retain, zero)
+size = Tblrt1.Table.measure_retain("Node", {root, nodes}, retain)
 File.write!(` + elixirString(out) + `, bytes)
 # the caller removes the array's second element before the save
 {:ok, _bytes, edited, _} =
-  Tblrt1.Table.save_retain("Node", Map.update!(value, "items", &Enum.take(&1, 1)), retain, zero)
+  Tblrt1.Table.save_retain("Node", {Map.update!(root, "items", &Enum.take(&1, 1)), nodes}, retain, zero)
 IO.puts("load=#{load.retained},#{load.retain_lost},#{load.unknown} save=#{save.retain_lost} size=#{size == byte_size(bytes)} edited=#{edited.retain_lost}")
 `
 		text := runProbe(t, elixirBinary(t), dir, names, probe)

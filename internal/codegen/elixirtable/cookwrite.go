@@ -340,26 +340,37 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
 
   defp cook_plan(table, value) do
     try do
-      if not is_map(value) do
-        throw(:invalid)
-      end
+      {value, directory} =
+        case value do
+          {r, d} when is_map(r) and is_tuple(d) -> {r, d}
+          r when is_map(r) -> {r, nil}
+          _ -> throw(:invalid)
+        end
 
       desc = Map.fetch!(@tables, table)
-      {body, children} = cook_collect(desc, value, [])
+      Process.put(:elixir_cook_directory, directory)
+      Process.put(:elixir_cook_seen, MapSet.new())
 
-      root = %{
-        id: desc.type_id,
-        key: {desc.type_id, value},
-        kind: :table,
-        string: false,
-        value: body,
-        elem: table,
-        desc: desc
-      }
+      try do
+        {body, children} = cook_collect(desc, value, [])
 
-      {data, align, laid} = cook_lay([root | Enum.reverse(children)])
-      total = 64 + data + length(laid) * 16
-      {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+        root = %{
+          id: desc.type_id,
+          key: {desc.type_id, 1},
+          kind: :table,
+          string: false,
+          value: body,
+          elem: table,
+          desc: desc
+        }
+
+        {data, align, laid} = cook_lay([root | Enum.reverse(children)])
+        total = 64 + data + length(laid) * 16
+        {:ok, %{total: total, data: data, align: align, nodes: laid, desc: desc}}
+      after
+        Process.delete(:elixir_cook_directory)
+        Process.delete(:elixir_cook_seen)
+      end
     catch
       :invalid -> {:error, :invalid_value}
       :invalid_value -> {:error, :invalid_value}
@@ -410,8 +421,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     {slot, [%{id: id, key: {id, slot}, kind: :blob, string: f.blob == :string, value: v} | acc]}
   end
 
-  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, v, acc) when is_map(v),
-    do: {v, cook_push(acc, id, elem, v)}
+  defp cook_collect_field(%{t: :pointer, cook_type_id: id, elem: elem}, n, acc) when is_integer(n),
+    do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_field(%{t: :table, elem: elem}, v, acc) when is_map(v),
     do: cook_collect(Map.fetch!(@tables, elem), v, acc)
@@ -458,8 +469,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_collect_elem(%{elem_kind: 13, elem: elem}, e, acc) when is_map(e),
     do: cook_collect(Map.fetch!(@tables, elem), e, acc)
 
-  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, e, acc) when is_map(e),
-    do: {e, cook_push(acc, id, elem, e)}
+  defp cook_collect_elem(%{elem_kind: 17, elem_cook_id: id, elem: elem}, n, acc) when is_integer(n),
+    do: {n, cook_push(acc, id, elem, n)}
 
   defp cook_collect_elem(%{elem_kind: 15, elem: union}, e, acc),
     do: cook_collect_arm(union, e, acc)
@@ -483,19 +494,39 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
-  # cook_push numbers a TABLE node once and walks its body the first time
-  # only: a node named again is the one record, blobs and all (§3.1). The node
-  # is placed before what its body reaches, then given the walked body.
-  defp cook_push(acc, id, elem, v) do
-    key = {id, v}
+  # cook_push numbers a TABLE node once, by its stored node number, and walks
+  # its body the first time only: a node named again is the one record, blobs
+  # and all (§3.1). The directory gives the node's value in constant time, so a
+  # shared node is never found by scanning collected nodes or by its whole
+  # value. The node is placed before what its body reaches, then given the
+  # walked body.
+  defp cook_push(acc, id, elem, n) do
+    key = {id, n}
 
-    if Enum.any?(acc, fn n -> n.key == key end) do
+    if MapSet.member?(Process.get(:elixir_cook_seen, MapSet.new()), key) do
       acc
     else
-      node = %{id: id, key: key, kind: :table, string: false, value: v, elem: elem}
+      Process.put(:elixir_cook_seen, MapSet.put(Process.get(:elixir_cook_seen), key))
+      value = cook_node_lookup(n)
+      node = %{id: id, key: key, kind: :table, string: false, value: value, elem: elem}
       before = length(acc)
-      {body, acc} = cook_collect(Map.fetch!(@tables, elem), v, [node | acc])
+      {body, acc} = cook_collect(Map.fetch!(@tables, elem), value, [node | acc])
       List.update_at(acc, length(acc) - before - 1, &%{&1 | value: body})
+    end
+  end
+
+  # a pointer field's number must name a table node in the directory
+  defp cook_node_lookup(n) do
+    directory = Process.get(:elixir_cook_directory)
+    at = n - 2
+
+    if directory == nil or at < 0 or at >= tuple_size(directory) do
+      throw(:invalid)
+    else
+      case elem(directory, at) do
+        nil -> throw(:invalid)
+        value -> value
+      end
     end
   end
 
