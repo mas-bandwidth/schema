@@ -7149,11 +7149,11 @@ const variableRetainSource = `
   defp decode_directory_retain(desc, fields, nodes, ids, retain, report, terminated) do
     report = directory_report(nodes, report, true)
 
-    {records, report, retain} =
+    {records, report, retain, node_fields} =
       nodes
       |> Enum.with_index(2)
-      |> Enum.reduce({%{}, report, retain}, fn
-        {{:table, name, body}, idx}, {records, report, retain} ->
+      |> Enum.reduce({%{}, report, retain, %{}}, fn
+        {{:table, name, body}, idx}, {records, report, retain, node_fields} ->
           {node_desc, fields_of_node, node_ok} = decoded_fields(name, body, ids)
 
           {_status, value, report, retain} =
@@ -7172,7 +7172,9 @@ const variableRetainSource = `
 
           if not node_ok, do: throw(:wire_damaged)
           value = Map.put(value, :__retain_node__, idx)
-          {Map.put(records, idx, value), report, retain}
+
+          {Map.put(records, idx, value), report, retain,
+           Map.put(node_fields, idx, fields_of_node)}
 
         _, state ->
           state
@@ -7182,6 +7184,9 @@ const variableRetainSource = `
       decode_retain(desc, fields, nodes, ids, retain, report, [], terminated)
 
     if not terminated, do: throw(:wire_damaged)
+
+    strict_wire_reachable!(fields, node_fields, nodes, ids)
+
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     value = assemble_directory(records)
     {value, report, retain}
