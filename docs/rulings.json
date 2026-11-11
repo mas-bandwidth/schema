@@ -111,6 +111,14 @@
       ]
     },
     {
+      "id": "json-comment-text",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON comment ends at a line feed or the end of input, holds only well-formed UTF-8 and no NUL, and the read's depth cap counts every object and array"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
       "id": "conformance-is-read-then-write",
       "date": "2026-11-03",
       "quotes": [
