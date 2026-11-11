@@ -4,8 +4,8 @@
 # draws. SHRINK-ONLY: a kind observed in a file that is not listed for it
 # fails the gate, and a listed kind that no longer occurs fails until its
 # entry is deleted (a kind this clang does not know is not held against it).
-# Normally, never add an entry; fix the emitter. The one-time widelist
-# census correction below is documented in docs/PORTING.md J4.
+# Normally, never add an entry; fix the emitter. The one-time widelist and
+# features census corrections below are documented in docs/PORTING.md J4.
 #
 # Three kinds sit on the PACKET emitter's files (<Name>.h, <Name>Wire.h) and
 # are not the emitter's to clear without altering the packet wire, which Glenn's
@@ -124,6 +124,12 @@ build/tables-generated/fe2/FE2Table.cpp float-equal,nrvo,old-style-cast,padded,s
 build/tables-generated/fe2/FE2Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
 build/tables-generated/fe2/FE2Wire.h covered-switch-default,switch-default
 build/tables-generated/fe2/Tblfe2View.h padded
+# One-time features inventory: these new paths instantiate existing table,
+# view and container templates. Keep the exact observed kinds; new kinds and
+# stale entries still fail. This does not change the format inventory.
+build/tables-generated/features/FeaturesTable.cpp cast-align,float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
+build/tables-generated/features/FeaturesTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/features/FeaturewitnessesView.h padded
 build/tables-generated/fg1/FG1.h covered-switch-default,padded
 build/tables-generated/fg1/FG1Table.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/fg1/FG1Table.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default,switch-enum
