@@ -2122,7 +2122,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
 	g.pf("    }\n")
-	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
+	// A ROOT READ IS ONE RECORD: handed room for exactly one value, a file of
+	// none holds no value to read, and the engine answers it truncated.
+	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0 || (rest == 0 && values.Length == 1))\n    {\n")
 	g.pf("        if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    long n = rest / record_bytes;\n")
