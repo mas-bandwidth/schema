@@ -95,6 +95,15 @@ and requires the finding that names each.
   `Scene head deref` row carried a BigInt rationale for a path that had
   stopped reading BigInts.
 
+## Two rules every port holds
+
+**Strict wins: the read verdict is the same in every build.** A runtime gives
+the same READ verdict in every build mode its language offers — a release and a checked or debug build, an optimised and an overflow-checking one — and the port's gates run each mode the language offers. The verdict is the contract; a refusal's reason is per-language detail. Write-side checks follow `docs/rulings.json` write-refusal's per-leg table and are not changed by this rule: a debug-only assert where the language's idiom is one, a refusal in every build where it is not.
+
+**Loading never crashes covers freeing what was loaded.** docs/SECURITY.md's
+`loading never crashes on input that loads` covers freeing what was loaded:
+a leg whose values own their pointers drops a loaded pointer chain without recursion, so a chain the reader accepts never overflows the stack when it is freed.
+
 ## The register
 
 ### M1 — The read path allocates nothing
