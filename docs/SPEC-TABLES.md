@@ -6321,10 +6321,6 @@ and that is its integer.
   | `31` escape | nothing | align, a thirty-two bit `L`, then `L` bytes, opaque. No writer of this major emits one |
   | `32` no payload | nothing | nothing rides |
 
-**AN ARRAY OR KEYED SHAPE'S ELEMENT KIND IS NEVER `14` OR `16`, and an
-announcement carrying one is refused** (it is framing damage, as a width no
-kind can hold is).
-
 **A SHAPE IS ENOUGH TO SKIP AND ENOUGH TO DECODE, and those are two different
 claims.** Skipping needs the WIDTH, which every row above gives. Decoding under a
 declaration that has MOVED needs the RANGE, which is why `base` rides beside
