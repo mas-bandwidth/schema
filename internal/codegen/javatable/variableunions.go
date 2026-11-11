@@ -275,6 +275,7 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 			b.WriteString("        report.unknown++;return 0;}\n")
 		}
 	}
+	writeVariableUnionCheckWrite(&b, un)
 	b.WriteString("}\n")
 	return b.String()
 }

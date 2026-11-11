@@ -1718,6 +1718,38 @@ public final class TableVariable {
         return len;
     }
 
+    // textWritable is the write contract on text (docs/SPEC.md §5.1 rows 4
+    // and 8): no lone surrogate, no zero, and a UTF-8 length inside max (a
+    // negative max is unbounded). A writer's checkWrite asserts it: debug only.
+    public static boolean textWritable(String s, long max) {
+        if (s == null) {
+            return true;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c == 0) {
+                return false;
+            } else if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)) {
+                if (i + 1 >= n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+                    return false;
+                }
+                len += 4;
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return false;
+            } else {
+                len += 3;
+            }
+        }
+        return max < 0 || len <= max;
+    }
+
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
@@ -4142,6 +4174,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		closeGuard(&b, open)
 	}
 	b.WriteString("    }\n\n")
+	writeVariableCheckWrite(&b, st)
+	writeVariableCheckNodes(&b, tables)
 
 	// Enum helpers
 	for _, f := range st.Fields {
@@ -4163,11 +4197,16 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        return save(v, new TableVariable.Saver());\n")
 	fmt.Fprintf(&b, "    }\n\n")
 	fmt.Fprintf(&b, "    public static byte[] save(Value v, TableVariable.Saver saver) {\n")
+	// THE WRITE CONTRACT IS A DEBUG ASSERT (docs/SPEC.md §5.1): checkWrite before
+	// the graph, so it is the one answer under -ea; checkNodes once the graph
+	// has reached every table through its pointers.
+	fmt.Fprintf(&b, "        assert checkWrite(v);\n")
 	fmt.Fprintf(&b, "        TableVariable.Writer w = saver.begin();\n")
 	fmt.Fprintf(&b, "        TableVariable.NodeGraph graph = saver.graph;\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, true);\n")
 	fmt.Fprintf(&b, "        if (!buildGraph(graph, v)) { return null; }\n")
 	fmt.Fprintf(&b, "        graph.setOpen(v, false);\n")
+	fmt.Fprintf(&b, "        assert checkNodes(graph);\n")
 	fmt.Fprintf(&b, "        w.put8(1);\n")
 	fmt.Fprintf(&b, "        writeFields(w, graph, v);\n")
 	fmt.Fprintf(&b, "        int nodes = graph.nodeCount();\n")

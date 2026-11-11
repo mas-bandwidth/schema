@@ -539,4 +539,22 @@ public final class MixedEventVariable {
         in.p++;
         return v;
     }
+
+    // checkWrite is the selected arm's contract walk (docs/SPEC.md §5.1),
+    // reached from its holder's checkWrite under `assert`: debug only.
+    static boolean checkWrite(Value v) {
+        if (v == null) {
+            return true;
+        }
+        if (v.tag == 1) {
+            assert MixedHitEventVariable.checkWrite(v.hit);
+        }
+        if (v.tag == 2) {
+            assert MixedChatEventVariable.checkWrite(v.chat);
+        }
+        if (v.tag == 3) {
+            assert MixedPickupEventVariable.checkWrite(v.pickup);
+        }
+        return true;
+    }
 }

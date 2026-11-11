@@ -352,6 +352,61 @@ public final class MixedStatVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller.
+    static boolean checkWrite(Value v) {
+        if (v == null) {
+            return true;
+        }
+        assert (v.statId & 0xffffffffL) <= 0xffL : "MixedStat.stat_id";
+        assert v.delta >= -512 && v.delta <= 511 : "MixedStat.delta";
+        return true;
+    }
+
+    // checkNodes is checkWrite over every table the graph reached through a
+    // pointer (docs/SPEC.md §5.1), called through `assert`: debug only.
+    static boolean checkNodes(TableVariable.NodeGraph graph) {
+        for (int i = 0, n = graph.nodeCount(); i < n; i++) {
+            if (graph.nodeBlob(i)) {
+                continue;
+            }
+            Object value = graph.nodeValue(i);
+            long typeId = graph.nodeType(i);
+            if (typeId == BenchBitsVariable.TYPE_ID) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) value);
+            }
+            if (typeId == BenchIntsVariable.TYPE_ID) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) value);
+            }
+            if (typeId == BenchMixedVariable.TYPE_ID) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) value);
+            }
+            if (typeId == BenchPacketVariable.TYPE_ID) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) value);
+            }
+            if (typeId == FixedTableVariable.TYPE_ID) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) value);
+            }
+            if (typeId == MixedChatEventVariable.TYPE_ID) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) value);
+            }
+            if (typeId == MixedEntityVariable.TYPE_ID) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) value);
+            }
+            if (typeId == MixedHitEventVariable.TYPE_ID) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) value);
+            }
+            if (typeId == MixedPickupEventVariable.TYPE_ID) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) value);
+            }
+            if (typeId == MixedStatVariable.TYPE_ID) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) value);
+            }
+        }
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -359,6 +414,7 @@ public final class MixedStatVariable {
     }
 
     public static byte[] save(Value v, TableVariable.Saver saver) {
+        assert checkWrite(v);
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -366,6 +422,7 @@ public final class MixedStatVariable {
             return null;
         }
         graph.setOpen(v, false);
+        assert checkNodes(graph);
         w.put8(1);
         writeFields(w, graph, v);
         int nodes = graph.nodeCount();

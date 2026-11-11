@@ -732,6 +732,69 @@ public final class BenchIntsVariable {
         }
     }
 
+    // checkWrite is save's contract walk (docs/SPEC.md §5.1 rows 1-5 and 8),
+    // called through `assert`: THE WRITE-SIDE CHECKS ARE DEBUG ONLY, and
+    // without -ea the writer trusts its caller.
+    static boolean checkWrite(Value v) {
+        if (v == null) {
+            return true;
+        }
+        assert v.f0 >= -100 && v.f0 <= 100 : "BenchInts.f0";
+        assert v.f1 >= 0 && v.f1 <= 65535 : "BenchInts.f1";
+        assert v.f2 >= -1000000 && v.f2 <= 1000000 : "BenchInts.f2";
+        assert v.f3 >= 0 && v.f3 <= 3 : "BenchInts.f3";
+        assert v.f4 >= -15 && v.f4 <= 15 : "BenchInts.f4";
+        assert v.f5 >= 0 && v.f5 <= 1000 : "BenchInts.f5";
+        assert v.f6 >= -2048 && v.f6 <= 2047 : "BenchInts.f6";
+        assert v.f7 >= 0 && v.f7 <= 255 : "BenchInts.f7";
+        assert v.f8 >= -600000 && v.f8 <= 600000 : "BenchInts.f8";
+        assert v.f9 >= 0 && v.f9 <= 100 : "BenchInts.f9";
+        return true;
+    }
+
+    // checkNodes is checkWrite over every table the graph reached through a
+    // pointer (docs/SPEC.md §5.1), called through `assert`: debug only.
+    static boolean checkNodes(TableVariable.NodeGraph graph) {
+        for (int i = 0, n = graph.nodeCount(); i < n; i++) {
+            if (graph.nodeBlob(i)) {
+                continue;
+            }
+            Object value = graph.nodeValue(i);
+            long typeId = graph.nodeType(i);
+            if (typeId == BenchBitsVariable.TYPE_ID) {
+                assert BenchBitsVariable.checkWrite((BenchBitsVariable.Value) value);
+            }
+            if (typeId == BenchIntsVariable.TYPE_ID) {
+                assert BenchIntsVariable.checkWrite((BenchIntsVariable.Value) value);
+            }
+            if (typeId == BenchMixedVariable.TYPE_ID) {
+                assert BenchMixedVariable.checkWrite((BenchMixedVariable.Value) value);
+            }
+            if (typeId == BenchPacketVariable.TYPE_ID) {
+                assert BenchPacketVariable.checkWrite((BenchPacketVariable.Value) value);
+            }
+            if (typeId == FixedTableVariable.TYPE_ID) {
+                assert FixedTableVariable.checkWrite((FixedTableVariable.Value) value);
+            }
+            if (typeId == MixedChatEventVariable.TYPE_ID) {
+                assert MixedChatEventVariable.checkWrite((MixedChatEventVariable.Value) value);
+            }
+            if (typeId == MixedEntityVariable.TYPE_ID) {
+                assert MixedEntityVariable.checkWrite((MixedEntityVariable.Value) value);
+            }
+            if (typeId == MixedHitEventVariable.TYPE_ID) {
+                assert MixedHitEventVariable.checkWrite((MixedHitEventVariable.Value) value);
+            }
+            if (typeId == MixedPickupEventVariable.TYPE_ID) {
+                assert MixedPickupEventVariable.checkWrite((MixedPickupEventVariable.Value) value);
+            }
+            if (typeId == MixedStatVariable.TYPE_ID) {
+                assert MixedStatVariable.checkWrite((MixedStatVariable.Value) value);
+            }
+        }
+        return true;
+    }
+
     // save writes v as the variable form (§3). The one-argument form makes a
     // fresh Saver; a caller that keeps a Saver allocates only the answer.
     public static byte[] save(Value v) {
@@ -739,6 +802,7 @@ public final class BenchIntsVariable {
     }
 
     public static byte[] save(Value v, TableVariable.Saver saver) {
+        assert checkWrite(v);
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -746,6 +810,7 @@ public final class BenchIntsVariable {
             return null;
         }
         graph.setOpen(v, false);
+        assert checkNodes(graph);
         w.put8(1);
         writeFields(w, graph, v);
         int nodes = graph.nodeCount();
