@@ -1541,6 +1541,100 @@ func (in *tableJSONIn) scanNumber() (token []byte, integral bool, ok bool) {
 	return in.text[start:in.pos], integral, true
 }
 
+// tableJSONNumberToken bounds a token before strconv converts it. A number's
+// value does not depend on how many zeros spell its mantissa (§16.2), so the
+// trailing zeros fold into the exponent and only the first significant digits
+// remain; past that limit a sticky digit keeps the fact that more followed.
+// Without the trim a long mantissa is longer than strconv's decimal, and the
+// digits it drops would move the value.
+func tableJSONNumberToken(token []byte) []byte {
+	if len(token) <= 800 {
+		return token
+	}
+	const limit = 768
+	i := 0
+	negative := false
+	if token[i] == '-' || token[i] == '+' {
+		negative = token[i] == '-'
+		i++
+	}
+	kept := make([]byte, 0, limit+1)
+	fraction := 0
+	afterPoint := false
+	digits := 0
+	trailing := 0
+	nonzero := false
+	for ; i < len(token); i++ {
+		c := token[i]
+		if c == '.' {
+			afterPoint = true
+			continue
+		}
+		if c == 'e' || c == 'E' {
+			break
+		}
+		if afterPoint {
+			fraction++
+		}
+		if !nonzero {
+			if c == '0' {
+				continue
+			}
+			nonzero = true
+		}
+		digits++
+		if c == '0' {
+			trailing++
+		} else {
+			trailing = 0
+		}
+		if len(kept) < limit {
+			kept = append(kept, c)
+		}
+	}
+	exponent := 0
+	if i < len(token) && (token[i] == 'e' || token[i] == 'E') {
+		i++
+		sign := 1
+		if i < len(token) && (token[i] == '-' || token[i] == '+') {
+			if token[i] == '-' {
+				sign = -1
+			}
+			i++
+		}
+		for ; i < len(token); i++ {
+			if exponent < 1000000 {
+				exponent = exponent*10 + int(token[i]-'0')
+			}
+		}
+		exponent *= sign
+	}
+	if !nonzero {
+		if negative {
+			return []byte("-0")
+		}
+		return []byte("0")
+	}
+	significant := digits - trailing
+	scale := exponent - fraction + trailing
+	var value []byte
+	if significant <= limit {
+		value = kept[:significant]
+	} else {
+		value = kept[:limit]
+		scale += significant - limit
+		value = append(value, '1')
+		scale--
+	}
+	out := make([]byte, 0, len(value)+16)
+	if negative {
+		out = append(out, '-')
+	}
+	out = append(out, value...)
+	out = append(out, 'e')
+	return strconv.AppendInt(out, int64(scale), 10)
+}
+
 // the token's exact double. Go's strconv is locale-free, so unlike the C++
 // walk's strtod there is no decimal point to cross on the way in.
 func tableJSONTokenDouble(token []byte, single bool) float64 {
@@ -1550,7 +1644,8 @@ func tableJSONTokenDouble(token []byte, single bool) float64 {
 	}
 	// an out-of-range token is the only failure a scanned production can
 	// produce, and ParseFloat still hands back the infinity the caller checks
-	value, _ := strconv.ParseFloat(unsafe.String(&token[0], len(token)), bits)
+	bounded := tableJSONNumberToken(token)
+	value, _ := strconv.ParseFloat(unsafe.String(&bounded[0], len(bounded)), bits)
 	return value
 }
 
