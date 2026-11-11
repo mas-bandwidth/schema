@@ -144,8 +144,11 @@ func TestMessageSkipRefusesElementWithNoProgress(t *testing.T) {
 			t.Parallel()
 			entry := ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000001, Kind: ir.TableKindArray, Shape: c.shape}
 			encoded := entry.Encode(nil)
-			if _, _, ok := ir.DecodeShape(encoded[9:], entry.Kind); !ok {
-				t.Fatal("announcement refused the shape")
+			// A NESTED ELEMENT SHAPE IS REFUSED AT THE ANNOUNCEMENT, so no
+			// announced vocabulary carries one; the walk below is driven
+			// directly to hold its own zero-progress rule all the same.
+			if _, _, ok := ir.DecodeShape(encoded[9:], entry.Kind); ok {
+				t.Fatal("the announcement accepted a nested element shape")
 			}
 			v := &Vocabulary{entries: []ir.TableVocabularyEntry{entry}, announced: true}
 			var w bitWriter
