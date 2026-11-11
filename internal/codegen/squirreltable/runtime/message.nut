@@ -19,6 +19,28 @@ local equalBytes = function(a, b) {
   return true;
 };
 
+// A SQUIRREL STRING IS IMMUTABLE: `a + b` copies both operands, so a per-byte
+// append copies the prefix each step. The validated bytes are joined pairwise
+// from one-byte strings, which copies O(n log n) bytes rather than O(n^2).
+local TEXT_BYTE = array(256);
+for (local i = 0; i < 256; i++) TEXT_BYTE[i] = format("%c", i);
+
+local joinText = null;
+joinText = function(b, lo, hi) {
+  local span = hi - lo;
+  if (span <= 4) {
+    if (span == 4) return (TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff]) +
+                          (TEXT_BYTE[b[lo + 2] & 0xff] + TEXT_BYTE[b[lo + 3] & 0xff]);
+    if (span == 3) return TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff] +
+                          TEXT_BYTE[b[lo + 2] & 0xff];
+    if (span == 2) return TEXT_BYTE[b[lo] & 0xff] + TEXT_BYTE[b[lo + 1] & 0xff];
+    if (span == 1) return TEXT_BYTE[b[lo] & 0xff];
+    return "";
+  }
+  local mid = lo + (span >> 1);
+  return joinText(b, lo, mid) + joinText(b, mid, hi);
+};
+
 local readU32 = function(b, at) {
   return (b[at]&0xff)|((b[at+1]&0xff)<<8)|((b[at+2]&0xff)<<16)|((b[at+3]&0xff)<<24);
 };
@@ -556,7 +578,7 @@ readPayload = function(T, v, r, fd, owner, member, depth, entry) {
     local at=r.bits/8;
     if(!messageTextOk(r.b,at,n)){r.bad=true;return;}
     if(n>fd.bound){refuseRead(r,"length_over_bound");return;}
-    local s="";for(local i=0;i<n;i++)s+=format("%c",r.b[at+i]);r.bits+=n*8;
+    local s=joinText(r.b,at,at+n);r.bits+=n*8;
     owner[member]=s;return;
   }
   if (fd.shape == "bytes") {

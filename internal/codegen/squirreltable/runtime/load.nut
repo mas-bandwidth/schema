@@ -372,35 +372,35 @@ local skipField = function(r, kind) {
   return false;
 };
 
+// A SQUIRREL STRING IS IMMUTABLE: `a + b` copies both operands, so a per-byte
+// append copies the prefix each step. The validated bytes are joined pairwise
+// from one-byte strings, which copies O(n log n) bytes rather than O(n^2).
+local TEXT_BYTE = array(256);
+for (local i = 0; i < 256; i++) TEXT_BYTE[i] = format("%c", i);
+
+local textCat = function(a, b) { return a + b; };
+
+local joinText = null;
+joinText = function(b, lo, hi) {
+  local span = hi - lo;
+  if (span <= 4) {
+    if (span == 4) return textCat(textCat(TEXT_BYTE[b[lo] & 0xff], TEXT_BYTE[b[lo + 1] & 0xff]),
+                                  textCat(TEXT_BYTE[b[lo + 2] & 0xff], TEXT_BYTE[b[lo + 3] & 0xff]));
+    if (span == 3) return textCat(textCat(TEXT_BYTE[b[lo] & 0xff], TEXT_BYTE[b[lo + 1] & 0xff]), TEXT_BYTE[b[lo + 2] & 0xff]);
+    if (span == 2) return textCat(TEXT_BYTE[b[lo] & 0xff], TEXT_BYTE[b[lo + 1] & 0xff]);
+    if (span == 1) return TEXT_BYTE[b[lo] & 0xff];
+    return "";
+  }
+  local mid = lo + (span >> 1);
+  return textCat(joinText(b, lo, mid), joinText(b, mid, hi));
+};
+
+local utf8Ok = null;
+
 // UTF-8, byte exact and validating (docs/SPEC-TABLES.md §3)
 local utf8Decode = function(b, at, len) {
-  local s = "";
-  local i = 0;
-  while (i < len) {
-    local b0 = b[at + i] & 0xff;
-    if (b0 == 0) return { s = s, ok = false, used = i };
-    if (b0 < 0x80) { s = s + format("%c", b0); i++; continue; }
-    local need, cp;
-    if ((b0 & 0xe0) == 0xc0) { need = 1; cp = b0 & 0x1f; }
-    else if ((b0 & 0xf0) == 0xe0) { need = 2; cp = b0 & 0x0f; }
-    else if ((b0 & 0xf8) == 0xf0) { need = 3; cp = b0 & 0x07; }
-    else return { s = s, ok = false, used = i };
-    if (i + need >= len) return { s = s, ok = false, used = i };
-    for (local k = 1; k <= need; k++) {
-      local bb = b[at + i + k] & 0xff;
-      if ((bb & 0xc0) != 0x80) return { s = s, ok = false, used = i };
-      cp = (cp << 6) | (bb & 0x3f);
-    }
-    local min = need == 1 ? 0x80 : (need == 2 ? 0x800 : 0x10000);
-    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
-      return { s = s, ok = false, used = i };
-    }
-    // a Squirrel string holds BYTES: the sequence just validated is kept as
-    // its own UTF-8 bytes, never as format("%c", cp), which keeps one byte
-    for (local k = 0; k <= need; k++) s = s + format("%c", b[at + i + k] & 0xff);
-    i += 1 + need;
-  }
-  return { s = s, ok = true, used = len };
+  if (!utf8Ok(b, at, len)) return { s = "", ok = false, used = 0 };
+  return { s = joinText(b, at, at + len), ok = true, used = len };
 };
 
 local blobOfRange = function(b, at, len) {
@@ -507,7 +507,7 @@ local wcDamage = function(c) {
 };
 
 // well-formed UTF-8 with no zero byte (textValid in internal/tablewire/text.go)
-local utf8Ok = function(b, at, len) {
+utf8Ok = function(b, at, len) {
   local i = 0;
   while (i < len) {
     local b0 = b[at + i] & 0xff;
@@ -1083,7 +1083,7 @@ local mapKeyScan = function(es, table, kd) {
           // a zero byte is not a key at any length, so the scan fails here
           local at = scan.at;
           local L = leb(scan);
-          if (scan.bad || scan.at + L > scan.end || !utf8Decode(scan.b, scan.at, L).ok) return [bad, widened, false];
+          if (scan.bad || scan.at + L > scan.end || !utf8Ok(scan.b, scan.at, L)) return [bad, widened, false];
           scan.at = at;
         }
       }
