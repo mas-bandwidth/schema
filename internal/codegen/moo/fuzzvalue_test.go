@@ -392,28 +392,6 @@ func (d *drawer) text(limit int) []byte {
 	return b
 }
 
-// wide is well-formed UTF-16 of at most limit code units (SPEC §4.12): no
-// zero unit, every surrogate paired.
-func (d *drawer) wide(limit int) []uint16 {
-	want := int(d.below(int64(limit)))
-	var u []uint16
-	for len(u) < want {
-		switch d.r.IntN(4) {
-		case 0:
-			if len(u)+2 <= want {
-				u = append(u, uint16(0xD800+d.r.IntN(0x400)), uint16(0xDC00+d.r.IntN(0x400)))
-				continue
-			}
-			u = append(u, 'a')
-		case 1:
-			u = append(u, uint16(0xE000+d.r.IntN(0x2000)))
-		default:
-			u = append(u, uint16(1+d.r.IntN(0xD7FF)))
-		}
-	}
-	return u
-}
-
 // roots is every packet type and union of the unit with a wire of its own,
 // sorted, so a seed names the same draws on every machine.
 func roots(u *ir.Unit) []string {

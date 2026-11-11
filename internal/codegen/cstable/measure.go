@@ -15,7 +15,7 @@ const tableLoadMeasureSource = `
     }
     static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
     {
-        if(f.Unbounded){Reader text=r;if(framed&&!r.Slice(out text)){r.Offset=r.Buffer.Length;return true;}if(text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);}if(!framed){r.Offset=r.Buffer.Length;}return true;}
+        if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
         if (f.IsArray)
         {
             Reader a = r;
@@ -35,7 +35,7 @@ const tableLoadMeasureSource = `
                 Reader source = a;
                 if (f.KeyId != null)
                 { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if(f.Table.Fields[0].Unbounded && text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);} }
+                if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if (f.Table.Fields[0].Unbounded && text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } }
                 else if (f.Kind == 13)
                 {
                     Reader element = source;
@@ -110,7 +110,12 @@ const tableLoadMeasureSource = `
     }
     public static long LoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, out string reason)
     {
+        return LoadMeasureWalk(type, bytes, out reason, out _);
+    }
+    static long LoadMeasureWalk(TableTypeInfo type, ReadOnlySpan<byte> bytes, out string reason, out bool nonFinite)
+    {
         reason = null;
+        nonFinite = false;
         if (bytes.Length < 1) { return -1; }
         if (bytes[0] != 1) { reason = "unknown_form"; return -1; }
         if (type.Integrity && !IntegrityRead(ref bytes)) { reason = "integrity_mismatch"; return -1; }
@@ -124,7 +129,8 @@ const tableLoadMeasureSource = `
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
         if (!DistinctVocabulary(ids)) { return -1; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-        int whole = WireCheck(root.Buffer, ids, false, out _);
+        int whole = WireCheck(root.Buffer, ids, false, out bool wireNonFinite);
+        nonFinite = wireNonFinite;
         if (whole == WireDamaged) { return -1; }
         // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
         // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).

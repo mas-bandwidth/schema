@@ -14,6 +14,7 @@ import (
 )
 
 func TestCTableRetainFile(t *testing.T) {
+	t.Parallel()
 	const old = `package probe
 enum Key { A
 B }
@@ -72,6 +73,7 @@ int main(void){
 }
 
 func TestCTableRetainFramedDepth(t *testing.T) {
+	t.Parallel()
 	old := unitFromSource(t, "package probe\ntable Root { next *Root }\n")
 	for _, depth := range []int{64, 65} {
 		t.Run(fmt.Sprint(depth), func(t *testing.T) {

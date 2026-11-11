@@ -692,8 +692,7 @@ func (g *fixedGen) emitStorageField(f *ir.Field) []string {
 		g.pf("        /** `?%s`: the present flag; the payload rides WHOLE either way (§3.4). */\n", f.Name)
 		g.pf("        public boolean %sPresent;\n", name)
 	}
-	switch {
-	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
+	if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 		g.pf("        /** %s(%d): a fixed buffer, used length beside it. */\n", ir.TableTypeSpelling(f), f.Type.Size)
 		g.pf("        public final byte[] %s = new byte[%d];\n", name, f.Type.Size)
 		if len(f.DefBytes) > 0 {

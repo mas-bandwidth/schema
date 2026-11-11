@@ -13,6 +13,7 @@ import (
 )
 
 func TestCTableViewOutsideClosure(t *testing.T) {
+	t.Parallel()
 	for _, tables := range []bool{false, true} {
 		t.Run(map[bool]string{false: "packet", true: "tables"}[tables], func(t *testing.T) {
 			source := viewSrc
@@ -44,9 +45,11 @@ int main(void) {
 }
 
 func TestCTableViewListing(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the C compiler, once per corpus unit")
 	for _, path := range []string{"../tables/examples", "../tables/pointers", "../tables/maps", "../tables/lists", "../tables/arms", "../examples"} {
 		t.Run(filepath.Base(path), func(t *testing.T) {
+			t.Parallel()
 			c := New()
 			paths, err := filepath.Glob(filepath.Join(path, "*.schema"))
 			if err != nil {

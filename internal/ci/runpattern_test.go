@@ -18,8 +18,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -175,24 +177,65 @@ func makefileFiles(t *testing.T, root string) map[string]string {
 	return files
 }
 
-// listNames shells out to `go test -list`, which compiles the package and
-// prints the matching test names, and none when nothing matches. An empty
-// result is the refusal the gate is built around.
-func listNames(t *testing.T, root, pattern, pkg string) []string {
+// listPackages compiles each package once with `go test -list .*`, which
+// prints every top-level test, benchmark, fuzz test and example in it, and
+// returns the names by package. The packages compile side by side, one per
+// processor: a package listed once per (pattern, package) pair, one after
+// another, was most of this gate's minutes.
+func listPackages(t *testing.T, root string, pkgs []string) map[string][]string {
 	t.Helper()
-	cmd := exec.Command("go", "test", "-list", pattern, pkg)
-	cmd.Dir = root
-	out, err := cmd.Output()
+	type listing struct {
+		pkg   string
+		names []string
+		err   error
+		out   []byte
+	}
+	results := make([]listing, len(pkgs))
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for i, pkg := range pkgs {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			cmd := exec.Command("go", "test", "-list", ".*", pkg)
+			cmd.Dir = root
+			out, err := cmd.Output()
+			r := listing{pkg: pkg, err: err, out: out}
+			for line := range strings.SplitSeq(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.Contains(line, "\t") {
+					continue
+				}
+				r.names = append(r.names, line)
+			}
+			results[i] = r
+		})
+	}
+	wg.Wait()
+	names := map[string][]string{}
+	for _, r := range results {
+		if r.err != nil {
+			t.Fatalf("go test -list .* %s: %v\n%s", r.pkg, r.err, r.out)
+		}
+		names[r.pkg] = r.names
+	}
+	return names
+}
+
+// matchNames is what `go test -list pattern` prints of a package's listing:
+// the names the whole pattern matches (-list does not split it at slashes).
+// An empty result is the refusal the gate is built around.
+func matchNames(t *testing.T, pattern string, listed []string) []string {
+	t.Helper()
+	re, err := regexp.Compile(pattern)
 	if err != nil {
-		t.Fatalf("go test -list %q %s: %v\n%s", pattern, pkg, err, out)
+		t.Fatalf("go test -list %q: %v", pattern, err)
 	}
 	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, "\t") {
-			continue
+	for _, n := range listed {
+		if re.MatchString(n) {
+			names = append(names, n)
 		}
-		names = append(names, line)
 	}
 	return names
 }
@@ -229,7 +272,7 @@ var runPatternExceptions = []runPatternException{
 	{"make/moo-text.mk:32", "-run 'TestMoo(Json|JSON|Text).*$(MOO_TEXT_CONTROLS)' ends in a make variable defined at the top of make/moo-text.mk, so the pattern has no value until make expands it"},
 	{"make/moo-tables.mk:18", "-run 'Moo' names tests in compiler/tablesmoo_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
 	{"make/moo-readiness.mk:35", "-run 'Moo' names tests in compiler/tablesmoo_test.go and compiler/tablesmoonames_test.go, which carry the schema_leg_moo build tag; the gate lists without tags, so it cannot see them"},
-	{"Makefile:5868", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
+	{"Makefile:5870", "inside define message_form_control: $(3) is the caller's test name, so the pattern has no value until expansion"},
 	{"make/js.mk:1513", "inside define js_jstable_control: $(3) is the caller's test pattern and $(4) its package, so the pattern has no value until expansion"},
 }
 
@@ -269,7 +312,9 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 
 	type pair struct{ pattern, pkg string }
 	seen := map[pair]bool{}
-	var offenders []string
+	var todo []runRecipe
+	var pkgs []string
+	havePkg := map[string]bool{}
 	scanned, listed := 0, 0
 	for _, r := range recipes {
 		scanned++
@@ -282,7 +327,16 @@ func checkRunPatterns(t *testing.T, root string, files map[string]string, except
 		}
 		seen[p] = true
 		listed++
-		if got := listNames(t, root, r.pattern, r.pkg); len(got) == 0 {
+		todo = append(todo, r)
+		if !havePkg[r.pkg] {
+			havePkg[r.pkg] = true
+			pkgs = append(pkgs, r.pkg)
+		}
+	}
+	listings := listPackages(t, root, pkgs)
+	var offenders []string
+	for _, r := range todo {
+		if got := matchNames(t, r.pattern, listings[r.pkg]); len(got) == 0 {
 			offenders = append(offenders, fmt.Sprintf("%s: `go test ... -run %q` matches no test in %s", r.where, r.pattern, r.pkg))
 		}
 	}
@@ -308,9 +362,11 @@ go test ./internal/ci \
 }
 
 func TestEveryRunPatternMatchesATest(t *testing.T) {
-	// This gate lists several hundred distinct (pattern, package) pairs, and a
-	// `go test -list` compiles the package each time, so a full pass is minutes
-	// under SCHEMA_SLOW=1 and ~116 s in a plain run (measured 2026-11-09). It is
+	// This gate checks several hundred distinct (pattern, package) pairs. It
+	// compiles each package once, side by side, to list its tests, and matches
+	// every pattern against that listing; one `go test -list` per pair, one
+	// after another, was minutes under SCHEMA_SLOW=1 and ~116 s in a plain run
+	// (measured 2026-11-09). It is
 	// a functional test of the whole makefile set, not a workflow-lint check, so
 	// it rides the SCHEMA_SLOW=1 lane (ci-full.yml's unit-rest row, which runs on
 	// the merge and nightly triggers) instead of the per-commit lint job. The
