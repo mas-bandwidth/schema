@@ -1490,6 +1490,7 @@ public final class MixedEntityVariable {
                 TableJson.esc(b, "Repair");
                 break;
             default:
+                assert v.weapon == 0 : "enum value names no variant";
                 TableJson.esc(b, "None");
                 break;
         }
