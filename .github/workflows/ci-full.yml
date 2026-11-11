@@ -202,7 +202,7 @@ jobs:
     #                     package, nor ./compiler, nor one of those three, the
     #                     projection's three controls, the toolchain control,
     #                     the python leg and the one Linux cache write
-    #   unit-elixir     — go test internal/codegen/elixirtable, alone
+    #   unit-elixir-1..11 — go test internal/codegen/elixirtable, in rows
     #   slow-gate-codegen-0..25 — the slowtest accounting (schema#988) over
     #                     the emitter packages, one gated package per row
     #                     (Makefile SLOWGATE_SHARD/SLOWGATE_SHARDS)
@@ -253,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-rest, unit-vet, unit-rest-fuzz-1, unit-rest-fuzz-2, unit-rest-fuzz-3, unit-rest-cmd-1, unit-rest-cmd-2, unit-rest-goldens, unit-elixir-1, unit-elixir-2, unit-elixir-3, unit-elixir-4, unit-elixir-5, unit-elixir-6, unit-elixir-7, unit-elixir-8, unit-elixir-9, unit-elixir-10, unit-elixir-11, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -640,11 +640,80 @@ jobs:
       # runs on a row with nothing else on it.
       # -count=1 because a self-hosted runner keeps its Go test cache warm,
       # and a cached pass is a measurement taken on some earlier run's load.
-      - name: go test the Elixir emitter package on its own
-        if: matrix.group == 'unit-elixir'
+      #
+      # IN 11 ROWS, because alone it ran past the per-commit two-minute rule
+      # (2810 s on a loaded four-thread bench, 2026-11-10). Rows 1..10 each
+      # -run an alternation of test-name families packed from a -json timing;
+      # row 11 -skips all of them, so a new test lands there with no edit.
+      # Each row is its own runner, so the allocation test still runs with no
+      # other package beside it, and tools/slowgatescan holds every test to
+      # exactly one row.
+      - name: go test the Elixir emitter package, row 1 of 11
+        if: matrix.group == 'unit-elixir-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -count=1 ./internal/codegen/elixirtable
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirDriverReadsStrictAndWritesBack$)'
+
+      - name: go test the Elixir emitter package, row 2 of 11
+        if: matrix.group == 'unit-elixir-2'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Alloc([^a-z]|$)|Arm([^a-z]|$)|Block([^a-z]|$)|Bytes([^a-z]|$)|Cards([^a-z]|$)|Damage([^a-z]|$)|Drop([^a-z]|$)|ElixirAlloc([^a-z]|$)|ElixirCook([^a-z]|$)|ElixirFixed([^a-z]|$)|ElixirMessage([^a-z]|$)|Emit([^a-z]|$)|Float([^a-z]|$)|Generated([^a-z]|$)|Identity([^a-z]|$)|Listdemo([^a-z]|$)|Maps([^a-z]|$)|No([^a-z]|$)|Offsets([^a-z]|$)|Required([^a-z]|$)|Strict([^a-z]|$)|Table([^a-z]|$)|Variable([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 3 of 11
+        if: matrix.group == 'unit-elixir-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Card([^a-z]|$)|ElixirDriverReadsStrictAndWritesBackNegativeControl$|Node([^a-z]|$)|Unit([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 4 of 11
+        if: matrix.group == 'unit-elixir-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(ElixirWas([^a-z]|$)|Message([^a-z]|$)|Text([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 5 of 11
+        if: matrix.group == 'unit-elixir-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Cycle([^a-z]|$)|ElixirFinite([^a-z]|$)|ElixirVoid([^a-z]|$)|Enum([^a-z]|$)|Integrity([^a-z]|$)|Region([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 6 of 11
+        if: matrix.group == 'unit-elixir-6'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Forms([^a-z]|$)|JSON([A-Z][a-z]|[^A-Za-z]|$)|One([^a-z]|$)|Optional([^a-z]|$)|PinnedKeyed([^a-z]|$)|Timestamp([^a-z]|$)|Unbounded([^a-z]|$)|Unknown([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 7 of 11
+        if: matrix.group == 'unit-elixir-7'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(PinnedUnion([^a-z]|$)|Retained([^a-z]|$)|Wire([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 8 of 11
+        if: matrix.group == 'unit-elixir-8'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Blob([^a-z]|$)|Cook([^a-z]|$)|Count([^a-z]|$)|Cyclic([^a-z]|$)|ElixirBits([^a-z]|$)|ElixirVariable([^a-z]|$)|Inert([^a-z]|$)|JSONBOM([A-Z][a-z]|[^A-Za-z]|$)|Keyed([^a-z]|$)|List([^a-z]|$)|Map([^a-z]|$)|PinnedInert([^a-z]|$)|Pointer([^a-z]|$)|Reserved([^a-z]|$)|Retain([^a-z]|$)|Retaining([^a-z]|$)|Retention([^a-z]|$)|Truncated([^a-z]|$)|Widening([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 9 of 11
+        if: matrix.group == 'unit-elixir-9'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(Defaults([^a-z]|$)|ElixirCells([^a-z]|$)|Fixed([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 10 of 11
+        if: matrix.group == 'unit-elixir-10'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -run '^Test(PinnedMap([^a-z]|$)|PinnedNested([^a-z]|$))'
+
+      - name: go test the Elixir emitter package, row 11 of 11
+        if: matrix.group == 'unit-elixir-11'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -count=1 -v ./internal/codegen/elixirtable -skip '^Test(ElixirDriverReadsStrictAndWritesBack$)|^Test(Alloc([^a-z]|$)|Arm([^a-z]|$)|Block([^a-z]|$)|Bytes([^a-z]|$)|Cards([^a-z]|$)|Damage([^a-z]|$)|Drop([^a-z]|$)|ElixirAlloc([^a-z]|$)|ElixirCook([^a-z]|$)|ElixirFixed([^a-z]|$)|ElixirMessage([^a-z]|$)|Emit([^a-z]|$)|Float([^a-z]|$)|Generated([^a-z]|$)|Identity([^a-z]|$)|Listdemo([^a-z]|$)|Maps([^a-z]|$)|No([^a-z]|$)|Offsets([^a-z]|$)|Required([^a-z]|$)|Strict([^a-z]|$)|Table([^a-z]|$)|Variable([^a-z]|$))|^Test(Card([^a-z]|$)|ElixirDriverReadsStrictAndWritesBackNegativeControl$|Node([^a-z]|$)|Unit([^a-z]|$))|^Test(ElixirWas([^a-z]|$)|Message([^a-z]|$)|Text([^a-z]|$))|^Test(Cycle([^a-z]|$)|ElixirFinite([^a-z]|$)|ElixirVoid([^a-z]|$)|Enum([^a-z]|$)|Integrity([^a-z]|$)|Region([^a-z]|$))|^Test(Forms([^a-z]|$)|JSON([A-Z][a-z]|[^A-Za-z]|$)|One([^a-z]|$)|Optional([^a-z]|$)|PinnedKeyed([^a-z]|$)|Timestamp([^a-z]|$)|Unbounded([^a-z]|$)|Unknown([^a-z]|$))|^Test(PinnedUnion([^a-z]|$)|Retained([^a-z]|$)|Wire([^a-z]|$))|^Test(Blob([^a-z]|$)|Cook([^a-z]|$)|Count([^a-z]|$)|Cyclic([^a-z]|$)|ElixirBits([^a-z]|$)|ElixirVariable([^a-z]|$)|Inert([^a-z]|$)|JSONBOM([A-Z][a-z]|[^A-Za-z]|$)|Keyed([^a-z]|$)|List([^a-z]|$)|Map([^a-z]|$)|PinnedInert([^a-z]|$)|Pointer([^a-z]|$)|Reserved([^a-z]|$)|Retain([^a-z]|$)|Retaining([^a-z]|$)|Retention([^a-z]|$)|Truncated([^a-z]|$)|Widening([^a-z]|$))|^Test(Defaults([^a-z]|$)|ElixirCells([^a-z]|$)|Fixed([^a-z]|$))|^Test(PinnedMap([^a-z]|$)|PinnedNested([^a-z]|$))'
+
 
       # AND THE ACCOUNTING FOR THE TWO STEPS ABOVE (schema#988, G5). The two
       # steps set SCHEMA_SLOW=1, so on this lane every gated test runs; that is
