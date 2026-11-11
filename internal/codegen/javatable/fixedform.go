@@ -1011,15 +1011,7 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 	var lines []string
 	for _, f := range st.Fields {
-		name := javaName(f.Name)
-		switch {
-		case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) &&
-			f.Array == ir.ArrayNone && f.KeyEnum == "":
-			lines = append(lines, fmt.Sprintf("        assert v.%sLength >= 0 && v.%sLength <= %d;\n", name, name, f.Type.Size))
-		case f.Array == ir.ArrayCounted:
-			lines = append(lines, fmt.Sprintf("        assert v.%sCount >= %d && v.%sCount <= %d;\n",
-				name, f.ArrayMin, name, f.ArrayBound))
-		}
+		lines = append(lines, fixedCheckField(f, "v", "        ")...)
 	}
 	g.pf("    // checkWrite is writeBody's contract walk, called once through `assert`.\n")
 	g.pf("    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,\n")
@@ -1033,6 +1025,122 @@ func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 	}
 	g.pf("        return true;\n    }\n\n")
 	_ = cls
+}
+
+// fixedCheckField is one field's lines of the contract walk (docs/SPEC.md
+// §5.1), each an `assert` at the indent given: the storage rows first — a
+// text or bytes length (row 4) and a counted array's count (row 3) — then
+// the value rows over every slot the save stores: a ranged integer or raw
+// fixed-point inside its min/max (row 1), a bits(N) inside N bits (row 2), an
+// enum ordinal inside its variants (row 5), and a string's live units
+// well-formed UTF-8 with no zero byte (row 8), the fixed reader's own
+// textIllFormed rule, so a writer never stores what its reader refuses. An
+// optional's value rows hold only while it is present, because an absent
+// payload rides as zeros. A nested table or union holds its own rows (row 6
+// is the union's tag) through its own writeBody's assert.
+func fixedCheckField(f *ir.Field, val, ind string) []string {
+	var lines []string
+	name := javaName(f.Name)
+	expr := val + "." + name
+	isText := (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == ""
+	switch {
+	case isText:
+		lines = append(lines, fmt.Sprintf("%sassert %sLength >= 0 && %sLength <= %d;\n", ind, expr, expr, f.Type.Size))
+	case f.Array == ir.ArrayCounted:
+		lines = append(lines, fmt.Sprintf("%sassert %sCount >= %d && %sCount <= %d;\n",
+			ind, expr, f.ArrayMin, expr, f.ArrayBound))
+	}
+	inner := ind
+	open := []string{}
+	if f.Type.Optional {
+		open = append(open, fmt.Sprintf("%sif (%sPresent) {\n", inner, expr))
+		inner += "    "
+	}
+	var body []string
+	switch {
+	case isText:
+		if f.Type.Kind == ir.TString {
+			body = append(body, fmt.Sprintf("%sassert TableFixed.textOk(TableFixed.textUtf8, %s, 0, %sLength);\n", inner, expr, expr))
+		}
+	case f.KeyEnum != "" || f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
+		cond := fixedCheckElement(f, expr+"[i]")
+		if cond == "" {
+			break
+		}
+		count := fmt.Sprintf("%d", f.ArrayBound)
+		if f.KeyEnum != "" {
+			count = fmt.Sprintf("%d", f.KeyEnumRef.Max)
+		} else if f.Array == ir.ArrayCounted {
+			count = expr + "Count"
+		}
+		body = append(body,
+			fmt.Sprintf("%sfor (int i = 0; i < %s; i++) {\n", inner, count),
+			fmt.Sprintf("%s    assert %s;\n", inner, cond),
+			fmt.Sprintf("%s}\n", inner))
+	default:
+		if cond := fixedCheckElement(f, expr); cond != "" {
+			body = append(body, fmt.Sprintf("%sassert %s;\n", inner, cond))
+		}
+	}
+	if len(body) == 0 {
+		return lines
+	}
+	lines = append(lines, open...)
+	lines = append(lines, body...)
+	if f.Type.Optional {
+		lines = append(lines, fmt.Sprintf("%s}\n", ind))
+	}
+	return lines
+}
+
+// fixedCheckElement is the value rows' condition for ONE stored slot, as the
+// reader would load it from the bytes the store keeps, or "" when the slot's
+// type admits every value its storage holds (a bool, a float — row 7 is the
+// save's finite pass — a flags mask, a 128-bit integer, a nested table or
+// union, which assert their own).
+func fixedCheckElement(f *ir.Field, e string) string {
+	if f.Type.Kind == ir.TNamed {
+		if r, ok := f.Type.Ref.(*ir.Enum); ok {
+			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
+		}
+		return ""
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TFixed:
+	default:
+		return ""
+	}
+	typ := fixedScalarType(f.Type)
+	if typ == "Int128" || typ == "UInt128" {
+		return ""
+	}
+	var conds []string
+	loaded := e
+	if !f.Type.Signed {
+		switch typ {
+		case "byte":
+			loaded = "(" + e + " & 0xFF)"
+		case "short":
+			loaded = "(" + e + " & 0xFFFF)"
+		case "int":
+			loaded = "(" + e + " & 0xFFFFFFFFL)"
+		}
+	}
+	if lo, hi, ok := fixedRawRange(f); ok {
+		conds = append(conds, fmt.Sprintf("%s >= %dL && %s <= %dL", loaded, lo, loaded, hi))
+	} else if ulo, uhi, ok := fixedRawUnsigned64Range(f); ok {
+		conds = append(conds, fmt.Sprintf("Long.compareUnsigned(%s, 0x%xL) >= 0 && Long.compareUnsigned(%s, 0x%xL) <= 0", e, ulo, e, uhi))
+	}
+	if f.Type.Kind == ir.TBits {
+		bits := 64
+		if typ == "int" {
+			bits = 32
+		}
+		if f.Type.Width < bits {
+			conds = append(conds, fmt.Sprintf("((long) %s & 0x%xL) == 0", e, ^(uint64(1)<<uint(f.Type.Width)-1)))
+		}
+	}
+	return strings.Join(conds, " && ")
 }
 
 func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, indent int) {
@@ -1544,6 +1652,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("     *  writer lays no template down, so every byte an arm does not store is\n")
 	g.pf("     *  one this store zeroes, and None zeroes the whole of it. */\n")
 	g.pf("    public static void writeBody(byte[] b, int at, Value v) {\n")
+	g.pf("        assert checkWrite(v);\n")
 	g.pf("        %s;\n", fixedStore("b", "at", 0, tag, "v.type", "int"))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
@@ -1561,6 +1670,33 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("                    java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
 	g.pf("                    break;\n                }\n")
 	g.pf("        }\n    }\n\n")
+
+	g.pf("    // checkWrite is writeBody's contract walk, called once through `assert`:\n")
+	g.pf("    // the tag names None or an arm, and the SELECTED arm holds its own rows.\n")
+	g.pf("    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.\n")
+	g.pf("    private static boolean checkWrite(Value v) {\n")
+	g.pf("        assert v.type >= 0 && v.type <= %d;\n", len(un.Variants))
+	var armChecks []string
+	for i, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		lines := fixedCheckField(v.F, "v", "                ")
+		if len(lines) == 0 {
+			continue
+		}
+		armChecks = append(armChecks, fmt.Sprintf("            case %d:\n", i+1))
+		armChecks = append(armChecks, lines...)
+		armChecks = append(armChecks, "                break;\n")
+	}
+	if len(armChecks) > 0 {
+		g.pf("        switch (v.type) {\n")
+		for _, l := range armChecks {
+			g.pf("%s", l)
+		}
+		g.pf("            default:\n                break;\n        }\n")
+	}
+	g.pf("        return true;\n    }\n\n")
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")

@@ -54,7 +54,9 @@ public final class MixedHitEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert ((long) v.targetId & 0xfffffffffffff000L) == 0;
+        assert v.damage >= 0L && v.damage <= 4095L;
+        assert v.hitKind >= 0L && v.hitKind <= 7L;
         return true;
     }
 

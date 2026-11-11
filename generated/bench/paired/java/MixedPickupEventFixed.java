@@ -46,7 +46,8 @@ public final class MixedPickupEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert ((long) v.itemId & 0xfffffffffffffc00L) == 0;
+        assert v.amount >= 0L && v.amount <= 255L;
         return true;
     }
 

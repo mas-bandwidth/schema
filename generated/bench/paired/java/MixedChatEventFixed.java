@@ -46,7 +46,8 @@ public final class MixedChatEventFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert v.channel >= 0L && v.channel <= 3L;
+        assert ((long) v.speaker & 0xfffffffffffff000L) == 0;
         return true;
     }
 

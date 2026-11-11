@@ -49,6 +49,7 @@ public final class MixedEventFixed {
      * the whole of it.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert checkWrite(v);
         TableFixed.put8(b, at + 0, v.type);
         switch (v.type) {
             case 1:
@@ -74,6 +75,14 @@ public final class MixedEventFixed {
                     break;
                 }
         }
+    }
+
+    // checkWrite is writeBody's contract walk, called once through `assert`:
+    // the tag names None or an arm, and the SELECTED arm holds its own rows.
+    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts.
+    private static boolean checkWrite(Value v) {
+        assert v.type >= 0 && v.type <= 3;
+        return true;
     }
 
     /** the tag, then the selected arm; an unselected arm keeps what it held. */

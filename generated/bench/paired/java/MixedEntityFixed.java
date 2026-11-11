@@ -94,7 +94,17 @@ public final class MixedEntityFixed {
     // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
     // which is what makes a save one template and a straight line of stores.
     private static boolean checkWrite(Value v) {
-        assert v != null;
+        assert ((long) v.entityId & 0xfffffffffffff000L) == 0;
+        assert v.posX >= -16383L && v.posX <= 16383L;
+        assert v.posY >= -16383L && v.posY <= 16383L;
+        assert v.posZ >= -16383L && v.posZ <= 16383L;
+        assert ((long) v.yaw & 0xfffffffffffffe00L) == 0;
+        assert ((long) v.pitch & 0xfffffffffffffe00L) == 0;
+        assert v.velX >= -2048L && v.velX <= 2047L;
+        assert v.velY >= -2048L && v.velY <= 2047L;
+        assert v.velZ >= -2048L && v.velZ <= 2047L;
+        assert v.health >= 0L && v.health <= 1000L;
+        assert v.weapon >= 0 && v.weapon <= 15;
         return true;
     }
 
