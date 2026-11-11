@@ -2312,7 +2312,8 @@ correct writes are the programmer's responsibility, and the assert is how the
 leg tells them they got it wrong. An assert leg's release build carries no
 write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
-check runs in every leg and in every build (§4). Glenn, 2026-11-10: "in languages
+check runs in every leg and in every build (§4). The owner, 2026-11-10, restating
+`docs/rulings.json`, `write-refusal`: "in languages
 that have assert, we rely on assert to prompt the user they fucked up. when we
 don't have asserts, we have to do some checks in release depending on the
 language."
