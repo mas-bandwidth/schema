@@ -6500,14 +6500,14 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
   var bits = 0;
   for (final item in val) {
     switch (item) {
-      case "Bleeding": bits |= 1;
-      case "Burning": bits |= 2;
-      case "Stunned": bits |= 4;
-      case "Slowed": bits |= 8;
-      case "Poisoned": bits |= 16;
-      case "Shielded": bits |= 32;
-      case "Airborne": bits |= 64;
-      case "Downed": bits |= 128;
+      case "Bleeding": if (bits & 1 != 0) { r.refuse('text_damaged'); return def; } bits |= 1;
+      case "Burning": if (bits & 2 != 0) { r.refuse('text_damaged'); return def; } bits |= 2;
+      case "Stunned": if (bits & 4 != 0) { r.refuse('text_damaged'); return def; } bits |= 4;
+      case "Slowed": if (bits & 8 != 0) { r.refuse('text_damaged'); return def; } bits |= 8;
+      case "Poisoned": if (bits & 16 != 0) { r.refuse('text_damaged'); return def; } bits |= 16;
+      case "Shielded": if (bits & 32 != 0) { r.refuse('text_damaged'); return def; } bits |= 32;
+      case "Airborne": if (bits & 64 != 0) { r.refuse('text_damaged'); return def; } bits |= 64;
+      case "Downed": if (bits & 128 != 0) { r.refuse('text_damaged'); return def; } bits |= 128;
       default: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }
     }
   }
