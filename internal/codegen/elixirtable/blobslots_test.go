@@ -88,18 +88,24 @@ end
 				continue
 			}
 			if strings.Contains(report.Reason, "blob_shared") {
-				// One blob named from two slots: the Elixir load lands
-				// the value and counts the sharing, and its writer
-				// refuses the save by name (§2.5).
+				// One blob named from two slots: every read refuses the
+				// whole wire and retains nothing (§2.5, §6.5).
 				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
-for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
- check.(elem(result,0)==:ok and elem(result,2).blob_shared==%d,%q<>inspect(result))
- written=if tuple_size(result)==4,do: T.save_retain("Catalog",elem(result,1),elem(result,3),zero),else: T.save("Catalog",elem(result,1))
- check.(elem(written,0)==:error and elem(written,1)==:blob_shared,%q<>inspect(written))
+case T.load("Catalog",wire) do
+ {:error,_,_}->:ok
+ other->raise(%q<>inspect(other))
 end
-`, hex.EncodeToString(c.wire), c.shared, c.name+" shared load ", c.name+" shared refusal ")
+case T.variable_load("Catalog",wire) do
+ {:error,_,_}->:ok
+ other->raise(%q<>inspect(other))
+end
+case T.load_retain("Catalog",wire,store,zero) do
+ {:error,_,_,rt}->unless rt.records==[] and rt.used==0 and rt.ids==[],do: raise(%q<>inspect(rt))
+ other->raise(%q<>inspect(other))
+end
+`, hex.EncodeToString(c.wire), c.name+" shared load ", c.name+" shared variable load ", c.name+" shared retain ", c.name+" shared retain load ")
 				continue
 			}
 			t.Fatalf("%s independent slot count: %v %v %+v", c.name, ok, e, report)
@@ -173,8 +179,7 @@ func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
 			}
 		} else if e == nil || !report.Refused || report.Reason == "" || !tablewire.ReadRefusal(e) {
 			// The Go reader refuses a blob named from two slots outright;
-			// the Elixir reader still loads it, counts blob_shared, and
-			// only its writer refuses when both slots are live.
+			// every Elixir read must refuse the same wire.
 			t.Fatalf("guard %v oracle refusal: %v %v %+v", bits, ok, e, report)
 		}
 		if ok {
@@ -196,21 +201,15 @@ end
 			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
-for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
- unless elem(result,0)==:ok and elem(result,2).blob_shared==1 and elem(result,2).reason=="",do: raise("guard load "<>inspect(result))
- value=elem(result,1)
- written=if tuple_size(result)==4,do: T.save_retain("Catalog",value,elem(result,3),zero),else: T.save("Catalog",value)
- if %t do
-  unless elem(written,0)==:error and elem(written,1)==:blob_shared,do: raise("guard shared "<>inspect(written))
- else
-  unless elem(written,0)==:ok,do: raise("guard write "<>inspect(written))
-  {:ok,reloaded,_}=T.load("Catalog",elem(written,1))
-  {:ok,text}=T.to_json("Catalog",value)
-  {:ok,text2}=T.to_json("Catalog",reloaded)
-  unless text2==text,do: raise("guard roundtrip "<>inspect({text,text2}))
- end
+case T.load("Catalog",wire) do
+ {:error,_,_}->:ok
+ other->raise("guard load "<>inspect(other))
 end
-`, hex.EncodeToString(b), shared)
+case T.load_retain("Catalog",wire,store,zero) do
+ {:error,_,_,rt}->unless rt.records==[] and rt.used==0 and rt.ids==[],do: raise("guard retain "<>inspect(rt))
+ other->raise("guard retain load "<>inspect(other))
+end
+`, hex.EncodeToString(b))
 		}
 	}
 	probe.WriteString("IO.puts(\"LIVE_BLOB_GUARDS_OK\")\n")
