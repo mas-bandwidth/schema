@@ -370,11 +370,11 @@ var javaHelpers = []struct{ name, src string }{
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 `},
 }
