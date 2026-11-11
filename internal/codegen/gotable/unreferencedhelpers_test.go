@@ -75,10 +75,14 @@ table Holder {
 						for _, spec := range decl.Specs {
 							switch spec := spec.(type) {
 							case *ast.TypeSpec:
-								addUnexportedDeclaration(declarations, spec.Name)
+								if !api[spec.Name.Name] {
+									addUnexportedDeclaration(declarations, spec.Name)
+								}
 							case *ast.ValueSpec:
 								for _, name := range spec.Names {
-									addUnexportedDeclaration(declarations, name)
+									if !api[name.Name] {
+										addUnexportedDeclaration(declarations, name)
+									}
 								}
 							}
 						}
@@ -145,6 +149,9 @@ table lower {
     items []int32
     object_id []int32
     roster map[uint8]Element
+    bounded [..8]string(8)
+    words []string(8)
+    maybe []?string(8)
 }
 `)
 	surfaces := DefaultSurfaces()
@@ -163,6 +170,14 @@ func TestLowercaseEntryPoints(t *testing.T) {
     _ = lowerObjectIDAdd
     _ = lowerObjectIDErase
     _ = lowerObjectIDEach
+    _ = lowerBoundedTextAt
+    _ = lowerBoundedAppend
+    _ = lowerBoundedAppendAbsent
+    _ = lowerWordsTextAt
+    _ = lowerWordsAppend
+    _ = lowerMaybeTextAt
+    _ = lowerMaybeAppend
+    _ = lowerMaybeAppendAbsent
     _ = lowerRosterInsert
     _ = lowerRosterFind
     _ = lowerRosterErase
@@ -180,7 +195,7 @@ func TestLowercaseEntryPoints(t *testing.T) {
 	t.Run("block lowercase root", func(t *testing.T) {
 		t.Parallel()
 		u := unitFrom(t, `package probe
-table blocklower | forms = "wire,block" {
+fixed table blocklower | forms = "wire,block" {
     values [4]int32
 }
 `)
@@ -206,7 +221,7 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			body := "table Element { value int32 }\ntable %s | forms = \"wire,json,cook,block\" {\nitems []int32\nobject_id []int32\nroster map[uint8]Element\n}\n"
+			body := "table Element { value int32 }\ntable %s | forms = \"wire,json,cook,block\" {\nitems []int32\nobject_id []int32\nroster map[uint8]Element\nbounded [..8]string(8)\nwords []string(8)\nmaybe []?string(8)\n}\n"
 			upper := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.upperSchemaRoot, 1))
 			private := unitFrom(t, "package probe\n"+strings.Replace(body, "%s", tc.privateSchemaRoot, 1))
 			surfaces := DefaultSurfaces()

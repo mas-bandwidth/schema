@@ -53,11 +53,11 @@ var schemaTableAPIDeclarations = map[string]bool{
 	"LoadRetain": true, "MeasureRetain": true, "SaveRetain": true,
 }
 
-// schemaAPIEntries recognizes only table-rooted callable names the emitter
-// defines. The roots come from declared schema tables after Go escaping; the
-// suffixes are the generated table API, not arbitrary names with a table-like
-// prefix. The AST lookup ensures a name is retained only when this unit emits
-// that entry point.
+// schemaAPIEntries recognizes table-rooted entry points, refusal diagnostics
+// and sizing declarations the emitter defines. The roots come from declared
+// schema tables after Go escaping; suffixes come from the generated table API,
+// not arbitrary names with a table-like prefix. The AST lookup retains a name
+// only when this unit emits that declaration.
 func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 	candidates := map[string]bool{}
 	for _, st := range u.Tables {
