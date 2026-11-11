@@ -7,14 +7,15 @@ language of Virtual Go, the space game and lego (Glenn Fiedler, 2026-10-17:
 schema port is held to every surface the other legs carry. Vanilla Lua and
 Squirrel follow it, and copy this page's shape.
 
-This page fixes the design. The skeleton it describes is in the tree:
+This page fixes the design. The design it describes is in the tree:
 `compiler/target_luau.go`,
 `internal/codegen/luau` (the type surface), `internal/codegen/luautable` (the
 table surface), `internal/codegen/luau/luaurun` (the test helper),
 `make/luau.mk`, `test/conformance/luau/driver` and `bench/tables/luau/leg`.
-The skeleton has no codec: the type and table surfaces are values,
-constructors and descriptors, and every wire, form and text surface is a later
-card (THE CARD MAP).
+The codec is in the tree: the type surface reads and writes packets over the
+vendored serialize.luau, and the table runtime carries the strict load, the
+save, the fixed, message, JSON and text forms, base64 text, retain-unknown,
+the unit view, and the block and cook accelerators (THE RUNTIME LAYOUT).
 
 **The pin.** Luau 0.741, `make dist-luau`: the luau-lang release
 `luau-ubuntu.zip`, sha256
@@ -243,7 +244,7 @@ Fixed now for the pro cards; never renamed.
 | `internal/codegen/luau/runtime/serialize*.luau`, `internal/codegen/luau/runtime/SERIALIZE_PIN` | the serialize.luau port, copied VERBATIM from `https://github.com/mas-bandwidth/serialize.luau` at the commit `SERIALIZE_PIN` names (the entry `serialize.luau`, the streams `serialize_stream.luau`, and the family modules), with one sha256 per file | schema-luau-serialize-vendor; `make/luau-serialize.mk` (`make vendor-serialize-luau`) bumps it |
 | `internal/codegen/luautable/luautable.go` | the TABLE emitter: types, constructors and one DESCRIPTOR per table as data, and `luautable.Register` | this card only |
 | `internal/codegen/luautable/fixedform.go`, `messageform.go` | the two forms that need emitted code, joined through `luautable.Register` | fixed-form, message-form |
-| `internal/codegen/luautable/runtime/*.luau` | the table runtime by glob, one file per card: `schema_tables.luau` now; `load.luau`, `save.luau`, `fixed.luau`, `message.luau`, `json.luau`, `text.luau`, `refusal.luau` later | one file per card |
+| `internal/codegen/luautable/runtime/*.luau` | the table runtime by glob, one file per card: `schema_tables.luau`, `schema_load.luau`, `schema_save.luau`, `schema_fixed.luau`, `schema_message.luau`, `schema_json.luau`, `schema_textform.luau`, `schema_text.luau`, `schema_refusal.luau`, `schema_retain.luau`, `schema_view.luau`, `schema_block.luau`, `schema_blockread.luau`, `schema_cook.luau`, `schema_cookread.luau` | one file per card |
 | `internal/codegen/luau/luaurun` | THE HARNESS's helper | this card |
 | `test/conformance/luau/driver`, `ci.json`, `main.luau` | the conformance leg | this card (driver); conformance-leg (`main.luau`) |
 | `make/luau.mk` | the leg's build: `dist-luau`, `toolchain-luau`, `test-luau`, `build/conformance-luau` | this card; later cards add their own `make/luau-*.mk` |
@@ -345,7 +346,7 @@ hex lines.**
 ## THE BENCH LEGS
 
 `bench/luau/` (the type wire, BenchMixed, family `gen`) and
-`bench/tables/luau/` (the tolerant table wire, TableMixed, family `table`)
+`bench/tables/luau/` (the table wire, TableMixed, family `table`)
 plug into the shared harnesses (`bench/run.sh --only luau`,
 `bench/tables/run.sh --only luau`) over the same committed corpus and
 goldens as every other leg; their units are `generated/bench/luau` and
@@ -415,13 +416,13 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `luau.go` or
 |---|---|---|
 | schema-luau-type-wire-read | the type wire's read path against the C++-pinned goldens (M2), on the vendored `serialize*.luau` | `luau/read.go` |
 | schema-luau-type-wire-write | the type wire's write path, byte for byte, on the vendored `serialize*.luau` | `luau/write.go` |
-| schema-luau-table-wire-load | the variable table wire's tolerant load and its report (M1, M5, M12, M18, M20, M21, I7) | `luautable/runtime/load.luau` |
-| schema-luau-table-wire-save | the variable wire's save, every instance byte for byte (M6, M15, M16, M19) | `luautable/runtime/save.luau` |
-| schema-luau-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `luautable/fixedform.go`, `luautable/runtime/fixed.luau` |
-| schema-luau-message-form | the message form, form byte 2, against its goldens | `luautable/messageform.go`, `luautable/runtime/message.luau` |
-| schema-luau-json-text-form | the JSON text form both ways (M9, M14, I13) | `luautable/runtime/json.luau` |
-| schema-luau-base64-text | base64 text over a text channel | `luautable/runtime/text.luau` |
-| schema-luau-refusals-by-name | refusals at compile time and read time; the claimed names (I6) | `luautable/runtime/refusal.luau`, `internal/tablenames/luau.go`, `compiler/tablesluau_test.go` |
+| schema-luau-table-wire-load | the variable table wire's strict load and its report (M1, M5, M12, M18, M20, M21, I7) | `luautable/runtime/schema_load.luau` |
+| schema-luau-table-wire-save | the variable wire's save, every instance byte for byte (M6, M15, M16, M19) | `luautable/runtime/schema_save.luau` |
+| schema-luau-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `luautable/fixedform.go`, `luautable/runtime/schema_fixed.luau` |
+| schema-luau-message-form | the message form, form byte 2, against its goldens | `luautable/messageform.go`, `luautable/runtime/schema_message.luau` |
+| schema-luau-json-text-form | the JSON text form both ways (M9, M14, I13) | `luautable/runtime/schema_json.luau` |
+| schema-luau-base64-text | base64 text over a text channel | `luautable/runtime/schema_text.luau` |
+| schema-luau-refusals-by-name | refusals at compile time and read time; the claimed names (I6) | `luautable/runtime/schema_refusal.luau`, `internal/tablenames/luau.go`, `compiler/tablesluau_test.go` |
 | schema-luau-conformance-leg | `main.luau`, `make conformance` and CI (M4b, I2, I11, J2) | `test/conformance/luau/main.luau`, `make/luau-conformance.mk`, the CI step keyed on ci.json's `luau` field |
 | schema-luau-fuzz-differential | the wire fuzzer against the Go engine, and its host shim (I3, I15) | `test/conformance/luau/wirefuzz.luau`, `make/luau-fuzz.mk` |
 

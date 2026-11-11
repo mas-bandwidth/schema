@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 
 package example;
 
@@ -161,7 +161,10 @@ public final class Types {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readVec3Bits(Vec3 value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -171,7 +174,7 @@ public final class Types {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 192 > numBits) {
+        if ((long) bitsRead + 192 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -310,7 +313,10 @@ public final class Types {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readQuatBits(Quat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -320,7 +326,7 @@ public final class Types {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 256 > numBits) {
+        if ((long) bitsRead + 256 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -440,7 +446,10 @@ public final class Types {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHandleBits(Handle value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -449,7 +458,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 22 > numBits) {
+        if ((long) bitsRead + 22 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3fffL;
@@ -550,7 +559,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readQuantizedPositionBits(
             QuantizedPosition value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -559,7 +571,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 75 > numBits) {
+        if ((long) bitsRead + 75 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1ffffffL;
@@ -669,7 +681,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readQuantizedVelocityBits(
             QuantizedVelocity value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -678,7 +693,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 69 > numBits) {
+        if ((long) bitsRead + 69 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7fffffL;
@@ -796,7 +811,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readQuantizedRotationBits(
             QuantizedRotation value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -805,7 +823,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 48 > numBits) {
+        if ((long) bitsRead + 48 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfffL;
@@ -922,7 +940,10 @@ public final class Types {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRigidBodyBits(RigidBody value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -931,7 +952,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 449 > numBits) {
+        if ((long) bitsRead + 449 > numBits) {
             return -1;
         }
         bitsRead = readVec3Bits(value.position, data, bitsRead, numBits);
@@ -946,7 +967,7 @@ public final class Types {
         bitsRead += 1;
         value.atRest = v != 0;
         if (!value.atRest) {
-            if (bitsRead + 384 > numBits) {
+            if ((long) bitsRead + 384 > numBits) {
                 return -1;
             }
             bitsRead = readVec3Bits(value.linearVelocity, data, bitsRead, numBits);
@@ -1112,7 +1133,10 @@ public final class Types {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readInputBits(Input value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1121,7 +1145,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 168 > numBits) {
+        if ((long) bitsRead + 168 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1287,7 +1311,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readInputPacketBits(
             InputPacket value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1297,7 +1324,7 @@ public final class Types {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 144 > numBits) {
+        if ((long) bitsRead + 144 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffL;
@@ -1317,7 +1344,7 @@ public final class Types {
         bitsRead += 32;
         lo |= v << 32;
         value.startFrame = lo;
-        if (bitsRead + 5 > numBits) {
+        if ((long) bitsRead + 5 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -1326,7 +1353,7 @@ public final class Types {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.inputsCount = (int) v;
-        if (bitsRead + value.inputsCount * 168L > numBits) {
+        if ((long) bitsRead + value.inputsCount * 168L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.inputsCount; i0++) {
@@ -1467,7 +1494,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readShipCreateBits(
             ShipCreate value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1476,7 +1506,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 196 > numBits) {
+        if ((long) bitsRead + 196 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -1501,7 +1531,7 @@ public final class Types {
         bitsRead += 1;
         value.hasFlags = v != 0;
         if (value.hasFlags) {
-            if (bitsRead + 4 > numBits) {
+            if ((long) bitsRead + 4 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xfL;
@@ -1510,7 +1540,7 @@ public final class Types {
         } else {
             value.flags = 0;
         }
-        if (bitsRead + 19 > numBits) {
+        if ((long) bitsRead + 19 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -1612,7 +1642,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readExpressionProbeBits(
             ExpressionProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1621,7 +1654,7 @@ public final class Types {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 16 > numBits) {
+        if ((long) bitsRead + 16 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fL;
@@ -1753,7 +1786,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readExtremeProbeBits(
             ExtremeProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1763,7 +1799,7 @@ public final class Types {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 320 > numBits) {
+        if ((long) bitsRead + 320 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1915,7 +1951,10 @@ public final class Types {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readExtremeRowBits(
             ExtremeRow value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1925,7 +1964,7 @@ public final class Types {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 256 > numBits) {
+        if ((long) bitsRead + 256 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;

@@ -156,17 +156,7 @@ function _M.ReadFixedProbe(stream, value)
   value.Angle = BITS.value
   if not stream:serializeFixed(BIG, 48, 16, -30000, 30000) then return false end
   value.Position = BIG.value
-  if
-    not stream:serializeFixed(
-      WIDE,
-      112,
-      16,
-      { lo = 0xfffffffffff0bdc0, hi = 0xffffffffffffffff },
-      { lo = 0x00000000000f4240, hi = 0x0000000000000000 }
-    )
-  then
-    return false
-  end
+  if not stream:serializeFixed(WIDE, 112, 16, -1000000, 1000000) then return false end
   value.Reach = WIDE.value
   if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then return false end
   value.Ticks = BITS.value
@@ -197,17 +187,7 @@ function _M.ReadUnsignedProbe(stream, value)
   value.Angle = BITS.value
   if not stream:serializeFixed(BIG, 48, 16, 0, 281474976710655) then return false end
   value.Span = BIG.value
-  if
-    not stream:serializeFixed(
-      WIDE,
-      112,
-      16,
-      { lo = 0x0000000000000000, hi = 0x0000000000000000 },
-      { lo = 0x00000000001e8480, hi = 0x0000000000000000 }
-    )
-  then
-    return false
-  end
+  if not stream:serializeFixed(WIDE, 112, 16, 0, 2000000) then return false end
   value.Reach = WIDE.value
   if not stream:serializeFixed(BITS, 32, 0, 0, 1000000) then return false end
   value.Ticks = BITS.value
@@ -451,7 +431,7 @@ function _M.WriteLudicrousState(stream, v)
   if not _M.WriteFixedProbe(stream, v.Probe) then return false end
   if not _M.WriteWideProbe(stream, v.Wide) then return false end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.KeysCount) ~= "number" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
+  if math.type(v.KeysCount) ~= "integer" or v.KeysCount < 0 or v.KeysCount > 4 then return false end
   if not stream:serializeBits({ value = v.KeysCount }, 3) then return false end -- the count
   for _i = 1, v.KeysCount do
     if not stream:serializeUint128({ value = v.Keys[_i] }) then return false end -- uint128 raw (SPEC §4.3)
