@@ -1659,7 +1659,8 @@ panics or aborts on a malformed payload. An application with genuinely
 arbitrary payloads uses `bytes(N)`, which remains exactly that.
 
 Beneath the encoding rule, `string(N)` carries **bytes excluding 0x00** —
-all generated readers reject interior nulls, and writes assert per §5 (NUL
+all generated readers reject interior nulls, and writers check them by each
+leg's own mechanism (§5.1) (NUL
 is valid UTF-8, so the interior-null rule is its own, stricter check).
 `bytes(N)` is the same wire with no interior-null rule and no encoding rule.
 The byte-string tightening is what lets the targets agree:
@@ -2238,15 +2239,13 @@ values, union tags, UTF-8 in `string(N)` — runs
 in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
-The generated
-write code's job is to
-make misuse impossible by construction — bounds come from the schema. Every
-write-side contract
-asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
-well-formedness is not one of them. UTF-8 in `string(N)` is a READ-side
-refusal in every target (§4.7), so the
-guarantee rests on the reader rather than on a write-side check some
-targets carry and others do not. Ranges are trusted
+The generated write code's job is to make misuse impossible by construction —
+bounds come from the schema. Packet `Write` holds row 8 (§5.1): a zero byte or
+used bytes that are not well-formed UTF-8 are checked by the leg's own
+mechanism. C, C++, C#, Rust, Java and Dart use a debug-only assert; Go,
+JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose use a refusal in every build.
+The reader independently refuses the same ill-formed text in every build
+(§4.7). Ranges are trusted
 inputs everywhere: generated code never feeds attacker-influenced values as
 min/max.
 
@@ -2312,7 +2311,7 @@ correct writes are the programmer's responsibility, and the assert is how the
 leg tells them they got it wrong. An assert leg's release build carries no
 write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
-check runs in every build in every leg (§4). Glenn, 2026-11-10: "in languages
+check runs in every packet target, in every build (§4). Glenn, 2026-11-10: "in languages
 that have assert, we rely on assert to prompt the user they fucked up. when we
 don't have asserts, we have to do some checks in release depending on the
 language."
@@ -2383,21 +2382,21 @@ build of an assert leg is required to refuse it, and no gate may require one.
 reader refuses one as `text_ill_formed`: a writer never produces bytes its own
 reader refuses.
 
-| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
+| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
-| C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
-| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked |
-| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
-| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
-| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug |
-| Go | 1–8 every build | 1–8 every build | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |
-| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says |
-| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`) |
-| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises |
-| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises |
-| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises |
-| MOO | 1–8 every build | 1–8 every build | 1–7 every build |
-| Goose | 1–8 every build | 1–8 every build | 1–7 every build |
+| C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 debug; 3–8 every build | 1 and 3–7 debug; 2 unchecked; 8 not yet held |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable; 8 not yet held |
+| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug; 8 not yet held |
+| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug; 8 not yet held |
+| Go | 1–8 every build | 1–8 every build | 1–6 and 8 every build; 7 every build on the flat path, a panic on the per-field path |
+| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says; 8 not yet held |
+| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`); 8 not yet held |
+| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises; 8 not yet held |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises; 8 not yet held |
+| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 8 not yet held |
+| MOO | 1–8 every build | 1–8 every build | 1–8 every build |
+| Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 not yet held |
 | Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
 
 **The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
@@ -2798,17 +2797,16 @@ or a file per declaration where the language demands one.
   in declaration order. `InitX` restores a type's construction values in
   existing storage; `ZeroX` applies the §5 zero form. **Generated JS never imports the serialize runtime** —
   every wire call is a method on the stream parameter, so no wiring file
-  exists and this tier's checked/production fork stays where it lives, in the
-  runtime's own load-time mode selection: the runtime-tier module reads no
-  `NODE_ENV` of its own. An enum's or a tag's frozen variant object holds
+  exists. Every JavaScript packet writer checks in every build; generated
+  modules read no `NODE_ENV` of their own. An enum's or a tag's frozen variant object holds
   its variants only — the extent is the module constant `<Name>Max` — so
   `Object.values` enumerates variants. Beside it, **every schema file that
   declares types or unions also emits `<Base>Flat.js`** — the FLAT tier, a single-word bitpacker
   inlined at every field with no runtime import at all, held byte-identical
   to the runtime tier by a standing gate. The flat tier's writer holds its
   checks in every build, whatever `NODE_ENV` says: it reads no `NODE_ENV`
-  and selects no production variant, so a value its declaration does not
-  admit refuses whether the bundle is checked or released.
+  and emits one writer per type, so a value its declaration does not admit
+  refuses in every build.
   The READ side is never configurable in either tier. **Every packet module
   ships its TypeScript declarations beside it** — `<Base>.d.ts` and
   `<Base>Flat.d.ts`, emitted from the same IR walk, accepted by `tsc

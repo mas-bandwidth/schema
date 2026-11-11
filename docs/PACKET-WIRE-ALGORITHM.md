@@ -270,7 +270,7 @@ PUT_RANGED(w, value, min, max):
 | a `flags` mask | `W` raw bits, `W` = variant count or the widened max. `ASSERT value < 2^W` when `W < 64` (a bit above the wire width is writer misuse, not silent truncation). Every pattern of `W` bits is legal |
 | a nested `type` | `WRITE` of that type, in place |
 | a `union` | §2.6 |
-| `string(N)` / `bytes(N)` | `PUT_RANGED(w, length, 0, N)` then `PUT_BYTES(w, buf, length)`. `string`: `ASSERT` no 0x00 in the used bytes. `bytes`: no interior-null assert. Length 0 is a legal empty payload; `PUT_BYTES` still aligns |
+| `string(N)` / `bytes(N)` | `PUT_RANGED(w, length, 0, N)` then `PUT_BYTES(w, buf, length)`. `string`: check the used bytes for both 0x00 and well-formed UTF-8, by the leg's own mechanism (§5.1): a debug-only assert in assert legs, a refusal in every build in the others. `bytes`: no text check. Length 0 is a legal empty payload; `PUT_BYTES` still aligns |
 
 ### 2.5 Compressed float (write)
 
@@ -508,9 +508,10 @@ split (SPEC §5). A counted array's count and a union's tag are writer contracts
 other range: debug-only where the language has the idiom, every-build only in Go and Elixir.
 The read refuses the same numbers in every build, in all nine.
 
-Text well-formedness is **not** a write-side contract. UTF-8 in `string(N)` is a read-side
-refusal in every target, so the guarantee rests on the reader
-rather than on a write-side check some targets carry and others do not.
+Packet `Write` checks row 8 (§5.1): the used bytes of `string(N)` have no zero
+byte and are well-formed UTF-8. Each packet target uses its own write mechanism:
+a debug-only assert in an assert leg, a refusal in every build in the others.
+The reader independently refuses ill-formed text in every build.
 
 ## 6. The oracle fixtures
 

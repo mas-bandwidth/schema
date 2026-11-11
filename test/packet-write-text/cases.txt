@@ -1,0 +1,14 @@
+# Packet Write text cases: name | used bytes in hex | verdict.
+# Refused means a debug assert in an assert leg and a refusal in every build in other legs.
+# Written means the writer accepts the value and emits its canonical packet bytes.
+interior-null | 61 00 62 | refused
+invalid-byte | 61 ff 62 | refused
+surrogate | ed a0 80 | refused
+overlong | c0 af | refused
+above-unicode | f4 90 80 80 | refused
+truncated | e2 82 | refused
+bare-continuation | 80 | refused
+ascii | 61 62 63 | written
+euro | e2 82 ac | written
+emoji | f0 9f 98 80 | written
+empty | - | written
