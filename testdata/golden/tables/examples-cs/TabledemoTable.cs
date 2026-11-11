@@ -3098,12 +3098,15 @@ namespace Tabledemo
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
-            // A null report is DISCARDED, not created: one cached instance carries the
-            // ledger for a caller who supplies no report, so a null-report read
-            // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
-            // resets it exactly as it resets a caller-supplied report, so no earlier
-            // read's verdict leaks into the next.
-            public static readonly TableReport Ignored = new TableReport();
+            // A null report is DISCARDED, not created: the ledger for a caller who
+            // supplies no report is per thread, so no read on another thread can reach
+            // it, and a read never re-enters on its own thread. Each thread caches its
+            // ledger on first use, so a null-report read allocates nothing after that
+            // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
+            // it resets a caller-supplied report.
+            [ThreadStatic]
+            static TableReport ignored;
+            static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }
 
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
@@ -5839,7 +5842,7 @@ namespace Tabledemo
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
-                if (report == null) { report = Ignored; }
+                if (report == null) { report = IgnoredReport(); }
                 type.Reset(value);
                 report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
