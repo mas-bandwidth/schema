@@ -2,7 +2,7 @@
 // wire it describes. An unknown enum value is a packet-wire acceptance bug. On
 // the table wire a variable-form enum value from a newer writer reads as None
 // by design (SPEC-TABLES.md §4), and the fixed form refuses an enum ordinal
-// past the reader's top variant (FIXED-FORM-ALGORITHM.md §4.6).
+// outside the writer's set (FIXED-FORM-ALGORITHM.md §4.6).
 package compiler
 
 import (
@@ -25,7 +25,7 @@ func TestSecurityPageCurrent(t *testing.T) {
 		"An enum value on the **packet wire** that is not a declared variant being",
 		"reads as `None` by design (lawful version evolution",
 		"the fixed form refuses an enum ordinal",
-		"past the reader's top variant (`out_of_range`",
+		"outside the writer's set (`out_of_range`",
 	}
 	for _, want := range wants {
 		mustState(t, row, inScope, want)
@@ -33,6 +33,7 @@ func TestSecurityPageCurrent(t *testing.T) {
 
 	stales := []string{
 		"An enum value that is not a declared variant being accepted.",
+		"past the reader's top variant",
 	}
 	for _, stale := range stales {
 		mustNotState(t, row, inScope, stale)

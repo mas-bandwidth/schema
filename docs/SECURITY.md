@@ -50,7 +50,7 @@ the buffer. Specifically:
   accepted. On the table wire a variable-form enum value from a newer writer
   reads as `None` by design (lawful version evolution,
   [SPEC-TABLES.md](SPEC-TABLES.md) §4); the fixed form refuses an enum ordinal
-  past the reader's top variant (`out_of_range`,
+  outside the writer's set (`out_of_range`,
   [SPEC-TABLES.md](SPEC-TABLES.md) §3.4,
   [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §4.6).
 - A text payload that is not well formed being accepted ON THE PACKET WIRE:
