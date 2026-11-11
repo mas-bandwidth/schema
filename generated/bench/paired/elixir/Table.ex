@@ -1514,7 +1514,6 @@ defmodule Bench.Table do
 
   defp fixed_class_keyed_to_table(_f, _value), do: %{}
 
-
   defp fixed_class_union_to_table(f, value) do
     case value do
       nil ->
@@ -1651,7 +1650,12 @@ defmodule Bench.Table do
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
         kept = Enum.take(elems, n)
-        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+        kept ++
+          List.duplicate(
+            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
+            max(n - length(kept), 0)
+          )
 
       _ ->
         elems
@@ -1694,9 +1698,14 @@ defmodule Bench.Table do
     Enum.map(Map.fetch!(f, :key_names), fn name ->
       raw =
         cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
-          true -> Map.get(item, :default)
+          Map.has_key?(value, name) ->
+            Map.get(value, name)
+
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
+            Map.get(value, String.to_atom(fixed_class_snake(name)))
+
+          true ->
+            Map.get(item, :default)
         end
 
       fixed_class_value_from_table(item, raw)
@@ -2716,9 +2725,15 @@ defmodule Bench.Table do
     case Bench.WrapFixed.fixed_table_fixed_load(data) do
       {:ok, [value], report} ->
         {:ok, fixed_class_to_table("FixedTable", value), fixed_class_report(report)}
-      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}
-      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}
-      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}
+
+      {:ok, [], report} ->
+        {:error, :truncated, fixed_class_report(report)}
+
+      {:error, reason, report} ->
+        {:error, reason, fixed_class_report(report)}
+
+      {:ok, _values, report} ->
+        {:error, :batch_too_large, fixed_class_report(report)}
     end
   end
 
@@ -2833,7 +2848,6 @@ defmodule Bench.Table do
     :wire_damaged ->
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
-
 
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
   # verdict word beside its counters, spelled with the reference leg's
@@ -3778,7 +3792,10 @@ defmodule Bench.Table do
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
+              reader =
+                Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -4964,9 +4981,14 @@ defmodule Bench.Table do
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),

@@ -604,6 +604,13 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 			}
 			continue
 		}
+		// a dropped piece takes its trailing blank line with it; when the kept
+		// text above it ends on a line of code (a one-line clause dropped from
+		// the end of its group), that blank line is the one the formatter keeps
+		// before the next definition, so it stays
+		if lines[k-1] == "\n" && k < len(lines) && b.Len() > 0 && !strings.HasSuffix(b.String(), "\n\n") {
+			b.WriteString("\n")
+		}
 		i = k
 	}
 	return b.String()
@@ -2405,7 +2412,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 end
 
               check_wire_count(n, f, report)
-              reader = Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
+              reader =
+                Map.put(%{f | elem_kind: elem_kind}, :widened_list, elem_kind != f.elem_kind)
+
               {n, report} = clamp_count(n, f, report)
               {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
               {:cont, value, report}
@@ -3614,9 +3624,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           {:error, :malformed, empty_report()}
       end
     catch
-      {:missing_required, report} -> {:error, :missing_required, report}
-      {:out_of_range, name} -> {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
-      :wire_damaged -> {:error, :malformed, empty_report()}
+      {:missing_required, report} ->
+        {:error, :missing_required, report}
+
+      {:out_of_range, name} ->
+        {:error, :out_of_range, reasoned(empty_report(), {:out_of_range, name})}
+
+      :wire_damaged ->
+        {:error, :malformed, empty_report()}
     after
       if outer_table == nil,
         do: Process.delete(:elixir_json_table),
