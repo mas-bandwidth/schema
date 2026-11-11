@@ -22,12 +22,31 @@ const tableMessageReadSource = `
     static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
     {
         if (depth > 128) { return false; }
+        Span<ulong> seen = stackalloc ulong[16]; int seenCount = 0; System.Collections.Generic.HashSet<ulong> seenMore = null;
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
             if (reference == 0) { return true; }
+            // the skip path holds a body to the read's two framing rules: a
+            // reserved id and an id twice in one body are damage (§3.3)
+            if (Reserved(e.Id) || MessageSeen(e.Id, seen, ref seenCount, ref seenMore)) { return false; }
             if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
         }
+    }
+    // MessageSeen records one field id of a body and answers whether the body
+    // carried it already: A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named
+    // by this reader or not. Ids, not references, are compared, so two
+    // vocabulary entries of one id are one field. The first sixteen ids live on
+    // the stack; a wider body moves them to a set.
+    static bool MessageSeen(ulong id, Span<ulong> seen, ref int count, ref System.Collections.Generic.HashSet<ulong> more)
+    {
+        if (more != null) { return !more.Add(id); }
+        for (int i = 0; i < count; i++) { if (seen[i] == id) { return true; } }
+        if (count < seen.Length) { seen[count++] = id; return false; }
+        more = new System.Collections.Generic.HashSet<ulong>();
+        foreach (ulong s in seen) { more.Add(s); }
+        more.Add(id);
+        return false;
     }
     static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
     {
@@ -44,8 +63,13 @@ const tableMessageReadSource = `
             case 13: return MessageSkipBody(ref r, d, depth + 1);
             case 17: return false; // a node reference: no fixed body holds one
             case 12:
-                if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-                return r.Skip((long)length * (kind == 12 ? 8 : 16));
+                if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align()) { return false; }
+                if (length > (ulong)((r.End - r.At) / 8)) { return false; }
+                // ILL-FORMED TEXT IS DAMAGE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md
+                // §3.3): the bytes are not kept, and they are held to the rule a
+                // named read holds them to
+                if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
+                r.At += (long)length * 8; return true;
             case 31:
                 return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
             case 14:
@@ -76,11 +100,12 @@ const tableMessageReadSource = `
     {
         if (depth > 128) { return false; }
         if (value != null) { type.Reset(value); }
+        Span<ulong> seen = stackalloc ulong[16]; int seenCount = 0; System.Collections.Generic.HashSet<ulong> seenMore = null;
         for (; ; )
         {
             if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
             if (reference == 0) { return true; }
-            if (Reserved(entry.Id)) { return false; }
+            if (Reserved(entry.Id) || MessageSeen(entry.Id, seen, ref seenCount, ref seenMore)) { return false; }
             TableFieldInfo field = FindField(type, entry.Id);
             if (field == null)
             { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
