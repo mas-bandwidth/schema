@@ -79,10 +79,13 @@ func TestPortSquirrelPageCurrent(t *testing.T) {
 			},
 		},
 		{
-			row:  "the float-width check is still owed",
+			row:  "the pinned-VM check is held",
 			text: portSquirrelSection(t, page, "## THE PINNED INTERPRETER", "## THE TYPE MAPPING"),
 			wants: []string{
-				"`_intsize_ == 8 && _floatsize_ == 8`",
+				"`_intsize_ == 8 && _floatsize_ == 8 && _charsize_ == 1`",
+				"requires `schema_table_descriptor` before any other table runtime",
+			},
+			stales: []string{
 				"that check is owed to the first codec card",
 			},
 		},
