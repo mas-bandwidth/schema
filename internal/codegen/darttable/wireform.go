@@ -525,6 +525,9 @@ func (g *wireGen) emit() {
 
 func (g *wireGen) emitConstants() {
 	g.pf("const int _tableBinaryMaxDepth = 128; // docs/SPEC-TABLES.md §4\n")
+	g.pf("// A union is a level only when its arm is a table, an array, a keyed or\n")
+	g.pf("// map body, or another union (docs/SPEC-TABLES.md §4).\n")
+	g.pf("bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 15 || kind == 16;\n")
 	g.pf("// The RESERVED node-table id (§3.1, §5) and the *string BLOB type id\n")
 	g.pf("// (§2.5, §3.1), both as their 64-bit two's-complement Dart spelling.\n")
 	g.pf("const int _kNodeTableId = %s; // 0xFFFFFFFFFFFFFFFF\n", dartU64Literal(ir.TableNodeWireId))
@@ -1856,6 +1859,8 @@ final class TableWireReader {
         final alen = _wireLeb(buf, arm.$2 + 1);
         if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
+        if (!_structuralKind(akind)) return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
+        if (depth >= _tableBinaryMaxDepth) return -1;
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
       case 12:
       case 13:

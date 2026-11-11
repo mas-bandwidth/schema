@@ -10,6 +10,9 @@ import 'dart:typed_data';
 import 'BenchTable.dart' show TableWeapon;
 
 const int _tableBinaryMaxDepth = 128; // docs/SPEC-TABLES.md §4
+// A union is a level only when its arm is a table, an array, a keyed or
+// map body, or another union (docs/SPEC-TABLES.md §4).
+bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 15 || kind == 16;
 // The RESERVED node-table id (§3.1, §5) and the *string BLOB type id
 // (§2.5, §3.1), both as their 64-bit two's-complement Dart spelling.
 const int _kNodeTableId = -1; // 0xFFFFFFFFFFFFFFFF
@@ -1349,6 +1352,8 @@ final class TableWireReader {
         final alen = _wireLeb(buf, arm.$2 + 1);
         if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
+        if (!_structuralKind(akind)) return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
+        if (depth >= _tableBinaryMaxDepth) return -1;
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
       case 12:
       case 13:
@@ -1866,7 +1871,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainFramed(r, ak, depth);
+      final sub = _retainFramed(r, ak, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -1879,7 +1884,9 @@ List<int>? _retainFramed(TableWireReader r, int kind, int depth) {
   if (n == null || !r.has(n)) return null;
   final end = r.pos + n;
   final sub = TableWireReader.sub(r, r.pos, end);
-  final content = _retainContent(sub, kind, depth + 1);
+  // a framed table, array or keyed body is one level deeper; a scalar's or a
+  // union's frame adds none of its own (docs/SPEC-TABLES.md §4)
+  final content = _retainContent(sub, kind, kind == 13 || kind == 14 || kind == 16 ? depth + 1 : depth);
   if (content == null || sub.pos != end) return null;
   r.pos = end;
   return <int>[..._u64le(content.length), ...content];
@@ -1917,10 +1924,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     if (id == null) return null;
     if (!r.has(1)) return null;
     final kind = r.readByte();
-    // A table/array field's own frame adds its structural level in
-    // _retainFramed. A union has no outer frame, so count it here before its
-    // arm's frame is visited.
-    final sub = _retainResolve(r, kind, kind == 15 ? depth + 1 : depth);
+    final sub = _retainResolve(r, kind, depth);
     if (sub == null) return null;
     out.addAll(_u64le(id));
     out.add(kind);
@@ -1945,7 +1949,7 @@ List<int>? _retainArray(TableWireReader r, int kind, int depth) {
       out.addAll(_u64le(id));
       out.addAll(framed);
     } else {
-      final sub = _retainResolve(r, ek, ek == 15 ? depth + 1 : depth);
+      final sub = _retainResolve(r, ek, depth);
       if (sub == null) return null;
       out.addAll(sub);
     }
@@ -2035,7 +2039,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitFramed(state, ak, c, depth);
+      final sub = _retainEmitFramed(state, ak, c, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -2052,7 +2056,7 @@ List<int>? _retainEmitFramed(WireState state, int kind, _RetainCursor c, int dep
   if (len == null) return null;
   final end = c.at + len;
   if (end > c.b.length) return null;
-  final content = _retainEmitContent(state, kind, c, end, depth + 1);
+  final content = _retainEmitContent(state, kind, c, end, kind == 13 || kind == 14 || kind == 16 ? depth + 1 : depth);
   if (content == null || c.at != end) return null;
   final o = <int>[];
   _lebOut(o, content.length);
@@ -2090,7 +2094,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
     if (ref == 0) return null;
     final kind = c.byte();
     if (kind == null) return null;
-    final sub = _retainEmitPayload(state, kind, c, kind == 15 ? depth + 1 : depth);
+    final sub = _retainEmitPayload(state, kind, c, depth);
     if (sub == null) return null;
     _lebOut(o, ref);
     o.add(kind);
@@ -2116,7 +2120,7 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
       _lebOut(o, ref);
       o.addAll(framed);
     } else {
-      final sub = _retainEmitPayload(state, ek, c, ek == 15 ? depth + 1 : depth);
+      final sub = _retainEmitPayload(state, ek, c, depth);
       if (sub == null) return null;
       o.addAll(sub);
     }
