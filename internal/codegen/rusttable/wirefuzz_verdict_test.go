@@ -12,8 +12,8 @@ package rusttable
 // artifacts, and drives conformance-harness wire-fuzz over the Card root in
 // plain and --retain modes.
 // TestRustWireFuzzVerdictPipeNegativeControl plants faults in the real
-// generated card_table.rs — the array-body tail check and the repeated-field-id
-// check — and requires each plant to turn the verdict pipe red.
+// generated card_table.rs — the array-body tail check and both repeated-field-id
+// checks — and requires each plant to turn the verdict pipe red.
 //
 // THIS IS A FUNCTIONAL TEST: it compiles and runs the emitted Rust with rustc,
 // so it takes a real toolchain and names it through slowtest.Gate.
