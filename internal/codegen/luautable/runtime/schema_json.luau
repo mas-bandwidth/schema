@@ -2186,6 +2186,19 @@ end
 local edge_value: (any, any, any, any, any, { any }, any) -> ()
 local edge_union: (any, any, any, { any }, any) -> ()
 local edges: (any, any, any, { any }, any) -> { any }
+
+-- a field under a FALSE GUARD is not written, whatever its storage holds (an
+-- if branch that does not run has no fields, docs/SPEC-TABLES.md §3), and its
+-- edges are not counted (§3.1): the guard is the descriptor's conjunction of
+-- (bool slot, value) pairs, held as schema_save's guard_holds holds it
+local function json_guard_holds(fd: any, v: any): boolean
+  local guard = fd.raw and fd.raw.guard
+  if guard == nil then return true end
+  for _, pair in guard do
+    if v[pair[1]] ~= pair[2] then return false end
+  end
+  return true
+end
 edge_value = function(T: any, fd: any, val: any, holder: any, name: any, out: { any }, cache: any)
   local s = fd.shape
   if s == "string_blob" or s == "bytes_blob" then
@@ -2223,7 +2236,7 @@ end
 
 edges = function(T: any, desc: any, v: any, out: { any }, cache: any): { any }
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if not (fd.optional and not v[fd.name .. "_present"]) and json_guard_holds(fd, v) then
       edge_value(T, fd, v[fd.name], v, fd.name, out, cache)
     end
   end
@@ -2269,7 +2282,7 @@ local write_fields: (any, any, any, number, any, any, boolean) -> (boolean, bool
 
 write_fields = function(T: any, desc: any, v: any, depth: number, g: any, w: any, any: boolean): (boolean, boolean)
   for _, fd in ipairs(desc.fields) do
-    if not (fd.optional and not v[fd.name .. "_present"]) then
+    if not (fd.optional and not v[fd.name .. "_present"]) and json_guard_holds(fd, v) then
       if not any then put(w, '{') else put(w, ',') end
       any = true
       line(w, depth + 1)
