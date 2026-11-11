@@ -2,19 +2,61 @@ package luautable_test
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
-func luauDamageRead(t *testing.T, file, sabotage string) string {
+// luauDamageUnit emits the tblr1 unit with Cfg read as the VARIABLE root the
+// damage vectors are: they are form-1 frames, and a fixed root answers form 1
+// as previous_form before any body is walked (§3.4).
+func luauDamageUnit(t *testing.T) (string, []string, map[string][]byte) {
 	t.Helper()
 	units, _ := readManifest(t)
-	dir, mods, files := buildMessageUnit(t, units["tblr1"])
+	paths, err := compiler.GatherPaths(prefix(units["tblr1"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Tables["Cfg"].FixedDeclared = false
+	files, err := luau.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := luautable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	var mods []string
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasSuffix(name, "Table.luau") {
+			mods = append(mods, strings.TrimSuffix(name, ".luau"))
+		}
+	}
+	sort.Strings(mods)
+	return dir, mods, files
+}
+
+func luauDamageRead(t *testing.T, file, sabotage string) string {
+	t.Helper()
+	dir, mods, files := luauDamageUnit(t)
 	if sabotage != "" {
 		src := string(files["schema_load.luau"])
 		var patched string
@@ -41,7 +83,7 @@ func luauDamageRead(t *testing.T, file, sabotage string) string {
 		fmt.Fprintf(&b, "require(%q)\n", "./"+mod)
 	}
 	b.WriteString(`for _, retain in {false, true} do
- local report = {malformed=false, refused=0, unknown=0, kindMismatch=0, clamped=0, widened=0, duplicate=0}
+ local report = {malformed=false, refused=0, unknown=0, widened=0}
  local value = if retain then R.loadRetainWalk("Cfg", inputs.wire, report) else L.loadWalk("Cfg", inputs.wire, report)
  print(tostring(value == nil) .. " " .. tostring(report.malformed))
 end
