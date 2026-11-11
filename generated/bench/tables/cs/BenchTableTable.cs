@@ -9533,7 +9533,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -10068,7 +10068,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -12065,7 +12065,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
