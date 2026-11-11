@@ -216,7 +216,7 @@ def _read_body(reader: Reader, obj: Any, ctx: Ctx, root: bool) -> None:
                 "kind_mismatch",
                 f"{descriptor_.name}.{field.name} rides under kind {kind}, not {field.kind}",
             )
-        value = kinds.REGISTRY[field.codec].read(reader, field, ctx)
+        value = kinds._REGISTRY[field.codec].read(reader, field, ctx)
         setattr(obj, field.name, value)
     ctx.current = previous
 

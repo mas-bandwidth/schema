@@ -116,7 +116,7 @@ def _validate(value: Any, desc: TableDesc, path: str, seen: set[int]) -> None:
                 raise InvalidValue(where, f"not a {field.target}")
             _validate(current, current.descriptor, where, seen)
         else:
-            kinds.REGISTRY[field.codec].validate(field, current, where)
+            kinds._REGISTRY[field.codec].validate(field, current, where)
 
 
 def _collect(value: Any, ctx: Ctx) -> None:
@@ -152,7 +152,7 @@ def write_body(writer: Writer, value: Any, ctx: Ctx, root: bool) -> None:
         current = getattr(value, field.name)
         if field.is_default(current):
             continue
-        kinds.REGISTRY[field.codec].write(writer, field, current, ctx)
+        kinds._REGISTRY[field.codec].write(writer, field, current, ctx)
     if root and ctx.order:
         writer.varint(ctx.idref(NODE_WIRE_ID))
         writer.byte(12)

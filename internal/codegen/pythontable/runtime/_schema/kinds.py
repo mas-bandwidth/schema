@@ -12,7 +12,7 @@ from typing import Any, Protocol
 from .descriptor import FieldDesc
 
 
-class Kind(Protocol):
+class FieldKind(Protocol):
     def validate(self, fd: FieldDesc, value: Any, path: str) -> None: ...
 
     def read(self, r: Any, fd: FieldDesc, ctx: Any) -> Any: ...
@@ -20,8 +20,8 @@ class Kind(Protocol):
     def write(self, w: Any, fd: FieldDesc, value: Any, ctx: Any) -> None: ...
 
 
-REGISTRY: dict[str, Kind] = {}
+_REGISTRY: dict[str, FieldKind] = {}
 
 
-def register(name: str, kind: Kind) -> None:
-    REGISTRY[name] = kind
+def register(name: str, kind: FieldKind) -> None:
+    _REGISTRY[name] = kind
