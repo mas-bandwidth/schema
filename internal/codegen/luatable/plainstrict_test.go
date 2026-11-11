@@ -89,6 +89,41 @@ assert(okS == okR, "ReadFixed and ReadStrict disagree on acceptance of a form-3 
 if okS then
   assert(strict ~= nil and rval ~= nil, "a fixed read ReadStrict accepted answered no root")
 end
+-- THE PLAIN NAME at a fixed-class root reads the form-3 file (§3.4, §6.5)
+local lr = {}
+local lv = require("load").Load(T, "` + root + `", wire, lr)
+assert((lv ~= nil) == okR, "the plain Load and ReadStrict disagree on a form-3 wire: " .. tostring(lr.reason))
+print("plain-strict-ok")
+`
+}
+
+// plainStrictProbeFixedOtherForm is the Lua main for a FIXED-CLASS root whose
+// wire is not form 3 (docs/SPEC-TABLES.md §3.4): the plain Load refuses it by
+// its form byte before anything is read, so every counter stays at rest, and
+// ReadStrict folds the form reasons into unknown_form (§6.5).
+func plainStrictProbeFixedOtherForm(module, root string, form byte) string {
+	want := "newer_form"
+	switch form {
+	case 1:
+		want = "previous_form"
+	case 2:
+		want = "message_form_as_file"
+	}
+	return `local T = require("` + module + `")
+local load = require("load")
+local R = require("refusal")
+local wire = require("inputs").wire
+local sr = { damaged = true, refused = 7, unknown = 5, kindChanged = 5,
+             outOfRange = 5, widened = 5, repeatedKey = 5, reason = "stale" }
+assert(load.Load(T, "` + root + `", wire, sr) == nil, "the plain Load took a fixed root's non-form-3 file")
+assert(sr.reason == "` + want + `", "the plain Load reason is " .. tostring(sr.reason) .. ", want ` + want + `")
+assert(sr.refused == 1 and sr.damaged == false, "the plain Load's form refusal is not a refusal alone")
+for _, k in ipairs({ "unknown", "kindChanged", "outOfRange", "widened", "repeatedKey" }) do
+  assert(sr[k] == 0, "the plain Load moved " .. k .. " before refusing the form")
+end
+assert(load.Load(T, "` + root + `", wire, nil) == nil, "the plain Load with a nil report took a fixed root's other-form file")
+local ok, err = pcall(function() return R.ReadStrict(T, "` + root + `", wire) end)
+assert(not ok and tostring(err):match("^([^:]+)") == "unknown_form", "ReadStrict: " .. tostring(err))
 print("plain-strict-ok")
 `
 }
@@ -169,6 +204,8 @@ func TestLuaPlainLoadIsStrict(t *testing.T) {
 				probe := plainStrictProbe(g.module, row.root, instance)
 				if g.fixed[row.root] && len(wire) > 0 && wire[0] == 3 {
 					probe = plainStrictProbeFixed(g.module, row.root, instance)
+				} else if g.fixed[row.root] && len(wire) > 0 {
+					probe = plainStrictProbeFixedOtherForm(g.module, row.root, wire[0])
 				}
 				if err := os.WriteFile(filepath.Join(g.dir, "main.lua"), []byte(probe), 0o644); err != nil {
 					t.Fatal(err)

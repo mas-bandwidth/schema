@@ -736,7 +736,30 @@ local function save_with(T, name, v, typed)
   return out
 end
 
+-- fixed_root_save is the plain Save at a fixed-class root (docs/SPEC-TABLES.md
+-- §3.4, internal/tablewire/fixed.go): the fixed form, one record, the bytes
+-- tablewire.Encode writes. A root with no compiled layout (past the record
+-- ceiling, say) is layout_unsupported: the file save refuses, it never falls
+-- back to form 1.
+local function fixed_root_save(T, name, v)
+  local refused = D.refuse_deprecated(T, name, v)
+  if refused ~= nil then return nil, refused end
+  if type(v) ~= "table" then return nil, "nil_root" end
+  if T.Fixed == nil or T.Fixed[name] == nil then return nil, "layout_unsupported" end
+  local F = require("fixed")
+  local ok, out = pcall(F.save, T, T.Fixed[name].table, { v })
+  if not ok then
+    local why = tostring(out):gsub("^[^:\n]*:%d+: ", "")
+    -- a non-finite float is named by its path, as the form-1 save names it
+    if why:match("^non_finite_float") then return nil, D.refuse_non_finite(T, name, v) end
+    return nil, why
+  end
+  return out
+end
+
 function S.Save(T, name, v)
+  local desc = T.Tables[name]
+  if desc ~= nil and not desc.variable then return fixed_root_save(T, name, v) end
   return save_with(T, name, v, nil)
 end
 
@@ -751,7 +774,21 @@ end
 function S.SaveTyped(T, name, v)
   local typed = T.TypedBodies
   if typed == nil then error("SaveTyped: this module carries no typed save bodies", 2) end
+  local desc = T.Tables[name]
+  if desc ~= nil and not desc.variable then return fixed_root_save(T, name, v) end
   return save_with(T, name, v, typed)
+end
+
+-- THE FORM-1 WALK at any root, as L.loadWalk is the form-1 read: what Save
+-- writes at a variable root, and the body writer a fixed-class table's typed
+-- body takes when a variable root reaches it by value. A fixed-class root's
+-- FILE is form 3 (S.Save above); these never stand for its file.
+function S.saveWalk(T, name, v)
+  return save_with(T, name, v, nil)
+end
+
+function S.saveWalkTyped(T, name, v)
+  return save_with(T, name, v, T.TypedBodies)
 end
 
 -- what a generated typed body is written against: the writer's pieces, the id

@@ -813,10 +813,18 @@ local function read_impl(T, name, buf, strict)
   return value, hash, layout
 end
 
+-- refusal_name is a refusal raised inside the read as its bare name: the
+-- decoders raise a reason with Lua's position prefix ("fixed.lua:752: "),
+-- and a caller matches the reason itself (docs/SPEC-TABLES.md §5.3)
+local function refusal_name(e)
+  if type(e) ~= "string" then return e end
+  return (e:gsub("^[^:\n]*:%d+: ", ""))
+end
+
 -- F.read is one record's read: the value and its layout hash and bytes.
 function F.read(T, name, buf, strict)
   local ok, v, h, l = pcall(read_impl, T, name, buf, strict)
-  if not ok then error(v, 0) end
+  if not ok then error(refusal_name(v), 0) end
   return v, h, l
 end
 
@@ -948,7 +956,7 @@ end
 -- and the widened and unknown counts.
 function F.load(T, name, buf, strict, cap)
   local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
-  if not ok then error(out, 0) end
+  if not ok then error(refusal_name(out), 0) end
   return out, h, l, w, u
 end
 

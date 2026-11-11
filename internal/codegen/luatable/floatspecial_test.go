@@ -59,6 +59,16 @@ table Holder
     f float64
     next *Holder
 }
+
+// Root's fields at a VARIABLE root: a fixed-class root's file is form 3
+// (docs/SPEC-TABLES.md §3.4), so the variable form's reads are held here
+table VarRoot
+{
+    a float32
+    b float64
+    ys [2]float64
+    next *VarRoot
+}
 `
 
 type fsCase struct {
@@ -162,6 +172,12 @@ local function value(c)
   v.ys[1], v.ys[2] = f, f
   return v
 end
+local function var_of(v)
+  local w = T.NewVarRoot()
+  w.a, w.b = v.a, v.b
+  w.ys[1], w.ys[2] = v.ys[1], v.ys[2]
+  return w
+end
 local function announced()
   local vocab = {}
   for i = 1, T.MessageEntries do vocab[i] = {} end
@@ -178,9 +194,9 @@ local vocab = announced()
 for _, c in ipairs(finite) do
   local v = value(c)
   local want = bits(v)
-  local wire = assert(save.Save(T, "Root", v), "variable save")
+  local wire = assert(save.Save(T, "VarRoot", var_of(v)), "variable save")
   print("V|" .. c.name .. "|var|" .. hex(wire))
-  local back = assert(load.Load(T, "Root", wire, report()), "variable load")
+  local back = assert(load.Load(T, "VarRoot", wire, report()), "variable load")
   print("V|" .. c.name .. "|varback|" .. bits(back))
   local msg = assert(T.SaveMessages("Root", vocab, { v }), "message save")
   print("V|" .. c.name .. "|msg|" .. hex(msg))
@@ -287,7 +303,7 @@ local function patch_bits(s, width, from, to)
 end
 
 local sv = sentinel_value()
-local wire = save.Save(T, "Root", sv)
+local wire = save.Save(T, "VarRoot", var_of(sv))
 local msg = T.SaveMessages("Root", vocab, { sv })
 local fixed = T.WriteFixed("Root", sv)
 local cooked = cookwrite.Cook(T, "Root", sv)
@@ -316,12 +332,12 @@ for _, c in ipairs(nonfinite) do
 
     local w = patch_bytes(wire, is32, from, to)
     local r = report()
-    local got = load.loadWalk(T, "Root", w, r)
-    check("var-" .. width .. tail .. "tolerant", got == nil and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
+    local got = load.loadWalk(T, "VarRoot", w, r)
+    check("var-" .. width .. tail .. "tolerant", got == nil and r.nonFiniteFloat == "Var" .. s.owner and r.reason == "non_finite_float: Var" .. s.owner, r.reason)
     r = report()
-    got = load.Load(T, "Root", w, r)
+    got = load.Load(T, "VarRoot", w, r)
     check("var-" .. width .. tail .. "strict", got == nil and r.reason == "non_finite_float", r.reason)
-    local ok, err = pcall(refusal.ReadStrict, T, "Root", w)
+    local ok, err = pcall(refusal.ReadStrict, T, "VarRoot", w)
     check("var-" .. width .. tail .. "readstrict", not ok and err == "non_finite_float", err)
 
     local m = patch_bits(msg, is32 and 32 or 64, from, to)

@@ -56,6 +56,15 @@ func Testgen(u *ir.Unit) (map[string][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+			if !variable[st.Name] && !ir.TableFixedEmitted(u, st) {
+				// A FIXED TABLE PAST THE RECORD CEILING HAS NO FILE FORM
+				// (§3.4): its file save refuses rather than falling back to
+				// form 1, so there is no wire to round-trip or damage
+				fmt.Fprintf(&body, "\n-- not generated: %s — the round-trip and damage tests: a fixed table past the\n-- record ceiling has no file form, so its file save refuses (docs/SPEC-TABLES.md §3.4)\n", st.Name)
+				ltgNoFileForm(&body, st, samples)
+				cases = append(cases, `{"Test`+st.Name+`GenNoFileForm", Test`+st.Name+`GenNoFileForm}`)
+				continue
+			}
 			ltgRoundTrip(&body, st, variable[st.Name], samples)
 			ltgDamage(&body, st, variable[st.Name], samples)
 			cases = append(cases, `{"Test`+st.Name+`GenRoundTrip", Test`+st.Name+`GenRoundTrip}`)
@@ -803,6 +812,25 @@ func ltgRoundTrip(b *strings.Builder, st *ir.Struct, variable bool, samples []lt
 	fmt.Fprintf(b, "\t\t\tcheck(jgot ~= nil and silent(jr), %q .. s.name .. %q)\n", n+": ", ": json: FromJson of ToJson's text is not silent")
 	fmt.Fprintf(b, "\t\t\tif jgot ~= nil then same_equal(%q, \"json\", wire, jsonText, jgot) end\n", n)
 	b.WriteString("\t\tend)\n\t\tif not ok then error(s.name .. \": \" .. tostring(err), 0) end\n")
+	b.WriteString("\tend\nend\n")
+}
+
+// ltgNoFileForm writes Test<Name>GenNoFileForm for a fixed table with no file
+// form (§3.4): every sample reads from its JSON spelling, and the file save
+// refuses it as layout_unsupported, writing nothing.
+func ltgNoFileForm(b *strings.Builder, st *ir.Struct, samples []ltgSample) {
+	n := st.Name
+	fmt.Fprintf(b, "\n-- Test%sGenNoFileForm: %s is a fixed table past the record ceiling, so it\n-- has no file form and its file save refuses every sample (§3.4).\n", n, n)
+	fmt.Fprintf(b, "local samples_%s = {\n", n)
+	for _, s := range samples {
+		fmt.Fprintf(b, "\t{ name = %s, text = %s },\n", ltgQuote(s.name), s.expr)
+	}
+	fmt.Fprintf(b, "}\n\nlocal function Test%sGenNoFileForm()\n", n)
+	fmt.Fprintf(b, "\tfor _, s in ipairs(samples_%s) do\n", n)
+	fmt.Fprintf(b, "\t\tlocal r = report()\n\t\tlocal v = json.FromJson(T, %q, s.text, r)\n", n)
+	fmt.Fprintf(b, "\t\tcheck(v ~= nil and silent(r), %q .. s.name .. %q)\n", n+": ", ": FromJson of the sample is not silent")
+	fmt.Fprintf(b, "\t\tlocal wire, why = save.Save(T, %q, v)\n", n)
+	fmt.Fprintf(b, "\t\tcheck(wire == nil and why == \"layout_unsupported\", %q .. s.name .. %q .. tostring(why))\n", n+": ", ": the file save did not refuse: ")
 	b.WriteString("\tend\nend\n")
 }
 

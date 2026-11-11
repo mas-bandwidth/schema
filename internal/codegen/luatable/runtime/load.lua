@@ -2571,6 +2571,48 @@ local function strict_refusal(bytes, report, root)
   return nil
 end
 
+-- fixed_root_load is the plain Load at a fixed-class root (docs/SPEC-TABLES.md
+-- §3.4, internal/tablewire/fixed.go decodeFixed): the form byte first, then a
+-- root with no compiled layout is layout_unsupported, then the fixed form's
+-- strict batch read, which must hold exactly one record.
+local function fixed_root_load(T, name, bytes, r)
+  if type(bytes) ~= "string" or #bytes < 1 then
+    r.damaged = true
+    r.reason = "truncated"
+    return nil
+  end
+  local form = bytes:byte(1)
+  if form ~= 3 then
+    r.refused = 1
+    if form == 1 then
+      r.reason = "previous_form"
+    elseif form == 2 then
+      r.reason = "message_form_as_file"
+    else
+      r.reason = "newer_form"
+    end
+    return nil
+  end
+  if T.Fixed == nil or T.Fixed[name] == nil then
+    r.refused = 1
+    r.reason = "layout_unsupported"
+    return nil
+  end
+  local F = require("fixed")
+  local ok, out = pcall(F.load, T, T.Fixed[name].table, bytes, true)
+  if not ok then
+    r.refused = 1
+    r.reason = tostring(out)
+    return nil
+  end
+  if #out ~= 1 then
+    r.damaged = true
+    r.reason = "malformed"
+    return nil
+  end
+  return out[1]
+end
+
 -- Load is THE STRICT READ (docs/SPEC-TABLES.md §6.5: THE PLAIN NAME IS THE
 -- STRICT READ): it runs the walk into the caller's report, overwriting
 -- it with THIS read's report, and answers the root only where the strict set
@@ -2591,14 +2633,13 @@ function L.Load(T, name, bytes, report, state, into)
   r.wireDamaged = false
   r.reason = nil
   state = state or L.NewState()
-  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): a form-1
-  -- file is previous_form, refused before anything decodes, so nothing moves and
-  -- nothing lands. FixedLoad reads form 3.
+  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4), and the
+  -- plain Load reads it as the engine's decode does: one record through the
+  -- fixed form's strict read. A form-1 file is previous_form, refused before
+  -- anything decodes, so nothing moves and nothing lands.
   local desc = T.Tables[name]
-  if desc ~= nil and not desc.variable and type(bytes) == "string" and #bytes >= 1 and bytes:byte(1) == 1 then
-    r.refused = 1
-    r.reason = "previous_form"
-    return nil
+  if desc ~= nil and not desc.variable then
+    return fixed_root_load(T, name, bytes, r)
   end
   local root = read_form1(T, name, bytes, r, state, into)
   local reason = strict_refusal(bytes, r, root)

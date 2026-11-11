@@ -7,8 +7,9 @@ import (
 )
 
 // THE TYPED SAVE (docs/PORTING.md M22). Every unit's module carries typed save
-// bodies (typedsave.go) beside the descriptor walk save.Save is, and
-// save.SaveTyped(T, name, value) writes through them. They must write the same
+// bodies (typedsave.go) beside the descriptor walk, and the form-1 walk writes
+// through them (save.saveWalkTyped beside save.saveWalk; save.SaveTyped beside
+// save.Save, which at a fixed-class root is the form-3 file). They must write the same
 // bytes as the walk, every refusal included. The probe saves, both ways: every
 // instance row of the unit after its load, every declared table at its
 // constructor's defaults, and every declared table with each scalar leaf moved
@@ -27,9 +28,14 @@ local load, save = require("load"), require("save")
 local inputs = require("inputs")
 local agree, differ = 0, 0
 local function both(what, root, v)
-  local ok1, a, ar = pcall(save.Save, T, root, v)
-  local ok2, b, br = pcall(save.SaveTyped, T, root, v)
-  if ok1 == ok2 and a == b and ar == br then
+  -- the form-1 walk, typed against the descriptors: the bodies at work at a
+  -- variable root and below it, at every table the walk reaches
+  local ok1, a, ar = pcall(save.saveWalk, T, root, v)
+  local ok2, b, br = pcall(save.saveWalkTyped, T, root, v)
+  -- and the public pair, which at a fixed-class root is the form-3 file
+  local ok3, c, cr = pcall(save.Save, T, root, v)
+  local ok4, d, dr = pcall(save.SaveTyped, T, root, v)
+  if ok1 == ok2 and a == b and ar == br and ok3 == ok4 and c == d and cr == dr then
     agree = agree + 1
   else
     differ = differ + 1
@@ -40,7 +46,7 @@ local function report()
   return { damaged = false, refused = 0, unknown = 0, kindChanged = 0, outOfRange = 0, widened = 0, repeatedKey = 0 }
 end
 for i, root in ipairs(roots) do
-  local v = load.Load(T, root, inputs["w" .. i], report())
+  local v = load.loadWalk(T, root, inputs["w" .. i], report())
   if v ~= nil then both("instance " .. i, root, v) end
 end
 local names = {}
@@ -152,8 +158,8 @@ local function steps(f)
   debug.sethook()
   return n
 end
-assert(save.Save(T, "RangedSigned", v) == save.SaveTyped(T, "RangedSigned", v))
-print(steps(save.Save), steps(save.SaveTyped))
+assert(save.saveWalk(T, "RangedSigned", v) == save.saveWalkTyped(T, "RangedSigned", v))
+print(steps(save.saveWalk), steps(save.saveWalkTyped))
 `, nil)
 	if err != nil {
 		t.Fatalf("probe: %v\n%s", err, stderr)
