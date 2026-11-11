@@ -87,8 +87,8 @@ fixed table Point {
 	if !strings.Contains(fixedLoad, "PointFixedResetImage") {
 		t.Error("the load does not prefill from the laid-once default image (§4.3)")
 	}
-	if !strings.Contains(fixedLoad, "tableFixedRun(") {
-		t.Error("FixedLoad does not walk the winning plan")
+	if !strings.Contains(fixedLoad, "tableFixedRunDefaults(") {
+		t.Error("FixedLoad does not walk the winning plan over the reset image")
 	}
 	if strings.Contains(body, "PointFixedClamp") {
 		t.Error("a type that declares nothing bounded must not emit a clamp pass")

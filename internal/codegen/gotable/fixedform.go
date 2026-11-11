@@ -256,8 +256,11 @@ func (g *tableGen) fixedWalkField(w *fixedWalk, owner string, f *ir.Field) {
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
+		// Dst and Stride are the payload's storage span, value through
+		// companions up to the present byte: what an absent payload resets
+		// from the reset image (docs/SPEC-TABLES.md §4.4).
 		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			dstGo("0", "", g.offGo(owner, member(f)+"Present"), 0, fixedDstArg(0, f.Deprecated)))
+			dstGo(g.offGo(owner, member(f)), g.offGo(owner, member(f)+"Present")+" - "+g.offGo(owner, member(f)), g.offGo(owner, member(f)+"Present"), 0, fixedDstArg(0, f.Deprecated)))
 		g.fixedWalkPayload(w, g.fieldOffGo(owner, f), f, id, size-fixedPresentBytes)
 		return
 	}
@@ -553,20 +556,36 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 }
 
 func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
+	return g.fixedLeaves(st, false)
+}
+
+// fixedPlanCount is the room the identity plan's leaf walk writes: the leaves,
+// plus one present-defaults entry behind each optional's payload
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). The form-3 bound (fixedLeafCap) is
+// asked of the leaves alone.
+func (g *tableGen) fixedPlanCount(st *ir.Struct) int {
+	return g.fixedLeaves(st, true)
+}
+
+func (g *tableGen) fixedLeaves(st *ir.Struct, defaults bool) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += g.fixedFieldLeafCount(f)
+		n += g.fixedFieldLeaves(f, defaults)
 	}
 	return n
 }
 
 func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
+	return g.fixedFieldLeaves(f, false)
+}
+
+func (g *tableGen) fixedFieldLeaves(f *ir.Field, defaults bool) int {
 	// Deprecated destinations stay uncovered so the reset image yields their
 	// declared defaults for every shape (docs/SPEC-TABLES.md §3.4).
 	if f.Deprecated {
 		return 0
 	}
-	per := g.fixedElementLeafCount(f)
+	per := g.fixedElementLeaves(f, defaults)
 	n := per
 	switch {
 	case f.KeyEnum != "":
@@ -580,20 +599,23 @@ func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
 	}
 	if f.Type.Optional {
 		n++
+		if defaults {
+			n++
+		}
 	}
 	return n
 }
 
-func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
+func (g *tableGen) fixedElementLeaves(f *ir.Field, defaults bool) int {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return g.fixedLeafCount(r)
+			return g.fixedLeaves(r, defaults)
 		case *ir.Union:
 			n := 1
 			for _, v := range r.Variants {
 				if v.F != nil {
-					n += g.fixedFieldLeafCount(v.F)
+					n += g.fixedFieldLeaves(v.F, defaults)
 				}
 			}
 			return n
@@ -623,6 +645,15 @@ func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
 func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	base := off
 	if f.Type.Optional {
+		// AN ABSENT PAYLOAD READS AS ITS DECLARED DEFAULTS (docs/SPEC-TABLES.md
+		// §4.4): behind the payload's own entries, one present-defaults entry
+		// resets its storage span — the value and its companions, up to the
+		// present byte — from the reset image when the present byte landed 0.
+		defer func() {
+			g.pf("\tout[n] = TableFixedEntry{Dst: dst + %s, Size: %s - %s, Aux: dst + %s, Guard: tableFixedNoGuard, Op: tableFixedDefaults} // %s absent: declared defaults\n",
+				g.offGo(st.Name, member(f)), g.offGo(st.Name, member(f)+"Present"), g.offGo(st.Name, member(f)), g.offGo(st.Name, member(f)+"Present"), f.Name)
+			g.pf("\tn++\n")
+		}()
 		// the PRESENT byte lands in a Go bool, so it is normalised, not copied
 		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Aux: %d, Meta: tableFixedPresent, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
 			base, g.offGo(st.Name, member(f)+"Present"), fixedFieldBytes(f)-fixedPresentBytes, f.Name)
@@ -1080,7 +1111,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	layout := fixedLayoutBytes(w.entries)
 	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
-	leaves := g.fixedLeafCount(st)
+	leaves := g.fixedPlanCount(st)
 
 	g.pf("// ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("const %sFixedBodyBytes = %d\n", st.Name, body)
@@ -1358,7 +1389,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// THE RUN SEES ONE RECORD (§5.2). Handed `at[8:]` it saw every byte to the
 	// END OF THE FILE, so an entry past the writer's record read the NEXT
 	// record's bytes instead of being caught.
-	g.pf("\t\tif why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != \"\" {\n")
+	g.pf("\t\tif why := tableFixedRunDefaults(entries, entryCount, at[8:recordBytes], dst, defBytes, report); why != \"\" {\n")
 	g.pf("\t\t\treturn tableFixedRefuse(report, why)\n")
 	g.pf("\t\t}\n")
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {

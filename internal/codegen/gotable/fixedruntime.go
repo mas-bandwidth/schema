@@ -44,6 +44,12 @@ const (
 	tableFixedWidenF
 	tableFixedBool
 	tableFixedTag
+	// tableFixedDefaults is an absent optional's PRESENT-DEFAULTS entry
+	// (docs/FIXED-FORM-ALGORITHM.md §4.1, the defaults op): when the present
+	// byte at Aux landed 0, the Size bytes of storage at Dst — the payload and
+	// its companions — take the declared defaults from the reset image. It
+	// reads no source (docs/SPEC-TABLES.md §4.4).
+	tableFixedDefaults
 )
 
 const (
@@ -288,14 +294,30 @@ func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
 // not do is skip the partition. tableFixedPartition stable-partitions the
 // built entries in place and returns the split; a plan with no guarded entry
 // has its split at the END, not at zero.
+//
+// ONE GUARDLESS ENTRY RIDES THE SECOND HALF (§4.4): a present-defaults entry
+// that answers to no tag is laid in a third pass, behind every guarded entry
+// and in its own order, because an arm inside the payload it resets lands
+// from the guarded half and would otherwise overwrite the declared defaults.
+// It is not counted in the split; the run applies a guardless entry past the
+// split without a guard test.
 func tableFixedPartition(plan []TableFixedEntry, n int32) int32 {
 	split := int32(0)
 	for i := range n {
-		if plan[i].Guard == tableFixedNoGuard {
+		if plan[i].Guard == tableFixedNoGuard && plan[i].Op != tableFixedDefaults {
 			e := plan[i]
 			copy(plan[split+1:i+1], plan[split:i])
 			plan[split] = e
 			split++
+		}
+	}
+	tail := n
+	for i := n - 1; i >= split; i-- {
+		if plan[i].Guard == tableFixedNoGuard && plan[i].Op == tableFixedDefaults {
+			e := plan[i]
+			copy(plan[i:tail-1], plan[i+1:tail])
+			plan[tail-1] = e
+			tail--
 		}
 	}
 	return split
@@ -487,7 +509,17 @@ func tableFixedCopyNative(d, s []byte, size, lane uint32) {
 	}
 }
 
+// tableFixedRun is the run without a reset image: a present-defaults entry
+// leaves the storage under an absent payload as the caller prefilled it.
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) string {
+	return tableFixedRunDefaults(plan, count, src, dst, nil, report)
+}
+
+// tableFixedRunDefaults is THE ONE READ (docs/FIXED-FORM-ALGORITHM.md §4.4).
+// defaults is the record's reset image, laid over the same storage as dst: an
+// absent optional's payload lands from it, never from the record's bytes
+// (docs/SPEC-TABLES.md §4.4).
+func tableFixedRunDefaults(plan []TableFixedEntry, count int32, src, dst, defaults []byte, report *TableReport) string {
 	// REFUSE is total even for direct callers of the runner: the generated load
 	// performs this pre-scan too, but the compiled-plan tests and any future
 	// internal caller must not observe the old clamp-and-write path.
@@ -611,6 +643,13 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			// and the finite pass after the run refuses it.
 			binary.NativeEndian.PutUint64(dst[p.Dst:], math.Float64bits(float64(math.Float32frombits(tableFixedGet32(src[p.Src:])))))
 			report.Widened++
+		case tableFixedDefaults:
+			// NOT SUPPLIED READS AS DECLARED (docs/SPEC-TABLES.md §4.4): the
+			// present byte landed first, and an absent one resets the
+			// payload's storage from the reset image.
+			if dst[p.Aux] == 0 && defaults != nil {
+				copy(dst[p.Dst:p.Dst+p.Size], defaults[p.Dst:p.Dst+p.Size])
+			}
 		case tableFixedConst:
 			tableFixedPutNative(dst[p.Dst:], uint64(p.Aux), p.Size)
 			// The unguarded None const lands None; the check loop refused a raw
@@ -1151,6 +1190,8 @@ func (c *tableFixedCompiler) layGuards(links []TableFixedGuardLink) uint32 {
 func tableFixedSrcEnd(e TableFixedEntry) uint64 {
 	var end uint64
 	switch e.Op {
+	case tableFixedDefaults:
+		end = 0 // a present-defaults entry reads no source at all
 	case tableFixedConst:
 		end = 0 // a constant reads no source at all
 		if e.Aux == 0 && e.DstSize != 0 {
@@ -1331,6 +1372,11 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	case 35:
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
+		// AN ABSENT PAYLOAD READS AS ITS DECLARED DEFAULTS (docs/SPEC-TABLES.md
+		// §4.4): the wrapper's Dst and Stride are its payload's storage span.
+		if d.Stride != 0 {
+			tableFixedPush(c, TableFixedEntry{Dst: at, Size: d.Stride, Aux: auxAt, Guard: guard, Op: tableFixedDefaults, Arg: arg})
+		}
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
 	case 14:
