@@ -72,7 +72,7 @@ func emitJSONUnit(g *goose.Gen) error {
 				seen[names] = true
 				q := make([]string, len(r.Variants))
 				for i, v := range r.Variants {
-					q[i] = fmt.Sprintf("%q", v)
+					q[i] = stringLit(v)
 				}
 				g.Declare(names)
 				g.Pf("let %s: (const u8[:])[%d] = [%s];\n", names, len(q), strings.Join(q, ", "))
@@ -83,7 +83,7 @@ func emitJSONUnit(g *goose.Gen) error {
 		if names == "" && !stamp && !text {
 			return
 		}
-		l := fmt.Sprintf("%s::JsonFact { owner: %q, ordinal: %d", goose.RuntimeNamespace, owner, ordinal)
+		l := fmt.Sprintf("%s::JsonFact { owner: %s, ordinal: %d", goose.RuntimeNamespace, stringLit(owner), ordinal)
 		if names != "" {
 			l += ", is_flags: true, flags: " + names
 		}
@@ -111,7 +111,7 @@ func emitJSONUnit(g *goose.Gen) error {
 	for _, st := range structs {
 		visit(st)
 		if st.IsTable && !st.CarriesForm("json") {
-			noText = append(noText, fmt.Sprintf("%q", st.Name))
+			noText = append(noText, stringLit(st.Name))
 		}
 	}
 	for _, un := range unions {
@@ -359,7 +359,7 @@ func (e *jsonEmit) names(name string, variants []string) string {
 	g.Declare(id)
 	q := make([]string, len(variants))
 	for i, v := range variants {
-		q[i] = fmt.Sprintf("%q", v)
+		q[i] = stringLit(v)
 	}
 	g.Pf("let %s: (const u8[:])[%d] = [%s];\n", id, len(q), strings.Join(q, ", "))
 	return id
@@ -538,7 +538,7 @@ func (e *jsonEmit) emitStruct(st *ir.Struct) {
 		e.declareNames(f)
 	}
 	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite")
-	e.p(0, "let _%sJsonShapes: const u8[:] = %q;\n", n, string(shapes))
+	e.p(0, "let _%sJsonShapes: const u8[:] = %s;\n", n, stringLit(string(shapes)))
 
 	e.p(0, "// _%sJsonRead is %s's accessor for the text walk's reads (docs/SPEC-TABLES.md §16.2).", n, n)
 	e.p(0, "fn _%sJsonRead(jr: schema_rt::JsonIn&, v: %s&, o: i64, op: i64, depth: i64) -> bool {", n, typ)
@@ -599,7 +599,7 @@ func (e *jsonEmit) emitUnion(un *ir.Union) {
 		e.declareNames(armField(v))
 	}
 	e.declare("_"+n+"JsonShapes", "_"+n+"JsonRead", "_"+n+"JsonWrite")
-	e.p(0, "let _%sJsonShapes: const u8[:] = %q;\n", n, string(shapes))
+	e.p(0, "let _%sJsonShapes: const u8[:] = %s;\n", n, stringLit(string(shapes)))
 	e.p(0, "// _%sJsonRead reads union %s's arm `tag`, or sets its tag (docs/SPEC-TABLES.md §16.2).", n, n)
 	e.p(0, "fn _%sJsonRead(jr: schema_rt::JsonIn&, v: %s&, tag: i64, op: i64, depth: i64) -> bool {", n, typ)
 	e.p(1, "if op == schema_rt::JsonOpTag {")

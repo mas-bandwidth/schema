@@ -877,7 +877,8 @@ inline int32_t TableJsonUtf8( const char * s, int32_t remaining, int32_t * width
 
 // The inverse: one code point encoded as UTF-8 into unit, its length
 // answered. Both text kinds' writers reach it, and so does the escape
-// grammar's U+FFFD replacement.
+// grammar. An ill-formed sequence is refused, never replaced with U+FFFD
+// (docs/SPEC-TABLES.md §16.14 W0).
 inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
 {
     if ( code < 0x80 )
@@ -1656,8 +1657,8 @@ inline int TableJsonHex4( TableJsonIn & in )
 
 // One STRING BODY CHARACTER at the cursor, encoded into unit as UTF-8 and
 // its length answered: an escape's code point, or a UTF-8 sequence read
-// whole, so the escape table, the lone-surrogate rule and the U+FFFD
-// replacement are stated once. false means the text is not JSON and in.bad says so; a returned
+// whole, so the escape table, the lone-surrogate rule and the ill-formed
+// UTF-8 refusal are stated once. false means the text is not JSON and in.bad says so; a returned
 // length of 0 means the closing quote was consumed and the string is done.
 inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_length_out )
 {
@@ -1781,12 +1782,14 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             {
                 unit[unit_length++] = in.text[in.pos++];
             }
-            // A SEQUENCE THAT IS NOT A CODE POINT READS AS U+FFFD, which is
-            // §16.3's rule at the point the defect ENTERS rather than at the
-            // point it leaves: a lone surrogate escape already reads that way
-            // above, RFC 8259 requires a JSON text to be valid UTF-8, and a
-            // kind 12 payload is well-formed UTF-8 (§3), so storage the text
-            // form built has to be storage the wire can carry (§5).
+            // A SEQUENCE THAT IS NOT A CODE POINT REFUSES (docs/SPEC-TABLES.md
+            // §16.14 W0): §16.3's rule applies at the point the defect
+            // ENTERS rather than at the point it leaves, and a replacement
+            // would make two different strings one text. A lone surrogate
+            // escape already refuses above, RFC 8259 requires a JSON text to
+            // be valid UTF-8, and a kind 12 payload is well-formed UTF-8 (§3),
+            // so storage the text form built has to be storage the wire can
+            // carry (§5).
             if ( !TableUtf8Valid( (const uint8_t *) unit, unit_length ) )
             {
                 in.bad = true;
