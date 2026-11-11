@@ -54,7 +54,10 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 4. **Every writer refuses what its declaration does not admit, by its own
    idiom.** [SPEC.md](SPEC.md) §5.1 is the whole contract: a debug-only assert
    where the language has that idiom, a refusal in every build where it does
-   not, and a storage guard in every build in every leg. A build whose check is
+   not. In an assert leg (C, C++, C#, Rust, Java, Dart) every write check,
+   storage checks included, is a debug assert only: correct writes are the
+   programmer's responsibility, and a missing release-build write check there
+   is never a defect. A build whose check is
    compiled out may write an off-declaration value; the reader on the other end
    refuses it. **No target panics on a write and none throws.**
 5. **The read side is untouched by that doctrine.** A read faces untrusted data
@@ -340,9 +343,12 @@ than toolchains.
 A control that does not fit the rule **on its own** is not made to fit by
 grouping, so it runs nightly instead, in the `nightly` tier that `certify.yml`
 runs on the schedule it already carries. Today that is one control:
-`tables-message-form-negative-control`, which drives 49 sabotage rows one
-submake each and takes 124 seconds. The message form's other blades stay on
-the pull request. Each group in `make/negative-controls.json` names its tier in a
+`tables-message-form-negative-control`, which drives 44 sabotage rows, one
+submake each and four at a time. Run one after another the rows took 124
+seconds on the runner; four at a time they take 108 seconds on a loaded
+bench, and no runner measurement has placed them under the rule yet. The
+message form's other blades stay on the pull request. Each group in
+`make/negative-controls.json` names its tier in a
 `when` field and says why in a `why` field, and `tools/negativecontrols`
 refuses a group that names neither tier, so a control cannot leave the pull
 request without landing on the nightly.

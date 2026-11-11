@@ -2507,8 +2507,8 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 // side to native on the destination side. On a little-endian host the two
 // orders are one and the conversion is the byte copy it always was.
 // tableFixedPutNative lands v in storage at the given width; a width past
-// eight (a 128-bit lane) takes the low word native and zeroes the rest,
-// which is what the widen that uses it always wrote past its value.
+// eight (a 128-bit lane) takes the low word native and zeroes the rest. A
+// widen whose source is negative writes the high word's sign itself.
 func tableFixedPutNative(b []byte, v uint64, size uint32) {
 	if size > 8 {
 		binary.NativeEndian.PutUint64(b, v)
@@ -2660,6 +2660,13 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				}
 			}
 			tableFixedPutNative(dst[p.Dst:], raw, uint32(p.DstSize))
+			// A SIXTEEN-BYTE DESTINATION takes the source's sign through its
+			// high word: all ones for a negative signed value, zero otherwise.
+			if p.DstSize > 8 && p.Sign != 0 && int64(raw) < 0 {
+				for i := p.Dst + 8; i < p.Dst+uint32(p.DstSize); i++ {
+					dst[i] = 0xFF
+				}
+			}
 			report.Widened++
 		case tableFixedWidenF:
 			// THE FLOAT RUNG IS THE ORDINARY CONVERSION (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3,

@@ -814,7 +814,7 @@ namespace Blockhome
         {
             if (value == null) return;
             BinaryPrimitives.WriteDoubleLittleEndian(b, value.Thickness);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.Material);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), unchecked((int)value.Material));
             b.Slice(12)[0] = unchecked((byte)value.Layer);
         }
 
@@ -834,7 +834,7 @@ namespace Blockhome
         public static void FiringGroupFixedWriteBody(Span<byte> b, FiringGroup value)
         {
             if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Barrel);
+            BinaryPrimitives.WriteInt32LittleEndian(b, unchecked((int)value.Barrel));
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
         }
 
@@ -864,7 +864,7 @@ namespace Blockhome
                 }
             }
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(296), value.ReloadSeconds);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(300), (int)value.GunnerId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(300), unchecked((int)value.GunnerId));
         }
 
         // ArmorPlate's finite pass (docs/SPEC-TABLES.md §3.3): the first NaN or infinity's
