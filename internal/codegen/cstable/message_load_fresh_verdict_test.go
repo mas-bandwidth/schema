@@ -208,13 +208,17 @@ func TestCSharpMessageLoadFreshVerdict(t *testing.T) {
 		t.Fatalf("csharp message load probe failed: %v\n%s", err, out)
 	}
 	checkMessageLoadFreshVerdict(t, out)
+}
 
+func TestCSharpMessageLoadFreshVerdictNegativeControl(t *testing.T) {
+	t.Parallel()
+	u, ann, good, refused := messageLoadFreshVerdictFixtures(t)
 	controlOut, controlErr := runCSMessageLoadFreshVerdictProbe(t, u, ann, good, refused, func(files map[string][]byte) {
 		replaced := false
 		for name, data := range files {
 			s := string(data)
-			if strings.Contains(s, "report.Refused = false; report.Reason = null; ") {
-				files[name] = []byte(strings.Replace(s, "report.Refused = false; report.Reason = null; ", "", 1))
+			if strings.Contains(s, "count = 0; report.Refused = false; report.Reason = null; ") {
+				files[name] = []byte(strings.Replace(s, "count = 0; report.Refused = false; report.Reason = null; ", "count = 0; ", 1))
 				replaced = true
 			}
 		}
