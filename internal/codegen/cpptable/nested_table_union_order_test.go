@@ -125,13 +125,12 @@ func TestNestedTableUnionReverseFixedOrder(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	nestedTableUnionCompile(t, map[string]string{"Probe.schema": `package nestedfix
 
-union L1 { a L2 }
-union L2 {
-    a int32
-    b uint16
-}
+fixed table Root { pick L2 }
 
-fixed table Root { pick L1 }
+union L2 { a L1 }
+union L1 { a Leaf }
+
+fixed table Leaf { n int32 }
 `}, "ProbeTable.h")
 }
 
