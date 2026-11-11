@@ -6529,7 +6529,9 @@ a fact of the announcement, not of a body. A widening is not a mismatch (§4). *
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges
-at all.
+at all. For a field that declares no range, this reader's own bound is the domain
+of its declared kind: an `int8` holds `-128` through `127`, a `uint8` `0`
+through `255`, and an `int32` its 32-bit range.
 
 ---
 
