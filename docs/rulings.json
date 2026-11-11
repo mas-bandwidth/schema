@@ -163,6 +163,21 @@
       ]
     },
     {
+      "id": "fixed-deprecated-field-is-carried",
+      "date": "2026-11-10",
+      "quotes": [
+        "if it's supplied, use the value there, otherwise, use the default."
+      ],
+      "source": "the maintainer, relayed verbatim by the coordinator from the live session. ruled 2026-11-10: a deprecated field in the fixed form is carried; the declared default applies only where the record does not supply the field. A deprecated field reads and writes like any other field: the reader lands the stored value and checks it as it checks any field of its kind, the writer stores what the value holds and refuses what any field of its kind would refuse; the default applies only where the record does not supply the field, an older layout read through the lineage. A deprecated ENUM VARIANT (§2.15) is a different rule and is unchanged. Specified in docs/SPEC-TABLES.md §2.10, §3.4, §21.2, §22.2 and §22.6.",
+      "supersedes": [
+        "§3.4's \"THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS THE DECLARED DEFAULT OUT OF IT, whatever the record carries there\"",
+        "§21.2's \"In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field's declared default into its retained slot and the reader yields that default whatever the record carries\"",
+        "§22.2's \"The fixed form is the other way, and §22.6 says so\"",
+        "§22.6's \"A | deprecated SLOT CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE\" through \"the C++ writer writes the field from the owner's reset value\"",
+        "§2.10's \"A deprecated slot holds the default\""
+      ]
+    },
+    {
       "id": "deterministic-json-output",
       "date": "2026-11-03",
       "quotes": [
