@@ -6973,6 +6973,19 @@ caller's array of values is the whole of its storage.
   field. **So a hostile peer announcing a build version it does not have gains
   nothing.** The worst a lie achieves is a wrong build version beside a real
   vocabulary in a log.
+- **THE ANNOUNCEMENT GRAMMAR IS CLOSED** (docs/rulings.json
+  `message-announcement-closed`): **an announcement is refused unless a schema
+  the compiler accepts could announce it.** The conditions form ONE closed list,
+  and an announcement that breaks any of them is malformed and refused whole,
+  with no vocabulary set. An entry's KIND is one of §3's closed set. A SHAPE is
+  nested at most 128 levels, and an array or keyed shape whose element is itself
+  an array or keyed shape is refused, because the compiler refuses such a field —
+  an array of arrays is not supported in v1, so no conforming schema announces
+  one. An array's `min` is at most its `max`. A packed `bits` and a `max` sit
+  inside what the kind holds. And a RANGED integer's `base` is such that
+  `base + 2^bits - 1` lies inside the announced kind — today only the width is
+  held, so a lawful-looking announcement can name values its own kind cannot
+  hold.
 - **A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked before it is
   used.** A `bits` above 128, a `max` above what the kind can hold, an array
   whose `min` exceeds its `max`, an element kind outside the closed set, a
