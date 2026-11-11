@@ -18,9 +18,15 @@ import (
 // offContractSchema carries one field per write-contract row the text writer
 // owes (docs/SPEC.md §5.1 rows 1 to 4 and 10): a ranged integer signed,
 // unsigned past 2^63 and 128 bits wide, a ranged array element, a bits(N), a
-// counted array with and without a minimum, a fixed array, a string(N), a
-// bytes(N), a text list's count and element, and a compressed float.
+// counted numeric array and a text-bearing array with a minimum, a fixed array,
+// a string(N), a bytes(N), a text list's count and element, and a compressed float.
+// A direct text list cannot declare a positive minimum (§2.13), so tm uses a
+// counted array of records whose JSON values contain bounded text fields.
 const offContractSchema = `package probe
+type TextEntry
+{
+    value string(4)
+}
 table T
 {
     r int32 | min = -5, max = 100
@@ -30,6 +36,7 @@ table T
     c [..3]int32
     k [2..4]int32
     e [3]int32 | min = 0, max = 9
+    tm [2..4]TextEntry
     s string(4)
     b bytes(3)
     ts [..2]string(4)
@@ -63,7 +70,10 @@ var offContractCases = []offContractCase{
 	{"count_past", "c", "[1, 2, 3, 4]", "[1,2,3,4]", false},
 	{"count_edge", "c", "[1, 2, 3]", "[1,2,3]", true},
 	{"count_past_max", "k", "[1, 2, 3, 4, 5]", "[1,2,3,4,5]", false},
+	{"count_below_min", "k", "[1]", "[1]", false},
 	{"count_min_edge", "k", "[1, 2]", "[1,2]", true},
+	{"text_array_below_min", "tm", `[textEntry("a")]`, `[{"value":"a"}]`, false},
+	{"text_array_min_edge", "tm", `[textEntry("a"), textEntry("b")]`, `[{"value":"a"},{"value":"b"}]`, true},
 	{"count_max_edge", "k", "[1, 2, 3, 4]", "[1,2,3,4]", true},
 	{"elem_high", "e", "[0, 10, 0]", "[0,10,0]", false},
 	{"elem_low", "e", "[0, -1, 0]", "[0,-1,0]", false},
@@ -95,6 +105,10 @@ foreach (fd in M.Descriptors.T.fields) {
   member[fd.name] <- fd.member;
   if (fd.name == "ts") textTable = fd.elem.table;
 }
+local textEntryName = null, textEntryMember = null;
+foreach (fd in M.Descriptors.T.fields) if (fd.name == "tm") textEntryName = fd.elem.table;
+foreach (fd in M.Descriptors[textEntryName].fields) if (fd.name == "value") textEntryMember = fd.member;
+local textEntry = function(s) { local rec = M.Descriptors[textEntryName].make(); rec[textEntryMember] = s; return rec; };
 local textList = function(a) {
   local out = [];
   foreach (s in a) { local rec = M.Descriptors[textTable].make(); rec.Value = s; out.append(rec); }
@@ -164,15 +178,22 @@ func TestSquirrelToJsonRefusesOffContract(t *testing.T) {
 		model := tabletext.NewModel(unit)
 		st := model.Lookup("T")
 		for _, c := range offContractCases {
-			text := `{"k":[0,0],"` + c.field + `":` + c.text + `}`
+			prefix := `{"k":[0,0],"tm":[{"value":"a"},{"value":"b"}],`
 			if c.field == "k" {
-				text = `{"k":` + c.text + `}`
+				prefix = `{"tm":[{"value":"a"},{"value":"b"}],`
+			} else if c.field == "tm" {
+				prefix = `{"k":[0,0],`
 			}
+			text := prefix + `"` + c.field + `":` + c.text + `}`
+			inst := model.New(st)
 			var rep tabletext.Report
-			ok := model.Read(model.New(st), []byte(text), &rep)
-			read := ok && !rep.Refused
-			if read != c.lawful {
-				t.Errorf("%s: the Go reader's verdict on %s is read=%v, want read=%v", c.name, text, read, c.lawful)
+			parsed := model.Read(inst, []byte(text), &rep)
+			admitted := parsed && !rep.Refused
+			if admitted && model.CheckValue(inst) != nil {
+				admitted = false
+			}
+			if admitted != c.lawful {
+				t.Errorf("%s: Go tabletext parse/check on %s admitted=%v, want admitted=%v", c.name, text, admitted, c.lawful)
 			}
 		}
 	})

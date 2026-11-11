@@ -1067,12 +1067,14 @@ writeMap = function(T, d, val, depth, g, out) {
 // `?string` elements as null. The storage is the generated element record;
 // textlist 1 is the plain spelling and 2 the optional one.
 local writeTextArray = function(T, d, val, depth, out) {
-  // a count past the array's bound, and below each element a text past its
-  // string(N), are refused as Save refuses them (docs/SPEC.md §5.1 rows 3, 4)
+  // Counted arrays hold their declared minimum through maximum; a fixed
+  // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
+  // Text-list elements also refuse a text past their string(N) (row 4).
+  local n = writeCount(d, val);
+  if (d.counted && n < d.min) return false;
   if (!d.list && val != null && val.len() > d.bound) return false;
   local bound = null;
   foreach (fd in tableDesc(T, d.elem.table).fields) if (fd.member == "Value") bound = fd.bound;
-  local n = writeCount(d, val);
   if (n == 0) { out.append("[]"); return true; }
   // A TEXT LIST'S TOTAL (§2.13): ToJson refuses a value whose elements hold
   // more bytes in all than the declared total, an absent element counting zero
@@ -1142,9 +1144,11 @@ writeField = function(T, d, val, depth, g, out) {
         out.append(indent(depth) + "}");
         return true;
       }
-      // a count past the array's bound (§5.1 row 3), as Save refuses it
-      if (!d.list && val != null && val.len() > d.bound) return false;
+      // Counted arrays hold their declared minimum through maximum; a fixed
+      // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
       local n = writeCount(d, val);
+      if (d.counted && n < d.min) return false;
+      if (!d.list && val != null && val.len() > d.bound) return false;
       if (n == 0) { out.append("[]"); return true; }
       out.append("[");
       for (local i = 0; i < n; i++) {
