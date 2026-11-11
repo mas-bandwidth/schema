@@ -12,14 +12,12 @@ func TestModelIsVariableParallel(t *testing.T) {
 	m := tabletext.NewModel(unit(t))
 	names := m.Roots()
 	var wg sync.WaitGroup
-	for i := 0; i < 32; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 32 {
+		wg.Go(func() {
 			for _, n := range names {
 				_ = m.IsVariable(n)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }
