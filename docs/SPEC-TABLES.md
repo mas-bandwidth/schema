@@ -4903,15 +4903,17 @@ one document rather than two.
   rule every other kind already takes.
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
-  For kinds `14` and `16` a reader compares the element kind it declares
-  against the one in the body and, when they differ, refuses
+  For kinds `14` and `16` a reader first holds the body's element kind to the
+  closed list below, then compares the kind it declares against the one in
+  the body and, when two kinds ON that list differ, refuses
   `kind_mismatch` (§4), exactly as it does for the field's own kind.
   Without that rule a `[3]int32` body would decode into a `[3]float32` field
   as three reinterpreted bit patterns, reported by nothing, which is the
-  field-level silent-corruption class one level down. **An element kind of
-  `31` or `32` takes that same rule and no other**: no declaration produces
-  one, so it can only disagree with what the reader declares, and the read
-  refuses `kind_mismatch`. **An element of an array of UNIONS is an arm header** and carries its
+  field-level silent-corruption class one level down. **An element kind OFF
+  the closed list is damage, not a mismatch**, because no declaration
+  produces one and so no reader can hold a declaration it agrees with: the
+  whole load refuses `wire_damaged` (§4) under ANY count, a count of `0`
+  included, in a declared field and in an unknown one alike. **An element of an array of UNIONS is an arm header** and carries its
   own kind, so the arm rules below apply once per element rather than once for
   the array.
 
@@ -5024,6 +5026,35 @@ one document rather than two.
     element kind `6` (u8). A fixed-extent array writes all its declared
     elements, so a reader that decodes fewer than its own bound leaves the
     tail at its declared defaults.
+  - **THE ELEMENT KINDS ARE CLOSED.** The element kind byte an array or an
+    enum-keyed body opens with is exactly one of these, and this is the whole
+    list: `1`–`13` (bool; i8, i16, i32, i64; u8, u16, u32, u64; f32, f64;
+    string; table), `15` (union), `17` (pointer), `18`–`29` (i128, u128 and
+    the fixed-point family) and `30` (enum). Those are exactly the element
+    kinds a declaration the compiler accepts can produce: `12` from a text
+    list (§2.13), `13` from a table or `type` element, `15` from an array of
+    unions, `17` from an array of pointers, and `30` from an enum element
+    (`bytes(N)` is kind `14` over element kind `6`; it is not an element kind
+    of its own). Every OTHER element kind is damage — recommended name
+    `wire_damaged` — under ANY count, a count of `0` included, in a declared
+    field and in an unknown one alike: the header's element kind byte is read
+    and judged even when the count is zero and even when the reader cannot
+    name the field, so no reader skips an array or keyed body without this
+    check. **No declaration produces `14`, `16`, `31`, `32`, `33`, `34`, `35`
+    or `36`**: arrays of arrays are refused, so no element is an array or a
+    keyed body; `31` is the escape, `32` the payload-free kind, `33` is
+    retired, `34` is reserved, `35` is the fixed layout's wrapper and never a
+    wire kind, and `36` (timestamp) is a bare table field with no array
+    spelling. A kind ON the list that differs from the reader's own element
+    kind stays a `kind_mismatch` (§4); the closed-list check comes first, so
+    damage is answered before any comparison. **This list is the element kind
+    byte's, and it does not move §4's ONE NESTING BOUND**: a keyed body
+    reached under a table element is element kind `13` and nests exactly as
+    §4 says, so the lawful keyed body of keyed bodies nests through a table
+    element or a map entry and never as a direct keyed element, which the
+    compiler refuses as an array of arrays. The message form's announcement
+    names the same ELEMENT kind, never the list's own kind (§3.3), so a
+    declaration announces only a kind on this list.
   - **An arm id of `0` is the empty union** and carries nothing after it, not
     even a kind byte. It rides in TWO places: a `None` element of an array of
     unions (above), and the payload of a NESTED-UNION arm whose inner union
@@ -8610,7 +8641,10 @@ diagnostic name, which is not normative and is never compared:
   count, index or reference on the form-`1` wire, §3), a kind no reader can
   skip, an array, keyed or map body too short to carry its own header (fewer
   than two bytes: the element kind byte and the count), a count the body
-  cannot cover, a header that crosses its own `L`, bytes left inside an array's, keyed
+  cannot cover, a header that crosses its own `L`, an array or keyed body
+  whose element kind is not one a declaration produces (THE ELEMENT KINDS ARE
+  CLOSED, §3), under any count, `0` included, in a declared field and in an
+  unknown one alike, bytes left inside an array's, keyed
   array's or map's `L` after its count's elements (an `L` of 3 holding the
   element kind, a count of 0 and one byte more),
   the same field id twice in one body, the same keyed slot twice in
