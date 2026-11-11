@@ -195,6 +195,11 @@ in the `go-test` job of `ci-full.yml`.
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
 
+`SIBLINGS` at the repository root lists the pinned sibling checkouts the build
+reads beside the worktree (path, clone URL, tag, commit), as data a tool can
+stage without running the build; `make deps` stages any that are missing at
+those pins and leaves a present one alone.
+
 ## How to run the tests, and the rule that sets their shape
 
 The owner's rule, said twice in one day:
