@@ -614,7 +614,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchPacket.t(), non_neg_integer()} | :error
   def read_bench_packet_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -882,7 +882,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchInts.t(), non_neg_integer()} | :error
   def read_bench_ints_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1051,7 +1051,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchBits.t(), non_neg_integer()} | :error
   def read_bench_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1425,7 +1425,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEntity.t(), non_neg_integer()} | :error
   def read_mixed_entity_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1575,7 +1575,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedStat.t(), non_neg_integer()} | :error
   def read_mixed_stat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1695,7 +1695,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedHitEvent.t(), non_neg_integer()} | :error
   def read_mixed_hit_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1806,7 +1806,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedChatEvent.t(), non_neg_integer()} | :error
   def read_mixed_chat_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1908,7 +1908,7 @@ defmodule Bench.Bench do
   def read_mixed_pickup_event_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2113,7 +2113,7 @@ defmodule Bench.Bench do
           {:ok, Bench.MixedEvent.t(), non_neg_integer()} | :error
   def read_mixed_event_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2682,7 +2682,7 @@ defmodule Bench.Bench do
           {:ok, Bench.BenchMixed.t(), non_neg_integer()} | :error
   def read_bench_mixed_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

@@ -138,7 +138,7 @@ defmodule Example.Render do
           {:ok, Example.RenderSprite.t(), non_neg_integer()} | :error
   def read_render_sprite_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -271,7 +271,7 @@ defmodule Example.Render do
           {:ok, Example.RenderBlock.t(), non_neg_integer()} | :error
   def read_render_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

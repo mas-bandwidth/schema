@@ -605,7 +605,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeHeader.t(), non_neg_integer()} | :error
   def read_probe_header_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -759,7 +759,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeBits.t(), non_neg_integer()} | :error
   def read_probe_bits_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -961,7 +961,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeSample.t(), non_neg_integer()} | :error
   def read_probe_sample_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1112,7 +1112,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeRing.t(), non_neg_integer()} | :error
   def read_probe_ring_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1209,7 +1209,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeSlab.t(), non_neg_integer()} | :error
   def read_probe_slab_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1359,7 +1359,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeShape.t(), non_neg_integer()} | :error
   def read_probe_shape_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1612,7 +1612,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeCollider.t(), non_neg_integer()} | :error
   def read_probe_collider_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1797,7 +1797,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeConfig.t(), non_neg_integer()} | :error
   def read_probe_config_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1907,7 +1907,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeArray.t(), non_neg_integer()} | :error
   def read_probe_array_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1992,7 +1992,7 @@ defmodule Example.Wire do
           {:ok, Example.Heartbeat.t(), non_neg_integer()} | :error
   def read_heartbeat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2112,7 +2112,7 @@ defmodule Example.Wire do
           {:ok, Example.Test.t(), non_neg_integer()} | :error
   def read_test_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2223,7 +2223,7 @@ defmodule Example.Wire do
           {:ok, Example.Block.t(), non_neg_integer()} | :error
   def read_block_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2323,7 +2323,7 @@ defmodule Example.Wire do
           {:ok, Example.Chat.t(), non_neg_integer()} | :error
   def read_chat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2493,7 +2493,7 @@ defmodule Example.Wire do
           {:ok, Example.ProbeReport.t(), non_neg_integer()} | :error
   def read_probe_report_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2847,7 +2847,7 @@ defmodule Example.Wire do
           {:ok, Example.TestData.t(), non_neg_integer()} | :error
   def read_test_data_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -3085,7 +3085,7 @@ defmodule Example.Wire do
           {:ok, Example.CompressedProbe.t(), non_neg_integer()} | :error
   def read_compressed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

@@ -242,7 +242,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Vec2.t(), non_neg_integer()} | :error
   def read_vec2_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -328,7 +328,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanF64.t(), non_neg_integer()} | :error
   def read_span_f64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -413,7 +413,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanU64.t(), non_neg_integer()} | :error
   def read_span_u64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -498,7 +498,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanI64.t(), non_neg_integer()} | :error
   def read_span_i64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -583,7 +583,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanOne.t(), non_neg_integer()} | :error
   def read_span_one_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -668,7 +668,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanChunk.t(), non_neg_integer()} | :error
   def read_span_chunk_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -762,7 +762,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanTail.t(), non_neg_integer()} | :error
   def read_span_tail_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -860,7 +860,7 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanTwice.t(), non_neg_integer()} | :error
   def read_span_twice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -947,7 +947,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Trio.t(), non_neg_integer()} | :error
   def read_trio_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1040,7 +1040,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioSole.t(), non_neg_integer()} | :error
   def read_trio_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1129,7 +1129,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Vec3Sole.t(), non_neg_integer()} | :error
   def read_vec3_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1221,7 +1221,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioFirst.t(), non_neg_integer()} | :error
   def read_trio_first_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1374,7 +1374,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioStraddle.t(), non_neg_integer()} | :error
   def read_trio_straddle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

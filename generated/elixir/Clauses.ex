@@ -332,7 +332,7 @@ defmodule Example.Clauses do
           {:ok, Example.W13.t(), non_neg_integer()} | :error
   def read_w13_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -426,7 +426,7 @@ defmodule Example.Clauses do
           {:ok, Example.W17.t(), non_neg_integer()} | :error
   def read_w17_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -520,7 +520,7 @@ defmodule Example.Clauses do
           {:ok, Example.W26.t(), non_neg_integer()} | :error
   def read_w26_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -614,7 +614,7 @@ defmodule Example.Clauses do
           {:ok, Example.W1.t(), non_neg_integer()} | :error
   def read_w1_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -708,7 +708,7 @@ defmodule Example.Clauses do
           {:ok, Example.W52.t(), non_neg_integer()} | :error
   def read_w52_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -800,7 +800,7 @@ defmodule Example.Clauses do
           {:ok, Example.W50.t(), non_neg_integer()} | :error
   def read_w50_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -889,7 +889,7 @@ defmodule Example.Clauses do
           {:ok, Example.F13.t(), non_neg_integer()} | :error
   def read_f13_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -973,7 +973,7 @@ defmodule Example.Clauses do
           {:ok, Example.Tri3.t(), non_neg_integer()} | :error
   def read_tri3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1065,7 +1065,7 @@ defmodule Example.Clauses do
           {:ok, Example.ArrTri3.t(), non_neg_integer()} | :error
   def read_arr_tri3_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1157,7 +1157,7 @@ defmodule Example.Clauses do
           {:ok, Example.Eleven.t(), non_neg_integer()} | :error
   def read_eleven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1246,7 +1246,7 @@ defmodule Example.Clauses do
           {:ok, Example.ArrEleven.t(), non_neg_integer()} | :error
   def read_arr_eleven_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1325,7 +1325,7 @@ defmodule Example.Clauses do
           {:ok, Example.EmptyA.t(), non_neg_integer()} | :error
   def read_empty_a_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1401,7 +1401,7 @@ defmodule Example.Clauses do
           {:ok, Example.EmptyB.t(), non_neg_integer()} | :error
   def read_empty_b_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1505,7 +1505,7 @@ defmodule Example.Clauses do
           {:ok, Example.EmptyUnion.t(), non_neg_integer()} | :error
   def read_empty_union_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1628,7 +1628,7 @@ defmodule Example.Clauses do
           {:ok, Example.HoldsEmptyUnion.t(), non_neg_integer()} | :error
   def read_holds_empty_union_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1765,7 +1765,7 @@ defmodule Example.Clauses do
           {:ok, Example.Strs.t(), non_neg_integer()} | :error
   def read_strs_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1911,7 +1911,7 @@ defmodule Example.Clauses do
           {:ok, Example.ArrNested.t(), non_neg_integer()} | :error
   def read_arr_nested_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -2008,7 +2008,7 @@ defmodule Example.Clauses do
           {:ok, Example.Sole.t(), non_neg_integer()} | :error
   def read_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

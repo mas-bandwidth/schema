@@ -401,7 +401,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedProbe.t(), non_neg_integer()} | :error
   def read_fixed_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -612,7 +612,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.UnsignedProbe.t(), non_neg_integer()} | :error
   def read_unsigned_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -829,7 +829,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.WideProbe.t(), non_neg_integer()} | :error
   def read_wide_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1259,7 +1259,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.LudicrousState.t(), non_neg_integer()} | :error
   def read_ludicrous_state_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1502,7 +1502,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.DegenerateProbe.t(), non_neg_integer()} | :error
   def read_degenerate_probe_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1647,7 +1647,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedVec.t(), non_neg_integer()} | :error
   def read_fixed_vec_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1798,7 +1798,7 @@ defmodule Ludicrous.Ludicrous do
           {:ok, Ludicrous.FixedQuat.t(), non_neg_integer()} | :error
   def read_fixed_quat_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

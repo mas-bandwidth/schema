@@ -213,7 +213,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultArm.t(), non_neg_integer()} | :error
   def read_default_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -403,7 +403,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoice.t(), non_neg_integer()} | :error
   def read_default_choice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -628,7 +628,7 @@ defmodule Example.ArmDefaults do
   def read_default_choice_packet_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -806,7 +806,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkArm.t(), non_neg_integer()} | :error
   def read_default_bulk_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1067,7 +1067,7 @@ defmodule Example.ArmDefaults do
   def read_default_bulk_choice_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end

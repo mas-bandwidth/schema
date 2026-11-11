@@ -903,7 +903,7 @@ func (g *gen) emitReadFunction(name string, st *ir.Struct, items []ir.Item) {
 		fmt.Sprintf("{:ok, %s, non_neg_integer()} | :error", g.valueSpec(name)))
 	g.readHead(snake + "_bits")
 	g.bpf("    try do\n")
-	g.bpf("      if num_bits > byte_size(data) * 8 do\n")
+	g.bpf("      if num_bits < 0 or num_bits > byte_size(data) * 8 do\n")
 	g.bpf("        # the payload cannot exceed the buffer behind it\n")
 	g.bpf("        throw(:invalid)\n")
 	g.bpf("      end\n\n")
