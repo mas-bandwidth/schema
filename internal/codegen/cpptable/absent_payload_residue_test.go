@@ -430,7 +430,7 @@ func TestCppAbsentPayloadResidueNotCopied(t *testing.T) {
 func TestCppAbsentPayloadResidueNotCopiedNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
-	const guard = "if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }"
+	const guard = "if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }"
 	undermine := func(files map[string][]byte) {
 		found := false
 		for name, data := range files {

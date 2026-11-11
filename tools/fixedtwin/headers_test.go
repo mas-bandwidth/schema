@@ -49,11 +49,11 @@ func TestCAndCppTwinHeadersAgree(t *testing.T) {
 	cSrc, cppSrc, root := readTwinHeaders(t)
 	left := twinLeftover(t, cSrc, cppSrc, root)
 	if len(left) != 0 {
-		n := len(left)
+		full, n := left, len(left)
 		if n > 40 {
 			left = left[:40]
 		}
-		t.Fatalf("%d leftover line(s) after the twin map (first %d):\n%s", n, len(left), strings.Join(left, "\n"))
+		t.Fatalf("%s%d leftover line(s) after the twin map (first %d):\n%s", disagreementHead(full), n, len(left), strings.Join(left, "\n"))
 	}
 }
 
@@ -80,7 +80,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	if left := twinLeftoverFromPlainC(t, cPlain, cppSrc); len(left) != 0 {
-		t.Fatalf("the real artifact is not green before the fault is planted:\n%s", strings.Join(left, "\n"))
+		t.Fatalf("the real artifact is not green before the fault is planted:\n%s%s", disagreementHead(left), strings.Join(left, "\n"))
 	}
 
 	cppFaults := []struct{ name, from, to string }{
@@ -110,6 +110,32 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 		}
 		if left := twinLeftoverFromPlainC(t, cPlain, broken); len(left) == 0 {
 			t.Fatalf("a weakened strict read in the real C++ artifact passed the twin gate: %s", fault.name)
+		}
+	}
+
+	// AN ABSENT OPTIONAL READS AS ITS DECLARED DEFAULTS IN BOTH LEGS
+	// (docs/SPEC-TABLES.md §3.4). Dropping the C leg's defaults copy, or
+	// sending the C present flag back through a plain bool entry, lands the
+	// record's bytes again, and the gate must say so.
+	absentFaults := []struct{ name, from, to string }{
+		{
+			"the C present-defaults entry stops copying the declared defaults",
+			"if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }",
+			"",
+		},
+		{
+			"the C compiled plan lands the present flag as a plain bool",
+			"e.op = kTableFixedPresentDefaults; e.arg = arg;",
+			"e.op = kTableFixedBool; e.arg = arg;",
+		},
+	}
+	for _, fault := range absentFaults {
+		if !strings.Contains(cPlain, fault.from) {
+			t.Fatalf("the real C artifact no longer carries the clause for %q", fault.name)
+		}
+		broken := strings.Replace(cPlain, fault.from, fault.to, 1)
+		if left := twinLeftoverFromPlainC(t, broken, cppSrc); len(left) == 0 {
+			t.Fatalf("a C leg that lands an absent payload's bytes passed the twin gate: %s", fault.name)
 		}
 	}
 

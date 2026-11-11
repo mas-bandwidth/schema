@@ -75,6 +75,7 @@ func cppRuntimeNames() []Name {
 			"TableFixedEntryAt", "TableFixedEntryLands", "TableFixedFills", "TableFixedGet32", "TableFixedGet64",
 			"TableFixedKnownRange", "TableFixedLayFills", "TableFixedLayTable", "TableFixedPut16", "TableFixedPut32",
 			"TableFixedPut64", "TableFixedPut8", "TableFixedPutF32", "TableFixedPutF64", "TableFixedRefuseScan",
+			"TableFixedBigEndianHost", "TableFixedCopyLe", "TableFixedGetLe", "TableFixedLoadNative", "TableFixedStoreNative",
 		}},
 		{what: "the id vocabulary and the announcement (docs/SPEC-TABLES.md §3.3)", names: []string{
 			"TableIdTable", "TableIdsBytes", "TableIdsWrite", "TableLebBytes", "TableVocabularyEntryAt",

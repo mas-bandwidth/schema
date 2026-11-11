@@ -1,0 +1,25 @@
+// FixedEndian.schema — THE C++ FIXED FORM CROSSING THE BYTE ORDER
+// (docs/FIXED-FORM-ALGORITHM.md: every integer on the wire is little-endian).
+// test/tables/fixed_endian_main.cpp writes a record on one host and checks it
+// by value on the other, little-endian to big-endian and back, under the
+// tables-big-endian-tables row. Every width the copy op lands is here: one,
+// two, four and eight bytes, signed and unsigned, both floats, an array of
+// four-byte elements beside an array of eight-byte ones, text and a bool.
+package tblfixedendian
+
+fixed table ByteOrderProbe
+{
+    lead  uint32
+    a     uint16
+    b     uint32
+    c     uint64
+    d     int32
+    g     int16
+    e     float32
+    f     float64
+    vals  [3]uint32
+    wide  [2]int64
+    label string(8)
+    ok    bool
+    tail  uint8
+}

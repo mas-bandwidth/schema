@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -406,167 +407,6 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	}
 }
 
-// ---- the identity plan's element widths ------------------------------------
-//
-// A coalesced copy entry carries no element width, and a big-endian reader
-// needs one per element (§3.4: the wire is little-endian on every host). The
-// widths are recovered here from the layout walk the root already carries:
-// each leaf's kind fixes its width, an array repeats its element, a union's
-// arms overlap at the tag, and a counted array's count is not a copy. A copy
-// entry that spans leaves of different widths is split at the leaf boundary
-// when it is emitted; a range no interval covers, or one two arms cover at
-// different widths, keeps a raw copy (elem 0), which is the pre-fix behaviour
-// for exactly that range and no other.
-
-type fixedSrcInterval struct {
-	lo, hi, elem int64
-}
-
-func fixedKindElem(kind int, size int64) int64 {
-	switch kind {
-	case ir.TableKindBool, ir.TableKindI8, ir.TableKindU8, ir.TableKindFixed8, ir.TableKindUFixed8:
-		return 1
-	case ir.TableKindI16, ir.TableKindU16, ir.TableKindFixed16, ir.TableKindUFixed16:
-		return 2
-	case ir.TableKindI32, ir.TableKindU32, ir.TableKindF32, ir.TableKindFixed32, ir.TableKindUFixed32:
-		return 4
-	case ir.TableKindI64, ir.TableKindU64, ir.TableKindF64, ir.TableKindFixed64, ir.TableKindUFixed64, ir.TableKindTimestamp:
-		return 8
-	case ir.TableKindI128, ir.TableKindU128, ir.TableKindFixed128, ir.TableKindUFixed128:
-		return 8
-	case ir.TableKindEnum:
-		return size
-	case ir.TableKindString:
-		return -1
-	}
-	return 0
-}
-
-func fixedSubtreeNext(entries []ir.TableFixedLayoutEntry, i int) int {
-	next := i + 1
-	for c := 0; c < entries[i].Children; c++ {
-		next = fixedSubtreeNext(entries, next)
-	}
-	return next
-}
-
-func fixedSrcIntervals(entries []ir.TableFixedLayoutEntry) []fixedSrcInterval {
-	var out []fixedSrcInterval
-	add := func(lo, size, elem int64) {
-		if size > 0 {
-			out = append(out, fixedSrcInterval{lo: lo, hi: lo + size, elem: elem})
-		}
-	}
-	var walk func(i int, src int64) int
-	walk = func(i int, src int64) int {
-		e := entries[i]
-		switch {
-		case e.Kind == ir.TableKindEnum || e.Children == 0:
-			add(src, e.Size, fixedKindElem(e.Kind, e.Size))
-			return fixedSubtreeNext(entries, i)
-		case e.Kind == ir.TableKindTable:
-			next, at := i+1, src
-			for c := 0; c < e.Children; c++ {
-				size := entries[next].Size
-				next = walk(next, at)
-				at += size
-			}
-			return next
-		case e.Kind == ir.TableKindOptional:
-			add(src, 1, 1)
-			return walk(i+1, src+1)
-		case e.Kind == ir.TableKindArray:
-			child := i + 1
-			childSize := entries[child].Size
-			base := src
-			if e.Dst.Counted != 0 {
-				add(src, 4, -1)
-				base += 4
-			}
-			if childSize <= 0 {
-				return fixedSubtreeNext(entries, i)
-			}
-			next := fixedSubtreeNext(entries, i)
-			for k := int64(0); k < (e.Size-(base-src))/childSize; k++ {
-				walk(child, base+k*childSize)
-			}
-			return next
-		case e.Kind == ir.TableKindKeyed:
-			elemAt := fixedSubtreeNext(entries, i+1)
-			elemSize := entries[elemAt].Size
-			if elemSize <= 0 {
-				return fixedSubtreeNext(entries, i)
-			}
-			for k := int64(0); k < e.Size/elemSize; k++ {
-				walk(elemAt, src+k*elemSize)
-			}
-			return fixedSubtreeNext(entries, i)
-		case e.Kind == ir.TableKindUnion:
-			next, widest := i+1, int64(0)
-			for c := 0; c < e.Children; c++ {
-				if entries[next].Size > widest {
-					widest = entries[next].Size
-				}
-				next = fixedSubtreeNext(entries, next)
-			}
-			tag := e.Size - widest
-			add(src, tag, tag)
-			next = i + 1
-			for c := 0; c < e.Children; c++ {
-				next = walk(next, src+tag)
-			}
-			return next
-		default:
-			next, at := i+1, src
-			for c := 0; c < e.Children; c++ {
-				size := entries[next].Size
-				next = walk(next, at)
-				at += size
-			}
-			return next
-		}
-	}
-	if len(entries) > 0 {
-		walk(0, 0)
-	}
-	return out
-}
-
-// fixedCopySegments splits one coalesced copy entry at leaf boundaries.
-// ok is false when the range is not covered by one width per position, in
-// which case the caller emits the entry whole with elem 0.
-func fixedCopySegments(e ir.TableFixedLeaf, intervals []fixedSrcInterval) ([]ir.TableFixedLeaf, []int64, bool) {
-	var out []ir.TableFixedLeaf
-	var elems []int64
-	limit := e.Src + e.Size
-	for pos := e.Src; pos < limit; {
-		var match *fixedSrcInterval
-		for i := range intervals {
-			iv := &intervals[i]
-			if iv.lo <= pos && pos < iv.hi {
-				if match != nil && match.elem != iv.elem {
-					return nil, nil, false
-				}
-				if match == nil {
-					match = iv
-				}
-			}
-		}
-		if match == nil || match.elem <= 0 {
-			return nil, nil, false
-		}
-		end := min(match.hi, limit)
-		sub := e
-		sub.Src = pos
-		sub.Dst = e.Dst + (pos - e.Src)
-		sub.Size = end - pos
-		out = append(out, sub)
-		elems = append(elems, match.elem)
-		pos = end
-	}
-	return out, elems, true
-}
-
 // ---- the root's surface ----------------------------------------------------
 
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
@@ -600,115 +440,69 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded, pool := ir.TableFixedBuildPlanNormalisedWithPool(g.unit, st)
+	plan, guarded, pool := ir.TableFixedBuildPlanPresentDefaultsWithPool(g.unit, st)
+	presentDefaults := false
+	for _, e := range plan {
+		if e.Op == ir.TableFixedOpPresentDefaults {
+			presentDefaults = true
+			break
+		}
+	}
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
 	g.pf("   destination in it to this compiler's own ABI. A bool field and a present\n")
 	g.pf("   flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and\n")
 	g.pf("   any other byte refuses wire_damaged, never a bool holding 2 (fix 2).\n")
+	g.pf("   An optional's present flag lands through kTableFixedPresentDefaults,\n")
+	g.pf("   after its payload: the same byte rule, and when the flag is 0 the\n")
+	g.pf("   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("   UNGUARDED ENTRIES\n")
-	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
-	g.pf("   test a guard at all. */\n")
-	// THE PLAN IS BUILT COALESCED, THEN SPLIT WHERE A COPY ENTRY SPANS LEAVES
-	// OF DIFFERENT WIDTHS, so a big-endian copy knows its element width (see
-	// fixedCopySegments). A split that changes the entry count or the guarded
-	// split would also change the plan's published order. That
-	// order is load-bearing where a TEXT entry rides under a union's guard: its
-	// ordinal lane and its flavour lane must stay the two facts the reference
-	// publishes (docs/SPEC-TABLES.md §3.4, the UT1/UT2 pair). For those plans
-	// both forms are emitted behind the host-order test: the little-endian
-	// branch keeps the coalesced order, and the big-endian branch (or a host
-	// compiling the forced control) gets the per-width segments. A plan with no
-	// guarded text entry has no such lane to preserve, so it keeps the split
-	// segments on both hosts.
-	intervals := fixedSrcIntervals(entries)
-	type emitEntry struct {
-		e    ir.TableFixedLeaf
-		elem int64
-	}
-	var emitPlan []emitEntry
-	emitGuarded := 0
-	for i, e := range plan {
-		if i == guarded {
-			emitGuarded = len(emitPlan)
+	g.pf("   FIRST, then the arms, then any guardless present-defaults entry that must\n")
+	g.pf("   run after the guarded payload it replaces: the entries that are nearly\n")
+	g.pf("   all of a plan never test a guard at all. */\n")
+	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
+	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
+	// width (ccommon.FixedElemPlan, the same split the C++ leg lays down). The
+	// split count is the new guarded split.
+	emitPlan, emitGuarded := ccommon.FixedElemPlan(entries, plan, guarded)
+	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
+	for _, ee := range emitPlan {
+		e := ee.Leaf
+		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
+		if e.Guard != ir.TableFixedNoGuard {
+			guard = fmt.Sprintf("%du", e.Guard)
 		}
-		if e.Op == ir.TableFixedOpCopy {
-			if segs, elems, ok := fixedCopySegments(e, intervals); ok {
-				for j, s := range segs {
-					emitPlan = append(emitPlan, emitEntry{s, elems[j]})
-				}
-				continue
-			}
+		argw := e.ArgW
+		if argw == 0 {
+			argw = 1
 		}
-		emitPlan = append(emitPlan, emitEntry{e, 0})
-	}
-	if guarded >= len(plan) {
-		emitGuarded = len(emitPlan)
-	}
-	emitPlanRows := func(rows []emitEntry) {
-		g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
-		for _, ee := range rows {
-			e := ee.e
-			guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
-			if e.Guard != ir.TableFixedNoGuard {
-				guard = fmt.Sprintf("%du", e.Guard)
-			}
-			argw := e.ArgW
-			if argw == 0 {
-				argw = 1
-			}
-			argw2 := e.ArgW2
-			if argw2 == 0 {
-				argw2 = 1
-			}
-			// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
-			// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
-			guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
-			if e.Guard2 != ir.TableFixedNoGuard {
-				guard2 = fmt.Sprintf("%du", e.Guard2)
-			}
-			// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
-			// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
-			// which is every unguarded and singly-nested entry. The offset is a BYTE
-			// OFFSET from the pool's base — the identity pool is this static array,
-			// a compiled plan's pool is laid in the plan's own storage, one rule.
-			guardIndex := "0"
-			if e.GuardCount > 0 {
-				guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
-			}
-			g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, /* %s */\n",
-				e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-				e.GuardCount, guardIndex, ee.elem, e.Note)
+		argw2 := e.ArgW2
+		if argw2 == 0 {
+			argw2 = 1
 		}
-		g.pf("};\n")
-	}
-	guardedText := false
-	for _, e := range plan {
-		if e.Op == ir.TableFixedOpText && (e.Guard != ir.TableFixedNoGuard || e.Guard2 != ir.TableFixedNoGuard) {
-			guardedText = true
-			break
+		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
+		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
+		guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
+		if e.Guard2 != ir.TableFixedNoGuard {
+			guard2 = fmt.Sprintf("%du", e.Guard2)
 		}
-	}
-	if guardedText && (len(emitPlan) != len(plan) || emitGuarded != guarded) {
-		g.pf("#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) || ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) )\n")
-		plain := make([]emitEntry, len(plan))
-		for i, e := range plan {
-			plain[i] = emitEntry{e, 0}
+		// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
+		// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
+		// which is every unguarded and singly-nested entry. The offset is a BYTE
+		// OFFSET from the pool's base — the identity pool is this static array,
+		// a compiled plan's pool is laid in the plan's own storage, one rule.
+		guardIndex := "0"
+		if e.GuardCount > 0 {
+			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
 		}
-		emitPlanRows(plain)
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, guarded)
-		g.pf("#else\n")
-		emitPlanRows(emitPlan)
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
-		g.pf("#endif\n")
-	} else {
-		emitPlanRows(emitPlan)
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
-		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+			e.GuardCount, guardIndex, ee.Elem, e.Note)
 	}
+	g.pf("};\n")
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
+	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
 	// THE GUARD POOL: the (guard, arg, argw) links every chain above points
 	// into, OUTERMOST FIRST, the only bound the layout's 64 (§5.8 row 6).
 	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
@@ -1057,9 +851,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per\n")
 	g.pf("       record, and only where there is a range to prefill at all. It is the\n")
 	g.pf("       caller's own stack and this codec allocates nothing. */\n")
-	g.pf("    if ( fill_count > 0 )\n    {\n")
-	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
-	g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
+	if presentDefaults {
+		// THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS
+		// (docs/SPEC-TABLES.md §3.4), so it is reset whenever the plan
+		// carries a present-defaults entry, prefill or none.
+		g.pf("    /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS: an absent\n")
+		g.pf("       payload reads as this reset image, never as the record's bytes. */\n")
+		g.pf("    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
+		g.pf("    %s( &defaults );\n", g.api(st.Name, "reset"))
+	} else {
+		g.pf("    if ( fill_count > 0 )\n    {\n")
+		g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */\n")
+		g.pf("        %s( &defaults );\n    }\n", g.api(st.Name, "reset"))
+	}
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
 	if finite {
 		g.pf("    read_widened = report->widened;\n")
@@ -1070,7 +874,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );\n")
+	runDefaults := "NULL"
+	if presentDefaults {
+		runDefaults = "(const uint8_t *) &defaults"
+	}
+	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, %s );\n", runDefaults)
 	g.pf("        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { %s( values + j ); } return -1; }\n", g.api(st.Name, "reset"))
 	if finite {
 		// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the finite pass runs
@@ -1123,6 +931,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedText"
 	case ir.TableFixedOpBool:
 		return "kTableFixedBool"
+	case ir.TableFixedOpPresentDefaults:
+		return "kTableFixedPresentDefaults"
 	}
 	return "kTableFixedCopy"
 }

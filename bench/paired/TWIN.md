@@ -154,12 +154,42 @@ two-field refusal, written as one comma expression, to the two stores C++
 writes. TestCCounterRenameAgrees holds the rewrite. TestCCounterDroppedIncrementReds
 is its negative control.
 
-`reOwedBoolByte` strips the C runtime's `if ( s[i] > 1 ) (*out_of_range)++;`
-from the Apply bool case. That rule is OWED BY BOTH LEGS. Under
-docs/FIXED-FORM-ALGORITHM.md §4.5 (the 2026-11-03 ruling, row 16), a bool or
-present byte other than 0 or 1 refuses `wire_damaged` in LOAD's check pass.
-Today C counts it `out_of_range` and C++ counts nothing. The strip goes when
-both legs refuse in the check pass.
+Under docs/FIXED-FORM-ALGORITHM.md §4.5 (the 2026-11-03 ruling, row 16), a
+bool or present byte other than 0 or 1 refuses `wire_damaged` in LOAD's check
+pass. Both legs give that verdict and both reset every record. The C++ leg
+refuses in its load body's check loop, which is outside the compared slice.
+The C leg counts the byte in a third Apply counter, `damaged`, and its run
+turns that count into the same refusal ahead of `out_of_range`. The rule is
+OWED BY THE C LEG FOR ITS PLACEMENT ONLY. `reOwedBoolByte` and the four
+`reCDamaged*` rules strip that counter's own spellings: the increment, the
+parameter, the address argument, the local and the refusal line. A stripped
+line cannot red the diff, so TestCDamagedRefusalStillEmitted requires both
+the increment and the refusal in the real C header. TestCDamagedCounterAgrees
+holds the strip, and TestCDamagedCounterWrongReasonReds is its negative
+control. The strip goes when the C leg refuses in its check pass. An
+optional's present flag lands through the present-defaults entry rather than
+a bool entry, so `reOwedPresentByte` strips that entry's own increment the
+same way, and TestCDamagedRefusalStillEmitted requires it too.
+
+## Open disagreements: never mapped, named by the red
+
+A rule one leg carries and the other lacks is not spelling, so the map never
+strips it. Its lines stay in the leftover, and `openDisagreements` in
+`tools/fixedtwin/main.go` names the rule at the head of the failure. Each one
+also says which leg is behind, or that no leg is behind yet. A disagreement leaves the list when the lagging
+leg carries the rule and the gate goes green over it. The byte-order rule
+(each multi-byte element lands from the little-endian wire in native order,
+by element width) left the list when the C++ leg took the `elem` column and
+the little-endian moves the C leg spells. The absent-payload rule (under a
+clear present flag the payload reads as its declared defaults, never as the
+record's bytes; SPEC-TABLES §3.4, the payload is ignored on read) left the
+list when the C leg took the present-defaults entry, op 9
+(`kTableFixedPresentDefaults`), that the C++ leg carries, deferred past the
+split as FIXED-FORM-ALGORITHM §4.4 lays down. The negative control holds it:
+dropping the C defaults copy, or landing the C present flag as a plain bool,
+reds the gate.
+
+None is open.
 
 ## Paired rows
 

@@ -43,9 +43,9 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes )
     tblut1_ut_root_t back;
     tblut1_table_report_t r;
 
-    fixed_check( tblut1_ut_root_fixed_plan[3].op == TBLUT1_K_TABLE_FIXED_TEXT, "C two lanes: the plan's fourth entry is the text" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
-    fixed_check( tblut1_ut_root_fixed_plan[3].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
+    fixed_check( tblut1_ut_root_fixed_plan[4].op == TBLUT1_K_TABLE_FIXED_TEXT, "C two lanes: the plan's fifth entry is the text" );
+    fixed_check( tblut1_ut_root_fixed_plan[4].arg == 2, "C two lanes: arg is the SECOND arm's ordinal" );
+    fixed_check( tblut1_ut_root_fixed_plan[4].meta == TBLUT1_K_TABLE_FIXED_TEXT_UTF8, "C two lanes: meta is the utf8 flavour" );
 
     memset( &r, 0, sizeof( r ) );
     fixed_check( tblut1_ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,

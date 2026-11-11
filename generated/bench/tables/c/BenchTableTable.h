@@ -837,7 +837,8 @@ enum
     BENCHTABLE_K_TABLE_FIXED_CONST   = 5, /* a constant this reader's own storage takes: a remapped union tag */
     BENCHTABLE_K_TABLE_FIXED_WIDEN_F  = 6, /* f32 into f64, §4's float rung */
     BENCHTABLE_K_TABLE_FIXED_PRESENT = 7, /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
-    BENCHTABLE_K_TABLE_FIXED_BOOL    = 8  /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCHTABLE_K_TABLE_FIXED_BOOL    = 8, /* a bool or a present flag: a byte of 0 or 1 lands as itself; any other byte refuses wire_damaged (fix 2) */
+    BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS = 9 /* a present flag, then the DECLARED DEFAULTS under it when the flag is 0 (docs/SPEC-TABLES.md §3.4) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1269,7 +1270,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_store_native( uint8_t * dst, ui
 static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_apply( const benchtable_table_fixed_entry_t * p, const uint8_t * base,
                                                       const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                                       uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                                      int32_t * out_of_range, int32_t * widened, int32_t * damaged )
+                                                      int32_t * out_of_range, int32_t * widened, const uint8_t * defaults, int32_t * damaged )
 {
     switch ( p->op )
     {
@@ -1397,6 +1398,24 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
             dst[p->dst] = 1;
             break;
         }
+        case BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS:
+        {
+            /* THE PRESENT FLAG, THEN THE DECLARED DEFAULTS UNDER IT
+               (docs/SPEC-TABLES.md §3.4): the payload copy above laid the
+               wire's bytes down; when the flag is 0 those bytes are dead and
+               never a value, so the reader overwrites them with the caller's
+               own reset image. aux is the payload's storage offset and size
+               its storage bytes. A flag byte past 1 is wire damage, as for a
+               bool (fix 2). THE COPY IS ONE PLAIN memcpy, not copy_run: it runs
+               only for an absent payload, off the hot path, and copy_run's
+               width branches hand the compiler a path whose size is past the
+               whole defaults image, which -Warray-bounds then names. */
+            const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
+            if ( src[p->src] > 1 ) { (*damaged)++; }
+            dst[p->dst] = flag;
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
+            break;
+        }
         default: break;
     }
 }
@@ -1409,7 +1428,8 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void benchtable_table_fixed_
 static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fixed_entry_t * plan, int32_t count, int32_t guarded,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
-                                           benchtable_table_report_t * report, const benchtable_table_fixed_guard_link_t * guard_pool )
+                                           benchtable_table_report_t * report, const benchtable_table_fixed_guard_link_t * guard_pool,
+                                           const uint8_t * defaults )
 {
     /* THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
        through is a pointer the compiler must assume aliases the destination,
@@ -1425,7 +1445,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fix
        alias the plan the loop is reading. */
     for ( i = 0; i < guarded; ++i )
     {
-        benchtable_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        benchtable_table_fixed_apply( &plan[i], (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
     }
     for ( i = guarded; i < count; ++i )
     {
@@ -1448,10 +1468,15 @@ static SCHEMA_UNUSED void benchtable_table_fixed_run( const benchtable_table_fix
         }
         else
         {
-            if ( benchtable_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
+            /* A GUARDLESS ENTRY IN THE SECOND HALF RUNS UNCONDITIONALLY:
+               the deferred present-defaults entry must follow the guarded
+               payload it overwrites, so it rides after the split although
+               it answers to no tag. Its guard lane is kTableFixedNoGuard
+               and must never be read as an offset. */
+            if ( p->guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( src, p->guard, p->argw ) != p->arg ) { continue; }
             if ( p->guard2 != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD && benchtable_table_fixed_tag_at( src, p->guard2, p->argw2 ) != p->arg2 ) { continue; }
         }
-        benchtable_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, &damaged );
+        benchtable_table_fixed_apply( p, (const uint8_t *) plan, src, dst, &out_of_range, &widened, defaults, &damaged );
     }
     if ( damaged != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
@@ -1543,6 +1568,7 @@ static SCHEMA_UNUSED void benchtable_table_fixed_entry_lands( const benchtable_t
         case BENCHTABLE_K_TABLE_FIXED_WIDEN_F: lands[1] = e->dst + 8u; break;
         case BENCHTABLE_K_TABLE_FIXED_WIDEN:
         case BENCHTABLE_K_TABLE_FIXED_ORDINAL: lands[1] = e->dst + e->dstsize; break;
+        case BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS: lands[1] = e->dst + 1u; break; /* the flag; the payload's own entries land it */
         default: lands[1] = e->dst + e->size; break; /* copy, const */
     }
 }
@@ -1993,7 +2019,13 @@ static SCHEMA_UNUSED void benchtable_table_fixed_push( benchtable_table_fixed_co
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
        plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+    /* THE PRESENT-DEFAULTS ENTRY RIDES THE GUARDED HALF even when it answers to
+       no tag: it must run AFTER the guarded payload entries it overwrites, or
+       an absent optional whose payload holds a union would read the wire's
+       residue back over the defaults (docs/FIXED-FORM-ALGORITHM.md §4.4). The run loop
+       applies a guardless entry in the second half unconditionally. */
+    const int second_half = ( e.guard != SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD ) || e.op == BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS;
+    if ( second_half != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
@@ -2169,10 +2201,17 @@ static SCHEMA_UNUSED void benchtable_table_fixed_compile_entry( benchtable_table
         {
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
-                benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = BENCHTABLE_K_TABLE_FIXED_BOOL; e.arg = arg;
-                benchtable_table_fixed_push( c, e );
+                /* THE PAYLOAD LANDS FIRST, then one entry carries the flag and,
+                   when it is 0, the DECLARED DEFAULTS over the payload's dead
+                   bytes (docs/SPEC-TABLES.md §3.4). The payload's storage starts
+                   at the child's own destination and runs to the present
+                   companion, which the reader's layout puts after it. */
+                const uint32_t payload_dst = (uint32_t) ( my_at + dst[mi + 1].dst );
+                const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 benchtable_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                benchtable_table_fixed_entry_t e = benchtable_table_fixed_entry_zero();
+                e.src = their_at; e.dst = aux_at; e.aux = payload_dst; e.size = payload_size; e.guard = guard; e.op = BENCHTABLE_K_TABLE_FIXED_PRESENT_DEFAULTS; e.arg = arg;
+                benchtable_table_fixed_push( c, e );
                 break;
             }
             case 13: /* a nested table: match its fields */
@@ -9522,9 +9561,13 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_entity_
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_entity_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* entity_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* entity_id */
@@ -9716,7 +9759,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_entity_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -9792,9 +9835,13 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_stat_fi
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_stat_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 1 }, /* stat_id */
     { 4u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 4 }, /* stat_id */
@@ -9974,7 +10021,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_stat_reset( values + j ); } return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -10198,9 +10245,13 @@ static SCHEMA_UNUSED const benchtable_table_fixed_dst_t benchtable_table_mixed_f
    destination in it to this compiler's own ABI. A bool field and a present
    flag land through kTableFixedBool: a byte of 0 or 1 lands as itself and
    any other byte refuses wire_damaged, never a bool holding 2 (fix 2).
+   An optional's present flag lands through kTableFixedPresentDefaults,
+   after its payload: the same byte rule, and when the flag is 0 the
+   payload takes its declared defaults (docs/SPEC-TABLES.md §3.4).
    UNGUARDED ENTRIES
-   FIRST, then the arms: the entries that are nearly all of a plan never
-   test a guard at all. */
+   FIRST, then the arms, then any guardless present-defaults entry that must
+   run after the guarded payload it replaces: the entries that are nearly
+   all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const benchtable_table_fixed_entry_t benchtable_table_mixed_fixed_plan[] = {
     { 0u, 0u, 2u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* protocol_magic */
     { 2u, 4u, 4u, 0u, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, BENCHTABLE_K_TABLE_FIXED_COPY, 0, 0, 0, 0, 1, SCHEMA_BENCHTABLE_TABLE_FIXED_NO_GUARD, 0, 1, 0, 0, 2 }, /* sequence */
@@ -10707,7 +10758,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
         int32_t rec_widened = report->widened;
         if ( benchtable_table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_NO_LAYOUT; return -1; }
         benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards );
+        benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_mixed_reset( values + j ); } return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
