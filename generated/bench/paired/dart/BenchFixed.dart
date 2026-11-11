@@ -2360,25 +2360,29 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     return false;
   }
   final view = ByteData.sublistView(bytes);
-  // the trailer: a run of u64 ids and a u64 count at the very end
+  // the trailer: a run of u64 ids and a u64 count at the very end (§3, §3.3)
   final trailerCount = view.getUint64(bytes.length - 8, Endian.little);
-  if (trailerCount > (bytes.length - 9) ~/ 8) {
+  if (trailerCount < 0 ||
+      trailerCount > 4096 ||
+      trailerCount > (bytes.length - 9) ~/ 8) {
     report.Damage();
     return false;
   }
   final end = bytes.length - 8 - trailerCount * 8;
+  if (end < 1) {
+    report.Damage();
+    return false;
+  }
   // A BODY'S REFERENCES RESOLVE against the trailer's ids, which begin here.
   final ids = <int>[];
-  for (var i = end; i < end + trailerCount * 8; i += 8) {
-    ids.add(view.getUint64(i, Endian.little));
-  }
-  for (var i = 0; i < ids.length; i++) {
-    for (var j = 0; j < i; j++) {
-      if (ids[i] == ids[j]) {
-        report.Damage();
-        return false;
-      }
+  final seenIds = <int>{};
+  for (var k = 0; k < trailerCount; k++) {
+    final id = view.getUint64(end + k * 8, Endian.little);
+    if (!seenIds.add(id)) {
+      report.Damage();
+      return false;
     }
+    ids.add(id);
   }
   // THE BODY walks references into those ids. THE TWO STRICT CHECKS: exactly
   // one build-version field and exactly one vocabulary field, both answered
