@@ -137,19 +137,21 @@ func TestMessageIntegrityIndependentJavaScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, _, want := messageIntegrityFixture(t)
-	// batch.hex is the independent corpus pin. It is kept equal to the
-	// neutral writer's sealed batch so a future drift is caught here.
+	model, _, sealed := messageIntegrityFixture(t)
+	// The JS leg announces the message closure's vocabulary (§3.3), as
+	// EncodeMessages does, so its writer is pinned against the shared
+	// batch.hex corpus, and that corpus is the sealed batch the fixture
+	// holds the neutral writer to.
 	pinText, err := os.ReadFile(filepath.Join("../../testdata/conformance/feature-witnesses/message-integrity", "batch.hex"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pin, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
+	want, err := hex.DecodeString(strings.TrimSpace(string(pinText)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(pin, want) {
-		t.Fatalf("batch.hex: got%x want%x", pin, want)
+	if !bytes.Equal(want, sealed) {
+		t.Fatalf("batch.hex %x is not the neutral writer's sealed batch %x", want, sealed)
 	}
 	files, err := compiler.New().Generate(model.Unit, "js", compiler.Options{})
 	if err != nil {
