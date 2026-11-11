@@ -125,12 +125,15 @@ schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 
 # ITS CONTROL: the non-finite refusal taken out of the generated load
 # (make/goose-hostile.sh's sabotage seam, checked to have matched); the corpus
-# must go red on wire-non-finite-float, and on nothing else.
+# must go red on wire-non-finite-float, and on nothing else. The strict read
+# notes a non-finite float twice: the wire-alone check over every byte before
+# any value is decoded (wire_check's wc_scalar), and the decode itself
+# (scalar_at); both are taken out so the load lands the NaN it meets.
 .PHONY: schema-goose-runs-hostile-corpus-negative-control
 schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_FUZZ_DIR)
-	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|rep.non_finite = true;|rep.non_finite = false; // SABOTAGED: a NaN lands|' \
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|rep.non_finite = true;|rep.non_finite = false; /* SABOTAGED: a NaN lands */|;s|w.non_finite = true;|w.non_finite = false; /* SABOTAGED: a NaN lands */|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-plant.log; \

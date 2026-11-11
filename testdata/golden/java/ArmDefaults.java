@@ -93,11 +93,11 @@ public final class ArmDefaults {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // type DefaultArm
@@ -189,7 +189,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultArmBits(
             DefaultArm value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -198,7 +201,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -207,7 +210,7 @@ public final class ArmDefaults {
             return -1; // the count guards the loop — reject, never clamp
         }
         value.entriesCount = (int) v;
-        if (bitsRead + value.entriesCount * 36L > numBits) {
+        if ((long) bitsRead + value.entriesCount * 36L > numBits) {
             return -1;
         }
         for (int i0 = 0; i0 < value.entriesCount; i0++) {
@@ -216,7 +219,7 @@ public final class ArmDefaults {
                 return -1;
             }
         }
-        if (bitsRead + 3 > numBits) {
+        if ((long) bitsRead + 3 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7L;
@@ -329,7 +332,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultChoiceBits(
             DefaultChoice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -338,7 +344,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -425,6 +431,12 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultChoicePacketBits(
             DefaultChoicePacket value, byte[] data, int bitOffset, int numBits) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
+            return -1; // the payload cannot exceed the buffer behind data
+        }
         int bitsRead = bitOffset;
         bitsRead = readDefaultChoiceBits(value.choice, data, bitsRead, numBits);
         if (bitsRead < 0) {
@@ -516,7 +528,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultBulkArmBits(
             DefaultBulkArm value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -529,7 +544,7 @@ public final class ArmDefaults {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
@@ -542,7 +557,7 @@ public final class ArmDefaults {
         if (bitsRead < 0) {
             return -1;
         }
-        if (bitsRead + value.dataLength * 8L > numBits) {
+        if ((long) bitsRead + value.dataLength * 8L > numBits) {
             return -1;
         }
         System.arraycopy(data, bitsRead >>> 3, value.data, 0, value.dataLength);
@@ -657,7 +672,10 @@ public final class ArmDefaults {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readDefaultBulkChoiceBits(
             DefaultBulkChoice value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -666,7 +684,7 @@ public final class ArmDefaults {
         final long tailWord = loadTail(data);
         int bitsRead = bitOffset;
         long v;
-        if (bitsRead + 2 > numBits) {
+        if ((long) bitsRead + 2 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x3L;
