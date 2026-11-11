@@ -940,9 +940,10 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 .PHONY: tables-js-fixed-slack-negative-control
 tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	@rm -rf build/js-slack-sabotage && mkdir -p build/js-slack-sabotage
-	@sed 's|ind, val, name, off(base, at+fixedCountBytes), val, name)|ind, f.Type.Size, off(base, at+fixedCountBytes), val, name) // SABOTAGED|; s|%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint8(%s + i, %s.%s\[i\]); }|%sfor (let i = 0; i < %d; i++) { view.setUint8(%s + i, %s.%s[i]); }|' \
+	@sed 's|ind, iv, iv, val, name, iv, off(base, at+fixedCountBytes), iv, val, name, iv)|ind, iv, iv, f.Type.Size, iv, off(base, at+fixedCountBytes), iv, val, name, iv) // SABOTAGED|; s|%sfor (let %s = 0; %s < %s.%sLength; %s++) { view.setUint8(%s + %s, %s.%s\[%s\]); }|%sfor (let %s = 0; %s < %d; %s++) { view.setUint8(%s + %s, %s.%s[%s]); }|' \
 		internal/codegen/jstable/fixedjs.go > build/js-slack-sabotage/fixedjs.go.txt
-	@grep -q SABOTAGED build/js-slack-sabotage/fixedjs.go.txt || \
+	@test $$(grep -c SABOTAGED build/js-slack-sabotage/fixedjs.go.txt) -eq 1 && \
+		grep -qF '%sfor (let %s = 0; %s < %d; %s++) { view.setUint8(' build/js-slack-sabotage/fixedjs.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedjs.go":"%s/build/js-slack-sabotage/fixedjs.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-slack-sabotage/overlay.json
