@@ -606,6 +606,29 @@ final class _TableWireCountRefusal implements Exception {
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
+final class _WireGraphEdge {
+  final int typeId;
+  final Object identity;
+  final Object value;
+  final bool blob;
+
+  const _WireGraphEdge.table(this.typeId, Object obj)
+      : identity = obj, value = obj, blob = false;
+  const _WireGraphEdge.blob(this.typeId, this.identity, this.value) : blob = true;
+}
+
+final class _WireGraphNode {
+  final int typeId;
+  final Object obj;
+  const _WireGraphNode(this.typeId, this.obj);
+}
+
+final class _WireGraphFrame {
+  final Object owner;
+  int next = 0;
+  _WireGraphFrame(this.owner);
+}
+
 final class WireState {
   // Immutable strings may be canonicalized. Metadata belongs weakly to
   // decoded owners; node tokens carry no payload or input-buffer references.
@@ -643,8 +666,13 @@ final class WireState {
   final List<int> nodeTypes = <int>[];
   final List<List<int>> nodes = <List<int>>[];
   final List<Object?> nodeObjs = <Object?>[];
-  final Map<Object, int> _objIndex = <Object, int>{};
+  final Map<Object, int> _objIndex = Map<Object, int>.identity();
   final Map<Object, int> _blobIndex = Map<Object, int>.identity();
+  bool _collectingNumbers = false;
+  late Object _numberOwner;
+  final Map<Object, List<_WireGraphEdge>> _numberEdges = Map<Object, List<_WireGraphEdge>>.identity();
+  final Set<Object> _numberSeen = Set<Object>.identity();
+  final List<_WireGraphNode> _numberNodes = <_WireGraphNode>[];
   // A save is STRICT about a blob two slots name (§2.5): the wire writer
   // refuses it by name, blob_shared. The cook numbers the same graph and does not.
   bool refuseSharedBlob = false;
@@ -664,6 +692,75 @@ final class WireState {
 
   void indexRoot(Object v) {
     _objIndex[v] = 1;
+  }
+
+  // Number table references without following a pointer on the Dart stack.
+  // The first pass records each owner's edges; the explicit DFS below assigns
+  // the preorder node numbers required by docs/SPEC-TABLES.md §3.1.
+  void numberGraph(Object root, void Function(Object obj) numberNode) {
+    _collectingNumbers = true;
+    _numberEdges.clear();
+    _numberSeen.clear();
+    _numberNodes.clear();
+    _objIndex.clear();
+    _blobIndex.clear();
+    nodes.clear();
+    nodeTypes.clear();
+    nodeObjs.clear();
+    _numberSeen.add(root);
+    _objIndex[root] = 1;
+    _numberOwner = root;
+    numberNode(root);
+    for (var i = 0; i < _numberNodes.length; i++) {
+      final node = _numberNodes[i];
+      _numberOwner = node.obj;
+      numberNode(node.obj);
+    }
+    _collectingNumbers = false;
+    final active = Set<Object>.identity()..add(root);
+    final frames = <_WireGraphFrame>[_WireGraphFrame(root)];
+    while (frames.isNotEmpty) {
+      final frame = frames.last;
+      final edges = _numberEdges[frame.owner] ?? const <_WireGraphEdge>[];
+      if (frame.next >= edges.length) {
+        frames.removeLast();
+        active.remove(frame.owner);
+        continue;
+      }
+      final edge = edges[frame.next++];
+      if (edge.blob) {
+        if (_blobIndex.containsKey(edge.identity)) {
+          if (refuseSharedBlob) {
+            throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
+          }
+          continue;
+        }
+        nodeTypes.add(edge.typeId);
+        nodes.add(edge.value is String ? utf8.encode(edge.value as String) : List<int>.from(edge.value as List<int>));
+        nodeObjs.add(null);
+        _blobIndex[edge.identity] = nodes.length + 1;
+        continue;
+      }
+      final obj = edge.value;
+      if (active.contains(obj)) {
+        throw StateError('data cycle: a pointer reaches a node still open (docs/SPEC-TABLES.md §3.1)');
+      }
+      if (_objIndex.containsKey(obj)) continue;
+      _objIndex[obj] = nodes.length + 2;
+      nodeTypes.add(edge.typeId);
+      nodes.add(<int>[]);
+      nodeObjs.add(obj);
+      active.add(obj);
+      frames.add(_WireGraphFrame(obj));
+    }
+  }
+
+  void countTextPointers(void Function(Object obj) see) {
+    for (final edges in _numberEdges.values) {
+      for (final edge in edges) {
+        if (!edge.blob) see(edge.value);
+      }
+    }
   }
 
   int refFor(int id) {
@@ -706,6 +803,10 @@ final class WireState {
   // reassignment from multiple slots resolving one incoming node.
   int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
     final identity = _blobIdentity(blob, owner, field);
+    if (_collectingNumbers) {
+      (_numberEdges[_numberOwner] ??= <_WireGraphEdge>[]).add(_WireGraphEdge.blob(typeId, identity, blob));
+      return 0;
+    }
     final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
@@ -736,6 +837,11 @@ final class WireState {
   // to a node still open is a cycle and save refuses it. A node already
   // numbered and closed is shared: one index, no second record.
   void noteTable(int typeId, Object obj, Set<Object> open, void Function(Set<Object> open) descend) {
+    if (_collectingNumbers) {
+      (_numberEdges[_numberOwner] ??= <_WireGraphEdge>[]).add(_WireGraphEdge.table(typeId, obj));
+      if (_numberSeen.add(obj)) _numberNodes.add(_WireGraphNode(typeId, obj));
+      return;
+    }
     if (open.contains(obj)) {
       throw StateError('data cycle: a pointer reaches a node still open (docs/SPEC-TABLES.md §3.1)');
     }
@@ -3394,6 +3500,12 @@ func (g *wireGen) emitNodeDispatch() {
 		g.pf("\t\tcase %s: %sWireLoadBody(r, obj as %s, true); break;\n", typeConst(st), dartName(st.Name), st.Name)
 	}
 	g.pf("\t}\n}\n\n")
+	g.pf("void _numberNode(WireState s, Object obj) {\n")
+	for _, st := range g.closure {
+		g.pf("\tif (obj is %s) { %sNumber(s, obj, <Object>{}); return; }\n", st.Name, dartName(st.Name))
+	}
+	g.pf("\tthrow StateError('no node numberer for ${obj.runtimeType} (docs/SPEC-TABLES.md §3.1)');\n")
+	g.pf("}\n\n")
 	g.pf("void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {\n")
 	g.pf("\tswitch (typeId) {\n")
 	for _, st := range g.closure {
@@ -3472,9 +3584,7 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	fn := dartName(n) + "WireSave"
 	g.pf("Uint8List %s(%s v) {\n", fn, n)
 	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
-	g.pf("\tstate.indexRoot(v);\n")
-	g.pf("\tfinal open = <Object>{v};\n")
-	g.pf("\t%sNumber(state, v, open);\n", dartName(n))
+	g.pf("\tstate.numberGraph(v, (obj) { _numberNode(state, obj); });\n")
 	g.pf("\tfinal w = TableWireWriter(state);\n")
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", dartName(n))
