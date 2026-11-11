@@ -1055,10 +1055,11 @@ final class TableWireReader {
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
   // entry count, or a record length past the payload is damage and reads
-  // nothing (§3.1). A record whose type id is the *string blob stores its
-  // bytes; any other type id keeps its index, counts one unknown at the
-  // record, and every pointer naming it reads null (§3.1). A string blob that
-  // is not well-formed UTF-8 without NUL is damage and reads null too.
+  // nothing (§3.1). A record whose type id is reserved is damage; a record
+  // whose type id is the *string blob stores its bytes; any other type id
+  // keeps its index, counts one unknown at the record, and every pointer
+  // naming it reads null (§3.1). A string blob that is not well-formed UTF-8
+  // without NUL is damage and reads null too.
   void scanNodeTable() {
     pos = 1;
     var present = false;
@@ -1133,6 +1134,16 @@ final class TableWireReader {
       report.refuse('wire_damaged');
       nodeTableGood = false;
     } else {
+      // Reserved ids name transports, not record types. Check the fully
+      // framed payload before placing records, so refusal leaves the whole
+      // load empty and does not count a prefix as unknown.
+      for (final typeId in scanTypes) {
+        if (typeId == _kNodeTableId || typeId == _kBuildVersionId || typeId == _kVocabularyId) {
+          report.refuse('wire_damaged');
+          nodeTableGood = false;
+          return;
+        }
+      }
       for (var i = 0; i < scanTypes.length; i++) {
         final typeId = scanTypes[i];
         final bytes = scanBytes[i];
