@@ -1652,7 +1652,11 @@ jobs:
       # THE TOOLCHAIN-DEPENDENT BUILD, kept between runs: the compiler, the
       # harness, the generated C# tree and the built driver. The build is what
       # ran past the wall (107-110 s in the runs the card names); a warm hit
-      # turns it into a timestamp check and leaves the fuzz its budget.
+      # turns it into a timestamp check and leaves the fuzz its budget. dotnet
+      # compares the checked-out sources and csproj against every restored
+      # obj/bin output, so the hit step below must stand all of them, not just
+      # the driver assembly, newer than the checkout; otherwise CoreCompile
+      # rebuilds the whole driver on the hit.
       - id: cs-fuzz-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1671,7 +1675,7 @@ jobs:
           touch build/conformance-harness
           touch build/tables-generated-cs/.stamp
           touch build/tables-generated-cs/cards/.stamp
-          touch test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll
+          find test/conformance/cs/obj test/conformance/cs/bin -type f -exec touch {} +
 
       - name: build the harness and the C# driver
         run: make -j"$(nproc)" build/conformance-harness build-conformance-cs

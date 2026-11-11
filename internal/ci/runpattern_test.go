@@ -359,7 +359,6 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 			touch: []string{
 				"build/tables-generated-cs/.stamp",
 				"build/tables-generated-cs/cards/.stamp",
-				"test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
 			run:   `make ${{ matrix.target }}-smoke`,
@@ -474,6 +473,37 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	for _, target := range []string{"tables-cs-wire-fuzz", "tables-cs-region-fuzz", "tables-dart-wire-fuzz"} {
 		if !strings.Contains(cert, target) {
 			t.Errorf("certify.yml does not run the full %s campaign nightly: the per-commit smoke dropped its cases", target)
+		}
+	}
+}
+
+// TestCSharpCacheHitRefreshesEveryRestoredOutput pins the incremental compile
+// the C# fuzz cache relies on. dotnet compares the freshly checked-out sources
+// and csproj against every restored obj/bin output, so touching only the
+// driver assembly leaves its inputs older and CoreCompile rebuilds the whole
+// driver. A cache hit must stand every restored file under
+// test/conformance/cs/obj and test/conformance/cs/bin newer than the checkout.
+func TestCSharpCacheHitRefreshesEveryRestoredOutput(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	body, ok := yamlJobs(workflows(t, root)["ci-full.yml"])["cs-fuzz"]
+	if !ok {
+		t.Fatal("ci-full.yml has no cs-fuzz job: the C# cache-hit refresh cannot be checked")
+	}
+	if !strings.Contains(body, "if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'") {
+		t.Fatal("cs-fuzz has no cache-hit guard: the refresh this gate checks could run on a miss")
+	}
+	for _, dir := range []string{"test/conformance/cs/obj", "test/conformance/cs/bin"} {
+		refreshed := false
+		for _, l := range strings.Split(body, "\n") {
+			if strings.Contains(l, "find") && strings.Contains(l, dir) &&
+				strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
+				refreshed = true
+				break
+			}
+		}
+		if !refreshed {
+			t.Errorf("cs-fuzz does not stand every restored file under %s newer than the checkout: dotnet sees the sources as newer and recompiles the whole driver on a cache hit", dir)
 		}
 	}
 }
