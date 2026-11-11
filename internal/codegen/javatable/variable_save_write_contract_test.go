@@ -68,7 +68,7 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 	// the verdict each case owes, per build: debug (-ea) and release
 	type owed struct{ debug, release string }
 	refusedDebug := owed{"assert", "no-throw"} // rows 1-5 and 8
-	refusedAlways := owed{"null", "null"}      // rows 6, 7 and 10
+	refusedAlways := owed{"null", "null"}      // rows 6, 7 and 10, as today
 	lawful := owed{"equal", "equal"}           // every twin
 	want := map[string]owed{
 		// row 1: an integer off its kind's range (int8 in an int) and off a declared range
@@ -88,7 +88,9 @@ func TestJavaVariableSaveWriteContract(t *testing.T) {
 		// row 4: a length past N
 		"r4-string-over": refusedDebug, "r4-string-edge": lawful,
 		"r4-bytes-over": refusedDebug, "r4-bytes-edge": lawful,
-		"r4-element-over": refusedDebug, "r4-element-edge": lawful,
+		// a text list's element past N is refused in every build today, by the
+		// graph the save builds first; it keeps that answer
+		"r4-element-over": refusedAlways, "r4-element-edge": lawful,
 		"r4-map-key-over": refusedDebug, "r4-map-key-edge": lawful,
 		"r4-arm-over": refusedDebug, "r4-arm-edge": lawful,
 		"r4-pointer-over": refusedDebug, "r4-pointer-edge": lawful,

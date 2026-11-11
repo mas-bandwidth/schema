@@ -802,7 +802,6 @@ public final class BenchIntsVariable {
     }
 
     public static byte[] save(Value v, TableVariable.Saver saver) {
-        assert checkWrite(v);
         TableVariable.Writer w = saver.begin();
         TableVariable.NodeGraph graph = saver.graph;
         graph.setOpen(v, true);
@@ -810,7 +809,7 @@ public final class BenchIntsVariable {
             return null;
         }
         graph.setOpen(v, false);
-        assert checkNodes(graph);
+        assert checkWrite(v) && checkNodes(graph);
         w.put8(1);
         writeFields(w, graph, v);
         int nodes = graph.nodeCount();
