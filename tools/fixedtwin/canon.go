@@ -864,7 +864,7 @@ var (
 	// refusal line. The verdict is held by TestCDamagedRefusalStillEmitted,
 	// because a stripped line cannot red the diff. This rule goes when the C
 	// leg refuses in its check pass too.
-	reOwedBoolByte    = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
+	reOwedBoolByte = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
 	// the same count for an optional's present flag, which lands through the
 	// present-defaults entry rather than a bool entry (docs/SPEC-TABLES.md §4.4)
 	reOwedPresentByte = regexp.MustCompile(`if\s*\(\s*src\[p(?:->|\.)src\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
