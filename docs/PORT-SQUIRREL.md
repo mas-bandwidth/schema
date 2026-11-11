@@ -7,8 +7,10 @@ module reaches its runtime, how the leg's tests run the interpreter, the
 port's column of the techniques register, and which card of the
 `schema-squirrel` stream fills each surface. The skeleton it describes is in
 the tree: `compiler/target_squirrel.go` (a built-in target), `internal/codegen/squirrel` (the type surface), `internal/codegen/squirreltable`
-(the table surface) and `make/squirrel.mk`. Neither surface carries a codec
-yet; the cards below add them without editing the skeleton's files.
+(the table surface) and `make/squirrel.mk`. Both surfaces carry their codecs:
+the type surface the packet wire's read and write, the table surface the
+variable, fixed, message and text forms. THE CARD MAP below names each
+component and its files.
 
 The request this answers (2026-10-17): a full port of schema to Luau, to
 vanilla Lua, and to Squirrel at the same time. It overrides the 2026-10-15
@@ -102,7 +104,7 @@ the member and the text key side by side.
 | `?T` (§2.3) | the value beside `<Member>Present`, born `false` |
 | `[E]T` (§2.4) | an array of E.Max elements, key k at index k − 1 |
 | `[N]T`, `[A..B]T`, `[..N]T`, `[]T` (§2.9) | an array born at its born length (N, A, 0, 0), each element its zero |
-| `map[K]V` (§2.8) | not mapped: refused by name (THE REGISTER) |
+| `map[K]V` (§2.8) | an array of the generated `{ key, value }` entry, ascending key order, born empty |
 
 Every field's descriptor is a table with every key present, `null` where the
 shape has no such fact, so a runtime walk reads a slot and never asks whether
@@ -138,8 +140,8 @@ Squirrel has one integer type, `SQInteger`, which `sq64` makes the C
   point value are the array `[lo, hi]`, each half the bits of that half
   (`squirrel.Int128Lit`). The type wire writes the low half first, so a
   128-bit field is two 64-bit writes; a range offset is the codec's two-lane
-  subtraction with an explicit borrow. The table wire's 128-bit kinds are
-  refused today (`ir.RefuseWideTableKinds`), as every port without them does.
+  subtraction with an explicit borrow. The table wire carries the 128-bit
+  kinds on its variable and fixed forms.
 - **Floats.** `SQUSEDOUBLE` makes the float a double, so a `float64` is
   exact. A `float32` is held in that double. Packet and table floats are
   FINITE only (SPEC §4.3, docs/SPEC-TABLES.md §3.3): every finite `float32`
