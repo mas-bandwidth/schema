@@ -444,7 +444,7 @@ func (g *tableGen) emitSequenceWrite(f *ir.Field, expr string) {
 		if val.Type.Optional {
 			g.pf("          if(!te->value_present) { continue; }\n")
 		}
-		g.pf("          if(te->value_length<0 || te->value_length>%d) { return 0; }\n", val.Type.Size)
+		g.writeStorageBound("te->value_length", val.Type.Size, "          ")
 		g.pf("          total+=te->value_length; if(total>%d) { return 0; }\n", f.TextTotal)
 		g.pf("      }\n    }\n")
 	}

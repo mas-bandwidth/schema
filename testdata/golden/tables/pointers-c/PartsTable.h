@@ -5319,7 +5319,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
 static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_message_reader_t *,graphdemo_stamp_t *);
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value )
 {
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5328,7 +5328,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* tag */
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5503,13 +5503,13 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
 {
  (void)value;
  { /* tag */
- if(value->tag_length<0 || value->tag_length>8) return 0;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
  if(value->tag_length != 0) {
   if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   graphdemo_table_bit_put(w,2,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->tag_length<0 || value->tag_length>8) return 0;
+  schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -6125,8 +6125,7 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( graphdemo_tabl
 {
     (void)retention;
 
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -6139,8 +6138,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* tag */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;

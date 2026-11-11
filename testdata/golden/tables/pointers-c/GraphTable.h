@@ -5685,7 +5685,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_message_body(graphdemo_table_messag
 static SCHEMA_UNUSED int graphdemo_settings_load_message_body(graphdemo_table_message_reader_t *,graphdemo_settings_t *);
 static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_meta_t * value )
 {
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5702,7 +5702,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body( graphdemo_table_writer_t * w,
         }
     }
     { /* tag */
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5878,13 +5878,13 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
  }
  }
  { /* tag */
- if(value->tag_length<0 || value->tag_length>8) return 0;
+ schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
  if(value->tag_length != 0) {
   if(w->check_default) {w->bits=GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   graphdemo_table_bit_put(w,2,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->tag_length<0 || value->tag_length>8) return 0;
+  schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -6022,7 +6022,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages(graphdemo_meta_t * values,
 }
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( graphdemo_table_writer_t * w, const graphdemo_settings_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 16 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6038,7 +6038,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body( graphdemo_table_writer_t 
         }
     }
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 16 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
@@ -6210,10 +6210,10 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  }
  }
  { /* label */
- if(value->label_length<0 || value->label_length>16) return 0;
+ schema_assert( 0 <= value->label_length && value->label_length <= 16 );
  if(value->label_length != 0) {
   graphdemo_table_bit_put(w,4,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->label_length<0 || value->label_length>16) return 0;
+  schema_assert( 0 <= value->label_length && value->label_length <= 16 );
   graphdemo_table_bit_put(w,(uint64_t)value->label_length,5);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -6351,7 +6351,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages(graphdemo_settings_t *
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( graphdemo_table_writer_t * w, const graphdemo_list_node_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -6367,7 +6367,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_save_body( graphdemo_table_writer_t
         }
     }
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -6505,7 +6505,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_body( graphdemo_table_reader_t
 
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label_( graphdemo_table_writer_t * w, const graphdemo_tree_node_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 12 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6514,7 +6514,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_save_body( graphdemo_table_writer_t
 {
     (void) value;
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 12 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 6, 0x39f7fcec8fcb623dull, 12 );
@@ -6743,14 +6743,14 @@ static SCHEMA_UNUSED int graphdemo_layer_load_body( graphdemo_table_reader_t * r
 
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 24 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_layers_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
-    if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     int32_t i;
     graphdemo_table_writer_put8( w, 13 ); graphdemo_table_writer_leb( w, (uint64_t) value->layers_count );
     for ( i = 0; i < value->layers_count; i++ )
@@ -6776,7 +6776,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 24 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -6857,7 +6857,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body( graphdemo_table_writer_t * w
         }
     }
     { /* layers */
-        if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
         if ( value->layers_count > 0 )
         {
             graphdemo_table_writer_header_at( w, 10, 0x4554e34a747022dfull, 14 );
@@ -7124,7 +7124,7 @@ static SCHEMA_UNUSED int graphdemo_scene_load_body( graphdemo_table_reader_t * r
 #define SCHEMA_GRAPHDEMO_DEPOT_BANKS_AT(value,key) SCHEMA_GRAPHDEMO_TABLE_KEYED_AT((value).banks,(key),GRAPHDEMO_TIER_MAX)
 static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name_( graphdemo_table_writer_t * w, const graphdemo_depot_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7175,7 +7175,7 @@ static SCHEMA_UNUSED int graphdemo_depot_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -7370,7 +7370,7 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
 
 static SCHEMA_UNUSED int schema_graphdemo_album_wire_name_( graphdemo_table_writer_t * w, const graphdemo_album_t * value )
 {
-    if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->name_length && value->name_length <= 16 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7379,7 +7379,7 @@ static SCHEMA_UNUSED int graphdemo_album_save_body( graphdemo_table_writer_t * w
 {
     (void) value;
     { /* name */
-        if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->name_length && value->name_length <= 16 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_writer_header_at( w, 37, 0xc4bcadba8e631b86ull, 12 );
@@ -8202,8 +8202,7 @@ static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag__retain( graphdemo_table
 {
     (void)retention;
 
-    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -8228,8 +8227,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body_retain( graphdemo_table_writer
     }
     { /* tag */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->tag_length && value->tag_length <= 8 );
         if ( value->tag_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -8430,8 +8428,7 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label__retain( graphdemo
 {
     (void)retention;
 
-    if ( value->label_length < 0 || value->label_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->label_length && value->label_length <= 16 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -8453,8 +8450,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body_retain( graphdemo_table_wr
     }
     { /* label */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->label_length < 0 || value->label_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->label_length && value->label_length <= 16 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
@@ -8652,8 +8648,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name__retain( graphdemo
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -8675,8 +8670,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_save_body_retain( graphdemo_table_w
     }
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,1,0);
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -8882,8 +8876,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label__retain( graphdem
 {
     (void)retention;
 
-    if ( value->label_length < 0 || value->label_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->label_length && value->label_length <= 12 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -8896,8 +8889,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_save_body_retain( graphdemo_table_w
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* label */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->label_length < 0 || value->label_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->label_length && value->label_length <= 12 );
         if ( value->label_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x39f7fcec8fcb623dull , retention);
@@ -9267,8 +9259,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 24 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 24 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9277,8 +9268,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_layers__retain( graphdemo_t
 {
     (void)retention;
 
-    if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     int32_t i;
     graphdemo_table_writer_put8( w, 13 );
     graphdemo_table_writer_leb( w, (uint64_t) value->layers_count );
@@ -9314,8 +9304,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 24 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 24 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -9432,8 +9421,7 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body_retain( graphdemo_table_write
     }
     { /* layers */
     retention=graphdemo_table_retain_step(body_keep,7,0);
-        if ( value->layers_count < 0 || value->layers_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
         if ( value->layers_count > 0 )
         {
             graphdemo_table_retain_writer_id( w, 0x4554e34a747022dfull , retention);
@@ -9848,8 +9836,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 12 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9926,8 +9913,7 @@ static SCHEMA_UNUSED int graphdemo_depot_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 12 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -10237,8 +10223,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_wire_name__retain( graphdemo_tab
 {
     (void)retention;
 
-    if ( value->name_length < 0 || value->name_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->name_length && value->name_length <= 16 );
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -10251,8 +10236,7 @@ static SCHEMA_UNUSED int graphdemo_album_save_body_retain( graphdemo_table_write
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* name */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->name_length < 0 || value->name_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->name_length && value->name_length <= 16 );
         if ( value->name_length != 0 )
         {
             graphdemo_table_retain_writer_id( w, 0xc4bcadba8e631b86ull , retention);
@@ -10898,7 +10882,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_graph_edges_( graphdemo_table_nu
     if (!graphdemo_table_number_slot(numbering,&value->settings,&schema_graphdemo_settings_node_type_)) { return 0; }
     if (!graphdemo_table_number_slot(numbering,&value->alias,&schema_graphdemo_list_node_node_type_)) { return 0; }
     if (!schema_graphdemo_layer_graph_edges_(numbering,&value->ground)) { return 0; }
-    if (value->layers_count<0 || value->layers_count>4) { return 0; }
+    schema_assert( 0 <= value->layers_count && value->layers_count <= 4 );
     { int32_t edge_i1; for (edge_i1=0; edge_i1<value->layers_count; edge_i1++) {
         if (!schema_graphdemo_layer_graph_edges_(numbering,&value->layers[edge_i1])) { return 0; }
     } }

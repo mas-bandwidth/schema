@@ -5690,7 +5690,7 @@ static SCHEMA_UNUSED int graphdemo_tally_load_messages(graphdemo_tally_t * value
 }
 static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label_( graphdemo_table_writer_t * w, const graphdemo_marker_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 8 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -5699,7 +5699,7 @@ static SCHEMA_UNUSED int graphdemo_marker_save_body( graphdemo_table_writer_t * 
 {
     (void) value;
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 8 );
         if ( value->label_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6238,8 +6238,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label__retain( graphdemo_t
 {
     (void)retention;
 
-    if ( value->label_length < 0 || value->label_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->label_length && value->label_length <= 8 );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6252,8 +6251,7 @@ static SCHEMA_UNUSED int graphdemo_marker_save_body_retain( graphdemo_table_writ
     graphdemo_table_retain_walk_t body_keep=retention;
     { /* label */
     retention=graphdemo_table_retain_step(body_keep,0,0);
-        if ( value->label_length < 0 || value->label_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->label_length && value->label_length <= 8 );
         if ( value->label_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;

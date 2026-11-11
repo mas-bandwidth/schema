@@ -84,7 +84,7 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), ir.TableFixedHasWriteBound(g.unit))
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit), unitHasWriteBound(g.unit))
 }
 
 const fileWireRuntime = `
@@ -670,7 +670,8 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 			g.pf("%s  table_writer_leb( w, (uint64_t)len );\n", ind)
 			g.pf("%s  table_writer_raw( w, text, len ); }\n", ind)
 		} else {
-			g.pf("%sif ( (%s).value_length < 0 || (%s).value_length > %d || !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr, val.Type.Size, expr, expr)
+			g.writeStorageBound("("+expr+").value_length", val.Type.Size, ind)
+			g.pf("%sif ( !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr)
 			g.pf("%stable_writer_leb( w, (uint64_t)(%s).value_length );\n", ind, expr)
 			g.pf("%stable_writer_raw( w, (%s).value, (%s).value_length );\n", ind, expr, expr)
 		}
@@ -681,6 +682,59 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	default:
 		g.wireScalarWrite(f, expr, ind)
 	}
+}
+
+// writeStorageBound is the WRITE-SIDE STORAGE CHECK, DEBUG-ONLY BY RULE
+// (docs/SPEC.md §5.1): a count or a length that would index past the storage
+// it describes is the programmer's error, so C holds it with schema_assert,
+// which NDEBUG removes exactly as it removes assert. A release build carries
+// no write-side check. The read side checks the same number in every build.
+func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
+	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
+}
+
+// unitHasWriteBound reports a unit whose writers carry a debug-only write
+// bound — the fixed form's, or a storage bound of the variable or message
+// form — so its header takes <assert.h> and defines schema_assert. It may
+// answer yes for a unit that emits none; it never answers no for one that
+// does.
+func unitHasWriteBound(u *ir.Unit) bool {
+	if ir.TableFixedHasWriteBound(u) {
+		return true
+	}
+	bounded := func(f *ir.Field) bool {
+		return f.Array == ir.ArrayCounted || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.IsTextList()
+	}
+	names := ir.TableClosure(u)
+	for name := range ir.TableClosureVocabulary(u) {
+		names[name] = true
+	}
+	for name := range names {
+		un := u.TableUnions[name]
+		if un == nil {
+			un = u.Unions[name]
+		}
+		if un != nil {
+			for _, v := range un.Variants {
+				if !v.Void() && bounded(v.F) {
+					return true
+				}
+			}
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if bounded(f) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (g *tableGen) wireFieldHelper(st *ir.Struct, f *ir.Field) string {
@@ -712,9 +766,9 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
 	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
-		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
+		g.writeStorageBound(expr+"_length", f.Type.Size, "    ")
 	} else if f.Array == ir.ArrayCounted {
-		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
+		g.writeStorageBound(expr+"_count", f.ArrayBound, "    ")
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -763,7 +817,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 			if val.Type.Optional {
 				g.pf("          if ( !%s[ti].value_present ) { continue; }\n", expr)
 			}
-			g.pf("          if ( %s[ti].value_length < 0 || %s[ti].value_length > %d ) { return 0; }\n", expr, expr, val.Type.Size)
+			g.writeStorageBound(expr+"[ti].value_length", val.Type.Size, "          ")
 			g.pf("          total += %s[ti].value_length;\n", expr)
 			g.pf("          if ( total > %d ) { return 0; }\n", f.TextTotal)
 			g.pf("      }\n    }\n")
@@ -887,10 +941,10 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.pf("        if ( text_len < 0 ) { return 0; }\n")
 			condition = "text_len > 0"
 		case (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || (f.Type.Kind == ir.TString && !f.Type.Blob()):
-			g.pf("        if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
+			g.writeStorageBound(expr+"_length", f.Type.Size, "        ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
-			g.pf("        if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
+			g.writeStorageBound(expr+"_count", f.ArrayBound, "        ")
 			condition = expr + "_count > 0"
 		case f.KeyEnum != "":
 			if f.Required {

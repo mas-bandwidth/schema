@@ -5426,7 +5426,7 @@ static SCHEMA_UNUSED int tabledemo_keyed_config_load_message_body(tabledemo_tabl
 static SCHEMA_UNUSED int tabledemo_score_board_load_message_body(tabledemo_table_message_reader_t *,tabledemo_score_board_t *);
 static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner_( tabledemo_table_writer_t * w, const tabledemo_team_config_t * value )
 {
-    if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }
@@ -5443,7 +5443,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body( tabledemo_table_writer
         }
     }
     { /* banner */
-        if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
         if ( value->banner_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5619,13 +5619,13 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_message_body(tabledemo_table
  }
  }
  { /* banner */
- if(value->banner_length<0 || value->banner_length>16) return 0;
+ schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
  if(value->banner_length != 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,93,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->banner_length<0 || value->banner_length>16) return 0;
+  schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
   tabledemo_table_bit_put(w,(uint64_t)value->banner_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->banner,value->banner_length);
@@ -9557,8 +9557,7 @@ static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner__retain( table
 {
     (void)retention;
 
-    if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0;
-    }
+    schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }
@@ -9583,8 +9582,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body_retain( tabledemo_table
     }
     { /* banner */
     retention=tabledemo_table_retain_step(body_keep,1,0);
-        if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0;
-        }
+        schema_assert( 0 <= value->banner_length && value->banner_length <= 16 );
         if ( value->banner_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;

@@ -3531,7 +3531,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
 #define SCHEMA_BLOCKDEMO_PADDED_ROW_TEAMS_AT(value,key) SCHEMA_BLOCKDEMO_TABLE_KEYED_AT((value).teams,(key),BLOCKDEMO_TEAM_MAX)
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_wire_label_( blockdemo_table_writer_t * w, const blockdemo_padded_row_t * value )
 {
-    if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
+    schema_assert( 0 <= value->label_length && value->label_length <= 15 );
     blockdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -3613,7 +3613,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_body( blockdemo_table_writer_
         }
     }
     { /* label */
-        if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
+        schema_assert( 0 <= value->label_length && value->label_length <= 15 );
         if ( value->label_length != 0 )
         {
             blockdemo_table_writer_header_at( w, 16, 0x39f7fcec8fcb623dull, 12 );
@@ -4079,10 +4079,10 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_
  }
  }
  { /* label */
- if(value->label_length<0 || value->label_length>15) return 0;
+ schema_assert( 0 <= value->label_length && value->label_length <= 15 );
  if(value->label_length != 0) {
   blockdemo_table_bit_put(w,9,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->label_length<0 || value->label_length>15) return 0;
+  schema_assert( 0 <= value->label_length && value->label_length <= 15 );
   blockdemo_table_bit_put(w,(uint64_t)value->label_length,4);
   blockdemo_table_bit_align_write(w);
   blockdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -4096,7 +4096,6 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_
  } }
  if(rides) {
   blockdemo_table_bit_put(w,10,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(4<0 || 4>4) return 0;
   blockdemo_table_bit_put(w,(uint64_t)4-4,0);
   { int32_t i;
   for(i=0;i<4;i++) {
@@ -4427,7 +4426,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_messages(blockdemo_padded_row
 }
 static SCHEMA_UNUSED int schema_blockdemo_padded_frame_wire_rows_( blockdemo_table_writer_t * w, const blockdemo_padded_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; }
+    schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->rows_count );
     for ( i = 0; i < value->rows_count; i++ )
@@ -4469,7 +4468,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_wire_rows_( blockdemo_tab
 
 static SCHEMA_UNUSED int schema_blockdemo_padded_frame_wire_blob_( blockdemo_table_writer_t * w, const blockdemo_padded_frame_t * value )
 {
-    if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; }
+    schema_assert( 0 <= value->blob_length && value->blob_length <= 12 );
     blockdemo_table_writer_put8( w, 6 ); blockdemo_table_writer_leb( w, (uint64_t) value->blob_length );
     blockdemo_table_writer_raw( w, value->blob, value->blob_length );
     return !w->overflow;
@@ -4493,7 +4492,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_body( blockdemo_table_write
         }
     }
     { /* rows */
-        if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; }
+        schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
         if ( value->rows_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 48, 0xa3a7061ff10a8138ull, 14 );
@@ -4514,7 +4513,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_body( blockdemo_table_write
         }
     }
     { /* blob */
-        if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; }
+        schema_assert( 0 <= value->blob_length && value->blob_length <= 12 );
         if ( value->blob_length != 0 )
         {
             blockdemo_table_writer_header_at( w, 64, 0xc573b39bc29148caull, 14 );
@@ -4772,10 +4771,10 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* rows */
- if(value->rows_count<0 || value->rows_count>64) return 0;
+ schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
  if(value->rows_count>0) {
   blockdemo_table_bit_put(w,3,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->rows_count<0 || value->rows_count>64) return 0;
+  schema_assert( 0 <= value->rows_count && value->rows_count <= 64 );
   blockdemo_table_bit_put(w,(uint64_t)value->rows_count-0,7);
   { int32_t i;
   for(i=0;i<value->rows_count;i++) {
@@ -4784,10 +4783,10 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* blob */
- if(value->blob_length<0 || value->blob_length>12) return 0;
+ schema_assert( 0 <= value->blob_length && value->blob_length <= 12 );
  if(value->blob_length != 0) {
   blockdemo_table_bit_put(w,4,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->blob_length<0 || value->blob_length>12) return 0;
+  schema_assert( 0 <= value->blob_length && value->blob_length <= 12 );
   blockdemo_table_bit_put(w,(uint64_t)value->blob_length,4);
   blockdemo_table_bit_align_write(w);
   blockdemo_table_bit_putbytes(w,value->blob,value->blob_length);

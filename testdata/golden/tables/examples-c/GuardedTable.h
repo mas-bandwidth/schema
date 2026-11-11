@@ -5334,7 +5334,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_extent_(tabledemo_table_re
 static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tabledemo_table_reader_t * r);
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note_( tabledemo_table_writer_t * w, const tabledemo_patrol_t * value )
 {
-    if ( value->note_length < 0 || value->note_length > 8 ) { return 0; }
+    schema_assert( 0 <= value->note_length && value->note_length <= 8 );
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -5394,7 +5394,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body( tabledemo_table_writer_t * 
     { /* note */
     if ( !value->active )
     {
-        if ( value->note_length < 0 || value->note_length > 8 ) { return 0; }
+        schema_assert( 0 <= value->note_length && value->note_length <= 8 );
         if ( value->note_length != 0 )
         {
             tabledemo_table_writer_header_at( w, 37, 0x3bf8fbbad1587cddull, 12 );
@@ -5589,8 +5589,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note__retain( tabledemo_ta
 {
     (void)retention;
 
-    if ( value->note_length < 0 || value->note_length > 8 ) { return 0;
-    }
+    schema_assert( 0 <= value->note_length && value->note_length <= 8 );
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -5666,8 +5665,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body_retain( tabledemo_table_writ
     retention=tabledemo_table_retain_step(body_keep,5,0);
     if ( !value->active )
     {
-        if ( value->note_length < 0 || value->note_length > 8 ) { return 0;
-        }
+        schema_assert( 0 <= value->note_length && value->note_length <= 8 );
         if ( value->note_length != 0 )
         {
             tabledemo_table_retain_writer_id( w, 0x3bf8fbbad1587cddull , retention);

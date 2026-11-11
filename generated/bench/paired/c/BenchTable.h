@@ -6585,7 +6585,7 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_load_messages(bench_mixed_pick
 }
 static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_entities_( bench_table_writer_t * w, const bench_bench_mixed_t * value, int64_t * element_sizes )
 {
-    if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
+    schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
     int32_t i;
     bench_table_writer_put8( w, 13 ); bench_table_writer_leb( w, (uint64_t) value->entities_count );
     for ( i = 0; i < value->entities_count; i++ )
@@ -6627,7 +6627,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_entities_( bench_table_wr
 
 static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_stats_( bench_table_writer_t * w, const bench_bench_mixed_t * value, int64_t * element_sizes )
 {
-    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
+    schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
     int32_t i;
     bench_table_writer_put8( w, 13 ); bench_table_writer_leb( w, (uint64_t) value->stats_count );
     for ( i = 0; i < value->stats_count; i++ )
@@ -6680,14 +6680,14 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_loadout_( bench_table_wri
 
 static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_player_name_( bench_table_writer_t * w, const bench_bench_mixed_t * value )
 {
-    if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
+    schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
     bench_table_writer_raw( w, value->player_name, value->player_name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_bench_bench_mixed_wire_payload_( bench_table_writer_t * w, const bench_bench_mixed_t * value )
 {
-    if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
+    schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
     bench_table_writer_put8( w, 6 ); bench_table_writer_leb( w, (uint64_t) value->payload_length );
     bench_table_writer_raw( w, value->payload, value->payload_length );
     return !w->overflow;
@@ -6769,7 +6769,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         }
     }
     { /* entities */
-        if ( value->entities_count < 0 || value->entities_count > 8 ) { return 0; }
+        schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
         if ( value->entities_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6791,7 +6791,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         }
     }
     { /* stats */
-        if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
+        schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
         if ( value->stats_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6843,7 +6843,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         }
     }
     { /* player_name */
-        if ( value->player_name_length < 0 || value->player_name_length > 15 ) { return 0; }
+        schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
         if ( value->player_name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6864,7 +6864,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
         }
     }
     { /* payload */
-        if ( value->payload_length < 0 || value->payload_length > 16 ) { return 0; }
+        schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
         if ( value->payload_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -8278,13 +8278,13 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  }
  { /* entities */
- if(value->entities_count<0 || value->entities_count>8) return 0;
+ schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
  if(value->entities_count>0) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,10,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->entities_count<0 || value->entities_count>8) return 0;
+  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
   bench_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -8293,13 +8293,13 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  }
  { /* stats */
- if(value->stats_count<0 || value->stats_count>80) return 0;
+ schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
  if(value->stats_count>0) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,11,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->stats_count<0 || value->stats_count>80) return 0;
+  schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
   bench_table_bit_put(w,(uint64_t)value->stats_count-0,7);
   { int32_t i;
   for(i=0;i<value->stats_count;i++) {
@@ -8327,7 +8327,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,13,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(4<0 || 4>4) return 0;
   bench_table_bit_put(w,(uint64_t)4-4,0);
   bench_table_bit_align_write(w);
   { int32_t i;
@@ -8337,26 +8336,26 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  }
  { /* player_name */
- if(value->player_name_length<0 || value->player_name_length>15) return 0;
+ schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
  if(value->player_name_length != 0) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,14,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->player_name_length<0 || value->player_name_length>15) return 0;
+  schema_assert( 0 <= value->player_name_length && value->player_name_length <= 15 );
   bench_table_bit_put(w,(uint64_t)value->player_name_length,4);
   bench_table_bit_align_write(w);
   bench_table_bit_putbytes(w,value->player_name,value->player_name_length);
  }
  }
  { /* payload */
- if(value->payload_length<0 || value->payload_length>16) return 0;
+ schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
  if(value->payload_length != 0) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,15,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->payload_length<0 || value->payload_length>16) return 0;
+  schema_assert( 0 <= value->payload_length && value->payload_length <= 16 );
   bench_table_bit_put(w,(uint64_t)value->payload_length,5);
   bench_table_bit_align_write(w);
   bench_table_bit_putbytes(w,value->payload,value->payload_length);
