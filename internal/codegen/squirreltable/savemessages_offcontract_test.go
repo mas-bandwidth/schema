@@ -47,6 +47,7 @@ fixed table Root
     r     int32 | min = -5, max = 5
     b     bits(6)
     xs    [..3]int16
+    fx    [2]int16
     s     string(4)
     mode  Mode
     arm   Arm
@@ -78,6 +79,13 @@ func ocElem(v int64) func(*testing.T, *tabletext.Model, *tabletext.Instance) {
 	return func(t *testing.T, _ *tabletext.Model, inst *tabletext.Instance) {
 		f := nfField(t, inst, "xs")
 		f.Count = 1
+		f.Elems[0].I, f.Elems[0].U = v, uint64(v)
+	}
+}
+
+func ocFixedFirst(v int64) func(*testing.T, *tabletext.Model, *tabletext.Instance) {
+	return func(t *testing.T, _ *tabletext.Model, inst *tabletext.Instance) {
+		f := nfField(t, inst, "fx")
 		f.Elems[0].I, f.Elems[0].U = v, uint64(v)
 	}
 }
@@ -150,6 +158,11 @@ func offContractRows() []offContractRow {
 		// a value of the wrong Squirrel type (Go's cells cannot hold one)
 		{"type_int_string", nil, ocInt("r", 1), `v.R = "1";`, "v.R = 1;", "w.R == 1"},
 		{"type_int_float", nil, ocInt("small", 1), "v.Small = 1.5;", "v.Small = 1;", "w.Small == 1"},
+		{"type_int_float_default", nil, ocInt("r", 5), "v.R = 0.0;", "v.R = 5;", "w.R == 5"},
+		{"type_bits_float_default", nil, ocInt("b", 63), "v.B = 0.0;", "v.B = 63;", "w.B == 63"},
+		{"type_int8_float_default", nil, ocInt("small", 127), "v.Small = 0.0;", "v.Small = 127;", "w.Small == 127"},
+		{"type_elem_float_default", nil, ocElem(32767), "v.Xs = [0.0];", "v.Xs = [32767];", "w.Xs.len() == 1 && w.Xs[0] == 32767"},
+		{"type_fixed_elem_float_default", nil, ocFixedFirst(32767), "v.Fx = [0.0, 0];", "v.Fx = [32767, 0];", "w.Fx[0] == 32767 && w.Fx[1] == 0"},
 		{"type_bits_bool", nil, ocInt("b", 1), "v.B = true;", "v.B = 1;", "w.B == 1"},
 		{"type_optional_string", nil, ocOpt(7), `v.OptPresent = true; v.Opt = "7";`, "v.OptPresent = true; v.Opt = 7;", "w.OptPresent && w.Opt == 7"},
 		{"type_text_int", nil, ocText("5"), "v.S = 5;", `v.S = "5";`, `w.S == "5"`},

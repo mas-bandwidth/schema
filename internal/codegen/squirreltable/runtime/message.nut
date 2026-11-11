@@ -392,7 +392,10 @@ local defaultValue = function(fd, value, owner) {
       }
       return true;
     }
-    for (local i = 0; i < value.len(); i++) if (value[i] != fd.elem.def) return false;
+    for (local i = 0; i < value.len(); i++) {
+      if (typeof fd.elem.def == "integer" && typeof value[i] != "integer") return false;
+      if (value[i] != fd.elem.def) return false;
+    }
     return true;
   }
   if (fd.shape == "union") return isRecord(value) && ("Type" in value) && value.Type == 0;
@@ -408,6 +411,8 @@ local defaultValue = function(fd, value, owner) {
     if (fd.f32) return messageNarrowF32(value.tofloat()) == messageNarrowF32(fd.def.tofloat());
     return castf2i(value.tofloat()) == castf2i(fd.def.tofloat());
   }
+  // an integer default is never matched by a float: the write refuses it
+  if (typeof fd.def == "integer" && typeof value != "integer") return false;
   return value == fd.def;
 };
 
