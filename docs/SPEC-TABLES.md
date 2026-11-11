@@ -6671,14 +6671,16 @@ message, fixed, variable and text forms:
   value `0` itself where the form carries the float, and the INDEX OF 0 FOR
   THAT RANGE where the form quantizes, which decodes to the grid point the
   rule chooses for `0`. No sign bit is kept and nothing is counted, because the
-  value is inside the range and only its spelling differs.
+  value is inside the range and only its spelling differs. On the write side
+  the writer stores `+0` for a compressed float's `-0`, the same bits it stores
+  for `+0` (ruled 2026-11-10, docs/rulings.json fixed-compressed-negzero).
 
 Where each refusal runs is each form's own:
 
 | form | where a NaN, an infinity, a finite value past an end and a `-0` are held |
 | --- | --- |
 | MESSAGE (§3.3) | the WRITER: a NaN, an infinity and a finite value past either end are refused (`-1`, `non_finite_float` or `invalid_value`) before the quantizer runs. The reader sees only an index, refuses one above `count` as damage, and decodes a value inside `[min, max]` |
-| FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end against the WRITER's range the plan carries (`out_of_range`, refused) |
+| FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end against the WRITER's range the plan carries (`out_of_range`, refused); a `-0` lands as `+0`, uncounted, and the WRITER stores `+0` for it |
 | VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then a finite one outside the reader's declared range (§4), `out_of_range` |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
 

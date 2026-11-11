@@ -226,6 +226,11 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
+**A COMPRESSED FLOAT'S `-0` IS `+0` ON THE WIRE** (docs/SPEC-TABLES.md §3.3, docs/rulings.json
+fixed-compressed-negzero): the writer stores `+0` for a compressed float's `-0`, the same bits it stores for
+`+0`. It keeps no sign bit and counts nothing. A PLAIN `float32`/`float64`'s `-0` is not this rule's: it is
+carried bit-exact.
+
 **The whole write contract, per leg and per build, is [SPEC.md](SPEC.md) §5.1.** **Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
 and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
 and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
@@ -425,7 +430,9 @@ rest (§5.8 row 4).
 - **A RANGED SCALAR** outside the min and max the plan carries: `REFUSE out_of_range`, naming the field.
   **A fixed-point field's bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by
   `F` first; a `bits(N)` past `2^N - 1` refuses by the same name. A COMPRESSED FLOAT is a ranged scalar
-  here, its range carried by the plan like any other. **Every element of a ranged FIXED ARRAY is refused the
+  here, its range carried by the plan like any other. **Its `-0` is `+0`:** the bounds pass lands it as
+  exactly what `+0` lands as, refuses nothing and counts nothing, because only the sign differs
+  (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero). **Every element of a ranged FIXED ARRAY is refused the
   same as a scalar**, each by the same name. **The comparison is in the field's own type**: signed for a
   signed kind, UNSIGNED for an unsigned one, so a `uint64` at or above `2^63` is past the max and refuses.
 - **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant (the `ordinal` op's

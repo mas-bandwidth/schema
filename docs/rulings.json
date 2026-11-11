@@ -189,6 +189,14 @@
       "source": "recorded in docs/SPEC-TABLES.md §3.3 and docs/roadmap.sexp; the maintainer's ruling that table floats are finite-only too."
     },
     {
+      "id": "fixed-compressed-negzero",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a compressed float's negative zero reads as +0 and is written as +0"
+      ],
+      "source": "ruled 2026-11-10 for both sides; it narrows the tables-finite-only sentence \"-0 and subnormals kept\" for compressed floats: a compressed float's negative zero reads as +0 and is written as +0, while a plain float's -0 is carried bit-exact."
+    },
+    {
       "id": "target-name-safety",
       "date": "2026-10-21",
       "quotes": [
