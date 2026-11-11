@@ -179,6 +179,21 @@ local scalarDefault = function(val, def) {
   }
   return scalarEqual(val, def);
 };
+// a scalar elides at its default only when it is of its declared Squirrel
+// type: an integer or flags is an integer (the two-integer array at width
+// 16) and a bool a bool, so a float equal to an integer default goes on to
+// the writer, which refuses it
+local typedDefault = function(d, val) {
+  if (d.shape == "int" || d.shape == "flags") {
+    if (d.width == 16) {
+      if (typeof val != "array" || val.len() != 2 ||
+          typeof val[0] != "integer" || typeof val[1] != "integer") return false;
+    } else if (typeof val != "integer") return false;
+  } else if (d.shape == "bool" && typeof val != "bool") return false;
+  return scalarDefault(val, d.def);
+};
+// a bytes value is a blob or a string; anything else is refused before its length
+local bytesValue = function(val) { return typeof val == "blob" || typeof val == "string"; };
 
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
@@ -608,7 +623,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       } else if (e.shape == "float") {
         rides = !floatIsDefault(e, val[i], e.def);
       } else {
-        rides = !scalarDefault(val[i], e.def);
+        rides = !typedDefault(e, val[i]);
       }
       // a slot whose only content is a retained field is not its default
       // (§6.6): it rides on the retained tail like any declared field would
@@ -671,7 +686,7 @@ local arrayRides = function(fd, val) {
     return false;
   }
   for (local i = 0; i < n; i++) {
-    if (!scalarDefault(val[i], e.def)) return true;
+    if (!typedDefault(e, val[i])) return true;
   }
   return false;
 };
@@ -727,6 +742,7 @@ writeBare = function(T, d, val, w, ids, nodes, root, holder = null, key = null) 
     return true;
   }
   if (shape == "bytes") {
+    if (!bytesValue(val)) return refuseValue(w);
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
@@ -821,6 +837,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
     return true;
   }
   if (shape == "bytes") {
+    if (!bytesValue(val)) return refuseValue(w);
     if (!always && blobEqString(val, d.def)) return true;
     if (val.len() > d.bound) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
@@ -865,7 +882,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key
   if (!always) {
     if (shape == "float") {
       if (floatIsDefault(d, val, d.def)) return true;
-    } else if (scalarDefault(val, d.def)) {
+    } else if (typedDefault(d, val)) {
       return true;
     }
   }

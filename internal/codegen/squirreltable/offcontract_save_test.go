@@ -16,12 +16,15 @@ import (
 // (docs/SPEC.md §5.1): a ranged integer, a bits(N), a counted array, a bounded
 // string and bytes, an enum, a union, a ranged float, a bare signed and
 // unsigned integer, a *string, a []string text list, a map with a text key, a
-// bool and an enum-keyed float array.
+// bool and an enum-keyed float array; an integer with a nonzero default, a
+// fixed and an enum-keyed integer array, and a union with a bytes arm.
 const offContractSaveSchema = `package probe
 
 enum Mode { Idle, Run, Fly }
 
 union Arm { k int32 }
+
+union Pack { b bytes(4) }
 
 table Root
 {
@@ -40,6 +43,10 @@ table Root
     lookup map[string]int32
     flag bool
     weights [Mode]float32
+    five int32 = 5
+    trio [3]int8
+    slots [Mode]int8
+    pack Pack
 }
 `
 
@@ -318,6 +325,41 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 			name:   "flag_integer",
 			goGood: func(_ *tabletext.Model, inst *tabletext.Instance) { field(inst, "flag").Cell.B = true },
 			nutBad: "v.Flag = 1;", nutGood: "v.Flag = true;",
+		},
+		// a wrong Squirrel type equal in value to the field's default is still
+		// the wrong type: it never elides as the default, it is refused
+		{
+			name:   "int8_float_zero",
+			nutBad: "v.Small = 0.0;", nutGood: "v.Small = 0;",
+		},
+		{
+			name:   "int32_float_default",
+			nutBad: "v.Five = 5.0;", nutGood: "v.Five = 5;",
+		},
+		{
+			name:   "trio_float_zero",
+			nutBad: "v.Trio[0] = 0.0;", nutGood: "v.Trio[0] = 0;",
+		},
+		{
+			name:   "slots_float_zero",
+			nutBad: "v.Slots[1] = 0.0;", nutGood: "v.Slots[1] = 0;",
+		},
+		{
+			name:   "flag_integer_zero",
+			nutBad: "v.Flag = 0;", nutGood: "v.Flag = false;",
+		},
+		// a bytes field or arm holding a value that is not a blob
+		{
+			name:   "raw_integer",
+			nutBad: "v.Raw = 7;", nutGood: "v.Raw = blob(4);",
+		},
+		{
+			name:   "raw_float",
+			nutBad: "v.Raw = 1.5;", nutGood: "v.Raw = blob(4);",
+		},
+		{
+			name:   "pack_integer",
+			nutBad: "v.Pack.Type = 1; v.Pack.B = 7;", nutGood: "v.Pack.Type = 1; v.Pack.B = blob(4);",
 		},
 	}
 	for _, location := range []string{"name", "text", "names", "lookup"} {
