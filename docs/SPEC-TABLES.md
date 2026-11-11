@@ -4934,12 +4934,13 @@ one document rather than two.
   the root included: the whole load refuses `wire_damaged` and nothing is kept (§4).
 
   **A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD**, and that holds for a
-  kind `13` field, an array element, a map entry and an arm whose payload is a body alike. The zero
+  kind `13` field, an array element, a map entry, an arm whose payload is a body
+  and a node record (§3.1) alike. The zero
   reference is the last byte of the payload's `L`. A terminator that arrives
   earlier leaves bytes inside `L` that no field claims, and a terminator that
   does not arrive by `L` leaves the body unended; both are damage, the whole
-  load refuses `wire_damaged` and nothing is kept (§4). A map entry, an array element
-  and an arm are held to this exactly as a field is.
+  load refuses `wire_damaged` and nothing is kept (§4). A map entry, an array element,
+  an arm and a node record (§3.1) are held to this exactly as a field is.
 
   **AN ARM HEADER IS A FIELD HEADER**: the arm id reference, the arm's KIND
   byte, `L`, then `L` bytes of arm payload. One framing serves a field and an
