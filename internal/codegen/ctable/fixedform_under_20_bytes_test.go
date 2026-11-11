@@ -2,11 +2,11 @@ package ctable
 
 // TestCFixedFormUnder20Bytes is F7 of schema#876, the fixed_form_under_20_bytes
 // row: a file shorter than the twenty-byte header is MALFORMED, and no leg
-// tested it — a gap on all nine. The two answers are `refused` (plus a `reason`
-// name) and `malformed`, and they are NEVER both set; `reason` stays UNTOUCHED
-// here because a short file is the residue of a truncation, not a refusal by
-// name, so asserting layout_malformed would be wrong — that name is for a KNOWN
-// hash whose bytes lie. The destination is proved untouched by memcmp against
+// tested it — a gap on all nine. A short file is FRAMING DAMAGE: the strict
+// report refuses it `wire_damaged`, so `reason` stays UNTOUCHED — a short file
+// is the residue of a truncation, not a refusal by a layout name, and asserting
+// layout_malformed would be wrong — that name is for a KNOWN hash whose bytes
+// lie. The destination is proved untouched by memcmp against
 // `fresh`, the reader's own default image, memcpy'd back into slot 0 before
 // every short read.
 //
@@ -37,19 +37,19 @@ func TestCFixedFormUnder20Bytes(t *testing.T) {
 
 	body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "under20: the full-length file did not read: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
-    if ( r.refused || r.refused || r.reason != 0 )
-        { printf( "under20: the full-length file must read clean: malformed=%%d refused=%%d reason=%%d\n", r.refused, r.refused, r.reason ); return 1; }
+    if ( r.refused || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK )
+        { printf( "under20: the full-length file must read clean: refused=%%d reason=%%d rr=%%d\n", r.refused, r.reason, r.refuse_reason ); return 1; }
     for ( k = 0; k < kTableFixedHeaderBytes + 4; ++k )
     {
         memset( &r, 0, sizeof( r ) );
         memcpy( &back[0], &fresh, sizeof( fresh ) ); /* the sentinel: the reader's own default image */
         n = %s( back, 8, data, k, plan, 4096, NULL, &r );
-        if ( n != -1 ) { printf( "under20: at k=%%d a file shorter than the header is malformed, not n=%%lld\n", k, (long long) n ); return 1; }
-        if ( r.refused != 1 ) { printf( "under20: at k=%%d malformed=%%d, not 1\n", k, r.refused ); return 1; }
-        if ( r.refused ) { printf( "under20: at k=%%d a short file is the residue, never refused by name: refused=%%d\n", k, r.refused ); return 1; }
-        if ( r.reason != 0 ) { printf( "under20: at k=%%d reason stays untouched, not %%d\n", k, r.reason ); return 1; }
-        if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
-            { printf( "under20: at k=%%d MALFORMED is total: no counter moves (w=%%d u=%%d km=%%d c=%%d d=%%d)\n", k, r.widened, r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
+        if ( n != -1 ) { printf( "under20: at k=%%d a file shorter than the header refuses, not n=%%lld\n", k, (long long) n ); return 1; }
+        if ( r.refused != 1 ) { printf( "under20: at k=%%d refused=%%d, not 1\n", k, r.refused ); return 1; }
+        if ( r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+            { printf( "under20: at k=%%d a short file is framing damage: reason=%%d rr=%%d\n", k, r.reason, r.refuse_reason ); return 1; }
+        if ( r.widened != 0 || r.unknown != 0 || r.layout_hash != 0 )
+            { printf( "under20: at k=%%d FRAMING DAMAGE is total: no counter moves (w=%%d u=%%d hash=%%llx)\n", k, r.widened, r.unknown, (unsigned long long) r.layout_hash ); return 1; }
         if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "under20: at k=%%d a malformed read wrote destination bytes\n", k ); return 1; }
     }
 `, load)

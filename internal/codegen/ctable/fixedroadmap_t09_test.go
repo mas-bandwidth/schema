@@ -8,7 +8,7 @@ package ctable
 // task id, table-driven, t.Parallel() first, and every one of them is a
 // [capability]: the leg WRITES a non-default or boundary value, READS it back,
 // and asserts the loaded value — and, where the declaration bounds the field,
-// the read-side clamp at each declared bound.
+// the whole-load `out_of_range` refusal past each declared bound.
 //
 // THE LAW IS docs/SPEC-TABLES.md §3.4: "EVERY FIELD RIDES AS ITS DECLARED
 // STORAGE IMAGE, LITTLE-ENDIAN, AT ITS DECLARED STORAGE WIDTH, AND NOTHING IS
@@ -16,15 +16,16 @@ package ctable
 // width — int8..int64 are 1/2/4/8 bytes, `bits(N)` its declared storage width,
 // float32/float64 are 4/8, a compressed float is 4 ("it rides as the float,
 // not as a quantized index"), `fixed(I,F)`/`ufixed(I,F)` the raw scaled
-// integer, and `flags` 8. A bounded field clamps on LOAD to the reader's own
-// declared bound and counts `clamped`; the fixed record is positional, so the
-// read loop copies bytes and the bounds pass runs straight-line over storage
-// after the copy (docs/SPEC-TABLES.md §3.4, the read-side bounds in
-// fixedform.go). What the card's roadmap task carries as `:remaining` is
-// exactly "exact round-trip values ... signedness edges" and "read/write
-// assertions with non-default values and boundary cases; map the invoked test
-// to an execution receipt" — so every subtest here compiles and RUNS the
-// generated codec, and its assertion is the round trip, not the emitted text.
+// integer, and `flags` 8. A bounded field read past the reader's own declared
+// bound refuses the whole load `out_of_range` in the report's refuse_reason;
+// the fixed record is positional, so the read loop copies bytes and the bounds
+// pass runs straight-line over storage after the copy (docs/SPEC-TABLES.md
+// §3.4, the read-side bounds in fixedform.go). What the card's roadmap task
+// carries as `:remaining` is exactly "exact round-trip values ... signedness
+// edges" and "read/write assertions with non-default values and boundary cases;
+// map the invoked test to an execution receipt" — so every subtest here compiles
+// and RUNS the generated codec, and its assertion is the round trip, not the
+// emitted text.
 //
 // THE WIDE ROWS RESOLVE THE SIBLING AT RUNTIME, NEVER ON A RECORDED STRING.
 // int128/uint128 storage — and ufixed(I,F) with I+F=128, the only fixed width
@@ -78,8 +79,8 @@ const t09Check = `#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s
 
 // TestFixedRoadmapCT09IntegersFloats proves each value row by a compiled
 // round trip: save a value holding non-default and boundary bytes, load it
-// back, and assert the loaded value (and report.clamped at each declared
-// bound).
+// back, and assert the loaded value (and an `out_of_range` refusal past each
+// declared bound).
 func TestFixedRoadmapCT09IntegersFloats(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 

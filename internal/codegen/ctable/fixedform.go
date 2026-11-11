@@ -610,9 +610,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   UNGUARDED ENTRIES\n")
 	g.pf("   FIRST, then the arms: the entries that are nearly all of a plan never\n")
 	g.pf("   test a guard at all. */\n")
-	// THE EMITTED PLAN IS THE COALESCED PLAN, SPLIT ONLY WHERE A COPY ENTRY
-	// SPANS LEAVES OF DIFFERENT WIDTHS, so a big-endian copy knows its element
-	// width (see fixedCopySegments). The split count is the new guarded split.
+	// THE PLAN IS BUILT COALESCED, THEN SPLIT WHERE A COPY ENTRY SPANS LEAVES
+	// OF DIFFERENT WIDTHS, so a big-endian copy knows its element width (see
+	// fixedCopySegments). A split that changes the entry count or the guarded
+	// split would also change the plan's published order. That
+	// order is load-bearing where a TEXT entry rides under a union's guard: its
+	// ordinal lane and its flavour lane must stay the two facts the reference
+	// publishes (docs/SPEC-TABLES.md §3.4, the UT1/UT2 pair). For those plans
+	// both forms are emitted behind the host-order test: the little-endian
+	// branch keeps the coalesced order, and the big-endian branch (or a host
+	// compiling the forced control) gets the per-width segments. A plan with no
+	// guarded text entry has no such lane to preserve, so it keeps the split
+	// segments on both hosts.
 	intervals := fixedSrcIntervals(entries)
 	type emitEntry struct {
 		e    ir.TableFixedLeaf
@@ -637,43 +646,69 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	if guarded >= len(plan) {
 		emitGuarded = len(emitPlan)
 	}
-	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
-	for _, ee := range emitPlan {
-		e := ee.e
-		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
-		if e.Guard != ir.TableFixedNoGuard {
-			guard = fmt.Sprintf("%du", e.Guard)
+	emitPlanRows := func(rows []emitEntry) {
+		g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
+		for _, ee := range rows {
+			e := ee.e
+			guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
+			if e.Guard != ir.TableFixedNoGuard {
+				guard = fmt.Sprintf("%du", e.Guard)
+			}
+			argw := e.ArgW
+			if argw == 0 {
+				argw = 1
+			}
+			argw2 := e.ArgW2
+			if argw2 == 0 {
+				argw2 = 1
+			}
+			// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
+			// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
+			guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
+			if e.Guard2 != ir.TableFixedNoGuard {
+				guard2 = fmt.Sprintf("%du", e.Guard2)
+			}
+			// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
+			// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
+			// which is every unguarded and singly-nested entry. The offset is a BYTE
+			// OFFSET from the pool's base — the identity pool is this static array,
+			// a compiled plan's pool is laid in the plan's own storage, one rule.
+			guardIndex := "0"
+			if e.GuardCount > 0 {
+				guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
+			}
+			g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, /* %s */\n",
+				e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
+				e.GuardCount, guardIndex, ee.elem, e.Note)
 		}
-		argw := e.ArgW
-		if argw == 0 {
-			argw = 1
-		}
-		argw2 := e.ArgW2
-		if argw2 == 0 {
-			argw2 = 1
-		}
-		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
-		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
-		guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
-		if e.Guard2 != ir.TableFixedNoGuard {
-			guard2 = fmt.Sprintf("%du", e.Guard2)
-		}
-		// THE GUARD CHAIN (§5.8 row 6): offset+count into the pool emitted
-		// below, OUTERMOST FIRST. Zero count is "the two inline lanes only",
-		// which is every unguarded and singly-nested entry. The offset is a BYTE
-		// OFFSET from the pool's base — the identity pool is this static array,
-		// a compiled plan's pool is laid in the plan's own storage, one rule.
-		guardIndex := "0"
-		if e.GuardCount > 0 {
-			guardIndex = fmt.Sprintf("%d * (int) sizeof( TableFixedGuardLink )", e.GuardIndex)
-		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d, %d, %s, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2,
-			e.GuardCount, guardIndex, ee.elem, e.Note)
+		g.pf("};\n")
 	}
-	g.pf("};\n")
-	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
-	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
+	guardedText := false
+	for _, e := range plan {
+		if e.Op == ir.TableFixedOpText && (e.Guard != ir.TableFixedNoGuard || e.Guard2 != ir.TableFixedNoGuard) {
+			guardedText = true
+			break
+		}
+	}
+	if guardedText && (len(emitPlan) != len(plan) || emitGuarded != guarded) {
+		g.pf("#if !( defined( SCHEMA_TABLE_FIXED_FORCE_BIG_ENDIAN ) || ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) )\n")
+		plain := make([]emitEntry, len(plan))
+		for i, e := range plan {
+			plain[i] = emitEntry{e, 0}
+		}
+		emitPlanRows(plain)
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, guarded)
+		g.pf("#else\n")
+		emitPlanRows(emitPlan)
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
+		g.pf("#endif\n")
+	} else {
+		emitPlanRows(emitPlan)
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(emitPlan))
+		g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n", n, emitGuarded)
+	}
 	// THE GUARD POOL: the (guard, arg, argw) links every chain above points
 	// into, OUTERMOST FIRST, the only bound the layout's 64 (§5.8 row 6).
 	g.pf("static SCHEMA_UNUSED const TableFixedGuardLink %s_fixed_guards[] = {\n", n)
@@ -958,7 +993,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
-		g.pf("        report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
+		g.pf("        report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
 		g.pf("        report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
 		g.pf("        return -1;\n    }\n")
 		g.pf("    bytes -= 4;\n")

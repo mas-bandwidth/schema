@@ -188,12 +188,12 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 		}
 	})
 
-	// c/C3 "text length clamp" (docs/SPEC-TABLES.md §3.4, the `text` op of
-	// docs/FIXED-FORM-ALGORITHM.md §5.4: the length is clamped into [0, cap] and
-	// `clamped` counts once per entry). The generated C is self-contained — no
-	// sibling runtime, no oracle — so this one RUNS: save a value whose used
-	// length is the bound, forge the length word past it, and read the clamp
-	// landing the whole payload with `clamped == 1`.
+	// c/C3 "text length bound" (docs/SPEC-TABLES.md §3.4, the `text` op of
+	// docs/FIXED-FORM-ALGORITHM.md §5.4 under the strict read: a length word
+	// past the cap refuses the whole load `out_of_range`). The generated C is
+	// self-contained — no sibling runtime, no oracle — so this one RUNS: save a
+	// value whose used length is the bound, forge the length word past it, and
+	// read the refusal, which lands nothing.
 	t.Run("c/C3", func(t *testing.T) {
 		t.Parallel()
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
@@ -228,8 +228,8 @@ int main(void)
 	// c/R16 "§5.4's counters exactly" (docs/FIXED-FORM-ALGORITHM.md §5.4): the
 	// compile census counts unknown once per endpoint and lands once, after the
 	// record loop, never per record; a widened field counts one widened per
-	// entry per record; a forged ordinal past the writer's set lands None and
-	// counts clamped on BOTH plans (the ordinal op and the unguarded None
+	// entry per record; a forged ordinal past the writer's set refuses
+	// `out_of_range` on BOTH plans (the ordinal op and the unguarded None
 	// const); copy/const/present move nothing.
 	t.Run("c/R16", func(t *testing.T) {
 		t.Parallel()
@@ -387,8 +387,8 @@ int main(void)
     CHECK(!r.refused);
     CHECK(out.s_length == 2 && memcmp(out.s, "ab", 2) == 0);
     /* clauses 1 AND 2 TOGETHER: the length forged past the bound AND the used
-       bytes ill-formed — the clamp and the refusal on the SAME record. REFUSE
-       is total (§5.8), so the length clamp must not move a counter. */
+       bytes ill-formed — two faults on the SAME record. REFUSE is total
+       (§5.8): the length bound refuses, and no value lands. */
     texty_reset(&value);
     value.s_length = 5;
     memcpy(value.s, "a\xFF" "cde", 5);

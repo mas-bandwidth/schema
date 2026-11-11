@@ -11,12 +11,13 @@ package ctable
 // The laws are docs/FIXED-FORM-ALGORITHM.md §4.5 (the scatter: count, bool and
 // present clamp/normalise) and §4.6 (the bounds pass: a ranged scalar's min and
 // max, a union tag past the arm count, an enum ordinal past the top variant),
-// and docs/SPEC-TABLES.md §3.4. Every counter is asserted EXACTLY and never
-// `>= 1`, because the right number counted in the wrong place is the bug.
+// and docs/SPEC-TABLES.md §3.4. Every kept counter is asserted EXACTLY and
+// never `>= 1`, because the right number counted in the wrong place is the bug.
 //
-// A forged byte that lands normalised (bool/present) owes `clamped == 0`; a
-// forged value that a bound catches (count, range, ordinal, tag) owes
-// `clamped == 1` — the one number, on the one counter, once.
+// A forged byte that lands normalised (bool/present) refuses `wire_damaged` and
+// lands nothing; a forged value that a bound catches (count, range, ordinal,
+// tag) refuses the whole load `out_of_range`. The strict report has no clamp
+// counter: the refusal reason is the whole claim, and no value lands.
 
 import (
 	"bytes"
@@ -195,11 +196,11 @@ func TestFixedRoadmapCT06Bounds(t *testing.T) {
 	}
 }
 
-// c/C7 — "ranged scalar clamp". Algorithm §4.6: a RANGED SCALAR clamps to the
-// min and max and COUNTS clamped, held by straight-line code after the plan
-// run. Two forges over VNEW_range_widen's `v int32 | min = 0, max = 200`: past
-// the max lands 200, below the min lands 0, each counted exactly once, and the
-// brackets `lead`/`trail` never move.
+// c/C7 — "ranged scalar bound". Algorithm §4.6 under the strict read: a RANGED
+// SCALAR past its min or max refuses the whole load `out_of_range`, held by
+// straight-line code after the plan run. Two forges over VNEW_range_widen's
+// `v int32 | min = 0, max = 200`: past the max and below the min each refuse,
+// land no value, and the brackets `lead`/`trail` never move.
 func cT06RangedScalarClamp(t *testing.T) {
 	setup := `
     v.lead = 0xAAAAAAAAu;
@@ -261,9 +262,10 @@ func cT06CompressedFloat(t *testing.T) {
 	}
 }
 
-// c/C9 — "union tag past arms → None". Algorithm §4.6: a union tag past the
-// arm count lands None and COUNTS clamped. VNEW_union_append's Pick has three
-// arms; a tag forged to 4 lands PICK_TYPE_NONE, never an arm, and seq stands.
+// c/C9 — "union tag past arms → refusal". Algorithm §4.6 under the strict read:
+// a union tag past the arm count refuses the whole load `out_of_range` and lands
+// nothing, so the reset destination holds None. VNEW_union_append's Pick has
+// three arms; a tag forged to 4 never selects an arm, and seq stands.
 func cT06UnionTagPastArms(t *testing.T) {
 	setup := `
     v.pick.type = 1; /* alpha */
@@ -284,10 +286,11 @@ func cT06UnionTagPastArms(t *testing.T) {
 	}
 }
 
-// c/C10 — "enum ordinal past top → None". Algorithm §4.6: an enum ordinal past
-// the enum's top value lands None and COUNTS clamped. VNEW_enum_append's Tier
-// has four variants; an ordinal forged to 5 lands TIER_NONE, never Platinum,
-// and seq stands.
+// c/C10 — "enum ordinal past top → refusal". Algorithm §4.6 under the strict
+// read: an enum ordinal past the enum's top refuses the whole load
+// `out_of_range` and lands nothing, so the reset destination holds None.
+// VNEW_enum_append's Tier has four variants; an ordinal forged to 5 never
+// selects Platinum, and seq stands.
 func cT06EnumOrdinalPastTop(t *testing.T) {
 	setup := `
     v.tier = 3; /* Gold */
@@ -409,8 +412,9 @@ func cT06NormaliseCountsNothing(t *testing.T) {
 	}
 }
 
-// c/C1 — "count clamp v<0". Algorithm §4.5: a count below zero lands 0 and
-// COUNTS clamped. VNEW_array_bounded_grow's count word forged to -1 lands 0.
+// c/C1 — "count below zero". Algorithm §4.5 under the strict read: a count
+// below zero refuses the whole load `out_of_range` and lands nothing.
+// VNEW_array_bounded_grow's count word forged to -1 never lands.
 func cT06CountClampLow(t *testing.T) {
 	setup := `
     v.lead = 0xAAAAAAAAu;
@@ -431,9 +435,9 @@ func cT06CountClampLow(t *testing.T) {
 	}
 }
 
-// c/C2 — "count clamp v>Max". Algorithm §4.5: a count past the bound lands the
-// bound and COUNTS clamped. VNEW_array_bounded_grow's count word forged to 9
-// lands the identity plan's bound 8, never the forged 9.
+// c/C2 — "count past the bound". Algorithm §4.5 under the strict read: a count
+// past the bound refuses the whole load `out_of_range` and lands nothing.
+// VNEW_array_bounded_grow's count word forged to 9 is never clamped to 8.
 func cT06CountClampHigh(t *testing.T) {
 	setup := `
     v.lead = 0xAAAAAAAAu;
