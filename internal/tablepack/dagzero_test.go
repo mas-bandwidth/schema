@@ -31,10 +31,10 @@ func TestZeroByteDagChainIsLinear(t *testing.T) {
 		t.Fatalf("zero-byte walk entered %d nodes on a %d-node chain; want %d (once per node, not per reference)", w.nodes, depth, depth)
 	}
 
-	// A NUL planted in the deepest node is still found.
+	// A NUL planted in the deepest node is still found through the check's
+	// own entry point, which is what pack calls.
 	nul := diamondZeroByteChain(depth, true)
-	w2 := &zeroByteWalk{visited: map[*tabletext.Instance]bool{}}
-	got := w2.instancePath(nul[depth], "")
+	got := zeroByteTextPath(nul[depth])
 	want := strings.Repeat("left.", depth) + "s"
 	if got != want {
 		t.Fatalf("zero-byte walk found %q, want %q (the NUL in the deepest node)", got, want)
