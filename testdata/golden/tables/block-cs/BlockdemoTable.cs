@@ -2049,7 +2049,6 @@ namespace Blockdemo
             static bool RefuseText(ref In input, string reason)
             {
                 input.Bad = true;
-                input.Report.Refused = true;
                 input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
                 return false;
             }
