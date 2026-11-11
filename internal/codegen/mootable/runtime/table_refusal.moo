@@ -2,25 +2,22 @@
 -- table_refusal.moo — THE STRICT READ'S FORM DISPATCH (docs/SPEC-TABLES.md
 -- §6.5, §3, §3.4, The three wires). ReadStrict answers a root's value or
 -- refuses with ONE name. A form byte is answered before anything behind it,
--- and NEITHER CLASS BORROWS THE OTHER'S FORM: a declared FIXED root reads form
--- 3 through its fixed reader (table_fixed.moo) and names form 1
--- previous_form, form 2 message_form_as_file, any other byte newer_form, and
--- unknown_form when this build emits no form-3 data for it; a VARIABLE root
--- reads form 1 through table_load.moo's strict read, and names form 3 or any
--- other byte it does not carry newer_form, form 2 message_form_as_file. A form
--- byte the root does not read moves no counter. A port of the Luau leg's
--- refusal.luau.
+-- and NEITHER CLASS BORROWS THE OTHER'S FORM: a declared FIXED root reads
+-- through table_load.moo's ReadFixed, which reads form 3 through its fixed
+-- reader (table_fixed.moo) and names form 1 previous_form, form 2
+-- message_form_as_file, any other byte newer_form, and unknown_form when this
+-- build emits no form-3 data for it; a VARIABLE root reads form 1 through
+-- table_load.moo's strict read, and names form 3 or any other byte it does
+-- not carry newer_form, form 2 message_form_as_file. A form byte the root
+-- does not read moves no counter. A port of the Luau leg's refusal.luau.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
 local L = require("./table_load")
-local F = require("./table_fixed")
 
 local R = {}
 
-local FORM_VARIABLE = 1
 local FORM_MESSAGE = 2
-local FORM_FIXED = 3
 
 -- ReadStrict(T, root, bytes, report): the root value, or nil with
 -- report.reason the refusal's name and report.field the field it names. T is
@@ -43,33 +40,7 @@ function R.ReadStrict(T: any, root: string, bytes: buffer?, report: any?): any
 		return nil
 	end
 	if d.fixed then
-		L.resetReport(rep)
-		if form == FORM_VARIABLE then
-			rep.reason = "previous_form"
-			return nil
-		end
-		if form ~= FORM_FIXED then
-			rep.reason = "newer_form"
-			return nil
-		end
-		local fixed = if T ~= nil then T[root .. "Fixed"] else nil
-		if fixed == nil then
-			rep.reason = "unknown_form"
-			return nil
-		end
-		local values = F.load(d, fixed, b, rep)
-		if values == nil then
-			return nil
-		end
-		if #values ~= 1 then
-			L.resetReport(rep)
-			rep.damaged = true
-			rep.reason = "wire_damaged"
-			return nil
-		end
-		-- the fixed load is the one read: it refuses out_of_range, wire_damaged
-		-- and an unlawful entry itself, so a value it answers stands (§6.5)
-		return values[1]
+		return L.ReadFixed(d, if T ~= nil then T[root .. "Fixed"] else nil, b, rep)
 	end
 	return L.ReadStrict(root, b, rep)
 end

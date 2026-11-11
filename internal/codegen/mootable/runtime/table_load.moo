@@ -15,6 +15,7 @@
 
 local S = require("./schema_tables")
 local V = require("./table_values")
+local F = require("./table_fixed")
 
 local L = {}
 
@@ -2767,9 +2768,56 @@ function L.newReport(): any
 	return fresh()
 end
 
+-- THE FIXED ROOT'S READ (§3, §3.4, §6.5): a declared fixed root reads form 3
+-- through its fixed reader (table_fixed.moo) and names form 1
+-- previous_form, form 2 message_form_as_file, any other byte newer_form, and
+-- unknown_form when this build emits no form-3 data for it (fixed is nil).
+-- Its file holds one record; any other count is wire_damaged. bytes holds at
+-- least the form byte. table_refusal.moo's ReadStrict and the plain load
+-- below are this one read.
+function L.ReadFixed(d: any, fixed: any, bytes: buffer, report: any): any
+	reset(report)
+	local form = buffer.readu8(bytes, 0)
+	if form == 1 then
+		report.reason = "previous_form"
+		return nil
+	end
+	if form == 2 then
+		report.reason = "message_form_as_file"
+		return nil
+	end
+	if form ~= 3 then
+		report.reason = "newer_form"
+		return nil
+	end
+	if fixed == nil then
+		report.reason = "unknown_form"
+		return nil
+	end
+	local values = F.load(d, fixed, bytes, report)
+	if values == nil then
+		return nil
+	end
+	if #values ~= 1 then
+		reset(report)
+		report.damaged = true
+		report.reason = "wire_damaged"
+		return nil
+	end
+	-- the fixed load is the one read: it refuses out_of_range, wire_damaged
+	-- and an unlawful entry itself, so a value it answers stands (§6.5)
+	return values[1]
+end
+
 -- THE PLAIN NAME IS THE STRICT READ (§6.5): no recovered value comes back
--- under it.
+-- under it. At a declared fixed root it is the fixed root's read (ReadFixed),
+-- the read table_refusal.moo's ReadStrict makes, so the plain load never
+-- reads form 1 there (§3.4: no read at a fixed root reads form 1).
 function L.load(root: string, bytes: buffer, report: any): any
+	local d = S.lookup(root)
+	if d.fixed and bytes ~= nil and buffer.len(bytes) >= 1 then
+		return L.ReadFixed(d, F.lookup(root), bytes, report or {})
+	end
 	return L.ReadStrict(root, bytes, report)
 end
 
