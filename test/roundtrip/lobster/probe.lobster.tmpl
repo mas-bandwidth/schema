@@ -42,7 +42,7 @@ def fixed_probe(root:string, name:string, eng:string):
             if [[.Name]]FixedLoad(rows, eng, plan, r) != 1:
                 verdict = "refused:" + r.reason
             else:
-                verdict = if [[.Name]]FixedSave(rows) == eng: "refused:no generated path from the fixed class to the record" else: "diff:FixedSave of the loaded value is not the engine's bytes"
+                verdict = if [[.Name]]FixedSave(rows) == eng: "refused:no generated path from the fixed class to the record" else: "diff:FixedSave of the loaded value is not the engine bytes"
 [[end]][[end]]        say(root, name, "fixedloadeng", verdict)
 
 def load_verdict(root:string, bytes:string, want:string) -> string:

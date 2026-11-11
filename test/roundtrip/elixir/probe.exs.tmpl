@@ -132,7 +132,7 @@ for line <- String.split(File.read!(Path.join(inputs, "cases.txt")), "\n", trim:
             say.(root, name, "fixedloadeng", call.(fn ->
               case apply(m, :"#{snake}_fixed_load", [eng, []]) do
                 {:ok, [x], _} ->
-                  back = IO.iodata_to_binary(apply(m, :"#{snake}_fixed_save", [[x]]))
+                  back = IO.iodata_to_binary(apply(m, :"#{snake}_fixed_save", [ [x] ]))
 
                   if back == eng,
                     do: "refused:no generated path from the fixed value to the table value",
