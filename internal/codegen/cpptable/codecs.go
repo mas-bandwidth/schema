@@ -2084,6 +2084,11 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// not refuse a clean record for an earlier read's missing field.
 		g.pf("    const int32_t missing_before = r.report->missing_required;\n")
 	}
+	// THE SAME FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §4):
+	// the id table's entries are distinct (TableOpen), so a repeated id is a
+	// repeated reference, and one bit per reference up to kTableProbeBound
+	// catches it with no allocation, as the C reader does.
+	g.pf("    uint8_t seen_ref[kTableProbeBound / 8] = {};\n")
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
 	g.pf("        if ( !r.getleb( field_ref ) )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")
@@ -2116,6 +2121,10 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	g.pf("        }\n")
 	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )\n        {\n            r.report->damaged = true;\n            return false;\n        } // a reference ABOVE the entry count\n")
+	g.pf("        if ( field_ref <= (uint64_t) kTableProbeBound )\n        {\n")
+	g.pf("            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );\n")
+	g.pf("            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )\n            {\n                r.report->damaged = true;\n                return false;\n            } // the same field id twice in one body\n")
+	g.pf("            seen_ref[( field_ref - 1 ) >> 3] |= bit;\n        }\n")
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
 	g.pf("        if ( !r.has( 1 ) )\n        {\n            r.report->damaged = true;\n            return false;\n        }\n")
 	g.pf("        uint8_t kind = r.get8();\n")

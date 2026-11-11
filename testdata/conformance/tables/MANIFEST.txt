@@ -1168,6 +1168,8 @@ framing frame_unknown_id_union_empty            tblr1 Cfg testdata/wire/tables/f
 framing frame_unknown_id_reference              tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin       refused -
 framing frame_kind_mismatch_skips_by_wire_kind  tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin refused -
 framing frame_repeat_last_wins                  tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin           refused -
+framing frame_repeat_same_value                 tblr1 Cfg testdata/wire/tables/framing/frame_repeat_same_value.bin          refused -
+framing frame_repeat_unknown_same_value         tblr1 Cfg testdata/wire/tables/framing/frame_repeat_unknown_same_value.bin  refused -
 framing frame_reserved_build_version_id         tblr1 Cfg testdata/wire/tables/framing/frame_reserved_build_version_id.bin  refused -
 framing nested_terminator_early                 tblr1 Cfg testdata/wire/tables/framing/nested_terminator_early.bin          refused -
 framing nested_L_exact                          tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin                   read    testdata/conformance/tables/framing/cfg_silver_multiplier.json
