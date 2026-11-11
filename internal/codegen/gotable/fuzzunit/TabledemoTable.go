@@ -1897,15 +1897,15 @@ func tableWireSkipFramed(r *TableReader, kind uint8, arm bool) bool {
 }
 
 // tableWireRecordCheck walks one node record whose type this reader does not
-// name, so no LoadBody reaches it, with the same wire-alone rules the body read
-// applies to a record it does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). nodes is the
-// table's record count, which bounds every pointer index; mark, when not nil,
-// names a record a pointer reaches so the graph walk starts there too.
-func tableWireRecordCheck(body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
-	var c tableWireCheck
-	c.ids = ids
-	c.nodes = nodes
-	c.mark = mark
+// name with the same wire-alone rules the body read applies to a record it
+// does name (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5). A blob record is its bytes in every
+// reader's walk (§2.5, §3.1), its text held by the storage scan. nodes bounds
+// every pointer index; mark, when not nil, names a reachable record for the graph.
+func tableWireRecordCheck(id uint64, body TableReader, ids int, nodes uint64, mark func(uint64)) TableRefuseReason {
+	c := tableWireCheck{ids: ids, nodes: nodes, mark: mark}
+	if id == tableWireBytesID || id == tableWireStringID {
+		return TableRefuseOk
+	}
 	end, ok := c.body(body, false)
 	if !ok || end != int64(len(body.Buffer)) {
 		return c.failed()
@@ -3442,6 +3442,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if !ok {
 			break
 		}
+		if id == tableStringTypeID && !tableUTF8Valid(body.Buffer) {
+			return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+		}
 		n, reason := tableNodeStorageReason(id, body, nodeType, blobs)
 		if n == -2 {
 			return -1, 0, TableOpenRefused, reason
@@ -3462,9 +3465,6 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 			id, body, ok := scan.next()
 			if !ok {
 				break
-			}
-			if id == tableStringTypeID && blobs&2 != 0 && !tableUTF8Valid(body.Buffer) {
-				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 			}
 			if t := nodeType(id); t != nil && tableWireExtent(&body, t, &at, nodes) != TableRefuseOk {
 				return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
@@ -3555,7 +3555,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			} else {
 				copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
 			}
-		} else if reason := tableWireRecordCheck(body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
+		} else if reason := tableWireRecordCheck(id, body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
 			report.Refuse(reason, "")
 			clear(region)
 			return nil
@@ -3842,7 +3842,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 					return false
 				}
 			}
-		} else if reason := tableWireRecordCheck(body, len(r.Ids)/8, uint64(count-1), nodes.Mark); reason != TableRefuseOk {
+		} else if reason := tableWireRecordCheck(id, body, len(r.Ids)/8, uint64(count-1), nodes.Mark); reason != TableRefuseOk {
 			report.Refuse(reason, "")
 			return false
 		}
@@ -5399,7 +5399,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			} else {
 				copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
 			}
-		} else if reason := tableWireRecordCheck(body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
+		} else if reason := tableWireRecordCheck(id, body, len(r.Ids)/8, uint64(len(directory)-1), nodes.Mark); reason != TableRefuseOk {
 			report.Refuse(reason, "")
 			clear(region)
 			return nil
