@@ -273,6 +273,28 @@ func messageWidens(theirs, mine ir.TableVocabularyEntry) bool {
 	return false
 }
 
+// bodyEntry resolves one field id in a body and holds it to the two framing
+// rules: a reserved id is malformed, and an id twice in one body is damage
+// (§3.1, §3.3), whether this reader can name it or not. The skip path calls it
+// for the same reason the read does.
+func (d *bitDecoder) bodyEntry(ref uint64, seen map[uint64]bool) (ir.TableVocabularyEntry, bool) {
+	entry, named := d.entry(ref)
+	if !named || reserved(entry.Id) {
+		d.damage()
+		return ir.TableVocabularyEntry{}, false
+	}
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can
+	// name it or not, exactly as on the variable form (§3).
+	{
+		if seen[entry.Id] {
+			d.damage()
+			return ir.TableVocabularyEntry{}, false
+		}
+	}
+	seen[entry.Id] = true
+	return entry, true
+}
+
 // body decodes one table body: fields until the ZERO REFERENCE that ends it.
 func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 	index := map[uint64]int{}
@@ -291,23 +313,10 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		if ref == 0 {
 			return true
 		}
-		entry, named := d.entry(ref)
+		entry, named := d.bodyEntry(ref, seen)
 		if !named {
-			d.damage()
 			return false
 		}
-		switch entry.Id {
-		case ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId, ir.TableNodeWireId:
-			// A RESERVED ID IN A BODY IS MALFORMED (§3.1, §3.3): a fixed root
-			// numbers no node, and the other two are the announcement's.
-			d.damage()
-			return false
-		}
-		if seen[entry.Id] {
-			d.damage()
-			return false
-		}
-		seen[entry.Id] = true
 		i, known := index[entry.Id]
 		if !known {
 			d.report.Unknown++
@@ -385,22 +394,8 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 // that carries a zero byte, is DAMAGE. A `bytes(N)` carries no such rule,
 // because its payload is bytes.
 func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry ir.TableVocabularyEntry) bool {
-	shape := entry.Shape
-	width := ir.TableMessageBitsRequired(0, shape.Max)
-	if f.Type.Kind == ir.TBytes {
-		width = ir.TableMessageCountBits(shape)
-	}
-	n, ok := d.r.get(width)
-	if !ok || !d.r.align() || !d.r.has(int(n)*8) {
-		d.damage()
-		return false
-	}
-	raw, _ := d.r.bytes(int(n))
-	if f.Type.Kind == ir.TString && !textValid(raw) {
-		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
-		// stream has no defined position to continue from, which is the only
-		// thing that differs from §3's recovery
-		d.damage()
+	raw, ok := d.textPayload(entry.Shape, f.Type.Kind == ir.TString)
+	if !ok {
 		return false
 	}
 	if len(raw) > int(f.Type.Size) {
@@ -410,6 +405,31 @@ func (d *bitDecoder) text(cell *tabletext.Cell, count *int, f *ir.Field, entry i
 	cell.Str = raw
 	*count = len(raw)
 	return true
+}
+
+// textPayload reads and content-checks one text payload: the length at its
+// own width, the align, the bytes, and kind 12's content rule. It is the
+// wire's half of text, and the skip path reads a payload it does not keep
+// through it so an unknown string is held to the same rule (§3.3, §4).
+func (d *bitDecoder) textPayload(shape ir.TableMessageShape, isString bool) ([]byte, bool) {
+	width := ir.TableMessageBitsRequired(0, shape.Max)
+	if !isString {
+		width = ir.TableMessageCountBits(shape)
+	}
+	n, ok := d.r.get(width)
+	if !ok || !d.r.align() || !d.r.has(int(n)*8) {
+		d.damage()
+		return nil, false
+	}
+	raw, _ := d.r.bytes(int(n))
+	if isString && !textValid(raw) {
+		// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL (§3.3): a bit
+		// stream has no defined position to continue from, which is the only
+		// thing that differs from §3's recovery
+		d.damage()
+		return nil, false
+	}
+	return raw, true
 }
 
 // elementRunBits is the bits ONE element of an ARRAY occupies where that is a
@@ -550,22 +570,10 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 	// reader cannot name included.
 	seen := map[uint64]bool{}
 	for range n {
-		ref, ok := d.reference()
+		key, ok := d.keyedReference(seen)
 		if !ok {
-			d.damage()
 			return false
 		}
-		// a reference of `0` where an entry is REQUIRED is damage (§3.2), and
-		// a key naming an entry of the wrong sort is damage too (§3.3)
-		key, named := d.name(ref)
-		if !named {
-			return false
-		}
-		if seen[key.Id] {
-			d.damage()
-			return false
-		}
-		seen[key.Id] = true
 		value := enumValueForId(f.KeyEnumRef, key.Id)
 		var sink tabletext.Cell
 		cell := &sink
@@ -582,6 +590,33 @@ func (d *bitDecoder) keyed(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 		}
 	}
 	return true
+}
+
+// keyedReference reads one keyed slot's key and resolves it: a reference of
+// `0` where an entry is REQUIRED is damage (§3.2), one naming a reserved id or
+// an entry that carries a payload is damage too (§3.3), and the same key twice
+// in one array is damage (§3.2, §3.3). The skip path calls it for the same
+// reason the read does.
+func (d *bitDecoder) keyedReference(seen map[uint64]bool) (ir.TableVocabularyEntry, bool) {
+	ref, ok := d.reference()
+	if !ok {
+		d.damage()
+		return ir.TableVocabularyEntry{}, false
+	}
+	key, named := d.name(ref)
+	if !named {
+		return ir.TableVocabularyEntry{}, false
+	}
+	// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (§3.2, §3.3), a key this
+	// reader cannot name included.
+	{
+		if seen[key.Id] {
+			d.damage()
+			return ir.TableVocabularyEntry{}, false
+		}
+	}
+	seen[key.Id] = true
+	return key, true
 }
 
 // unionCell reads a union: the ARM's reference, and then the payload a FIELD
@@ -710,17 +745,14 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 		cell.B = v != 0
 		return true
 	case ir.TableKindF64:
-		raw, ok := d.r.get(64)
+		v, finite, ok := d.float64Wire(f)
 		if !ok {
-			d.damage()
 			return false
 		}
-		if !tabletext.FiniteF64(raw) {
-			// refused on its raw bits (docs/SPEC-TABLES.md §3.3), as a file read does
-			d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
+		if !finite {
 			return true
 		}
-		cell.F = math.Float64frombits(raw)
+		cell.F = v
 		return true
 	case ir.TableKindF32:
 		return d.float32(cell, f, shape)
@@ -835,52 +867,13 @@ func (d *bitDecoder) scalar(cell *tabletext.Cell, f *ir.Field, kind uint8, shape
 // float32 reads a f32 at the sender's packing: the IEEE bit pattern where it
 // rides raw, and `min + index * step` where the sender quantized it.
 func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMessageShape) bool {
-	if shape.Packing == ir.TableMessageQuantized {
-		index, ok := d.r.get(int(shape.Bits))
-		if !ok {
-			d.damage()
-			return false
-		}
-		// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it,
-		// and is never reconstructed (§3.3, SPEC.md §4.3). The
-		// width spells such an index whenever `count` is not one less than a
-		// power of two, ten bits spelling 1023 over a count of 1000, and the
-		count, _, derived := ir.TableMessageQuantization(shape)
-		if !derived || index > uint64(count) {
-			d.damage()
-			return false
-		}
-		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
-		// index names is the float a packet's reader names for it
-		dequantized := ir.TableMessageDequantize(shape, uint32(index))
-		if !tabletext.FiniteF32(math.Float32bits(dequantized)) {
-			// A DEQUANTIZED VALUE THAT IS NOT FINITE IS REFUSED, as the packet
-			// reader refuses it (SPEC.md §4.3): every announced fact can be
-			// finite and the top steps still round past the largest float32,
-			d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
-			return true
-		}
-		v := float64(dequantized)
-		if ir.TableScalarKind(f) == ir.TableKindF64 {
-			cell.F = v // widened into f64 (§4): exact, and no clamp fires
-			return true
-		}
-		cell.F = float64(float32(d.rangedFloat(v, f)))
-		return true
-	}
-	raw, ok := d.r.get(32)
+	v, finite, ok := d.float32Wire(shape, f)
 	if !ok {
-		d.damage()
 		return false
 	}
-	bits := uint32(raw)
-	if !tabletext.FiniteF32(bits) {
-		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
-		// §3.3), before the bits become a value, as a file read refuses it
-		d.set(&NonFiniteRefusal{Field: FloatOwner(d.m, f)})
+	if !finite {
 		return true
 	}
-	v := float64(math.Float32frombits(bits))
 	if ir.TableScalarKind(f) == ir.TableKindF64 {
 		// f32 WIDENED into f64 (§4): every float32 value is exactly
 		// representable, and a float64 field's declared range is held as at eight bytes
@@ -890,6 +883,88 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 	}
 	cell.F = float64(float32(d.rangedFloat(v, f)))
 	return true
+}
+
+// float32Wire reads one f32 at the sender's packing and holds it to the
+// conditions the wire and the announcement decide: an index at or below
+// `count`, and a value that is finite, whether it rode raw or came off the
+// grid. finite is false where the read refused the value; f is nil on the
+// skip path, where no reader field names the payload.
+func (d *bitDecoder) float32Wire(shape ir.TableMessageShape, f *ir.Field) (v float64, finite, ok bool) {
+	if shape.Packing == ir.TableMessageQuantized {
+		index, ok := d.quantizedIndex(shape)
+		if !ok {
+			return 0, false, false
+		}
+		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
+		// index names is the float a packet's reader names for it
+		dequantized := ir.TableMessageDequantize(shape, index)
+		if !tabletext.FiniteF32(math.Float32bits(dequantized)) {
+			// A DEQUANTIZED VALUE THAT IS NOT FINITE IS REFUSED, as the packet
+			// reader refuses it (SPEC.md §4.3): every announced fact can be
+			// finite and the top steps still round past the largest float32,
+			d.nonFinite(f)
+			return 0, false, true
+		}
+		return float64(dequantized), true, true
+	}
+	raw, ok := d.r.get(32)
+	if !ok {
+		d.damage()
+		return 0, false, false
+	}
+	bits := uint32(raw)
+	if !tabletext.FiniteF32(bits) {
+		// A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md
+		// §3.3), before the bits become a value, as a file read refuses it
+		d.nonFinite(f)
+		return 0, false, true
+	}
+	return float64(math.Float32frombits(bits)), true, true
+}
+
+// float64Wire reads one f64 and refuses a NaN or an infinity on its raw bits,
+// as a file read does. finite is false where the read refused it.
+func (d *bitDecoder) float64Wire(f *ir.Field) (v float64, finite, ok bool) {
+	raw, ok := d.r.get(64)
+	if !ok {
+		d.damage()
+		return 0, false, false
+	}
+	if !tabletext.FiniteF64(raw) {
+		d.nonFinite(f)
+		return 0, false, true
+	}
+	return math.Float64frombits(raw), true, true
+}
+
+// quantizedIndex reads a quantized float's step index and holds it to `count`:
+// an index above count is rejected, as the packet wire rejects it, and is never
+// reconstructed (§3.3, SPEC.md §4.3). The width spells such an index whenever
+// `count` is not one less than a power of two, ten bits spelling 1023 over a
+// count of 1000.
+func (d *bitDecoder) quantizedIndex(shape ir.TableMessageShape) (uint32, bool) {
+	index, ok := d.r.get(int(shape.Bits))
+	if !ok {
+		d.damage()
+		return 0, false
+	}
+	count, _, derived := ir.TableMessageQuantization(shape)
+	if !derived || index > uint64(count) {
+		d.damage()
+		return 0, false
+	}
+	return uint32(index), true
+}
+
+// nonFinite records a float's refusal. A reader field names the payload in the
+// diagnostic where one exists; an entry this reader does not declare has none.
+func (d *bitDecoder) nonFinite(f *ir.Field) {
+	field := ""
+	if f != nil {
+		field = FloatOwner(d.m, f)
+	}
+	d.set(&NonFiniteRefusal{Field: field})
 }
 
 func (d *bitDecoder) rangedFloat(v float64, f *ir.Field) float64 {
@@ -958,11 +1033,8 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		// (§3.1, §3.3)
 		return false
 	case ir.TableKindString:
-		n, ok := d.r.get(ir.TableMessageBitsRequired(0, shape.Max))
-		if !ok || !d.r.align() {
-			return false
-		}
-		return d.r.skip(int(n) * 8)
+		_, ok := d.textPayload(shape, true)
+		return ok
 	case ir.TableKindEscape:
 		// THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
 		// the one path a later-major writer has on this form (§3.3)
@@ -990,6 +1062,12 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 				n += uint64(shape.Min)
 			}
 		}
+		// THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above
+		// the announced maximum is damage here as it is at a named field.
+		if n > uint64(shape.Max) {
+			d.refuse(ReasonCountOverBound)
+			return false
+		}
 		if ir.TableMessageAligns(entry.Kind, shape) && !d.r.align() {
 			return false
 		}
@@ -1004,6 +1082,10 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		if run := elementRunBits(entry.Kind, shape.Elem, inner); run >= 0 {
 			return skipRun(d.r, n, run)
 		}
+		var seen map[uint64]bool
+		if entry.Kind == ir.TableKindKeyed {
+			seen = map[uint64]bool{}
+		}
 		for i := uint64(0); i < n; i++ {
 			if d.steps != nil {
 				if d.steps.n++; d.steps.n >= d.steps.limit {
@@ -1012,7 +1094,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 			}
 			at := d.r.off
 			if entry.Kind == ir.TableKindKeyed {
-				if _, ok := d.reference(); !ok {
+				if _, ok := d.keyedReference(seen); !ok {
 					return false
 				}
 			}
@@ -1039,16 +1121,77 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		}
 		return true
 	}
+	switch int(entry.Kind) {
+	case ir.TableKindF32:
+		_, _, ok := d.float32Wire(shape, nil)
+		return ok
+	case ir.TableKindF64:
+		_, _, ok := d.float64Wire(nil)
+		return ok
+	}
 	width := int(ir.TableMessageValueBits(entry.Kind, shape))
 	if width < 0 {
 		return false
 	}
+	if shape.Packing == ir.TableMessageRanged {
+		return d.skipRanged(entry.Kind, shape, width)
+	}
 	return d.r.skip(width)
+}
+
+// skipRanged reads a ranged integer's offset and reconstructs its value from
+// the sender's base, then holds it to the range its own kind can carry: the
+// offset's bits can spell a value past the sender's maximum whenever the range
+// is not one less than a power of two, and no conforming writer emits one
+// (§3.3).
+func (d *bitDecoder) skipRanged(kind uint8, shape ir.TableMessageShape, width int) bool {
+	base := shape.Base
+	if base == nil {
+		base = big.NewInt(0)
+	}
+	var value *big.Int
+	if ir.TableKindWide(int(kind)) {
+		offset, ok := d.r.getBig(width)
+		if !ok {
+			d.damage()
+			return false
+		}
+		value = new(big.Int).Add(offset, base)
+	} else {
+		offset, ok := d.r.get(width)
+		if !ok {
+			d.damage()
+			return false
+		}
+		value = new(big.Int).Add(new(big.Int).SetUint64(offset), base)
+	}
+	if !kindHolds(kind, value) {
+		d.refuse(ReasonOutOfRange)
+		return false
+	}
+	return true
+}
+
+// kindHolds reports whether a reconstructed ranged value is in its kind's own
+// domain, which is the widest range a declaration of that kind can announce.
+func kindHolds(kind uint8, v *big.Int) bool {
+	width := uint(ir.TableKindWidth(int(kind)) * 8)
+	if width == 0 {
+		return true
+	}
+	if ir.TableKindSigned(int(kind)) {
+		lo := new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), width-1))
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), width-1), big.NewInt(1))
+		return v.Cmp(lo) >= 0 && v.Cmp(hi) <= 0
+	}
+	hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), width), big.NewInt(1))
+	return v.Sign() >= 0 && v.Cmp(hi) <= 0
 }
 
 // skipBody walks a nested body it cannot name, field by field, against the
 // same announced vocabulary its parent resolves through.
 func (d *bitDecoder) skipBody() bool {
+	seen := map[uint64]bool{}
 	for {
 		ref, ok := d.reference()
 		if !ok {
@@ -1057,7 +1200,7 @@ func (d *bitDecoder) skipBody() bool {
 		if ref == 0 {
 			return true
 		}
-		entry, named := d.entry(ref)
+		entry, named := d.bodyEntry(ref, seen)
 		if !named || !d.skip(entry) {
 			return false
 		}
