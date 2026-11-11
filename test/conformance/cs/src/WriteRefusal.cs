@@ -10,7 +10,7 @@
 // and the packet writer share. This driver is built Debug, so the asserts are
 // live; a listener turns a fired assert into an exception for the length of
 // one write, and the case answers "refused". The checks every build keeps
-// (count, length, enum, union tag, non-finite float, narrow text) answer -1.
+// (enum, union tag, non-finite float, narrow text) answer -1.
 using System;
 using System.Diagnostics;
 using System.Globalization;

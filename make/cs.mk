@@ -1444,8 +1444,8 @@ conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/
 .PHONY: conformance-negative-control-cs-write-refusal-message
 conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
-		's/if \(f\.Counted && \(Count\(value, f\) < 0 \|\| Count\(value, f\) > f\.ArrayBound\)\) \{ return false; \}/if (false) { return false; } \/* SABOTAGED: no message length check *\//' \
-		'f\.Counted && \(Count\(value, f\) < 0' write-refusal-message message
+		's/if \(f\.Counted\) \{ System\.Diagnostics\.Debug\.Assert\(Count\(value, f\) >= 0 && Count\(value, f\) <= f\.ArrayBound\); \}/\/* SABOTAGED: no message length check *\//' \
+		'if \(f\.Counted\) \{ System\.Diagnostics\.Debug\.Assert\(Count\(value, f\) >= 0' write-refusal-message message
 	@echo 'C# write-refusal-message negative control: the message writer without its count check is detected by cs / write-refusal-message; message stays green'
 # C# storage companions are checked by Debug.Assert (SPEC §5.1). This gate
 # routes assertion failures through a listener so both violations are observed.
