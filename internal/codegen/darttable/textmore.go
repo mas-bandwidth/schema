@@ -698,8 +698,9 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tvar bits = 0;\n")
 		g.pf("\tfor (final item in val) {\n")
 		g.pf("\t\tswitch (item) {\n")
+		// a known name set twice refuses the read, as a repeated key does (§16.2)
 		for i, name := range fl.Variants {
-			g.pf("\t\t\tcase %s: bits |= %d;\n", strconv.Quote(name), uint64(1)<<i)
+			g.pf("\t\t\tcase %s: if (bits & %d != 0) { r.refuse('text_damaged'); return def; } bits |= %d;\n", strconv.Quote(name), uint64(1)<<i, uint64(1)<<i)
 		}
 		g.pf("\t\t\tdefault: if (item is String) { r.unknown++; } else { r.refuse('kind_mismatch'); }\n")
 		g.pf("\t\t}\n")
