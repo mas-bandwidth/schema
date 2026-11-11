@@ -151,6 +151,9 @@ final class TableMessageShape {
   int min = 0;
   int max = 0;
   int elem = 0;
+  int base = 0;
+  int baseLo = 0;
+  int baseHi = 0;
   TableMessageShape? inner;
 
   /// Decodes ONE shape at at in an announced entry's signature, mirroring
@@ -172,10 +175,27 @@ final class TableMessageShape {
         at = n.$2;
         if (kind >= 18) {
           if (at + 16 > end) return null;
+          s.baseLo = sig[at] | (sig[at + 1] << 8) | (sig[at + 2] << 16) |
+              (sig[at + 3] << 24) | (sig[at + 4] << 32) |
+              (sig[at + 5] << 40) | (sig[at + 6] << 48) |
+              (sig[at + 7] << 56);
+          s.baseHi = sig[at + 8] | (sig[at + 9] << 8) | (sig[at + 10] << 16) |
+              (sig[at + 11] << 24) | (sig[at + 12] << 32) |
+              (sig[at + 13] << 40) | (sig[at + 14] << 48) |
+              (sig[at + 15] << 56);
+          s.base = s.baseLo;
           return (s, at + 16);
         }
         final b = tableMessageLeb(sig, at, end);
-        return b.$3 ? (s, b.$2) : null;
+        if (!b.$3) return null;
+        var base = b.$1;
+        if (kind >= 2 && kind <= 5) {
+          base = (base >>> 1) ^ -(base & 1);
+        }
+        s.base = base;
+        s.baseLo = base;
+        s.baseHi = base < 0 ? -1 : 0;
+        return (s, b.$2);
       }
       if (s.packing == 2 && kind == 10) {
         final bits = quantizedBits(sig, at, end);
