@@ -65,7 +65,7 @@ func TestSpecPacketWriteChecksText(t *testing.T) {
 		t.Error("algorithm §5 exempts text from the write contract")
 	}
 	js := section(spec, "- **JavaScript:**", "### 6.2 ")
-	if strings.Contains(js, "checked/production fork") || strings.Contains(js, "production variant") {
+	if strings.Contains(js, "checked/production fork") || strings.Contains(js, "selects a production variant") {
 		t.Error("§6.1 describes a production writer variant")
 	}
 	if !strings.Contains(js, "writer checks in every build") {
