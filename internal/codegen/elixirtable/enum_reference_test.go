@@ -15,6 +15,7 @@ import (
 )
 
 func TestEnumCollectionReferencesElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir enum collection references distinguish None, foreign ids, and damaged references")
 	const source = `package enumref
  enum Mode { A, B }
@@ -127,6 +128,7 @@ end
 // refuses the whole retaining load; an intact array keeps its records, and
 // an edited surviving array loses only records belonging to removed items.
 func TestRetainedUnionArrayBodiesElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir retaining union arrays preserve and replace nested record paths")
 	u := unitFrom(t, `package unionretain
  table Inner { value int32 }
