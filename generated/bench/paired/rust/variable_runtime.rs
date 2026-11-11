@@ -467,6 +467,13 @@ pub struct TableNodeReader {
     pub decoded: Vec<Option<Rc<dyn Any>>>,
 }
 
+/// THE PLAIN WALK'S NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth):
+/// the one bound every reader and every path holds over the binary forms — the
+/// root body is at depth 0, each structural payload inside it is one level
+/// deeper, depth 128 passes and 129 refuses. It is separate from the retaining
+/// walk's cap (§6.6), which this plain skip does not use.
+const BINARY_MAX_DEPTH: usize = 128;
+
 impl TableNodeReader {
     /// A storage-cap refusal is terminal but adds no malformed event (§2.9).
     pub fn refuse_count(&mut self, report: &mut TableReport) -> bool {
@@ -740,7 +747,7 @@ impl TableNodeReader {
     }
 
     pub fn note_unknown_payload(&mut self, ids: &[u64], kind: u8, payload: &[u8], depth: usize, report: &mut TableReport) {
-        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        if depth > BINARY_MAX_DEPTH { report.damaged = true; return; }
         let w = table_kind_width(kind);
         if w > 0 {
             if payload.len() != w || (kind == 1 && payload[0] > 1) { report.damaged = true; }
@@ -768,7 +775,7 @@ impl TableNodeReader {
     }
 
     pub fn note_unknown_content(&mut self, ids: &[u64], kind: u8, content: &[u8], depth: usize, report: &mut TableReport) {
-        if depth > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+        if depth > BINARY_MAX_DEPTH { report.damaged = true; return; }
         let w = table_kind_width(kind);
         if w > 0 {
             if content.len() != w || (kind == 1 && content[0] > 1) { report.damaged = true; }
@@ -789,7 +796,7 @@ impl TableNodeReader {
                 self.note_unknown_pointer(index, report);
             }
             13 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH { report.damaged = true; return; }
                 let mut seen_ids: Vec<u64> = Vec::new();
                 loop {
                     let Some(r) = leb_read(content, &mut off) else { report.damaged = true; return; };
@@ -812,7 +819,7 @@ impl TableNodeReader {
                 }
             }
             14 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
                 if matches!(ek, 16 | 32) { report.damaged = true; return; }
                 off = 1;
@@ -827,7 +834,7 @@ impl TableNodeReader {
                 if off != content.len() { report.damaged = true; }
             }
             16 => {
-                if depth + 1 > TABLE_RETAIN_DEPTH_CAP || content.len() < 2 { report.damaged = true; return; }
+                if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
                 if matches!(ek, 14 | 16 | 12 | 31 | 32) { report.damaged = true; return; }
                 off = 1;
