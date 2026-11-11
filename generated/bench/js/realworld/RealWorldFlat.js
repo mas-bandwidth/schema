@@ -1875,6 +1875,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   out = (view.getUint32(6, true) >>> 5) | (view.getUint32(10, true) << 27);
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.f002F64 = SC.getFloat64(0, true);
   out = (view.getUint32(10, true) >>> 5) | (view.getUint32(14, true) << 27);
   v = (out & 0x1fffff) >>> 0;
@@ -1901,6 +1904,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   value.f006Int = (v + 4294965783) | 0;
   out = (view.getUint32(18, true) >>> 2) | (view.getUint32(22, true) << 30);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.f007F32 = SC.getFloat64(0, true);
@@ -1924,6 +1930,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   value.f009Int = (v + 4294967274) | 0;
   out = view.getUint32(31, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.f010F32 = SC.getFloat64(0, true);
@@ -1947,6 +1956,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2029,6 +2041,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.f019F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
@@ -2037,6 +2052,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2062,6 +2080,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2084,6 +2105,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2142,6 +2166,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2234,6 +2261,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2290,6 +2320,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.f048F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
@@ -2328,6 +2361,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2380,6 +2416,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2403,6 +2442,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.f059F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
@@ -2631,6 +2673,9 @@ export function ReadRealPacketFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.f087F64 = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
