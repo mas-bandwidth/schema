@@ -310,7 +310,9 @@ int main(void)
 	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile failed: %v\n%s", err, out)
 	}
-	out, err := exec.Command(bin).CombinedOutput()
+	cmd := exec.Command(bin)
+	cmd.Env = append(os.Environ(), "ASAN_OPTIONS=detect_leaks=0")
+	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
 

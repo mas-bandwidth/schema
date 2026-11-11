@@ -280,7 +280,11 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "depthprobe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	linker, err := exec.LookPath("cc")
+	if err != nil {
+		t.Fatalf("rustc's linker cc: %v", err)
+	}
+	cmd := exec.Command("rustc", "--edition", "2024", "-C", "linker="+linker, "-o", bin, "main.rs")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("rustc failed: %v\n%s", err, out)
