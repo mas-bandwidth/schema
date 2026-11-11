@@ -14,6 +14,34 @@ fixed table Big {
 `, `package probe
 import("testing";"bytes";"errors")
 
+func rootForm1Measure(value *Big) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !BigSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Big, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !BigSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func bigForm1(value *Big, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -63,11 +91,11 @@ func TestExact(t *testing.T) {
 	v.N = 9007199254740993
 	v.M = -9223372036854775807
 	v.U = 18446744073709551614
-	if n := BigMeasure(&v); n < 0 {
+	if n := rootForm1Measure(&v); n < 0 {
 		t.Fatalf("measure: %d", n)
 	} else {
 		b := make([]byte, n)
-		if BigSave(&v, b) != n {
+		if rootForm1Save(&v, b) != n {
 			t.Fatal("save")
 		}
 		var got Big

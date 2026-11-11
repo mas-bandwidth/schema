@@ -139,14 +139,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		return
 	}
 	if st.FixedDeclared {
-		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): the
-		// strict read refuses a form-1 file as previous_form before it decodes
-		// anything; <T>FixedLoad reads form 3.
+		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): this
+		// Load reads it through <T>FixedLoad and refuses a form-1 file as
+		// previous_form before it decodes anything.
 		g.pf("// %s is a FIXED-CLASS root (docs/SPEC-TABLES.md §3.4): its file is form 3,\n", n)
-		g.pf("// so this Load — the VARIABLE form's entry point — refuses a form-1 file as\n")
-		g.pf("// previous_form, never reading a value.\n")
-		if g.hasFixedForm(st) {
-			g.pf("// %sFixedLoad reads form 3.\n", n)
+		if g.fixedFileSurface(st) {
+			g.pf("// so this Load reads that form through %sFixedLoad and refuses a form-1\n", n)
+			g.pf("// file as previous_form, never reading a value.\n")
+		} else {
+			g.pf("// and this build emits no form-3 reader for it, so this Load refuses a form-1\n")
+			g.pf("// file as previous_form and reads no value.\n")
 		}
 	} else if g.hasFixedForm(st) {
 		g.pf("// %s also carries the FIXED form (form 3): %sFixedLoad reads that one and\n", n, n)
@@ -165,6 +167,16 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if st.FixedDeclared {
 		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): a form-1 file is previous_form.
 		g.pf("\tif len(data) > 0 && data[0] == 1 { read.Refuse(TableRefusePreviousForm, \"\"); %sReset(value); return false }\n", n)
+		if g.fixedFileSurface(st) {
+			// THE PLAIN LOAD IS THE FORM-3 READ (§3.4): one record through the
+			// same reader <T>FixedLoad is; a batch of more than one is refused by
+			// that reader's own batch name.
+			g.pf("\tif len(data) > 0 && data[0] == TableFixedForm {\n")
+			g.pf("\t\tvar fixed [1]%s\n", g.storageName(n))
+			g.pf("\t\tif %sFixedLoad(fixed[:], data, tableFixedReadPlan%s, read) != 1 {\n", n, n)
+			g.pf("\t\t\t%sReset(value); return false\n\t\t}\n", n)
+			g.pf("\t\t*value = fixed[0]\n\t\treturn true\n\t}\n")
+		}
 	}
 	if st.Integrity != "" {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, read); !ok { %sReset(value); return false }\n", n)

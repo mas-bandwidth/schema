@@ -31,27 +31,12 @@ func WideBlobMeasureBody(value *WideBlob, ids *TableIds) int64 {
 	return w.Offset
 }
 
-func WideBlobMeasure(value *WideBlob) int64 {
-	var ids TableIds
-	w := TableWriter{Measuring: true, Ids: &ids}
-	w.Put8(1)
-	if !WideBlobSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
-}
+// WideBlob is a fixed table with NO FILE FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its
+// file save refuses and never writes form 1.
+func WideBlobMeasure(_ *WideBlob) int64 { return -1 }
 
-func WideBlobMeasureReason(value *WideBlob) (int64, error) {
-	size := WideBlobMeasure(value)
-	if size < 0 {
-		return size, TableRefuseInvalidValue
-	}
-	return size, nil
-}
+func WideBlobMeasureReason(_ *WideBlob) (int64, error) { return -1, TableRefuseLayoutRecordTooLarge }
+
 func WideBlobSaveBody(w *TableWriter, value *WideBlob) bool {
 	if !WideBlobSaveBodyFields(w, value) {
 		return false
@@ -195,19 +180,7 @@ func WideBlobSaveBodyFields(w *TableWriter, value *WideBlob) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
-func WideBlobSave(value *WideBlob, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !WideBlobSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
-}
+func WideBlobSave(_ *WideBlob, _ []byte) int64 { return -1 }
 
 func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 	WideBlobReset(value)
@@ -379,8 +352,8 @@ func WideBlobLoadBody(r *TableReader, value *WideBlob) bool {
 }
 
 // WideBlob is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3,
-// so this Load — the VARIABLE form's entry point — refuses a form-1 file as
-// previous_form, never reading a value.
+// and this build emits no form-3 reader for it, so this Load refuses a form-1
+// file as previous_form and reads no value.
 // WideBlobLoad is the read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): it returns the whole value, or
 // refuses with value at its defaults and false. A supplied report receives this
 // read's report, and on a refusal report.Err() is the typed reason. The open

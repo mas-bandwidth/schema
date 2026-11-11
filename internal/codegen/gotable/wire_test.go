@@ -59,6 +59,34 @@ import (
 
 func hash(s string) uint64 { h := fnv.New64a(); h.Write([]byte(s)); return h.Sum64() }
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	if len(data) > 0 && data[0] == 1 {
 		var gate TableReport
@@ -110,14 +138,14 @@ func TestWire(t *testing.T) {
  want = append(want, 0)
  for _, id := range ids { want = binary.LittleEndian.AppendUint64(want, id) }
  want = binary.LittleEndian.AppendUint64(want, uint64(len(ids)))
- if n := RootMeasure(&value); n != int64(len(want)) { t.Fatalf("measure %d, want %d", n, len(want)) }
+ if n := rootForm1Measure(&value); n != int64(len(want)) { t.Fatalf("measure %d, want %d", n, len(want)) }
  got := make([]byte, len(want))
- if n := RootSave(&value, got); n != int64(len(got)) || !bytes.Equal(got,want) { t.Fatalf("save differs: n=%d",n) }
+ if n := rootForm1Save(&value, got); n != int64(len(got)) || !bytes.Equal(got,want) { t.Fatalf("save differs: n=%d",n) }
  var loaded Root
  var report TableReport
  if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
- if RootSave(&value, got[:len(got)-1]) != -1 { t.Fatal("short destination accepted") }
- if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); rootForm1(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
+ if rootForm1Save(&value, got[:len(got)-1]) != -1 { t.Fatal("short destination accepted") }
+ if n := testing.AllocsPerRun(10, func() { rootForm1Save(&value,got); rootForm1(&loaded,got,&report); rootForm1Measure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
 }
 
 // The count uses the enclosing reader in the reference; its elements are
@@ -134,13 +162,19 @@ func TestArrayCountCrossesBody(t *testing.T) {
 }
 
 func TestFormVerdicts(t *testing.T) {
- for _, form := range []byte{0,2,3,255} {
+ for _, form := range []byte{0,2,255} {
   var value Root
   value.Children[0].F000 = 99
   var report TableReport
   if RootLoad(&value,[]byte{form},&report) || report.Verdict != TableOpenRefused || report.Reason == "" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.Children[0].F000 != 0 {
    t.Fatalf("form %d: %+v",form,report)
   }
+ }
+ // form 3 is this fixed root's own file; a one-byte one is truncated.
+ var fixedValue Root
+ var fixedReport TableReport
+ if RootLoad(&fixedValue, []byte{TableFixedForm}, &fixedReport) || fixedReport.Err() == nil {
+  t.Fatalf("form 3: %+v", fixedReport)
  }
  for _, wire := range [][]byte{nil,{1},{1,0,0,0,0,0,0,0,0,0,0}} {
   var value Root
