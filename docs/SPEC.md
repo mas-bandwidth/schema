@@ -2399,8 +2399,11 @@ reader refuses.
 | Goose | 1–8 every build | 1–8 every build | 1–7 every build; 8 not yet held |
 | Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
 
-**The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
-leg, and refuses ill-formed text (SPEC-TABLES §16.3).
+**The text writer** (§16) refuses a zero byte or a zero unit by row 8, as the
+mechanism above gives it — a debug assert in an assert leg and a refusal in
+every build in the every-build legs — and refuses ill-formed text by the same
+row: its reader refuses a text that places `U+0000` (SPEC-TABLES §16.3), and a
+writer never produces text its own reader refuses.
 
 **Held by test**: five conformance surfaces (test/conformance/README.md). Four
 hold the table forms, one per writer, each loading one instance, setting one

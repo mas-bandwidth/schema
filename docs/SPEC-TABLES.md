@@ -16164,7 +16164,9 @@ written as something else.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
 - **Storage that is not text** — `invalid_value`: a string holding
-  ill-formed UTF-8 (below).
+  ill-formed UTF-8 or a zero byte (below): a zero byte is not text for this
+  writer either, and its reader refuses the `\u0000` text a writer would
+  otherwise spell (SPEC.md §5.1 row 8).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -16212,23 +16214,26 @@ whatever the bound would have said (conformance row `json-hostile
 str-illformed-at-bound`).
 
 **THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
-one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
-a perfectly good code point that JSON has an escape for, so it is written
-`\u0000` — only ever for storage a program built, because no read puts one
-there (below). A field's ill-formed UTF-8 sequence is not a code point at
-all, and the writer REFUSES it: `ToJsonMeasure` and `ToJson` return `-1` with
-the reason `invalid_value`, naming the field, and nothing is replaced. The
-binary writers hold the same rule (§3): `Measure` and `Save` refuse ill-formed
-text by the same name. So no writer turns storage that is not text into text
-that reads back as something else.
+one read: consistently refuse). A NARROW field's interior ZERO BYTE is storage
+that is not text for this writer too: the reader refuses a text that places
+`U+0000` (below), so `ToJsonMeasure` and `ToJson` REFUSE it by row 8 of
+docs/SPEC.md §5.1 — a debug assert in an assert leg, a refusal in every build
+in the every-build legs — rather than spelling a text their own reader
+refuses. A field's ill-formed UTF-8 sequence is not a code point at all, and
+the writer REFUSES it the same way: `-1` with the reason
+`invalid_value`, naming the field, and nothing is replaced. The binary writers
+hold the same rule (§3): `Measure` and `Save` refuse ill-formed text by the same name. So no
+writer turns storage that is not text into text that reads back as something
+else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
-other byte below `0x20` is written `\u00xx` in LOWERCASE hex, so no `\u` escape
-names anything but a control byte and none names a surrogate; `/` is never
-escaped; and `DEL` (`0x7f`) and every non-ASCII code point are written RAW as
-UTF-8, as RFC 8259 permits. This is the whole escape vocabulary of both
-writers, `ToJson` and `schema unpack` alike (§16.12).
+other byte below `0x20` from `0x01` through `0x1F` is written `\u00xx` in
+LOWERCASE hex, so no `\u` escape names anything but a control byte and none
+names a surrogate; `/` is never escaped; and `DEL` (`0x7f`) and every
+non-ASCII code point are written RAW as UTF-8, as RFC 8259 permits. This is the
+whole escape vocabulary of both writers, `ToJson` and `schema unpack` alike
+(§16.12).
 
 **A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT** (ruled
 2026-10-17, from the Go fuzz campaign). `U+0000` is a code point, but no wire
@@ -16258,10 +16263,11 @@ every table reader and the packet wire already hold, and break `string(N)`'s
 C and C++ storage, which is a valid C string after every read (USAGE.md), to
 admit a value only one form could produce. With this rule an instance any read
 produced, wire or text, is one the writer re-saves and the strict reader
-accepts, which is §5's guarantee held across the forms. The writer half above
-is unchanged: storage a program built holding a zero still writes `\u0000`,
-and the text it writes is one this read refuses, which is the honest answer
-for a value no wire can carry. Held first in Go, in both of its text readers:
+accepts, which is §5's guarantee held across the forms. The writer half
+holds the same rule: storage a program built holding a zero is REFUSED,
+`invalid_value` (SPEC.md §5.1 row 8), so the two halves of the form agree and
+no writer produces a text its own reader refuses. Held first in Go, in both of
+its text readers:
 the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
 pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
 `scanStored`), which refuses with the same reason, so a pack
@@ -17514,11 +17520,12 @@ depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
 definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
 `invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
 never replaced: the write returns `-1`, measure returns
-`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS NOT
-ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
-The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte
-is `invalid_value` (a reader of those forms refuses it as `text_ill_formed`).
-Measure returns exactly the length write produces.
+`-1`, and no prefix of a text is ever a result. A ZERO BYTE IS STORAGE THAT
+IS NOT TEXT HERE TOO: the reader refuses a text that places `U+0000` (§16.3),
+so the writer refuses it by row 8 of docs/SPEC.md §5.1 — a debug assert in an
+assert leg, a refusal in every build in the every-build legs — and a reader of
+the binary forms refuses it as `text_ill_formed`. Measure returns exactly the
+length write produces.
 
 **W1. The graph pass** (the variable class only, §16.7). Walk the value in
 W3's order and count, for every node, the slots that name it, visiting each
@@ -17625,14 +17632,16 @@ byte for a string (`string(N)`, `*string`, a key). Each byte is written as:
 | `"` `0x22` | `\"` |
 | `\` `0x5C` | `\\` |
 | `0x08`, `0x0C`, `0x0A`, `0x0D`, `0x09` | `\b`, `\f`, `\n`, `\r`, `\t` |
-| any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
+| any other byte below `0x20`, `U+0001` through `U+001F` | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
 | `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
 | a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
 | an ill-formed UTF-8 sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
 
-No `\u` escape names anything at or above `0x20`, so none names a surrogate,
-no escape other than these seven short forms and `\u00XX` is ever written, and
-`U+FFFD` is written only where the storage holds `U+FFFD`.
+A zero byte is not escaped: it is storage that is not text for this writer,
+refused `invalid_value` (W0, §16.3). No `\u` escape names anything at or above
+`0x20`, so none names a surrogate, no escape other than these seven short forms
+and `\u00XX` is ever written, and `U+FFFD` is written only where the storage
+holds `U+FFFD`.
 
 **W9. A byte string** — `bytes(N)`, `*bytes` — is `"`, the bytes in base64,
 `"`: the standard alphabet of RFC 4648 §4 (`A`–`Z`, `a`–`z`, `0`–`9`, `+`,
