@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -371,7 +372,8 @@ func dartBytes(b []byte) string {
 func dartInt(v int64) string { return strconv.FormatInt(v, 10) }
 
 // announceDartBinary is the leg's own Dart: the DART the Makefile passes, then
-// the unpacked SDK, then the PATH. A missing toolchain is a skip, never a green.
+// the unpacked SDK, then the PATH. When SCHEMA_REQUIRE_CORPUS is set, a missing
+// toolchain fails the test rather than skipping.
 func announceDartBinary(t *testing.T) string {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -387,6 +389,9 @@ func announceDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Dart toolchain was found (DART, dist/dart-sdk-3.13.2/bin/dart, or PATH)")
+	}
 	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }
@@ -397,11 +402,15 @@ func announceDartBinary(t *testing.T) string {
 // runs it with the leg's own toolchain. The surface is executed on its own so a
 // defect in an unrelated form does not decide whether the announcement compiles.
 func runAnnounceProbe(t *testing.T, u *ir.Unit, body string) (string, error) {
+	return runAnnounceProbeWithRuntime(t, u, dartMessageAnnounceRuntime, body)
+}
+
+func runAnnounceProbeWithRuntime(t *testing.T, u *ir.Unit, runtimeSrc, body string) (string, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
 	dir := t.TempDir()
-	lib := "import 'dart:typed_data';\n\n" + dartMessageAnnounceRuntime + "\n" + dartTableAnnouncementConstant(u)
+	lib := "import 'dart:typed_data';\n\n" + runtimeSrc + "\n" + dartTableAnnouncementConstant(u)
 	if err := os.WriteFile(filepath.Join(dir, "announce.dart"), []byte(lib), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -427,4 +436,281 @@ void main() {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// TestDartAnnounceIdTableCount checks that announceRead enforces §3 and §3.3 on
+// the trailer's id count and distinctness, matching tablewire.Vocabulary.AnnounceRead.
+func TestDartAnnounceIdTableCount(t *testing.T) {
+	t.Parallel()
+	out, err := runDartAnnounceIdTableCount(t, dartMessageAnnounceRuntime)
+	if err != nil {
+		t.Fatalf("announceRead id-table count checks failed: %v\n%s", err, out)
+	}
+}
+
+// TestDartAnnounceIdTableCountNegativeControl removes the trailer-count guards
+// from the emitted source in memory and requires TestDartAnnounceIdTableCount's
+// probe to go red.
+func TestDartAnnounceIdTableCountNegativeControl(t *testing.T) {
+	t.Parallel()
+	const fullCountCheck = `  if (trailerCount < 0 ||
+      trailerCount > 4096 ||
+      trailerCount > (bytes.length - 9) ~/ 8) {
+    report.Damage();
+    return false;
+  }`
+	const endCheck = `  if (end < 1) {
+    report.Damage();
+    return false;
+  }`
+	const indexedLoop = `  for (var k = 0; k < trailerCount; k++) {
+    final id = view.getUint64(end + k * 8, Endian.little);`
+	const offsetLoop = `  for (var i = end; i < end + trailerCount * 8; i += 8) {
+    final id = view.getUint64(i, Endian.little);`
+
+	replaceExact := func(t *testing.T, s, old, repl string) string {
+		t.Helper()
+		if !strings.Contains(s, old) {
+			t.Fatalf("dartMessageAnnounceRuntime missing expected snippet:\n%s", old)
+		}
+		return strings.Replace(s, old, repl, 1)
+	}
+
+	controls := []struct {
+		name   string
+		mutate func(t *testing.T, s string) string
+	}{
+		{
+			name: "without_count_check",
+			mutate: func(t *testing.T, s string) string {
+				return replaceExact(t, s, fullCountCheck, "")
+			},
+		},
+		{
+			name: "without_4096_ceiling",
+			mutate: func(t *testing.T, s string) string {
+				return replaceExact(t, s, "trailerCount > 4096 ||", "")
+			},
+		},
+		{
+			name: "without_signed_count_guards",
+			mutate: func(t *testing.T, s string) string {
+				s = replaceExact(t, s, "trailerCount < 0 ||", "")
+				s = replaceExact(t, s, endCheck, "")
+				return replaceExact(t, s, indexedLoop, offsetLoop)
+			},
+		},
+	}
+	for _, tc := range controls {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sabotaged := tc.mutate(t, dartMessageAnnounceRuntime)
+			out, err := runDartAnnounceIdTableCount(t, sabotaged)
+			if err == nil {
+				t.Fatalf("%s unexpectedly passed:\n%s", tc.name, out)
+			}
+		})
+	}
+}
+
+func fnv32a(b []byte) uint32 {
+	h := uint32(2166136261)
+	for _, v := range b {
+		h ^= uint32(v)
+		h *= 16777619
+	}
+	return h
+}
+
+func paddedAnnouncementTrailer(prefix []byte, baseIDs []uint64, totalCount int) []byte {
+	out := make([]byte, 0, len(prefix)+totalCount*8+8)
+	out = append(out, prefix...)
+	used := make(map[uint64]struct{}, totalCount)
+	for _, id := range baseIDs {
+		out = binary.LittleEndian.AppendUint64(out, id)
+		used[id] = struct{}{}
+	}
+	nextID := uint64(0x5100000000000001)
+	for len(used) < totalCount {
+		if _, exists := used[nextID]; !exists &&
+			nextID != ir.TableBuildVersionWireId &&
+			nextID != ir.TableMessageVocabularyWireId {
+			used[nextID] = struct{}{}
+			out = binary.LittleEndian.AppendUint64(out, nextID)
+		}
+		nextID++
+	}
+	return binary.LittleEndian.AppendUint64(out, uint64(totalCount))
+}
+
+func runDartAnnounceIdTableCount(t *testing.T, runtimeSrc string) (string, error) {
+	t.Helper()
+	u := loadUnit(t, "../../../tables/backend/Backend.schema")
+	valid := tablewire.Announce(u)
+	if len(valid) < 9 {
+		t.Fatalf("valid announcement too short: %d", len(valid))
+	}
+	trueCount := binary.LittleEndian.Uint64(valid[len(valid)-8:])
+	bodyLen := len(valid) - 8 - int(trueCount)*8
+	if bodyLen < 1 {
+		t.Fatalf("invalid announcement trailer layout: len=%d count=%d", len(valid), trueCount)
+	}
+	bodyPrefix := append([]byte(nil), valid[:bodyLen]...)
+	trueIDs := make([]uint64, trueCount)
+	for i := range trueIDs {
+		off := bodyLen + i*8
+		trueIDs[i] = binary.LittleEndian.Uint64(valid[off : off+8])
+	}
+
+	withCount := func(base []byte, count uint64) []byte {
+		out := append([]byte(nil), base[:len(base)-8]...)
+		return binary.LittleEndian.AppendUint64(out, count)
+	}
+	shortWithCount := func(count uint64) []byte {
+		out := []byte{1}
+		return binary.LittleEndian.AppendUint64(out, count)
+	}
+
+	dupTrailer := append([]byte(nil), bodyPrefix...)
+	for _, id := range trueIDs {
+		dupTrailer = binary.LittleEndian.AppendUint64(dupTrailer, id)
+	}
+	dupTrailer = binary.LittleEndian.AppendUint64(dupTrailer, trueIDs[0])
+	dupTrailer = binary.LittleEndian.AppendUint64(dupTrailer, trueCount+1)
+
+	pad4096 := paddedAnnouncementTrailer(bodyPrefix, trueIDs, 4096)
+	pad4097 := paddedAnnouncementTrailer(bodyPrefix, trueIDs, 4097)
+	unterminated20000 := paddedAnnouncementTrailer([]byte{1}, nil, 20000)
+
+	type wireCase struct {
+		name     string
+		wire     []byte
+		dartExpr string
+		wantOK   bool
+	}
+	cases := []wireCase{
+		{"valid", valid, fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(valid)), true},
+		{"high_bit_count_short_wire", shortWithCount((uint64(1) << 63) | 1), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(shortWithCount((uint64(1)<<63)|1))), false},
+		{"min_i64_count_short_wire", shortWithCount(uint64(1) << 63), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(shortWithCount(uint64(1)<<63))), false},
+		{"all_ones_count_short_wire", shortWithCount(^uint64(0)), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(shortWithCount(^uint64(0)))), false},
+		{"high_bits_61_63_count", withCount(valid, trueCount|(uint64(1)<<61)|(uint64(1)<<63)), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(withCount(valid, trueCount|(uint64(1)<<61)|(uint64(1)<<63)))), false},
+		{"high_bit_61_count", withCount(valid, trueCount|(uint64(1)<<61)), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(withCount(valid, trueCount|(uint64(1)<<61)))), false},
+		{"count_past_wire_length", withCount(valid, uint64((len(valid)-9)/8+1)), fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(withCount(valid, uint64((len(valid)-9)/8+1)))), false},
+		{"duplicate_trailer_id", dupTrailer, fmt.Sprintf("Uint8List.fromList(%s)", dartBytes(dupTrailer)), false},
+		{"count_at_4096_limit", pad4096, "paddedTrailer(bodyPrefix, baseIds, 4096)", true},
+		{"count_above_4096_limit", pad4097, "paddedTrailer(bodyPrefix, baseIds, 4097)", false},
+		{"unterminated_20000_ids", unterminated20000, "paddedTrailer(Uint8List.fromList(<int>[1]), const <int>[], 20000)", false},
+	}
+
+	var dartChecks strings.Builder
+	baseIDLiterals := make([]string, len(trueIDs))
+	for i, id := range trueIDs {
+		baseIDLiterals[i] = dartU64Literal(id)
+	}
+	fmt.Fprintf(&dartChecks, `
+  int fnv32a(Uint8List b) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < b.length; i++) {
+      h = ((h ^ b[i]) * 0x01000193) & 0xffffffff;
+    }
+    return h;
+  }
+
+  Uint8List paddedTrailer(Uint8List prefix, List<int> seedIds, int totalCount) {
+    final out = Uint8List(prefix.length + totalCount * 8 + 8);
+    out.setRange(0, prefix.length, prefix);
+    final view = ByteData.sublistView(out);
+    final used = <int>{};
+    var at = prefix.length;
+    for (final id in seedIds) {
+      view.setUint64(at, id, Endian.little);
+      at += 8;
+      used.add(id);
+    }
+    var nextId = 0x5100000000000001;
+    while (used.length < totalCount) {
+      if (!used.contains(nextId) &&
+          nextId != %s &&
+          nextId != %s) {
+        used.add(nextId);
+        view.setUint64(at, nextId, Endian.little);
+        at += 8;
+      }
+      nextId += 1;
+    }
+    view.setUint64(at, totalCount, Endian.little);
+    return out;
+  }
+
+  List<t.TableMessageEntry> storage() =>
+      List<t.TableMessageEntry>.generate(8192, (i) => t.TableMessageEntry(0, 0));
+
+  void assertCase(
+    String name,
+    Uint8List wire,
+    int wantLen,
+    int wantFnv,
+    bool wantOk,
+    String wantReason,
+    int wantEntries,
+  ) {
+    check(wire.length == wantLen, '$name: wire length=${wire.length} want=$wantLen');
+    check(fnv32a(wire) == wantFnv, '$name: wire checksum=${fnv32a(wire)} want=$wantFnv');
+    final vocab = t.TableVocabulary(entries: storage());
+    final report = t.TableReport();
+    bool gotOk;
+    try {
+      gotOk = t.announceRead(vocab, wire, report);
+    } catch (e) {
+      check(false, '$name: announceRead threw $e');
+      return;
+    }
+    check(gotOk == wantOk,
+        '$name: announceRead=$gotOk want=$wantOk reason=${report.reason} refused=${report.refused}');
+    if (wantOk) {
+      check(vocab.announced && !report.refused,
+          '$name: announced=${vocab.announced} refused=${report.refused} reason=${report.reason}');
+      check(vocab.count == wantEntries,
+          '$name: entries=${vocab.count} want=$wantEntries');
+    } else {
+      check(!vocab.announced && report.refused && report.reason == wantReason,
+          '$name: announced=${vocab.announced} refused=${report.refused} reason=${report.reason} wantReason=$wantReason');
+    }
+  }
+
+  final bodyPrefix = Uint8List.fromList(%s);
+  final baseIds = <int>[%s];
+`,
+		dartU64Literal(ir.TableBuildVersionWireId),
+		dartU64Literal(ir.TableMessageVocabularyWireId),
+		dartBytes(bodyPrefix),
+		strings.Join(baseIDLiterals, ", "),
+	)
+
+	for _, tc := range cases {
+		var goVocab tablewire.Vocabulary
+		var goReport tabletext.Report
+		goErr := goVocab.AnnounceRead(tc.wire, &goReport)
+		goOK := goErr == nil
+		if goOK != tc.wantOK {
+			t.Fatalf("%s: Go AnnounceRead ok=%v (err=%v), test expected ok=%v", tc.name, goOK, goErr, tc.wantOK)
+		}
+		wantReason := ""
+		wantEntries := 0
+		if goOK {
+			if !goVocab.Announced() || goReport.Refused {
+				t.Fatalf("%s: Go AnnounceRead succeeded with announced=%v refused=%v", tc.name, goVocab.Announced(), goReport.Refused)
+			}
+			wantEntries = len(goVocab.Entries())
+		} else {
+			wantReason = tablewire.RefusalReason(goErr)
+			if wantReason != "wire_damaged" || !goReport.Refused {
+				t.Fatalf("%s: Go AnnounceRead reason=%q refused=%v err=%v, want wire_damaged", tc.name, wantReason, goReport.Refused, goErr)
+			}
+		}
+		fmt.Fprintf(&dartChecks, "  assertCase(%q, %s, %d, %d, %v, %q, %d);\n",
+			tc.name, tc.dartExpr, len(tc.wire), fnv32a(tc.wire), goOK, wantReason, wantEntries)
+	}
+
+	return runAnnounceProbeWithRuntime(t, u, runtimeSrc, dartChecks.String())
 }
