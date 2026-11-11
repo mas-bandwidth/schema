@@ -302,6 +302,7 @@ func runCRefOrdinal(t *testing.T, files map[string][]byte, driver, binary, runFa
 // C emitter wrote, over elided nested tables, an enum-keyed array at every
 // elision shape, and an array long enough to move a reference's LEB128 width.
 func TestCTableRefOrdinalBytes(t *testing.T) {
+	t.Parallel()
 	files, err := generateCUnqualified(unitFromSource(t, cRefOrdinalSchema()))
 	if err != nil {
 		t.Fatalf("generate: %v", err)
