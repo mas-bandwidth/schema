@@ -3,6 +3,7 @@ package darttable
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -128,8 +129,8 @@ func buildDartShapeVectors(t *testing.T, u *ir.Unit) []dartShapeVector {
 			ids = append(ids, id)
 			return binary.AppendUvarint(nil, uint64(len(ids)))
 		}
-		unk := append(append(ref(ir.TableWireId("unknown_prefix")), byte(ir.TableKindI32)), 7, 0, 0, 0)
-		body := append(unk, build(ref)...)
+		body := append(append(ref(ir.TableWireId("unknown_prefix")), byte(ir.TableKindI32)), 7, 0, 0, 0)
+		body = append(body, build(ref)...)
 		body = append(body, 0)
 		wire := append([]byte{1}, body...)
 		for _, id := range ids {
@@ -320,9 +321,7 @@ func runDartVariableCellsProbe(t *testing.T, edit func(name string, data []byte)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	for name, data := range packetFiles(t, u) {
-		files[name] = data
-	}
+	maps.Copy(files, packetFiles(t, u))
 	if edit != nil {
 		patched := 0
 		for name, data := range files {
