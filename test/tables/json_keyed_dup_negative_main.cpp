@@ -42,6 +42,13 @@ int main()
 
     // a refusal must leave the value at its defaults and name the reason; a
     // refusal that kept half a value would be the tolerant read come back
+    if ( report.refuse_reason != tabledemo::malformed )
+    {
+        printf( "FAIL keyed duplicate negative control: the read refused for reason %d, not malformed\n",
+                (int) report.refuse_reason );
+        return 1;
+    }
+
     tabledemo::KeyedConfig defaults;
     if ( value.teams[tabledemo::Team::Red].spawn_count != defaults.teams[tabledemo::Team::Red].spawn_count )
     {
