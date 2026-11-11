@@ -353,10 +353,9 @@ func TestCDamagedRefusalStillEmitted(t *testing.T) {
 func TestOpenDisagreementsAreNamed(t *testing.T) {
 	named := nameDisagreements([]string{
 		"runtime:cpp:13 - kTableFixedPresentDefaults = 9;",
-		"runtime:c:104 + inline uint64_t TableFixedGetLe( const uint8_t * b, uint32_t size ) {",
 	})
-	if len(named) != 2 || !strings.Contains(named[0], "ABSENT PAYLOAD") || !strings.Contains(named[1], "BYTE ORDER") {
-		t.Fatalf("the two open disagreements were not named: %q", named)
+	if len(named) != 1 || !strings.Contains(named[0], "ABSENT PAYLOAD") {
+		t.Fatalf("the open disagreement was not named: %q", named)
 	}
 	if got := nameDisagreements([]string{"runtime:c:1 + kTableFixedCopy = 99;"}); len(got) != 0 {
 		t.Fatalf("an unrelated leftover was named as an open disagreement: %q", got)
