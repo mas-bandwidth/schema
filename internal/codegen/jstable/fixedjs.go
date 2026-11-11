@@ -616,6 +616,30 @@ func fixedFieldChecked(f *ir.Field) bool {
 	return false
 }
 
+// fixedPayloadChecked reports whether an optional's payload carries a check of
+// its own, once the present byte's own wire_damaged check is set aside.
+func fixedPayloadChecked(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	payload := *f
+	payload.Type.Optional = false
+	return fixedFieldChecked(&payload)
+}
+
+// fixedElementChecked reports whether one element of a keyed, fixed or counted
+// array carries a check. The array's own count check is not a reason to emit
+// the element loop, so the array spelling is set aside before asking.
+func fixedElementChecked(f *ir.Field) bool {
+	if f == nil {
+		return false
+	}
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.KeyEnum = ""
+	return fixedFieldChecked(&elem)
+}
+
 // fixedIsFloat is true for a float32 or a float64 leaf.
 func fixedIsFloat(t ir.FieldType) bool { return t.Kind == ir.TFloat32 || t.Kind == ir.TFloat64 }
 
@@ -642,9 +666,11 @@ func (g *fixedGen) emitCheckField(f *ir.Field, base string, at int64, ind string
 		g.pf("%s{\n", ind)
 		g.pf("%s  const p = view.getUint8(%s);\n", ind, off(base, at))
 		g.pf("%s  if (p > 1) { report.refused = TableFixedRefusal.WireDamaged; return; }\n", ind)
-		g.pf("%s  if (p !== 0) {\n", ind)
-		g.emitCheckPayload(f, base, at+fixedPresentBytes, ind+"  ")
-		g.pf("%s  }\n", ind)
+		if fixedPayloadChecked(f) {
+			g.pf("%s  if (p !== 0) {\n", ind)
+			g.emitCheckPayload(f, base, at+fixedPresentBytes, ind+"  ")
+			g.pf("%s  }\n", ind)
+		}
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -676,6 +702,9 @@ func (g *fixedGen) emitCheckPayload(f *ir.Field, base string, at int64, ind stri
 }
 
 func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind string) {
+	if !fixedElementChecked(f) {
+		return
+	}
 	elem := fixedElementBytes(f)
 	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")

@@ -2336,8 +2336,6 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   {
     const n = view.getInt32(at + 464, true);
     if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
-    for (let i = 0; i < n; i++) {
-    }
   }
   {
     let tag = 0;
@@ -2544,8 +2542,6 @@ export function FixedTableFixedDecode(value, view, at, report) {
   {
     const n = view.getInt32(at + 464, true);
     if (n < 0 || n > 80) { report.refused = TableFixedRefusal.CountOverBound; return; }
-    for (let i = 0; i < n; i++) {
-    }
   }
   {
     let tag = 0;
