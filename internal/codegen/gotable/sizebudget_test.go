@@ -54,11 +54,12 @@ const (
 	// +6: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -5: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -1161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
+	// +95: the generated JSON reader bounds a long mantissa before strconv (SPEC-TABLES §16.2)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// -15: a fixed table's plain Save, Measure and Load are the fixed form's
 	// (§3.4): the variable form's measure walk and save header are gone at a fixed root, and a root with no file form refuses its save (§3.4)
 	// +17: canonical base64 checks in Go JSON reads (§16.2), re-measured at the merged head
-	goOneTableLineBudget = 10009
+	goOneTableLineBudget = 10104
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -95,10 +96,11 @@ const (
 	// +110: a fixed-class root's Load refuses a form-1 file as previous_form (§3.4), the strict read
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
+	// +95: the generated JSON reader bounds a long mantissa before strconv (SPEC-TABLES §16.2)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
 	// +17: canonical base64 checks in Go JSON reads (§16.2), re-measured at the merged head
-	goExamplesLineBudget = 59961
+	goExamplesLineBudget = 60056
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
