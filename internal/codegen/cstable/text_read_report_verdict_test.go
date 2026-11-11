@@ -162,7 +162,7 @@ func csTextVerdictRun(t *testing.T, files map[string][]byte) []csTextVerdictLine
 		t.Fatalf("TextVerdictProbe failed: %v\n%s", err, out)
 	}
 	var lines []csTextVerdictLine
-	for _, raw := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for raw := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if raw == "" {
 			continue
 		}
