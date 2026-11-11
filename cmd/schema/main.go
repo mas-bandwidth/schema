@@ -956,6 +956,9 @@ func writeGenerated(dir string, files map[string][]byte, lang string, removeStal
 	}
 	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	for _, name := range names {
+		if err := out.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			return err
+		}
 		if err := out.WriteFile(name, files[name], 0o644); err != nil {
 			return err
 		}
