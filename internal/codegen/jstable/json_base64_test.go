@@ -52,6 +52,8 @@ table Root {
 		{"four-pads-after-a-full-group", "AQID===="},
 		{"pads-alone", "===="},
 		{"escaped-symbol", `\u0041QI=`},
+		{"escaped-padding", `\u0041QI\u003D`},
+		{"escaped-one-pad-where-two-belong", `AQ\u003D`},
 		{"outside-the-alphabet", "AQ!D"},
 		{"one-byte-past-the-bound", "AQIDBAU="},
 	}
