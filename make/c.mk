@@ -2059,6 +2059,8 @@ tables-c-cycle-negative-control:
 	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
 	@n=$$(grep -F -c 'if ( !c.broken && c.processed == c.vertices )' internal/codegen/ctable/graph.go); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the C cycle verdict appears $$n times, expected exactly 1"; exit 1; fi
+	@m=$$(grep -F -c 'cycle: the retaining load handed back a cyclic graph' internal/codegen/ctable/discard_test.go); \
+		if [ "$$m" != "1" ]; then echo "NEGATIVE CONTROL: the cycle gate's retaining refusal appears $$m times, expected exactly 1"; exit 1; fi
 	@sed -e 's#if ( !c.broken && c.processed == c.vertices )#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
 		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
 	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
