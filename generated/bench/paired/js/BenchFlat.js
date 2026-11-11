@@ -295,6 +295,9 @@ export function ReadBenchPacketFlat(view, numBits, value) {
   value.flag = v !== 0;
   out = (view.getUint32(11, true) >>> 1) | (view.getUint32(15, true) << 31);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.x = SC.getFloat64(0, true);
@@ -304,6 +307,9 @@ export function ReadBenchPacketFlat(view, numBits, value) {
   }
   out = (view.getUint32(15, true) >>> 1) | (view.getUint32(19, true) << 31);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.y = SC.getFloat64(0, true);
@@ -313,6 +319,9 @@ export function ReadBenchPacketFlat(view, numBits, value) {
   }
   out = (view.getUint32(19, true) >>> 1) | (view.getUint32(23, true) << 31);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.z = SC.getFloat64(0, true);
@@ -2412,6 +2421,9 @@ export function ReadBenchMixedFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2435,6 +2447,9 @@ export function ReadBenchMixedFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.drift = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;
