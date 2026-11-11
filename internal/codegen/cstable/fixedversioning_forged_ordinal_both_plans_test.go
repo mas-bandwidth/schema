@@ -78,6 +78,24 @@ func TestFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "a counter other than clamp moved on the COMPILED plan: widened=" + r.Widened + " unknown=" + r.Unknown + " kind=" + r.KindMismatch + " duplicate=" + r.Duplicate + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }`},
+		{name: "forged_ordinal_both_plans/no_report", reader: "VOLD_enum_append",
+			older: nil, file: "hostile_enum_append.bin",
+			body: csVersionHead + `            _ = want;
+            if (n != -1)
+            {
+                bad += ProbeLog.Fail(@NAME@, "a report read of the forged ordinal did not refuse: n=" + n + " reason=" + r.Reason);
+            }
+            @TABLE@[] noReport = new @TABLE@[8];
+            for (int i = 0; i < noReport.Length; ++i) { noReport[i] = new @TABLE@(); }
+            long nNoReport = Schema.@TABLE@FixedLoad(noReport, data, plan);
+            if (nNoReport != -1)
+            {
+                bad += ProbeLog.Fail(@NAME@, "a no-report read of the forged ordinal did not refuse: n=" + nNoReport);
+            }
+            if ((int)noReport[0].Tier != 0)
+            {
+                bad += ProbeLog.Fail(@NAME@, "a refused no-report read left the forged ordinal: tier=" + (int)noReport[0].Tier);
+            }`},
 		{name: "forged_ordinal_both_plans/identity", reader: "VOLD_enum_append",
 			older: nil, file: "hostile_enum_append.bin",
 			body: csVersionHead + `            _ = want;

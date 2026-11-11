@@ -600,7 +600,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sif (!_lebValid(%s.data, %s.pos, len)) %s\n", ind, p, p, bad)
 		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, textBound(f))
 		g.pf("%sif (keep != len) { %s.report.refuse('length_over_bound'); return false; }\n", ind, p)
-		g.pf("%s%s = utf8.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
+		g.pf("%s%s = _decodeText(%s.data, %s.pos, %s.pos + keep);\n", ind, dest, p, p, p)
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
 		g.pf("%sreturn true;\n", ind)
 	case f.Type.Kind == ir.TBytes:
@@ -756,7 +756,7 @@ func (g *wireGen) emitGetElemBad(f *ir.Field, ek int, out, p, ind, bad string) {
 	case wireKindString:
 		g.pf("%sfinal elen = %s.readLeb();\n", ind, p)
 		g.pf("%sif (elen == null || !%s.has(elen) || !_lebValid(%s.data, %s.pos, elen)) %s\n", ind, p, p, p, bad)
-		g.pf("%s%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, out, p, p, p)
+		g.pf("%s%s.add(_decodeText(%s.data, %s.pos, %s.pos + elen));\n", ind, out, p, p, p)
 		g.pf("%s%s.pos += elen;\n", ind, p)
 	case wireKindEnum:
 		e := enumRef(f)
