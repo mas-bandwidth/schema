@@ -333,7 +333,12 @@ func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f1 = uint64(uint32(float32(normalizedValue*36000.0)+0.5)) & 0xffff
+	integerValue := uint32(float32(normalizedValue*36000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 36000 {
+		integerValue = 36000
+	}
+	f1 = uint64(integerValue) & 0xffff
 	f2 := uint64(value.RawDelta) & 0xffffffff
 	f3 := uint64(value.BigDelta)
 	w0 := f0 | f1<<1 | f2<<17 | f3<<49
@@ -1195,7 +1200,12 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f12 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 1000 {
+		integerValue = 1000
+	}
+	f12 = uint64(integerValue) & 0x3ff
 	f13 := math.Float64bits(value.DoubleValue)
 	f14 := uint64(value.Int8Value) & 0xff
 	f15 := uint64(value.Int16Value) & 0xffff
@@ -1388,7 +1398,12 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 	} else if !(normalizedValue <= 1) {
 		normalizedValue = 1
 	}
-	f0 = uint64(uint32(float32(normalizedValue*1000.0)+0.5)) & 0x3ff
+	integerValue := uint32(float32(normalizedValue*1000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue > 1000 {
+		integerValue = 1000
+	}
+	f0 = uint64(integerValue) & 0x3ff
 	f1 := uint64(0)
 	normalizedValue2 := (value.Offset + 5.0) / 10.0
 	if !(normalizedValue2 >= 0) { // the runtime's clamp form — it forces NaN into range too
@@ -1396,7 +1411,12 @@ func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe)
 	} else if !(normalizedValue2 <= 1) {
 		normalizedValue2 = 1
 	}
-	f1 = uint64(uint32(float32(normalizedValue2*10000.0)+0.5)) & 0x3fff
+	integerValue2 := uint32(float32(normalizedValue2*10000.0) + 0.5)
+	// the integer clamp is normative
+	if integerValue2 > 10000 {
+		integerValue2 = 10000
+	}
+	f1 = uint64(integerValue2) & 0x3fff
 	w0 := uint32(f0 | f1<<10)
 	stream.SerializeBits(&w0, 24)
 	return stream.Err()
