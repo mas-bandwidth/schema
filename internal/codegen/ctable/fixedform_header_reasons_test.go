@@ -6,7 +6,9 @@ package ctable
 // is truncated, and a nonzero reserved byte is reserved_not_zero. The C++
 // reference and the Go oracle carry both names on the report; this drives the
 // GENERATED C reader over a ten-byte form-3 file and a twenty-byte form-3 file
-// with reserved byte 3 set, so the emitted path is what answers.
+// with reserved byte 3 set, so the emitted path is what answers. Each refusal
+// is held to the WHOLE report, not just the name: the named reason rides beside
+// wire_damaged and no other field moves.
 
 import (
 	"strings"
@@ -27,7 +29,7 @@ func TestCFixedHeaderRefusalReasons(t *testing.T) {
     {
         uint8_t file[64];
         @ROOT@ back;
-        TableReport r;
+        TableReport r, want;
         static TableFixedEntry plan[4096];
         int64_t n;
         int bad = 0;
@@ -38,10 +40,13 @@ func TestCFixedHeaderRefusalReasons(t *testing.T) {
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
         n = @SNAKE@_fixed_load( &back, 1, file, 10, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_TRUNCATED ||
-             r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+        memset( &want, 0, sizeof( want ) );
+        want.refused = 1;
+        want.reason = SCHEMA_TABLE_REFUSE_TRUNCATED;
+        want.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;
+        if ( n != -1 || memcmp( &r, &want, sizeof( want ) ) != 0 )
         {
-            printf( "truncated: n=%lld refused=%d reason=%d refuse_reason=%d, want -1, refused, truncated, wire_damaged\n",
+            printf( "truncated: n=%lld refused=%d reason=%d refuse_reason=%d, want -1 and exactly refused+truncated+wire_damaged\n",
                     (long long) n, r.refused, r.reason, r.refuse_reason );
             bad = 1;
         }
@@ -53,10 +58,13 @@ func TestCFixedHeaderRefusalReasons(t *testing.T) {
         memset( &back, 0, sizeof( back ) );
         memset( &r, 0, sizeof( r ) );
         n = @SNAKE@_fixed_load( &back, 1, file, 20, plan, 4096, NULL, &r );
-        if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO ||
-             r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+        memset( &want, 0, sizeof( want ) );
+        want.refused = 1;
+        want.reason = SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO;
+        want.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;
+        if ( n != -1 || memcmp( &r, &want, sizeof( want ) ) != 0 )
         {
-            printf( "reserved: n=%lld refused=%d reason=%d refuse_reason=%d, want -1, refused, reserved_not_zero, wire_damaged\n",
+            printf( "reserved: n=%lld refused=%d reason=%d refuse_reason=%d, want -1 and exactly refused+reserved_not_zero+wire_damaged\n",
                     (long long) n, r.refused, r.reason, r.refuse_reason );
             bad = 1;
         }
