@@ -560,12 +560,12 @@ fn kind_bits(kind: u8) -> u64 {
 /// (§3.3): the step count, the delta and the width. False is a non-conforming
 /// triple, which on the announcement is a hostile width.
 fn quantization(qmin: f32, qmax: f32, qres: f32) -> (u32, f32, u64, bool) {
-    if qmin.is_nan() || qmax.is_nan() || qmin >= qmax || qres.is_nan() || qres <= 0.0 {
+    if !qmin.is_finite() || !qmax.is_finite() || !qres.is_finite() || qmin >= qmax || qres <= 0.0 {
         return (0, 0.0, 0, false);
     }
     let delta = qmax - qmin;
     let mut values = delta / qres;
-    if delta.is_nan() || values.is_nan() {
+    if !delta.is_finite() || !values.is_finite() {
         return (0, 0.0, 0, false);
     }
     if values.is_nan() || values < 1.0 {
