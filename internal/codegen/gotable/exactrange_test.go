@@ -63,17 +63,18 @@ func TestExact(t *testing.T) {
 	v.N = 9007199254740993
 	v.M = -9223372036854775807
 	v.U = 18446744073709551614
-	if n := BigMeasure(&v); n < 0 {
+	n := BigFixedMeasure(1)
+	if n < 0 {
 		t.Fatalf("measure: %d", n)
-	} else {
-		b := make([]byte, n)
-		if BigSave(&v, b) != n {
-			t.Fatal("save")
-		}
-		var got Big
-		if !bigForm1(&got, b, &r) || got.N != v.N || got.M != v.M || got.U != v.U {
-			t.Fatalf("binary roundtrip %+v", got)
-		}
+	}
+	wire := make([]byte, n)
+	if BigSave(&v, wire) != n {
+		t.Fatal("save")
+	}
+	var report TableReport
+	var loaded Big
+	if !BigLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.N != v.N || loaded.M != v.M || loaded.U != v.U {
+		t.Fatalf("binary roundtrip %+v", loaded)
 	}
 	a, c := make([]byte, 4096), make([]byte, 4096)
 	na, nc := BigToJSON(&v, a), BigToJSON(&v, c)

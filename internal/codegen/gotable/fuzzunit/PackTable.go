@@ -214,18 +214,11 @@ func GunnerSettingsSaveBodyFields(w *TableWriter, value *GunnerSettings) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// GunnerSettings is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes GunnerSettingsFixedSave writes for one
+// record — and never the variable form's byte 1.
 func GunnerSettingsSave(value *GunnerSettings, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !GunnerSettingsSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return GunnerSettingsFixedSave([]GunnerSettings{*value}, buffer)
 }
 
 func GunnerSettingsLoadBody(r *TableReader, value *GunnerSettings) bool {
@@ -359,6 +352,16 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 		read.Refuse(TableRefusePreviousForm, "")
 		GunnerSettingsReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []GunnerSettings{*value}
+		plan := make([]TableFixedEntry, GunnerSettingsFixedPlanMax)
+		if GunnerSettingsFixedLoad(batch, data, plan, read) != 1 {
+			GunnerSettingsReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -797,18 +800,11 @@ func ShipEntrySaveBodyFields(w *TableWriter, value *ShipEntry) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// ShipEntry is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes ShipEntryFixedSave writes for one
+// record — and never the variable form's byte 1.
 func ShipEntrySave(value *ShipEntry, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !ShipEntrySaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ShipEntryFixedSave([]ShipEntry{*value}, buffer)
 }
 
 func ShipEntryLoadBody(r *TableReader, value *ShipEntry) bool {
@@ -1022,6 +1018,16 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		ShipEntryReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []ShipEntry{*value}
+		plan := make([]TableFixedEntry, ShipEntryFixedPlanMax)
+		if ShipEntryFixedLoad(batch, data, plan, read) != 1 {
+			ShipEntryReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1636,18 +1642,11 @@ func GlobalSettingsSaveBodyFields(w *TableWriter, value *GlobalSettings) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// GlobalSettings is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes GlobalSettingsFixedSave writes for one
+// record — and never the variable form's byte 1.
 func GlobalSettingsSave(value *GlobalSettings, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !GlobalSettingsSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return GlobalSettingsFixedSave([]GlobalSettings{*value}, buffer)
 }
 
 func GlobalSettingsLoadBody(r *TableReader, value *GlobalSettings) bool {
@@ -1855,6 +1854,16 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		read.Refuse(TableRefusePreviousForm, "")
 		GlobalSettingsReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []GlobalSettings{*value}
+		plan := make([]TableFixedEntry, GlobalSettingsFixedPlanMax)
+		if GlobalSettingsFixedLoad(batch, data, plan, read) != 1 {
+			GlobalSettingsReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2818,18 +2827,11 @@ func PackConfigSaveBodyFields(w *TableWriter, value *PackConfig) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// PackConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes PackConfigFixedSave writes for one
+// record — and never the variable form's byte 1.
 func PackConfigSave(value *PackConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !PackConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return PackConfigFixedSave([]PackConfig{*value}, buffer)
 }
 
 func PackConfigLoadBody(r *TableReader, value *PackConfig) bool {
@@ -3191,6 +3193,16 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		read.Refuse(TableRefusePreviousForm, "")
 		PackConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []PackConfig{*value}
+		plan := make([]TableFixedEntry, PackConfigFixedPlanMax)
+		if PackConfigFixedLoad(batch, data, plan, read) != 1 {
+			PackConfigReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

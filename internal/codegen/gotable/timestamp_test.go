@@ -145,11 +145,27 @@ func sessionForm1(value *Session, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+
+func rootForm1Save(value *Session) []byte {
+	n := SessionMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !SessionSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestVariableWire(t *testing.T) {
  for _, c := range tsCases {
   v := Session{N: 7, Started: c.n, Ended: -c.n / 2}
-  b := make([]byte, SessionMeasure(&v))
-  if SessionSave(&v, b) != int64(len(b)) { t.Fatalf("%s: save", c.name) }
+  b := rootForm1Save(&v)
+  if b == nil { t.Fatalf("%s: save", c.name) }
   var got Session
   var r TableReport
   if !sessionForm1(&got, b, &r) || r != (TableReport{}) { t.Fatalf("%s: load %+v", c.name, r) }
@@ -167,9 +183,9 @@ func TestZeroTimeIsAbsent(t *testing.T) {
  gozero := Session{Started: 99, Ended: 99}
  if err := gozero.SetStartedTime(time.Time{}); err != nil { t.Fatal(err) }
  if err := gozero.SetEndedTime(time.Time{}); err != nil { t.Fatal(err) }
- a := make([]byte, SessionMeasure(&fresh))
- b := make([]byte, SessionMeasure(&gozero))
- SessionSave(&fresh, a); SessionSave(&gozero, b)
+ a := rootForm1Save(&fresh)
+ b := rootForm1Save(&gozero)
+ if a == nil || b == nil { t.Fatal("zero time save") }
  if !bytes.Equal(a, b) { t.Fatalf("zero time rides: %x vs %x", a, b) }
  if len(a) >= 16 { t.Fatalf("two zero timestamps cost %d bytes", len(a)) }
  var v Session
@@ -264,8 +280,8 @@ func TestJsonRefusesByName(t *testing.T) {
 // through tableKindBytes(36) == 8 (docs/SPEC-TABLES.md §2.11, §3).
 func TestKindIsItsOwn(t *testing.T) {
  v := Session{Started: 1760531645123456789}
- b := make([]byte, SessionMeasure(&v))
- SessionSave(&v, b)
+ b := rootForm1Save(&v)
+ if b == nil { t.Fatal("save") }
  // the field is [reference 1][kind 36][eight bytes], a fixed-width kind carrying
  // no length: respell the kind as i64
  i := bytes.Index(b, []byte{1, 36})
@@ -277,8 +293,8 @@ func TestKindIsItsOwn(t *testing.T) {
  if !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || got.Started != 0 { t.Fatalf("int64 under a timestamp field: %+v %d", r, got.Started) }
  // and the reverse: a kind-36 payload under an int32 field (n) and anended field skips cleanly
  v2 := Session{Started: 1760531645123456789, Ended: 42}
- b2 := make([]byte, SessionMeasure(&v2))
- SessionSave(&v2, b2)
+ b2 := rootForm1Save(&v2)
+ if b2 == nil { t.Fatal("save") }
  // swap the first id in the trailer to n's id so reference 1 (kind 36) targets n (int32)
  nId := SessionTableFields[0].ID
  sId := SessionTableFields[1].ID

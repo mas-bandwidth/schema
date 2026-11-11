@@ -106,19 +106,34 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestDefaults(t *testing.T) {
  var v Root; RootReset(&v)
  if string(v.Title[:v.TitleLength]) != "default" || string(v.Tag[:v.TagLength]) != "ab" || v.Caps != 3 || string(v.Badge.Title[:v.Badge.TitleLength]) != "fresh" { t.Fatalf("defaults: %+v",v) }
  if n:=RootMeasure(&v);n!=10 {t.Fatalf("default file: %d",n)}
  v.TitleLength=0;v.TagLength=0;v.ValuesPresent=true;v.GradesPresent=true
  v.Grades[1]=GradeGold
- b:=make([]byte,RootMeasure(&v));if RootSave(&v,b)!=int64(len(b)){t.Fatal("save")}
+ b:=rootForm1Save(&v);if b==nil{t.Fatal("save")}
  var got Root;var r TableReport
  if !rootForm1(&got,b,&r)||r!=(TableReport{})||!got.ValuesPresent||got.ValuesCount!=0||!got.GradesPresent||got.Grades[1]!=GradeGold||got.TitleLength!=0||got.TagLength!=0{t.Fatalf("load: %+v %+v",got,r)}
  h:=fnv.New64a();h.Write([]byte("OldGold"));needle:=binary.LittleEndian.AppendUint64(nil,h.Sum64());if !bytes.Contains(b,needle){t.Fatal("renamed variant lost its id")}
  text:=[]byte("{\"values\":[],\"grades\":[\"Gold\",\"None\"]}")
  r=TableReport{};if !RootFromJSON(&got,text,&r)||r!=(TableReport{})||!got.ValuesPresent||!got.GradesPresent {t.Fatalf("optional text: %+v %+v",got,r)}
- if n:=testing.AllocsPerRun(20,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
+ if n:=testing.AllocsPerRun(20,func(){RootMeasure(&v);var ids TableIds;w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);if !RootSaveBody(&w,&v){return};w.Trailer();if w.Overflow||ids.Overflow{return};rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
 }
 `)
 }
@@ -199,13 +214,15 @@ func TestArms(t *testing.T) {
  for _,text:=range texts {
   var v,got Root;var r TableReport
   if !RootFromJSON(&v,[]byte(text),&r)||r!=(TableReport{}) {t.Fatalf("json %s: %+v",text,r)}
-  n:=RootMeasure(&v);if n<0 {t.Fatalf("measure %s",text)}
+  n:=RootFixedMeasure(1);if n<0 {t.Fatalf("measure %s",text)}
   b:=make([]byte,n);if RootSave(&v,b)!=n {t.Fatalf("save %s",text)}
-  if !rootForm1(&got,b,&r)||r!=(TableReport{}) {t.Fatalf("load %s: %+v",text,r)}
+  if !RootLoad(&got,b,&r)||r!=(TableReport{}) {t.Fatalf("load %s: %+v",text,r)}
   a,c:=make([]byte,4096),make([]byte,4096)
   na,nc:=RootToJSON(&v,a),RootToJSON(&got,c)
   if na<0||nc!=na||!bytes.Equal(a[:na],c[:nc]) {t.Fatalf("roundtrip %s:\n%s\n%s",text,a[:max(na,0)],c[:max(nc,0)])}
-  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
+  back:=make([]Root,1);plan:=make([]TableFixedEntry,RootFixedPlanMax)
+  if RootFixedLoad(back,b,plan,&r)!=1 {t.Fatalf("warmup %s: %+v",text,r)}
+  if n:=testing.AllocsPerRun(10,func(){RootFixedMeasure(1);RootSave(&v,b);RootFixedLoad(back,b,plan,&r)});n!=0{t.Fatalf("allocations: %v",n)}
  }
 }
 // The element resets after its arm reference, before its kind and L. A
@@ -311,10 +328,12 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
   var v,got Root;var r TableReport
   text:=[]byte("{\"n\":-170141183460469231731687303715884105728,\"u\":340282366920938463463374607431768211455,\"q\":-0.25,\"w\":-0.5,\"many\":[18446744073709551616]}")
   if !RootFromJSON(&v,text,&r)||r!=(TableReport{}) {t.Fatalf("json %+v",r)}
-  n:=RootMeasure(&v);b:=make([]byte,n);if RootSave(&v,b)!=n||!rootForm1(&got,b,&r)||got!=v||r!=(TableReport{}) {t.Fatalf("roundtrip %+v %+v %+v",v,got,r)}
+  n:=RootFixedMeasure(1);b:=make([]byte,n);if RootSave(&v,b)!=n||!RootLoad(&got,b,&r)||got!=v||r!=(TableReport{}) {t.Fatalf("roundtrip %+v %+v %+v",v,got,r)}
   a,c:=make([]byte,2048),make([]byte,2048);na,nc:=RootToJSON(&v,a),RootToJSON(&got,c);if na<0||nc!=na||!bytes.Equal(a[:na],c[:nc]) {t.Fatal("text mismatch")}
   for _,want:=range [][]byte{[]byte("-170141183460469231731687303715884105728"),[]byte("340282366920938463463374607431768211455"),[]byte("-0.25"),[]byte("-0.5"),[]byte("18446744073709551616")} {if !bytes.Contains(a[:na],want){t.Fatalf("lost precision: %s",a[:na])}}
-  if n:=testing.AllocsPerRun(10,func(){RootMeasure(&v);RootSave(&v,b);rootForm1(&got,b,&r);RootToJSON(&v,a);RootFromJSON(&got,text,&r)});n!=0 {t.Fatalf("allocations %v",n)}
+  back:=make([]Root,1);plan:=make([]TableFixedEntry,RootFixedPlanMax)
+  if RootFixedLoad(back,b,plan,&r)!=1 {t.Fatalf("warmup %+v",r)}
+  if n:=testing.AllocsPerRun(10,func(){RootFixedMeasure(1);RootSave(&v,b);RootFixedLoad(back,b,plan,&r);RootToJSON(&v,a);RootFromJSON(&got,text,&r)});n!=0 {t.Fatalf("allocations %v",n)}
  }
  `)
 }

@@ -86,6 +86,22 @@ func loadoutForm1Strict(wire []byte) (*LoadoutConfig, error) {
 	}
 	return value, nil
 }
+
+func loadoutForm1Save(value *LoadoutConfig) []byte {
+	n := LoadoutConfigMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !LoadoutConfigSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func refSortBuild(t *testing.T, text string) []byte {
 	t.Helper()
 	var v LoadoutConfig
@@ -93,8 +109,8 @@ func refSortBuild(t *testing.T, text string) []byte {
 	if !LoadoutConfigFromJSON(&v, []byte(text), &r) || r != (TableReport{}) {
 		t.Fatalf("sample text: %%+v", r)
 	}
-	w := make([]byte, max(LoadoutConfigMeasure(&v), 0))
-	if LoadoutConfigSave(&v, w) != int64(len(w)) || len(w) == 0 {
+	w := loadoutForm1Save(&v)
+	if w == nil || len(w) == 0 {
 		t.Fatal("sample save")
 	}
 	return w
@@ -102,8 +118,8 @@ func refSortBuild(t *testing.T, text string) []byte {
 
 func refSortSave(t *testing.T, v *LoadoutConfig) []byte {
 	t.Helper()
-	w := make([]byte, max(LoadoutConfigMeasure(v), 0))
-	if LoadoutConfigSave(v, w) != int64(len(w)) {
+	w := loadoutForm1Save(v)
+	if w == nil {
 		t.Fatal("save of the loaded value")
 	}
 	return w

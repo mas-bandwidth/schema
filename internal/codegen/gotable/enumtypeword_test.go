@@ -105,6 +105,21 @@ func rootForm1Text(text string, report *TableReport) (*Root, error) {
 	}
 	return &v, nil
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestEnumWords(t *testing.T) {
 	for _, tc := range []struct{ kind FieldType; word string }{
 		{FieldTypeint32, "int32"}, {FieldTypemap, "map"}, {FieldTypetable, "table"},
@@ -116,9 +131,8 @@ func TestEnumWords(t *testing.T) {
 		var v, got Root
 		RootReset(&v)
 		v.Kind = tc.kind
-		n := RootMeasure(&v)
-		b := make([]byte, n)
-		if RootSave(&v, b) != n {
+		b := rootForm1Save(&v)
+		if b == nil {
 			t.Fatalf("save %s", tc.word)
 		}
 		var r TableReport
@@ -134,11 +148,15 @@ func TestEnumWords(t *testing.T) {
 		if !RootFromJSON(&j, a[:na], &r) || j.Kind != tc.kind {
 			t.Fatalf("json round trip %s: %+v %+v", tc.word, j, r)
 		}
+		form3 := make([]byte, RootFixedMeasure(1))
+		if RootSave(&v, form3) != int64(len(form3)) {
+			t.Fatalf("save %s", tc.word)
+		}
 		b64, err := RootSaveText(&v)
-		if err != nil || b64 != base64.StdEncoding.EncodeToString(b) {
+		if err != nil || b64 != base64.StdEncoding.EncodeToString(form3) {
 			t.Fatalf("base64 %s: %v", tc.word, err)
 		}
-		back, err := rootForm1Text(b64, &r)
+		back, err := RootLoadText(b64, &r)
 		if err != nil || back == nil || back.Kind != tc.kind {
 			t.Fatalf("load text %s: %v", tc.word, err)
 		}

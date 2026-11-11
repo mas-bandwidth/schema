@@ -133,10 +133,32 @@ func refuseStrict(t *testing.T, name string, wire []byte, wantReason string) {
 	}
 }
 
+// refuseStrictForm3 pins the fixed root's OWN form (docs/SPEC-TABLES.md §3.4):
+// form 3 is now READ, so a one-byte form-3 file is a truncated fixed record,
+// not newer_form.
+func refuseStrictForm3(t *testing.T, name string, wire []byte) {
+	t.Helper()
+	got, err := RootReadStrict(wire)
+	if got != nil || !errors.Is(err, TableRefuseTruncated) {
+		t.Fatalf("%s: ReadStrict = %v, %v; want nil, errors.Is(err, TableRefuseTruncated)", name, got, err)
+	}
+	var value Root
+	var report TableReport
+	if RootLoad(&value, wire, &report) {
+		t.Fatalf("%s: LoadTolerant accepted %v", name, wire)
+	}
+	if report.Reason != "truncated" {
+		t.Fatalf("%s: LoadTolerant Reason = %q, want %q", name, report.Reason, "truncated")
+	}
+	if !errors.Is(report.Err(), TableRefuseTruncated) {
+		t.Fatalf("%s: LoadTolerant Err() = %v, want errors.Is(err, TableRefuseTruncated)", name, report.Err())
+	}
+}
+
 func TestVariableLoadNamesTheRefusedForm(t *testing.T) {
 	refuseStrict(t, "form 0", []byte{0}, "newer_form")
 	refuseStrict(t, "form 2", []byte{2}, "message_form_as_file")
-	refuseStrict(t, "form 3", []byte{3}, "newer_form")
+	refuseStrictForm3(t, "form 3", []byte{3})
 	refuseStrict(t, "form 255", []byte{255}, "newer_form")
 }
 `

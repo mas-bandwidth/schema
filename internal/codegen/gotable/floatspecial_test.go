@@ -117,6 +117,22 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	return true
 }
 
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
+
 func rootForm1Strict(wire []byte) (*Root, error) {
 	value := &Root{}
 	var report TableReport
@@ -126,7 +142,7 @@ func rootForm1Strict(wire []byte) (*Root, error) {
 	return value, nil
 }
 
-func rootForm1Text(text string, report *TableReport) (*Root, error) {
+func rootForm3Text(text string, report *TableReport) (*Root, error) {
 	if report != nil {
 		*report = TableReport{}
 	}
@@ -140,12 +156,12 @@ func rootForm1Text(text string, report *TableReport) (*Root, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 || wire[0] != TableFixedForm {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v Root
 	var read TableReport
-	ok := rootForm1(&v, wire, &read)
+	ok := RootLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
@@ -335,8 +351,8 @@ func TestRoot(t *testing.T) {
 		if n <= 0 {
 			t.Fatalf("root %s: measure %d", c.name, n)
 		}
-		wire := make([]byte, n)
-		if RootSave(&v, wire) != n {
+		wire := rootForm1Save(&v)
+		if wire == nil {
 			t.Fatalf("root %s: save", c.name)
 		}
 		var got Root
@@ -355,7 +371,7 @@ func TestRoot(t *testing.T) {
 		if err != nil {
 			t.Fatalf("root %s: SaveText %v", c.name, err)
 		}
-		if _, err := rootForm1Text(text, nil); err != nil {
+		if _, err := rootForm3Text(text, nil); err != nil {
 			t.Fatalf("root %s: LoadText %v", c.name, err)
 		}
 		// Every writer writes what a read accepted, and the text lands the
@@ -481,8 +497,7 @@ func TestFlippedPayload(t *testing.T) {
 			if !s.wide {
 				from, to = half32, le32(c.b32)
 			}
-			wire := make([]byte, RootMeasure(&r))
-			RootSave(&r, wire)
+			wire := rootForm1Save(&r)
 			wire = flipped(t, wire, from, to)
 			vwire := make([]byte, VarMeasure(&v))
 			VarSave(&v, vwire)
@@ -524,8 +539,7 @@ func TestFlippedPayload(t *testing.T) {
 	RootReset(&r)
 	r.U.Type = ShapeTypeR
 	r.U.R().Value = 0.5
-	wire := make([]byte, RootMeasure(&r))
-	RootSave(&r, wire)
+	wire := rootForm1Save(&r)
 	var got Root
 	var rep TableReport
 	ok := rootForm1(&got, flipped(t, wire, half64, le64(0x7FF8000000000000)), &rep)
@@ -571,8 +585,10 @@ func TestTextMinusZeroByHand(t *testing.T) {
 	w.r = 0xDEAD
 	landed(t, "text by hand", fsCases[1], rootBits(&got), w)
 	clean(t, "text by hand", fsCases[1], &rep)
-	wire := make([]byte, RootMeasure(&got))
-	RootSave(&got, wire)
+	wire := rootForm1Save(&got)
+	if wire == nil {
+		t.Fatal("save")
+	}
 	s, err := rootForm1Strict(wire)
 	if err != nil {
 		t.Fatal(err)
@@ -787,6 +803,22 @@ func keyedForm1Strict(wire []byte) (*Keyed, error) {
 	}
 	return value, nil
 }
+
+func keyedForm1Save(value *Keyed) []byte {
+	n := KeyedMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !KeyedSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestKeyed(t *testing.T) {
 	var empty Keyed
 	KeyedReset(&empty)
@@ -810,8 +842,7 @@ func TestKeyed(t *testing.T) {
 			}
 			// the read, over a wire whose slot was flipped after the write
 			v.Ks[1] = 0.5
-			wire := make([]byte, KeyedMeasure(&v))
-			KeyedSave(&v, wire)
+			wire := keyedForm1Save(&v)
 			half := []byte{0, 0, 0, 0, 0, 0, 0xE0, 0x3F}
 			i := bytes.Index(wire, half)
 			if i < 0 {
@@ -830,8 +861,7 @@ func TestKeyed(t *testing.T) {
 			}
 			continue
 		}
-		wire := make([]byte, KeyedMeasure(&v))
-		KeyedSave(&v, wire)
+		wire := keyedForm1Save(&v)
 		if rides := int64(len(wire)) > base; rides != (c.b64 != 0) {
 			t.Errorf("keyed %s: %d bytes against the empty %d, want the slot to ride exactly when its bits are not +0", c.name, len(wire), base)
 		}
@@ -905,6 +935,22 @@ func negForm1(value *Neg, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+
+func negForm1Save(value *Neg) []byte {
+	n := NegMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !NegSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestNegativeZeroDefault(t *testing.T) {
 	var r Neg
 	NegReset(&r)
@@ -942,8 +988,7 @@ func TestNegativeZeroDefault(t *testing.T) {
 		var v Neg
 		NegReset(&v)
 		v.A, v.B = math.Float32frombits(c.b32), math.Float64frombits(c.b64)
-		wire := make([]byte, NegMeasure(&v))
-		NegSave(&v, wire)
+		wire := negForm1Save(&v)
 		if got := int64(len(wire)) > empty; got != rides {
 			t.Errorf("fixed %s: %d bytes against the default's %d, want it to ride exactly when its bits differ from -0", c.name, len(wire), empty)
 		}

@@ -282,18 +282,11 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// RangedSigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes RangedSignedFixedSave writes for one
+// record — and never the variable form's byte 1.
 func RangedSignedSave(value *RangedSigned, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedSignedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedSignedFixedSave([]RangedSigned{*value}, buffer)
 }
 
 func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
@@ -919,6 +912,16 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedSignedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []RangedSigned{*value}
+		plan := make([]TableFixedEntry, RangedSignedFixedPlanMax)
+		if RangedSignedFixedLoad(batch, data, plan, read) != 1 {
+			RangedSignedReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2049,18 +2052,11 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// RangedUnsigned is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes RangedUnsignedFixedSave writes for one
+// record — and never the variable form's byte 1.
 func RangedUnsignedSave(value *RangedUnsigned, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedUnsignedSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedUnsignedFixedSave([]RangedUnsigned{*value}, buffer)
 }
 
 func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
@@ -2686,6 +2682,16 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedUnsignedReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []RangedUnsigned{*value}
+		plan := make([]TableFixedEntry, RangedUnsignedFixedPlanMax)
+		if RangedUnsignedFixedLoad(batch, data, plan, read) != 1 {
+			RangedUnsignedReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -3684,18 +3690,11 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// RangedWidths is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes RangedWidthsFixedSave writes for one
+// record — and never the variable form's byte 1.
 func RangedWidthsSave(value *RangedWidths, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !RangedWidthsSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return RangedWidthsFixedSave([]RangedWidths{*value}, buffer)
 }
 
 func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
@@ -3958,6 +3957,16 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 		read.Refuse(TableRefusePreviousForm, "")
 		RangedWidthsReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []RangedWidths{*value}
+		plan := make([]TableFixedEntry, RangedWidthsFixedPlanMax)
+		if RangedWidthsFixedLoad(batch, data, plan, read) != 1 {
+			RangedWidthsReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

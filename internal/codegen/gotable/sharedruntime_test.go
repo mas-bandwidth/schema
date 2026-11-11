@@ -78,7 +78,7 @@ func TestShared(t *testing.T) {
  v.Mode = ModeSlow
  v.ScoresCount = 2; v.Scores[0] = 7; v.Scores[1] = -9
  v.Ratio = 1.25
- wire := make([]byte, RootMeasure(&v))
+ wire := make([]byte, RootFixedMeasure(1))
  if RootSave(&v, wire) != int64(len(wire)) { t.Fatal("save") }
  fmt.Printf("OUT wire %s\n", hex.EncodeToString(wire))
  var got Root; var r TableReport

@@ -90,9 +90,9 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 }
 func TestCoreStillLives(t *testing.T){
 	var r Root; r.X=9
-	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
+	b:=make([]byte,RootFixedMeasure(1));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
 	var got Root;var rep TableReport
-	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
+	if !RootLoad(&got,b,&rep)||rep!=(TableReport{})||got.X!=9{t.Fatalf("load %+v",rep)}
 }`, FormCook)
 	})
 	t.Run("GenerateOmitting_nothing_is_omitted", func(t *testing.T) {
@@ -142,9 +142,9 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 }
 func TestCoreStillLives(t *testing.T){
 	var r Root; r.X=9
-	b:=make([]byte,RootMeasure(&r));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
+	b:=make([]byte,RootFixedMeasure(1));if RootSave(&r,b)!=int64(len(b)){t.Fatal("save")}
 	var got Root;var rep TableReport
-	if !rootForm1(&got,b,&rep)||got.X!=9{t.Fatalf("load %+v",rep)}
+	if !RootLoad(&got,b,&rep)||rep!=(TableReport{})||got.X!=9{t.Fatalf("load %+v",rep)}
 }`, 0)
 	})
 	t.Run("message_form_round_trips", func(t *testing.T) {

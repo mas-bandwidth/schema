@@ -115,6 +115,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestRefAtFirstUseAndElision(t *testing.T) {
 	var value, loaded Root
 	value.N = 9
@@ -124,8 +139,8 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	if n < 0 {
 		t.Fatal("measure")
 	}
-	wire := make([]byte, n)
-	if RootSave(&value, wire) != n {
+	wire := rootForm1Save(&value)
+	if wire == nil || int64(len(wire)) != n {
 		t.Fatal("save")
 	}
 	var report TableReport
@@ -137,8 +152,8 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	again.N = 9
 	again.ChildrenCount = 2
 	again.Children[1].X = 3
-	second := make([]byte, n)
-	if RootSave(&again, second) != n || !bytes.Equal(wire, second) {
+	second := rootForm1Save(&again)
+	if second == nil || !bytes.Equal(wire, second) {
 		t.Fatal("second save differed")
 	}
 
@@ -150,8 +165,8 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	var empty Root
 	empty.N = 1
 	m := RootMeasure(&empty)
-	short := make([]byte, m)
-	if RootSave(&empty, short) != m {
+	short := rootForm1Save(&empty)
+	if short == nil || int64(len(short)) != m {
 		t.Fatal("empty children save")
 	}
 	if got := trailerIds(short); len(got) != 1 || got[0] != RootTableFields[0].ID {
@@ -213,6 +228,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestSharedIdRoundTrip(t *testing.T) {
 	var value, loaded Root
 	value.Banks[0].Alpha = 7
@@ -221,8 +251,8 @@ func TestSharedIdRoundTrip(t *testing.T) {
 	if n < 0 {
 		t.Fatal("measure")
 	}
-	wire := make([]byte, n)
-	if RootSave(&value, wire) != n {
+	wire := rootForm1Save(&value)
+	if wire == nil || int64(len(wire)) != n {
 		t.Fatal("save")
 	}
 	var report TableReport

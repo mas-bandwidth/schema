@@ -80,6 +80,22 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	return true
 }
 
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
+
 func TestWire(t *testing.T) {
  var value Root
  RootReset(&value)
@@ -111,13 +127,21 @@ func TestWire(t *testing.T) {
  for _, id := range ids { want = binary.LittleEndian.AppendUint64(want, id) }
  want = binary.LittleEndian.AppendUint64(want, uint64(len(ids)))
  if n := RootMeasure(&value); n != int64(len(want)) { t.Fatalf("measure %d, want %d", n, len(want)) }
- got := make([]byte, len(want))
- if n := RootSave(&value, got); n != int64(len(got)) || !bytes.Equal(got,want) { t.Fatalf("save differs: n=%d",n) }
+ got := rootForm1Save(&value)
+ if got == nil || len(got) != len(want) || !bytes.Equal(got,want) { t.Fatalf("save differs") }
  var loaded Root
  var report TableReport
- if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
- if RootSave(&value, got[:len(got)-1]) != -1 { t.Fatal("short destination accepted") }
- if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); rootForm1(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
+ if !rootForm1(&loaded, got, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
+ if RootSave(&value, make([]byte, RootFixedMeasure(1)-1)) != -1 { t.Fatal("short destination accepted") }
+ if n := testing.AllocsPerRun(10, func() {
+  var ids TableIds
+  w := TableWriter{Buffer: got, Ids: &ids}
+  w.Put8(1)
+  if !RootSaveBody(&w, &value) { panic("save") }
+  w.Trailer()
+  if w.Overflow || ids.Overflow { panic("overflow") }
+  rootForm1(&loaded,got,&report); RootMeasure(&value)
+ }); n != 0 { t.Fatalf("allocated %v",n) }
 }
 
 // The count uses the enclosing reader in the reference; its elements are
@@ -134,19 +158,28 @@ func TestArrayCountCrossesBody(t *testing.T) {
 }
 
 func TestFormVerdicts(t *testing.T) {
- for _, form := range []byte{0,2,3,255} {
-  var value Root
-  value.Children[0].F000 = 99
-  var report TableReport
-  if RootLoad(&value,[]byte{form},&report) || report.Verdict != TableOpenRefused || report.Reason == "" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.Children[0].F000 != 0 {
-   t.Fatalf("form %d: %+v",form,report)
+  for _, form := range []byte{0,2,255} {
+   var value Root
+   value.Children[0].F000 = 99
+   var report TableReport
+   if RootLoad(&value,[]byte{form},&report) || report.Verdict != TableOpenRefused || report.Reason == "" || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || value.Children[0].F000 != 0 {
+    t.Fatalf("form %d: %+v",form,report)
+   }
   }
- }
- for _, wire := range [][]byte{nil,{1},{1,0,0,0,0,0,0,0,0,0,0}} {
-  var value Root
-  var report TableReport
-  if rootForm1(&value,wire,&report) || report.Verdict != TableOpenDamaged || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") { t.Fatalf("damage: %+v",report) }
- }
+  // Form 3 is the FIXED form; a one-byte form-3 file is a truncated fixed file.
+  {
+   var value Root
+   value.Children[0].F000 = 99
+   var report TableReport
+   if RootLoad(&value,[]byte{3},&report) || report.Reason != "truncated" || report.Refusal.Error() != "wire_damaged" || value.Children[0].F000 != 0 {
+    t.Fatalf("form 3: %+v",report)
+   }
+  }
+  for _, wire := range [][]byte{nil,{1},{1,0,0,0,0,0,0,0,0,0,0}} {
+   var value Root
+   var report TableReport
+   if rootForm1(&value,wire,&report) || report.Verdict != TableOpenDamaged || !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") { t.Fatalf("damage: %+v",report) }
+  }
 }
 `
 

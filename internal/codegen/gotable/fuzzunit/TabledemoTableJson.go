@@ -3774,10 +3774,7 @@ func TeamConfigToJSONWith(value *TeamConfig, buffer []byte, options TableJSONOpt
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func TeamConfigSaveText(value *TeamConfig) (string, error) {
-	n := TeamConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := TeamConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if TeamConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -3806,7 +3803,7 @@ func TeamConfigLoadText(text string, report *TableReport) (*TeamConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TeamConfig
@@ -3865,10 +3862,7 @@ func GunnerConfigToJSONWith(value *GunnerConfig, buffer []byte, options TableJSO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func GunnerConfigSaveText(value *GunnerConfig) (string, error) {
-	n := GunnerConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := GunnerConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if GunnerConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -3897,7 +3891,7 @@ func GunnerConfigLoadText(text string, report *TableReport) (*GunnerConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GunnerConfig
@@ -3956,10 +3950,7 @@ func TurretConfigToJSONWith(value *TurretConfig, buffer []byte, options TableJSO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func TurretConfigSaveText(value *TurretConfig) (string, error) {
-	n := TurretConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := TurretConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if TurretConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -3988,7 +3979,7 @@ func TurretConfigLoadText(text string, report *TableReport) (*TurretConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v TurretConfig
@@ -4047,10 +4038,7 @@ func HullConfigToJSONWith(value *HullConfig, buffer []byte, options TableJSONOpt
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func HullConfigSaveText(value *HullConfig) (string, error) {
-	n := HullConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := HullConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if HullConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4079,7 +4067,7 @@ func HullConfigLoadText(text string, report *TableReport) (*HullConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v HullConfig
@@ -4138,10 +4126,7 @@ func KeyedConfigToJSONWith(value *KeyedConfig, buffer []byte, options TableJSONO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func KeyedConfigSaveText(value *KeyedConfig) (string, error) {
-	n := KeyedConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := KeyedConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if KeyedConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4170,7 +4155,7 @@ func KeyedConfigLoadText(text string, report *TableReport) (*KeyedConfig, error)
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v KeyedConfig
@@ -4320,10 +4305,7 @@ func ArchiveConfigToJSONWith(value *ArchiveConfig, buffer []byte, options TableJ
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func ArchiveConfigSaveText(value *ArchiveConfig) (string, error) {
-	n := ArchiveConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := ArchiveConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if ArchiveConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4352,7 +4334,7 @@ func ArchiveConfigLoadText(text string, report *TableReport) (*ArchiveConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ArchiveConfig
@@ -4411,10 +4393,7 @@ func GunnerSettingsToJSONWith(value *GunnerSettings, buffer []byte, options Tabl
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func GunnerSettingsSaveText(value *GunnerSettings) (string, error) {
-	n := GunnerSettingsMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := GunnerSettingsFixedMeasure(1)
 	buf := make([]byte, n)
 	if GunnerSettingsSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4443,7 +4422,7 @@ func GunnerSettingsLoadText(text string, report *TableReport) (*GunnerSettings, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GunnerSettings
@@ -4502,10 +4481,7 @@ func ShipEntryToJSONWith(value *ShipEntry, buffer []byte, options TableJSONOptio
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func ShipEntrySaveText(value *ShipEntry) (string, error) {
-	n := ShipEntryMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := ShipEntryFixedMeasure(1)
 	buf := make([]byte, n)
 	if ShipEntrySave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4534,7 +4510,7 @@ func ShipEntryLoadText(text string, report *TableReport) (*ShipEntry, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ShipEntry
@@ -4593,10 +4569,7 @@ func GlobalSettingsToJSONWith(value *GlobalSettings, buffer []byte, options Tabl
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func GlobalSettingsSaveText(value *GlobalSettings) (string, error) {
-	n := GlobalSettingsMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := GlobalSettingsFixedMeasure(1)
 	buf := make([]byte, n)
 	if GlobalSettingsSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4625,7 +4598,7 @@ func GlobalSettingsLoadText(text string, report *TableReport) (*GlobalSettings, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v GlobalSettings
@@ -4684,10 +4657,7 @@ func PackConfigToJSONWith(value *PackConfig, buffer []byte, options TableJSONOpt
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func PackConfigSaveText(value *PackConfig) (string, error) {
-	n := PackConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := PackConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if PackConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4716,7 +4686,7 @@ func PackConfigLoadText(text string, report *TableReport) (*PackConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v PackConfig
@@ -4775,10 +4745,7 @@ func RangedSignedToJSONWith(value *RangedSigned, buffer []byte, options TableJSO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func RangedSignedSaveText(value *RangedSigned) (string, error) {
-	n := RangedSignedMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := RangedSignedFixedMeasure(1)
 	buf := make([]byte, n)
 	if RangedSignedSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4807,7 +4774,7 @@ func RangedSignedLoadText(text string, report *TableReport) (*RangedSigned, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedSigned
@@ -4866,10 +4833,7 @@ func RangedUnsignedToJSONWith(value *RangedUnsigned, buffer []byte, options Tabl
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func RangedUnsignedSaveText(value *RangedUnsigned) (string, error) {
-	n := RangedUnsignedMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := RangedUnsignedFixedMeasure(1)
 	buf := make([]byte, n)
 	if RangedUnsignedSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4898,7 +4862,7 @@ func RangedUnsignedLoadText(text string, report *TableReport) (*RangedUnsigned, 
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedUnsigned
@@ -4957,10 +4921,7 @@ func RangedWidthsToJSONWith(value *RangedWidths, buffer []byte, options TableJSO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func RangedWidthsSaveText(value *RangedWidths) (string, error) {
-	n := RangedWidthsMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := RangedWidthsFixedMeasure(1)
 	buf := make([]byte, n)
 	if RangedWidthsSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -4989,7 +4950,7 @@ func RangedWidthsLoadText(text string, report *TableReport) (*RangedWidths, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RangedWidths
@@ -5048,10 +5009,7 @@ func RootConfigToJSONWith(value *RootConfig, buffer []byte, options TableJSONOpt
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func RootConfigSaveText(value *RootConfig) (string, error) {
-	n := RootConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := RootConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if RootConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -5080,7 +5038,7 @@ func RootConfigLoadText(text string, report *TableReport) (*RootConfig, error) {
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v RootConfig
@@ -5139,10 +5097,7 @@ func WeaponConfigToJSONWith(value *WeaponConfig, buffer []byte, options TableJSO
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func WeaponConfigSaveText(value *WeaponConfig) (string, error) {
-	n := WeaponConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := WeaponConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if WeaponConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -5171,7 +5126,7 @@ func WeaponConfigLoadText(text string, report *TableReport) (*WeaponConfig, erro
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v WeaponConfig
@@ -5230,10 +5185,7 @@ func LoadoutConfigToJSONWith(value *LoadoutConfig, buffer []byte, options TableJ
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func LoadoutConfigSaveText(value *LoadoutConfig) (string, error) {
-	n := LoadoutConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := LoadoutConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if LoadoutConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -5262,7 +5214,7 @@ func LoadoutConfigLoadText(text string, report *TableReport) (*LoadoutConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v LoadoutConfig
@@ -5321,10 +5273,7 @@ func ProfileConfigToJSONWith(value *ProfileConfig, buffer []byte, options TableJ
 // §16.8): the whole file, form byte first, so the text keeps the form byte,
 // the framing check and every versioning guarantee and is opaque.
 func ProfileConfigSaveText(value *ProfileConfig) (string, error) {
-	n := ProfileConfigMeasure(value)
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
+	n := ProfileConfigFixedMeasure(1)
 	buf := make([]byte, n)
 	if ProfileConfigSave(value, buf) < 0 {
 		return "", tableRefuseError(TableRefuseInvalidValue)
@@ -5353,7 +5302,7 @@ func ProfileConfigLoadText(text string, report *TableReport) (*ProfileConfig, er
 	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
 		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
 	}
-	if len(wire) == 0 || wire[0] != 1 {
+	if len(wire) == 0 {
 		return nil, tableRefuseError(TableRefuseUnknownForm)
 	}
 	var v ProfileConfig

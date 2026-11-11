@@ -211,6 +211,24 @@ func hostForm1(value *Host, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func hostForm1Save(value *Host) []byte {
+	n := HostMeasure(value)
+	if n < 0 {
+		return nil
+	}
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !HostSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func good() Host {
 	var v Host
 	HostReset(&v)
@@ -222,8 +240,8 @@ func good() Host {
 	return v
 }
 
-func saves(v Host) (fixed, variable int64) {
-	return HostFixedSave([]Host{v}, make([]byte, HostFixedMeasure(1))), HostSave(&v, make([]byte, 4096))
+func saves(v Host) (fixed int64, form1 []byte) {
+	return HostFixedSave([]Host{v}, make([]byte, HostFixedMeasure(1))), hostForm1Save(&v)
 }
 
 func TestFixedWriterRefuses(t *testing.T) {
@@ -241,19 +259,18 @@ func TestFixedWriterRefuses(t *testing.T) {
 		if n := HostFixedLoad(got, b, make([]TableFixedEntry, 256), &r); n != 1 || r != (TableReport{}) || got[0].MarksCount != 2 || got[0].Level != 1000 || string(got[0].Name[:got[0].NameLength]) != name {
 			t.Fatalf("lawful %q did not reload clean: %d %+v %+v", name, n, got[0], r)
 		}
-		vb := make([]byte, 4096)
-		vn := HostSave(&v, vb)
+		vb := hostForm1Save(&v)
 		var vgot Host
 		var vr TableReport
-		if vn <= 0 || !hostForm1(&vgot, vb[:vn], &vr) || vr != (TableReport{}) || string(vgot.Name[:vgot.NameLength]) != name {
-			t.Fatalf("lawful form-1 %q did not reload clean: %d %+v %+v", name, vn, vgot, vr)
+		if vb == nil || !hostForm1(&vgot, vb, &vr) || vr != (TableReport{}) || string(vgot.Name[:vgot.NameLength]) != name {
+			t.Fatalf("lawful form-1 %q did not reload clean: %+v %+v", name, vgot, vr)
 		}
 	}
 	for _, count := range []int32{0, 4} {
 		v := good()
 		v.MarksCount = count
-		if f, w := saves(v); f <= 0 || w <= 0 {
-			t.Fatalf("count %d is within Max and must save: %d %d", count, f, w)
+		if f, w := saves(v); f <= 0 || w == nil {
+			t.Fatalf("count %d is within Max and must save: %d %v", count, f, w)
 		}
 	}
 	cases := []struct {
@@ -276,8 +293,8 @@ func TestFixedWriterRefuses(t *testing.T) {
 		if f != -1 {
 			t.Fatalf("fixed save accepted %s (returned %d); its reader clamps or refuses it", c.what, f)
 		}
-		if w != -1 {
-			t.Fatalf("form-1 save of a fixed table accepted %s (returned %d)", c.what, w)
+		if w != nil {
+			t.Fatalf("form-1 save of a fixed table accepted %s", c.what)
 		}
 		if size, err := HostMeasureReason(&v); size != -1 || err != TableRefuseInvalidValue {
 			t.Fatalf("measure of %s must be refused by name: %d %v", c.what, size, err)

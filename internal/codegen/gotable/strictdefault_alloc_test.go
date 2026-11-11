@@ -58,6 +58,21 @@ func vocab(t *testing.T) *TableVocabulary {
 	}
 	return v
 }
+func fixForm1Save(value *Fix) []byte {
+	n := FixMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !FixSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestPlainReadsAlloc(t *testing.T) {
 	varClean := varFile([]byte{0, 4, 3, 0, 0, 0}, []byte{1, 4, 4, 0, 0, 0})
 	varReg := region(VarLoadMeasure(varClean))
@@ -69,8 +84,8 @@ func TestPlainReadsAlloc(t *testing.T) {
 	defer vb.Shutdown()
 
 	fixVal := Fix{N: 3, M: 4}
-	fixClean := make([]byte, FixMeasure(&fixVal))
-	if FixSave(&fixVal, fixClean) != int64(len(fixClean)) {
+	fixClean := fixForm1Save(&fixVal)
+	if fixClean == nil {
 		t.Fatal("fix save")
 	}
 	fixJSON := []byte("{\"n\":3,\"m\":4}")

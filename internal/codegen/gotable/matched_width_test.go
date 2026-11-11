@@ -154,16 +154,13 @@ func TestMatchedWidthRoundTrip(t *testing.T) {
 	var value, loaded Root
 	value.A = 0x1234
 	value.B = -400
-	n := RootMeasure(&value)
-	if n < 0 {
-		t.Fatal("measure")
-	}
+	n := RootFixedMeasure(1)
 	wire := make([]byte, n)
 	if RootSave(&value, wire) != n {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
+	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 0x1234 || loaded.B != -400 {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 }

@@ -159,6 +159,16 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	// A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4): the plain
+	// Save writes the FIXED form's bytes — the same bytes <T>FixedSave writes
+	// for one record — never form 1.
+	if st.FixedDeclared && g.surfaces.Fixed && g.hasFixedForm(st) {
+		g.pf("// %s is a FIXED-CLASS root (docs/SPEC-TABLES.md §3.4): its file is form 3, so\n", st.Name)
+		g.pf("// this Save writes the FIXED form — the same bytes %sFixedSave writes for one\n", st.Name)
+		g.pf("// record — and never the variable form's byte 1.\n")
+		g.pf("func %sSave(value *%s, buffer []byte) int64 { return %sFixedSave([]%s{*value}, buffer) }\n\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
+		return
+	}
 	if st.Integrity != "" {
 		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 		return

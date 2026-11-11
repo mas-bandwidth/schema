@@ -774,18 +774,26 @@ fixed table Point {
 `, `package probe
 import ("testing")
 
+func pointForm1Save(value *Point) []byte {
+	n := PointMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !PointSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
-	need := PointMeasure(&one)
-	if need < 0 {
-		t.Fatal("measure")
-	}
-	form1 := make([]byte, need)
-	if n := PointSave(&one, form1); n != need {
-		t.Fatalf("form-1 save %d", n)
-	}
-	if form1[0] != 1 {
-		t.Fatalf("form-1 save wrote %d", form1[0])
+	form1 := pointForm1Save(&one)
+	if form1 == nil || form1[0] != 1 {
+		t.Fatalf("form-1 save: %x", form1)
 	}
 	var got Point
 	var r TableReport
@@ -832,15 +840,26 @@ import (
 	"unsafe"
 )
 
+func pointForm1Save(value *Point) []byte {
+	n := PointMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !PointSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestFixedFormRefuseIsTotal(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
-	need := PointMeasure(&one)
-	form1 := make([]byte, need)
-	if n := PointSave(&one, form1); n != need {
-		t.Fatalf("form-1 save %d", n)
-	}
-	if form1[0] != 1 {
-		t.Fatalf("form-1 save wrote form %d", form1[0])
+	form1 := pointForm1Save(&one)
+	if form1 == nil || form1[0] != 1 {
+		t.Fatalf("form-1 save: %x", form1)
 	}
 	batch := make([]Point, 1)
 	const poison = 0x5A

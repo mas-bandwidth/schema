@@ -143,6 +143,36 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func leafForm1Save(value *Leaf) []byte {
+	n := LeafMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !LeafSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func trailerIds(t *testing.T, wire []byte) []uint64 {
 	t.Helper()
 	if len(wire) < 8 {
@@ -165,8 +195,8 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	if n := LeafMeasure(&empty); n != 10 {
 		t.Fatalf("elided file %d", n)
 	}
-	buf := make([]byte, 10)
-	if LeafSave(&empty, buf) != 10 {
+	buf := leafForm1Save(&empty)
+	if buf == nil || len(buf) != 10 {
 		t.Fatal("elided save")
 	}
 	if got := trailerIds(t, buf); len(got) != 0 {
@@ -199,8 +229,8 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	if size != 1+body+int64(ids.Count)*8+8 {
 		t.Fatalf("file size %d body %d ids %d", size, body, ids.Count)
 	}
-	wire := make([]byte, size)
-	if LeafSave(&v, wire) != size {
+	wire := leafForm1Save(&v)
+	if wire == nil || int64(len(wire)) != size {
 		t.Fatal("save")
 	}
 	got := trailerIds(t, wire)
@@ -212,7 +242,7 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 			t.Fatalf("first-use id %d: measure 0x%x save 0x%x", i, ids.Values[i], id)
 		}
 	}
-	if LeafSave(&v, make([]byte, size-1)) != -1 {
+	if LeafSave(&v, make([]byte, LeafFixedMeasure(1)-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	v.Grade = Grade(99)
@@ -242,11 +272,11 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	if n < 0 {
 		t.Fatal("measure")
 	}
-	wire := make([]byte, n)
-	if RootSave(&v, wire) != n {
+	wire := rootForm1Save(&v)
+	if wire == nil || int64(len(wire)) != n {
 		t.Fatal("save")
 	}
-	if RootSave(&v, make([]byte, n-1)) != -1 {
+	if RootSave(&v, make([]byte, RootFixedMeasure(1)-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	var loaded Root
@@ -356,17 +386,33 @@ func trailerIds(t *testing.T, wire []byte) []uint64 {
 	return ids
 }
 
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
+
 func roundTrip(t *testing.T, v *Root) []byte {
 	t.Helper()
 	n := RootMeasure(v)
 	if n < 0 {
 		t.Fatal("measure")
 	}
-	wire := make([]byte, n)
-	if RootSave(v, wire) != n {
+	wire := rootForm1Save(v)
+	if wire == nil || int64(len(wire)) != n {
 		t.Fatal("save")
 	}
-	if RootSave(v, make([]byte, n-1)) != -1 {
+	if RootSave(v, make([]byte, RootFixedMeasure(1)-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	var loaded Root

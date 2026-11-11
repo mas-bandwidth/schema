@@ -28,6 +28,22 @@ import (
 	"unsafe"
 )
 
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
+
 func TestVTTextCookMessage(t *testing.T) {
 	// text-form: a value round-trips through JSON, and a duplicate key —
 	// known, unknown, or inside a skipped object, escaped or not — refuses
@@ -101,8 +117,8 @@ func TestVTTextCookMessage(t *testing.T) {
 	if RootFixedLoad(fixed, wire, plan, &fr) != 1 || fr != (TableReport{}) || fixed[0] != v {
 		t.Fatalf("fixed load: %+v %+v", fixed, fr)
 	}
-	form1 := make([]byte, RootMeasure(&v))
-	if RootSave(&v, form1) != int64(len(form1)) || len(form1) == 0 || form1[0] != 1 {
+	form1 := rootForm1Save(&v)
+	if form1 == nil || form1[0] != 1 {
 		t.Fatal("form-1 save for the previous_form refusal")
 	}
 	if RootFixedLoad(fixed, form1, plan, &fr) != -1 || fr.Reason != "previous_form" {

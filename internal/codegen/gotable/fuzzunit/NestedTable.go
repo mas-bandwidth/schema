@@ -97,18 +97,11 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 	return !w.Overflow && !w.Ids.Overflow
 }
 
+// ArchiveConfig is a FIXED-CLASS root (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): its file is form 3, so
+// this Save writes the FIXED form — the same bytes ArchiveConfigFixedSave writes for one
+// record — and never the variable form's byte 1.
 func ArchiveConfigSave(value *ArchiveConfig, buffer []byte) int64 {
-	var ids TableIds
-	w := TableWriter{Buffer: buffer, Ids: &ids}
-	w.Put8(1)
-	if !ArchiveConfigSaveBody(&w, value) {
-		return -1
-	}
-	w.Trailer()
-	if w.Overflow || ids.Overflow {
-		return -1
-	}
-	return w.Offset
+	return ArchiveConfigFixedSave([]ArchiveConfig{*value}, buffer)
 }
 
 func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
@@ -245,6 +238,16 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 		read.Refuse(TableRefusePreviousForm, "")
 		ArchiveConfigReset(value)
 		return false
+	}
+	if len(data) > 0 && data[0] == TableFixedForm {
+		batch := []ArchiveConfig{*value}
+		plan := make([]TableFixedEntry, ArchiveConfigFixedPlanMax)
+		if ArchiveConfigFixedLoad(batch, data, plan, read) != 1 {
+			ArchiveConfigReset(value)
+			return false
+		}
+		*value = batch[0]
+		return true
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

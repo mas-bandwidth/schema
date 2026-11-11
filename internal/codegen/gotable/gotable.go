@@ -630,7 +630,7 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 	// descriptors, in its own file so a project that never reads or writes a
 	// text does not compile it
 	if s.JSON && formAllowed(u, "json") {
-		texts, err := generateJsonFiles(u, closure, home)
+		texts, err := generateJsonFiles(u, closure, home, s.Fixed)
 		if err != nil {
 			return nil, nil, err
 		}

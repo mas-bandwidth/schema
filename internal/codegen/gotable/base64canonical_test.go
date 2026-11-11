@@ -27,8 +27,8 @@ func TestFixedWeaponConfig(t *testing.T) {
 	if _, err := WeaponConfigLoadText("AQAAAAAAAAAAAB==", &r); !errors.Is(err, TableRefuseBase64NotCanonical) || err.Error() != "base64_not_canonical" {
 		t.Fatalf("nonzero pad bits: err=%%v", err)
 	}
-	// the canonical SaveText of a sample. A fixed root's SaveText is form 1,
-	// and Load refuses that file as previous_form (SPEC-TABLES §3.4).
+	// the canonical SaveText of a sample. A fixed root's SaveText is form 3
+	// (§3.4), and LoadText reads that file back clean.
 	var v WeaponConfig
 	WeaponConfigReset(&v)
 	v.Damage = 42
@@ -37,8 +37,8 @@ func TestFixedWeaponConfig(t *testing.T) {
 	text, err := WeaponConfigSaveText(&v)
 	if err != nil { t.Fatalf("savetext: %%v", err) }
 	loaded, err := WeaponConfigLoadText(text, &r)
-	if loaded != nil || r.Reason != "previous_form" || !errors.Is(err, TableRefuseUnknownForm) {
-		t.Fatalf("form-1 LoadText of a fixed root: want previous_form, got %%v %%+v", err, r)
+	if loaded == nil || err != nil || r != (TableReport{}) {
+		t.Fatalf("form-3 LoadText of a fixed root: want a clean read, got %%v %%+v", err, r)
 	}
 	// a newline inserted mid-text refuses the same way
 	mid := text[:10] + "\n" + text[10:]

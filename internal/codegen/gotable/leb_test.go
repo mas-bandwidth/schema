@@ -62,6 +62,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestLebFastPathAndLoop(t *testing.T) {
 	type want struct {
 		in     []byte
@@ -117,8 +132,8 @@ func TestLebFastPathAndLoop(t *testing.T) {
 		} else {
 			wantBytes = binary.LittleEndian.AppendUint64(wantBytes, 0)
 		}
-		got := make([]byte, len(wantBytes))
-		if RootMeasure(&value) != int64(len(wantBytes)) || RootSave(&value, got) != int64(len(wantBytes)) || !bytes.Equal(got, wantBytes) {
+		got := rootForm1Save(&value)
+		if RootMeasure(&value) != int64(len(wantBytes)) || got == nil || !bytes.Equal(got, wantBytes) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, wantBytes, got)
 		}
 		var report TableReport

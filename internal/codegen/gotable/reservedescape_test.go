@@ -151,18 +151,17 @@ func TestReservedRoundTrip(t *testing.T) {
  var v func_
  fill(&v)
  // binary
- n := func_Measure(&v)
- if n <= 0 { t.Fatalf("measure %d", n) }
+ n := func_FixedMeasure(1)
  wire := make([]byte, n)
  if func_Save(&v, wire) != n { t.Fatal("save") }
  var got func_
  var r TableReport
- if !func_Form1(&got, wire, &r) || r.Err() != nil { t.Fatalf("load %+v", r) }
+ if !func_Load(&got, wire, &r) || r != (TableReport{}) { t.Fatalf("load %+v", r) }
  same(t, "binary", &v, &got)
  // base64
  text, err := func_SaveText(&v)
  if err != nil { t.Fatalf("SaveText %v", err) }
- back, err := func_Form1Text(text, nil)
+ back, err := func_LoadText(text, nil)
  if err != nil { t.Fatalf("LoadText %v", err) }
  same(t, "base64", &v, back)
  // JSON, whose keys and variant names are the schema's

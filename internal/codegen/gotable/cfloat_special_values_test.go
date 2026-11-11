@@ -134,6 +134,21 @@ func readingForm1(value *Reading, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func readingForm1Save(value *Reading) []byte {
+	n := ReadingMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !ReadingSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func cfRefused(t *testing.T, form string, c cfCase, rep *TableReport) {
 	t.Helper()
 	if rep.Err() != TableRefuseNonFiniteFloat || rep.Unknown != 0 || rep.Widened != 0 {
@@ -284,14 +299,14 @@ func TestFixed(t *testing.T) {
 func TestVariable(t *testing.T) {
 	for _, c := range cfCases {
 		v := cfValue(0x3F000000) // 0.5, present in both fields
-		buf := make([]byte, ReadingMeasure(&v))
 		if c.counts > 0 || c.refused {
 			invalid := cfValue(c.in)
-			if ReadingSave(&invalid, buf) >= 0 {
+			if ReadingSave(&invalid, make([]byte, ReadingFixedMeasure(1))) >= 0 {
 				t.Fatalf("variable %s: writer accepted a value its reader refuses", c.name)
 			}
 		}
-		if ReadingSave(&v, buf) != int64(len(buf)) {
+		buf := readingForm1Save(&v)
+		if buf == nil {
 			t.Fatalf("variable %s: save", c.name)
 		}
 		var from, to [4]byte

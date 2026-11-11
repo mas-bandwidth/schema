@@ -688,7 +688,7 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable, fixedForm b
 	case variable:
 		fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s: every read refuses\n// it, and the value at the bound, its control, reads and writes back its own\n// bytes (SPEC-TABLES §4, §16.11).\n", n, n)
 	case fixedForm:
-		fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s. The image is form 1,\n// and %sLoad refuses a form-1 file at this fixed root as previous_form. The value\n// at the bound, its control, round-trips through %sFixedLoad (SPEC-TABLES §3.4, §4, §16.11).\n", n, n, n, n)
+		fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s. The image is form 1,\n// and %sLoad refuses a form-1 file at this fixed root as previous_form. The value\n// at the bound, its control, round-trips through the plain Save and Load (form 3,\n// SPEC-TABLES §3.4, §4, §16.11).\n", n, n, n)
 	default:
 		fmt.Fprintf(b, "\n// Test%sGenBoundProbes reads every past-bound image of %s. This fixed root has no\n// form-3 reader, so a form-1 file is previous_form at %sLoad, including the value\n// at the bound (SPEC-TABLES §3.4, §16.11).\n", n, n, n)
 	}
@@ -700,7 +700,7 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable, fixedForm b
 	}
 	b.WriteString("\t}\n\tfor _, p := range probes {\n\t\tt.Run(p.name, func(t *testing.T) {\n\t\t\tt.Parallel()\n")
 	fmt.Fprintf(b, "\t\t\twire := %sGenPastBound(p.name)\n\t\t\tif wire == nil {\n\t\t\t\tt.Fatalf(\"%%s: no past-bound image\", p.name)\n\t\t\t}\n", n)
-	testgenSave(b, n)
+	testgenSave(b, n, fixedForm)
 	b.WriteString("\t\t\tvar tr TableReport\n")
 	if variable {
 		fmt.Fprintf(b, "\t\t\tvar lb %sBuilder\n\t\t\tif !lb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer lb.Shutdown()\n\t\t\tok := %sLoadBuilder(&lb, wire, &tr)\n", n, n)
@@ -717,12 +717,9 @@ func testgenBoundProbes(b *strings.Builder, st *ir.Struct, variable, fixedForm b
 		fmt.Fprintf(b, "\t\t\tvar cb %sBuilder\n\t\t\tif !cb.Init() {\n\t\t\t\tt.Fatal(\"builder init\")\n\t\t\t}\n\t\t\tdefer cb.Shutdown()\n\t\t\tif !%sLoadBuilder(&cb, wantWire, &cr) || !cb.Lock() {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound refused: %%v\", p.name, cr.Err())\n\t\t\t}\n\t\t\tback := cb.AsConst()\n", n, n)
 		b.WriteString("\t\t\tif gotWire, _ := save(\"read back\", back); !bytes.Equal(gotWire, wantWire) {\n\t\t\t\tt.Fatalf(\"%s: the value at the bound did not write back its own bytes\", p.name)\n\t\t\t}\n")
 	case fixedForm:
-		b.WriteString("\t\t\tform1, _ := save(\"at the bound\", v)\n\t\t\tif len(form1) == 0 || form1[0] != 1 {\n\t\t\t\tt.Fatalf(\"%s: form-1 save of the value at the bound\", p.name)\n\t\t\t}\n")
-		fmt.Fprintf(b, "\t\t\tneed := %sFixedMeasure(1)\n\t\t\tif need < 1 {\n\t\t\t\tt.Fatalf(\"%%s: FixedMeasure of the value at the bound\", p.name)\n\t\t\t}\n", n)
-		fmt.Fprintf(b, "\t\t\tfixedWire := make([]byte, need)\n\t\t\tif %sFixedSave([]%s{*v}, fixedWire) != need {\n\t\t\t\tt.Fatalf(\"%%s: FixedSave of the value at the bound refused\", p.name)\n\t\t\t}\n", n, n)
-		fmt.Fprintf(b, "\t\t\tback := make([]%s, 1)\n\t\t\tplan := make([]TableFixedEntry, int(%sFixedPlanMax))\n\t\t\tvar cr TableReport\n", n, n)
-		fmt.Fprintf(b, "\t\t\tif nread := %sFixedLoad(back, fixedWire, plan, &cr); nread != 1 || cr != (TableReport{}) {\n\t\t\t\tt.Fatalf(\"%%s: FixedLoad of the value at the bound refused: n=%%d %%+v\", p.name, nread, cr)\n\t\t\t}\n", n)
-		fmt.Fprintf(b, "\t\t\tagain := make([]byte, need)\n\t\t\tif %sFixedSave(back, again) != need || !bytes.Equal(again, fixedWire) {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound did not write back its own bytes\", p.name)\n\t\t\t}\n", n)
+		b.WriteString("\t\t\twantWire, _ := save(\"at the bound\", v)\n\t\t\tif len(wantWire) == 0 || wantWire[0] != 3 {\n\t\t\t\tt.Fatalf(\"%s: form-3 save of the value at the bound\", p.name)\n\t\t\t}\n")
+		fmt.Fprintf(b, "\t\t\tback, err := %sReadStrict(wantWire)\n\t\t\tif back == nil || err != nil {\n\t\t\t\tt.Fatalf(\"%%s: the value at the bound refused: %%v\", p.name, err)\n\t\t\t}\n", n)
+		b.WriteString("\t\t\tif gotWire, _ := save(\"read back\", back); !bytes.Equal(gotWire, wantWire) {\n\t\t\t\tt.Fatalf(\"%s: the value at the bound did not write back its own bytes\", p.name)\n\t\t\t}\n")
 	default:
 		b.WriteString("\t\t\tform1, _ := save(\"at the bound\", v)\n\t\t\tvar cr TableReport\n")
 		fmt.Fprintf(b, "\t\t\tvar back %s\n\t\t\tif %sLoad(&back, form1, &cr) || cr.Reason != \"previous_form\" {\n\t\t\t\tt.Fatalf(\"%%s: form-1 Load of a fixed root at the bound: want previous_form, got %%+v\", p.name, cr)\n\t\t\t}\n", n, n)

@@ -168,23 +168,20 @@ func TestHeaderSaveRoundTrip(t *testing.T) {
 	value.Wide.Hi = 11
 	value.PayloadLength = 4
 	copy(value.Payload[:], []byte("abcd"))
-	n := RootMeasure(&value)
-	if n < 0 {
-		t.Fatal("measure")
-	}
+	n := RootFixedMeasure(1)
 	wire := make([]byte, n)
 	if RootSave(&value, wire) != n {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !rootForm1(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.B != 2 || loaded.C != 3 || loaded.Child.N != 5 || loaded.Choice.Leaf.N != 9 || loaded.Wide.Lo != 7 || loaded.Wide.Hi != 11 || loaded.PayloadLength != 4 || !bytes.Equal(loaded.Payload[:4], []byte("abcd")) {
+	if !RootLoad(&loaded, wire, &report) || report != (TableReport{}) || loaded.A != 1 || loaded.B != 2 || loaded.C != 3 || loaded.Child.N != 5 || loaded.Choice.Leaf.N != 9 || loaded.Wide.Lo != 7 || loaded.Wide.Hi != 11 || loaded.PayloadLength != 4 || !bytes.Equal(loaded.Payload[:4], []byte("abcd")) {
 		t.Fatalf("round trip %+v loaded=%+v", report, loaded)
 	}
 	if RootSave(&value, make([]byte, n-1)) != -1 {
 		t.Fatal("short buffer accepted")
 	}
 	if n := testing.AllocsPerRun(50, func() {
-		if RootMeasure(&value) != int64(len(wire)) || RootSave(&value, wire) != int64(len(wire)) {
+		if RootSave(&value, wire) != int64(len(wire)) {
 			panic("round trip")
 		}
 	}); n != 0 {

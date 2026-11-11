@@ -26,7 +26,7 @@ import (
 
 // generateJsonFiles emits the unit's text form: the generic walk once, and
 // three wrappers per closure member.
-func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[string][]byte, error) {
+func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string, fixed bool) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	var b strings.Builder
 	if unitHasFile(u, home) {
@@ -140,14 +140,23 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "// %sToJSONWith is %sToJSON under TableJSONOptions (§16.2).\n", n, n)
 			fmt.Fprintf(&b, "func %sToJSONWith(value *%s, buffer []byte, options TableJSONOptions) int64 {\n", n, storageName(u, n))
 			fmt.Fprintf(&b, "\treturn tableJSONWrite(unsafe.Pointer(value), %sTableType(), buffer, options)\n}\n\n", n)
+			fixedForm := fixed && ir.TableFixedEmitted(u, st)
 			fmt.Fprintf(&b, "// %sSaveText returns the base64 of %s's binary wire (docs/SPEC-TABLES.md\n", n, n)
 			fmt.Fprintf(&b, "// §16.8): the whole file, form byte first, so the text keeps the form byte,\n")
 			fmt.Fprintf(&b, "// the framing check and every versioning guarantee and is opaque.\n")
 			fmt.Fprintf(&b, "func %sSaveText(value *%s) (string, error) {\n", n, storageName(u, n))
-			fmt.Fprintf(&b, "\tn := %sMeasure(value)\n", n)
-			fmt.Fprintf(&b, "\tif n < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n")
-			fmt.Fprintf(&b, "\tbuf := make([]byte, n)\n")
-			fmt.Fprintf(&b, "\tif %sSave(value, buf) < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+			if fixedForm {
+				// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): Save writes the fixed
+				// form, so the carrier measures and writes one fixed record.
+				fmt.Fprintf(&b, "\tn := %sFixedMeasure(1)\n", n)
+				fmt.Fprintf(&b, "\tbuf := make([]byte, n)\n")
+				fmt.Fprintf(&b, "\tif %sSave(value, buf) < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+			} else {
+				fmt.Fprintf(&b, "\tn := %sMeasure(value)\n", n)
+				fmt.Fprintf(&b, "\tif n < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n")
+				fmt.Fprintf(&b, "\tbuf := make([]byte, n)\n")
+				fmt.Fprintf(&b, "\tif %sSave(value, buf) < 0 { return \"\", tableRefuseError(TableRefuseInvalidValue) }\n", n)
+			}
 			fmt.Fprintf(&b, "\treturn base64.StdEncoding.EncodeToString(buf), nil\n")
 			fmt.Fprintf(&b, "}\n\n")
 			fmt.Fprintf(&b, "// %sLoadText fills one %s from a base64 wire text (docs/SPEC-TABLES.md\n", n, n)
@@ -169,7 +178,13 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\tif len(text) != base64.StdEncoding.EncodedLen(len(wire)) {\n")
 			fmt.Fprintf(&b, "\t\treturn nil, tableRefuseError(TableRefuseBase64NotCanonical)\n")
 			fmt.Fprintf(&b, "\t}\n")
-			fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			if fixedForm {
+				// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): Load names the form
+				// byte, reading form 3 and refusing form 1 as previous_form.
+				fmt.Fprintf(&b, "\tif len(wire) == 0 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			} else {
+				fmt.Fprintf(&b, "\tif len(wire) == 0 || wire[0] != 1 { return nil, tableRefuseError(TableRefuseUnknownForm) }\n")
+			}
 			fmt.Fprintf(&b, "\tvar v %s\n", storageName(u, n))
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
 			fmt.Fprintf(&b, "\tok := %sLoad(&v, wire, &read)\n", n)

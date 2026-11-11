@@ -60,6 +60,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestPutLebBytesAndOverflow(t *testing.T) {
 	h := fnv.New64a()
 	h.Write([]byte("payload"))
@@ -86,15 +101,15 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 		} else {
 			want = binary.LittleEndian.AppendUint64(want, 0)
 		}
-		got := make([]byte, len(want))
-		if RootMeasure(&value) != int64(len(want)) || RootSave(&value, got) != int64(len(want)) || !bytes.Equal(got, want) {
+		got := rootForm1Save(&value)
+		if RootMeasure(&value) != int64(len(want)) || got == nil || len(got) != len(want) || !bytes.Equal(got, want) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, want, got)
 		}
 		var report TableReport
-		if !rootForm1(&loaded, want, &report) || report != (TableReport{}) || loaded.PayloadLength != n || !bytes.Equal(loaded.Payload[:n], value.Payload[:n]) {
+		if !rootForm1(&loaded, got, &report) || report != (TableReport{}) || loaded.PayloadLength != n || !bytes.Equal(loaded.Payload[:n], value.Payload[:n]) {
 			t.Fatalf("length %d load differs: %+v", n, report)
 		}
-		if RootSave(&value, make([]byte, len(want)-1)) != -1 || RootSave(&value, nil) != -1 {
+		if RootSave(&value, make([]byte, RootFixedMeasure(1)-1)) != -1 || RootSave(&value, nil) != -1 {
 			t.Fatalf("length %d short buffer accepted", n)
 		}
 	}
@@ -102,8 +117,18 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 	value.PayloadLength = 16384
 	wire := make([]byte, RootMeasure(&value))
 	if n := testing.AllocsPerRun(50, func() {
-		if RootMeasure(&value) != int64(len(wire)) || RootSave(&value, wire) != int64(len(wire)) {
-			panic("round trip")
+		if RootMeasure(&value) != int64(len(wire)) {
+			panic("measure")
+		}
+		var ids TableIds
+		w := TableWriter{Buffer: wire, Ids: &ids}
+		w.Put8(1)
+		if !RootSaveBody(&w, &value) {
+			panic("save")
+		}
+		w.Trailer()
+		if w.Overflow || ids.Overflow {
+			panic("overflow")
 		}
 	}); n != 0 {
 		t.Fatalf("PutLeb allocated %v", n)

@@ -50,6 +50,22 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	if RootFixedBodyBytes != 36 {
 		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", RootFixedBodyBytes)
@@ -135,9 +151,9 @@ func TestFixedRefusalErrKeepsItsName(t *testing.T) {
 	RootReset(&cleanVar)
 	cleanVar.MarksCount = 1
 	cleanVar.Marks[0] = 5
-	w := make([]byte, RootMeasure(&cleanVar))
-	if n := RootSave(&cleanVar, w); n != int64(len(w)) {
-		t.Fatalf("variable save %d", n)
+	w := rootForm1Save(&cleanVar)
+	if w == nil {
+		t.Fatalf("variable save: nil")
 	}
 	// REUSE: a fresh report first carries a fixed refusal, then a clean read,
 	// then a damaged read. Err follows each current verdict instead of the stale

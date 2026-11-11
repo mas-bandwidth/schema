@@ -107,6 +107,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestNestedScratch(t *testing.T) {
  texts:=[]string{
   "{}",
@@ -117,14 +132,23 @@ func TestNestedScratch(t *testing.T) {
  for _,text:=range texts {
   var value Root;var report TableReport
   if !RootFromJSON(&value,[]byte(text),&report)||report!=(TableReport{}) {t.Fatalf("input: %+v",report)}
-  wire:=make([]byte,RootMeasure(&value));out:=make([]byte,len(wire))
-  if RootSave(&value,wire)!=int64(len(wire))||!rootForm1(&loaded,wire,&report)||report!=(TableReport{}) {t.Fatalf("nested scratch changed value: %+v",report)}
+  wire:=rootForm1Save(&value)
+  if wire==nil||!rootForm1(&loaded,wire,&report)||report!=(TableReport{}) {t.Fatalf("nested scratch changed value: %+v",report)}
   // Dormant union arms are reused storage, not logical fields. Compare the
   // public text/wire forms rather than inactive slots from the previous load.
   a,b:=make([]byte,RootToJSONMeasure(&value)),make([]byte,RootToJSONMeasure(&loaded))
   if RootToJSON(&value,a)!=int64(len(a))||RootToJSON(&loaded,b)!=int64(len(b))||!bytes.Equal(a,b) {t.Fatal("nested scratch changed logical fields")}
-  if RootSave(&loaded,out)!=int64(len(wire))||!bytes.Equal(out,wire) {t.Fatal("nested scratch changed wire")}
-  if n:=testing.AllocsPerRun(50,func(){RootMeasure(&value);RootSave(&value,wire);rootForm1(&loaded,wire,&report)});n!=0 {t.Fatalf("nested scratch allocated %v",n)}
+  if out:=rootForm1Save(&loaded);out==nil||!bytes.Equal(out,wire) {t.Fatal("nested scratch changed wire")}
+  if n:=testing.AllocsPerRun(50,func(){
+   if RootMeasure(&value)!=int64(len(wire)) {panic("measure")}
+   var ids TableIds
+   w := TableWriter{Buffer: wire, Ids: &ids}
+   w.Put8(1)
+   if !RootSaveBody(&w, &value) {panic("save")}
+   w.Trailer()
+   if w.Overflow || ids.Overflow {panic("overflow")}
+   rootForm1(&loaded,wire,&report)
+  });n!=0 {t.Fatalf("nested scratch allocated %v",n)}
  }
 }
 `)
@@ -160,6 +184,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 		return false
 	}
 	return true
+}
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
 }
 func (o *wireOracle) ref(name string) uint64 {
  h:=fnv.New64a();h.Write([]byte(name));id:=h.Sum64()
@@ -228,16 +267,16 @@ func TestArrayWireAndReuse(t *testing.T) {
   if variant%11==0 {value.LargeCount=129;for i:=range value.Large {fillChild(&value.Large[i],i+variant,variant%131)}}
   value.OptionalPresent=variant%2==0
   if value.OptionalPresent {value.OptionalCount=int32(variant%3);for i:=int32(0);i<value.OptionalCount;i++ {fillChild(&value.Optional[i],variant+int(i),variant%131)}}
-  want:=oracle.root(&value);got:=make([]byte,len(want))
-  if RootMeasure(&value)!=int64(len(want)) || RootSave(&value,got)!=int64(len(want)) || !bytes.Equal(got,want) {t.Fatalf("variant %d wire differs",variant)}
-  var report TableReport
-  if !rootForm1(&loaded,want,&report)||report!=(TableReport{})||loaded!=value {t.Fatalf("variant %d reused load differs: %+v",variant,report)}
-  if RootSave(&loaded,got)!=int64(len(want))||!bytes.Equal(got,want) {t.Fatalf("variant %d re-save differs",variant)}
-  for _,size:=range []int{0,1,len(want)/2,len(want)-1} {
-   short:=bytes.Repeat([]byte{0xa5},len(want)+8)
-   if RootSave(&value,short[:size])!=-1 {t.Fatalf("variant %d short buffer %d accepted",variant,size)}
-   if !bytes.Equal(short[size:],bytes.Repeat([]byte{0xa5},len(short)-size)) {t.Fatal("wrote past destination")}
-  }
+   want:=oracle.root(&value);got:=rootForm1Save(&value)
+   if RootMeasure(&value)!=int64(len(want)) || got==nil || len(got)!=len(want) || !bytes.Equal(got,want) {t.Fatalf("variant %d wire differs",variant)}
+   var report TableReport
+   if !rootForm1(&loaded,want,&report)||report!=(TableReport{})||loaded!=value {t.Fatalf("variant %d reused load differs: %+v",variant,report)}
+   if re:=rootForm1Save(&loaded);re==nil||!bytes.Equal(re,want) {t.Fatalf("variant %d re-save differs",variant)}
+   for _,size:=range []int64{0,1,RootFixedMeasure(1)/2,RootFixedMeasure(1)-1} {
+    short:=bytes.Repeat([]byte{0xa5},int(RootFixedMeasure(1))+8)
+    if RootSave(&value,short[:size])!=-1 {t.Fatalf("variant %d short buffer %d accepted",variant,size)}
+    if !bytes.Equal(short[size:],bytes.Repeat([]byte{0xa5},len(short)-int(size))) {t.Fatal("wrote past destination")}
+   }
  }
  if !oracle.bodyLengths[127]||!oracle.bodyLengths[128] {t.Fatal("did not exercise both body-length LEB widths")}
 }
@@ -246,8 +285,18 @@ func TestArrayRefusalsAndAllocations(t *testing.T) {
  value.ChildrenCount=128;value.LargeCount=129;value.OptionalPresent=true;value.OptionalCount=2
  for i:=range value.Children {fillChild(&value.Children[i],i+1,130)}
  for i:=range value.Large {fillChild(&value.Large[i],i+1,130)}
- wire:=make([]byte,RootMeasure(&value));var report TableReport
- if n:=testing.AllocsPerRun(50,func(){report=TableReport{};if RootMeasure(&value)!=int64(len(wire))||RootSave(&value,wire)!=int64(len(wire))||!rootForm1(&loaded,wire,&report)||report!=(TableReport{}) {panic("round trip failed")}});n!=0 {t.Fatalf("round trip allocated %v",n)}
+  wire:=make([]byte,RootMeasure(&value));var report TableReport
+  if n:=testing.AllocsPerRun(50,func(){
+   report=TableReport{}
+   if RootMeasure(&value)!=int64(len(wire)) {panic("round trip failed")}
+   var ids TableIds
+   w := TableWriter{Buffer: wire, Ids: &ids}
+   w.Put8(1)
+   if !RootSaveBody(&w, &value) {panic("round trip failed")}
+   w.Trailer()
+   if w.Overflow || ids.Overflow {panic("round trip failed")}
+   if !rootForm1(&loaded,wire,&report)||report!=(TableReport{}) {panic("round trip failed")}
+  });n!=0 {t.Fatalf("round trip allocated %v",n)}
  for _,bad:=range []int32{-1,129} {old:=value.ChildrenCount;value.ChildrenCount=bad;if RootMeasure(&value)!=-1||RootSave(&value,wire)!=-1{t.Fatal("invalid cached count accepted")};value.ChildrenCount=old}
  for _,bad:=range []int32{-1,130} {old:=value.LargeCount;value.LargeCount=bad;if RootMeasure(&value)!=-1||RootSave(&value,wire)!=-1{t.Fatal("invalid fallback count accepted")};value.LargeCount=old}
  value.Children[0].Flavor=Flavor(99)

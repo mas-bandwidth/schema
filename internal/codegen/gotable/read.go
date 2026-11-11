@@ -165,6 +165,15 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if st.FixedDeclared {
 		// A FIXED-CLASS ROOT'S FILE IS FORM 3 (§3.4): a form-1 file is previous_form.
 		g.pf("\tif len(data) > 0 && data[0] == 1 { read.Refuse(TableRefusePreviousForm, \"\"); %sReset(value); return false }\n", n)
+		if g.surfaces.Fixed && g.hasFixedForm(st) {
+			// AND THE PLAIN READ READS FORM 3 (§3.4, §6.5): one record through
+			// the fixed read, the same bytes <T>Save wrote.
+			g.pf("\tif len(data) > 0 && data[0] == TableFixedForm {\n")
+			g.pf("\t\tbatch := []%s{*value}\n", n)
+			g.pf("\t\tplan := make([]TableFixedEntry, %sFixedPlanMax)\n", n)
+			g.pf("\t\tif %sFixedLoad(batch, data, plan, read) != 1 { %sReset(value); return false }\n", n, n)
+			g.pf("\t\t*value = batch[0]\n\t\treturn true\n\t}\n")
+		}
 	}
 	if st.Integrity != "" {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, read); !ok { %sReset(value); return false }\n", n)

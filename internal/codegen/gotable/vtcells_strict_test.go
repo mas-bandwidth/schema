@@ -177,10 +177,10 @@ func TestStrict(t *testing.T) {
  if rootForm1(&d, wire, &report) || report.Verdict != TableOpenDamaged || report.Refusal.Error() != "wire_damaged" {
   t.Fatalf("damage must refuse with the TableOpenDamaged verdict: %+v", report)
  }
- // a fixed-form file is not this variable entry point's file
+ // form 3 is this fixed root's own form; a truncated form-3 file refuses as truncated
  report = TableReport{}
- if RootLoad(&d, []byte{3}, &report) || report.Verdict != TableOpenRefused || report.Reason != "newer_form" {
-  t.Fatalf("a form-3 file must be refused by the variable Load: %+v", report)
+ if RootLoad(&d, []byte{3}, &report) || report.Reason != "truncated" || report.Refusal.Error() != "wire_damaged" {
+  t.Fatalf("a truncated form-3 file must refuse: %+v", report)
  }
 }
 func hash(s string) uint64 { h := fnv.New64a(); h.Write([]byte(s)); return h.Sum64() }
@@ -282,6 +282,21 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+func rootForm1Save(value *Root) []byte {
+	n := RootMeasure(value)
+	buf := make([]byte, n)
+	var ids TableIds
+	w := TableWriter{Buffer: buf, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return nil
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return nil
+	}
+	return buf[:w.Offset]
+}
 func TestStrict(t *testing.T) {
  wire:=[]byte{1,1,14,9,15,1,2,4,4,7,0,0,0,1,14,5,15,1,2,4,127,0}
  for _,name:=range []string{"pinned","n"} {h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())}
@@ -297,8 +312,8 @@ func TestStrict(t *testing.T) {
  if !RootFromJSON(&good, []byte("{\"value\":{\"tally\":32},\"pinned\":[{\"n\":7}]}"), &r) || r.Err()!=nil {
   t.Fatalf("json: %+v", r)
  }
- n:=RootMeasure(&good); b:=make([]byte,n)
- if RootSave(&good,b)!=n || !rootForm1(&good,b,&r) || r.Err()!=nil {
+ b:=rootForm1Save(&good)
+ if b==nil || !rootForm1(&good,b,&r) || r.Err()!=nil {
   t.Fatalf("single union reads whole: %+v", r)
  }
 }
