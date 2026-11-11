@@ -2006,10 +2006,21 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
+      # ONE RUN, FOUR ROWS (2026-11-11): the whole run is 235,080 mutants
+      # (135,080 enumerated + 100,000 random at the default seed), and as one
+      # row it was SIGKILLed at about 123 s by the runner's two-minute cap.
+      # Each row sets WIRE_FUZZ_SHARD=K/4, under which the harness compares
+      # the mutants at positions K, K+4, ... of that same deterministic
+      # stream, so the four rows together compare every mutant of the
+      # unsharded run exactly once, at the same seed and count. Measured on a
+      # shared bench (4 cores): the whole run 178 s; rows 1/4 and 4/4 57 s and
+      # 54 s, 58,770 mutants each.
       matrix:
         include:
-          - target: tables-dart-wire-fuzz
-            name: wire
+          - { target: tables-dart-wire-fuzz, name: wire 1/4, shard: 0/4 }
+          - { target: tables-dart-wire-fuzz, name: wire 2/4, shard: 1/4 }
+          - { target: tables-dart-wire-fuzz, name: wire 3/4, shard: 2/4 }
+          - { target: tables-dart-wire-fuzz, name: wire 4/4, shard: 3/4 }
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -2044,6 +2055,8 @@ jobs:
         run: make build/conformance-harness build/conformance-dart DART=dart
 
       - name: run Dart ${{ matrix.name }} fuzz
+        env:
+          WIRE_FUZZ_SHARD: ${{ matrix.shard }}
         run: make ${{ matrix.target }} DART=dart
 
 
