@@ -8615,7 +8615,9 @@ diagnostic name, which is not normative and is never compared:
   element kind, a count of 0 and one byte more),
   the same field id twice in one body, the same keyed slot twice in
   one keyed body, bytes after a nested union inside its arm's `L`, an arm
-  whose `L` does not frame its kind, a bool byte other than `0` or `1`,
+  whose `L` does not frame its kind, a keyed element whose `L` does not frame
+  its element kind (too short as well as too long: an `L` of 9 around an
+  8-byte scalar leaves a byte over), a bool byte other than `0` or `1`,
   ILL-FORMED TEXT (a kind `12` payload that is not well-formed UTF-8 or that
   carries a zero byte — the same refusal SPEC.md §4.7 puts on the packet
   wire), a node table that cannot be read whole, a cycle (a loaded
