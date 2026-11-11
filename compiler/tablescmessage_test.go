@@ -216,7 +216,7 @@ int main(void){
 }
 
 func TestCTableAnnouncementFailureClearsEntries(t *testing.T) {
-	u := unitFromSource(t, "package probe\ntable Root { a int32\nb string(8)\nc bool }\n")
+	u := unitFromSource(t, "package probe\nfixed table Root { a int32\nb string(8)\nc bool }\n")
 	runCTableWireProbe(t, u, `#include "ProbeTable.h"
  int main(void){uint8_t wire[2048];TableMessageEntry entries[1];TableVocabulary v;TableReport report={0};int64_t n=announce(wire,sizeof(wire));size_t i;
  if(n<=0){return 1;}memset(entries,0xa5,sizeof(entries));v=table_vocabulary(entries,1);
