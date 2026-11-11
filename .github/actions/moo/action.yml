@@ -7,6 +7,12 @@ description: >
   a key naming the pin, the OS and the architecture, so only the first run
   per runner image pays for it. The cached tree is checked against the pin
   before it is used. Needs git, cmake and a C++ compiler on the runner.
+
+  ON A FLEET RUNNER THE SDK'S BUILD IS USED (2026-11-11): the fleet's
+  toolchains role builds the same commit into $NOVA_SDK/moo-v1.3.0 (default
+  ~/sdk) and writes its commit to PIN there. When that PIN is the pin, the
+  two binaries are copied into dist/moo and nothing is fetched; any other
+  answer falls through to the cache and the build, as on a hosted runner.
 runs:
   using: composite
   steps:
@@ -14,17 +20,36 @@ runs:
       id: pin
       shell: bash
       run: echo "pin=$(sed -n 's/^MOO_PIN *:= *//p' make/moo.mk)" >> "$GITHUB_OUTPUT"
+    - name: the fleet SDK's moo
+      id: sdk
+      if: runner.environment != 'github-hosted'
+      shell: bash
+      run: |
+        set -euo pipefail
+        sdk="${NOVA_SDK:-$HOME/sdk}/moo-v1.3.0"
+        want='${{ steps.pin.outputs.pin }}'
+        got=$(cat "$sdk/PIN" 2>/dev/null || true)
+        if [ "$got" = "$want" ] && [ -x "$sdk/bin/moo" ] && [ -x "$sdk/bin/moo-analyze" ]; then
+          rm -rf dist/moo && mkdir -p dist/moo
+          cp "$sdk/bin/moo" "$sdk/bin/moo-analyze" dist/moo/
+          echo "$want" > dist/moo/PIN
+          echo "moo: the fleet SDK's build of $want at dist/moo, no download"
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "moo: the fleet SDK has no build of $want (${got:-no PIN} at $sdk); falling back to the cache"
+        fi
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: restore
+      if: steps.sdk.outputs.hit != 'true'
       with:
         path: dist/moo
         key: moo-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}
     - name: build the moo pin (cache miss)
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: steps.sdk.outputs.hit != 'true' && steps.restore.outputs.cache-hit != 'true'
       shell: bash
       run: make dist-moo MOO_BUILD_JOBS="$(getconf _NPROCESSORS_ONLN)"
     - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: steps.restore.outputs.cache-hit != 'true'
+      if: steps.sdk.outputs.hit != 'true' && steps.restore.outputs.cache-hit != 'true'
       with:
         path: dist/moo
         key: moo-${{ steps.pin.outputs.pin }}-${{ runner.os }}-${{ runner.arch }}

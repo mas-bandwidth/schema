@@ -1,7 +1,7 @@
 name: dist pins
 description: >
-  Puts the named interpreter pins (any of lua, luau, goose, lobster) at the
-  dist/ paths their make files name. On a hosted runner it runs
+  Puts the named interpreter pins (any of lua, luau, goose, lobster, squirrel)
+  at the dist/ paths their make files name. On a hosted runner it runs
   `make dist-<pin>`, exactly as before. On a fleet runner the pin is built or
   fetched by that same target ONCE per runner, after the target's own sha256
   check has passed, and kept in a store beside the workspace keyed by that
@@ -11,9 +11,17 @@ description: >
   cache and the runner's SDKs do. Measured 2026-11-08 (run 42492071587): the
   four pins cost 29-65 s of every go-test job, a quarter to half of the
   two-minute per-commit cap.
+
+  THE FLEET SDK FIRST, NEVER THE NETWORK FOR WHAT IT HOLDS (2026-11-11). The
+  fleet's toolchains role keeps the pinned release archives under
+  $NOVA_SDK/dl (default ~/sdk/dl). When the archive a pin names is there, the
+  store is filled by the same make target pointed at that file (a file://
+  URL), so the target's own sha256 check still decides; only a pin whose
+  archive the SDK does not hold (luau's release zip) is fetched, once per
+  runner. Run 43052853540 lost 30 s of a row to `curl: (28)` on lua.org.
 inputs:
   pins:
-    description: space-separated pins to install (lua luau goose lobster)
+    description: space-separated pins to install (lua luau goose lobster squirrel)
     required: true
 runs:
   using: composite
@@ -26,13 +34,21 @@ runs:
       run: |
         set -euo pipefail
         var() { make -s -f Makefile -f "$PRINT_MK" "print-$1"; }
+        sdk="${NOVA_SDK:-$HOME/sdk}"
         for pin in $PINS; do
+          archive=
+          urlvar=
           case "$pin" in
-            lua)     sha=$(var LUA_SHA256);      dir="$PWD/dist/lua-$(var LUA_VERSION)" ;;
-            luau)    sha=$(var LUAU_ZIP_SHA);    dir=$(var LUAU_DIST) ;;
-            goose)   sha=$(var GOOSE_TGZ_SHA);   dir=$(var GOOSE_DIST) ;;
-            lobster) sha=$(var LOBSTER_ZIP_SHA); dir=$(var LOBSTER_DIST) ;;
-            *) echo "::error::dist-pins knows no pin '$pin' (lua luau goose lobster)"; exit 1 ;;
+            lua)      sha=$(var LUA_SHA256);      dir="$PWD/dist/lua-$(var LUA_VERSION)"
+                      archive="$sdk/dl/$(var LUA_TARBALL)"; urlvar=LUA_URL ;;
+            luau)     sha=$(var LUAU_ZIP_SHA);    dir=$(var LUAU_DIST) ;;
+            goose)    sha=$(var GOOSE_TGZ_SHA);   dir=$(var GOOSE_DIST)
+                      archive="$sdk/dl/$(var GOOSE_TGZ)"; urlvar=GOOSE_TGZ_URL ;;
+            lobster)  sha=$(var LOBSTER_ZIP_SHA); dir=$(var LOBSTER_DIST)
+                      archive="$sdk/dl/lobster-$(var LOBSTER_VERSION)-linux-release.zip"; urlvar=LOBSTER_ZIP_URL ;;
+            squirrel) sha=$(var SQUIRREL_SHA256); dir="$PWD/$(var SQUIRREL_DIR)"
+                      archive="$sdk/dl/squirrel-$(var SQUIRREL_VERSION)-tag.tar.gz"; urlvar=SQUIRREL_URL ;;
+            *) echo "::error::dist-pins knows no pin '$pin' (lua luau goose lobster squirrel)"; exit 1 ;;
           esac
           if [ -z "$sha" ] || [ -z "$dir" ]; then
             echo "::error::dist-pins: make names no sha256 or dist path for $pin"; exit 1
@@ -41,11 +57,14 @@ runs:
             make "dist-$pin"
             continue
           fi
-          # one store per runner (RUNNER_WORKSPACE is <runner>/_work/<repo>),
-          # so two jobs never write one entry at once
           store="$(dirname "$RUNNER_WORKSPACE")/_schema-dist/$pin-$sha"
           if [ ! -f "$store/.complete" ]; then
-            make "dist-$pin"
+            if [ -n "$archive" ] && [ -f "$archive" ]; then
+              echo "dist-pins: $pin from the fleet SDK's $archive, no download"
+              make "dist-$pin" "$urlvar=file://$archive"
+            else
+              make "dist-$pin"
+            fi
             rm -rf "$store.tmp" && mkdir -p "$(dirname "$store")"
             cp -a "$dir" "$store.tmp"
             touch "$store.tmp/.complete"
