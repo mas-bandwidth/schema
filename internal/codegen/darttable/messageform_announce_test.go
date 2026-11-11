@@ -387,6 +387,9 @@ func announceDartBinary(t *testing.T) string {
 	if dart, err := exec.LookPath("dart"); err == nil {
 		return dart
 	}
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatal("SCHEMA_REQUIRE_CORPUS is set and no Dart toolchain is on the PATH or in dist/dart-sdk-3.13.2")
+	}
 	t.Skip("no Dart toolchain: set DART, unpack dist/dart-sdk-3.13.2, or put dart on the PATH")
 	return ""
 }
