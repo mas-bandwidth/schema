@@ -26,6 +26,7 @@ import (
 // Attribution is required for the check. A concurrent writer or mutation
 // after checking invalidates that proof; copying alone is not validation.
 func TestCheckedCookGoConsumers(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the generated Go hostile cook consumer")
 	const schema = `package probe
 table Node { value int32
@@ -359,6 +360,7 @@ func TestAcceptedCookConsumers(t *testing.T) {
 // weakened strict validation fails before Open; a broken native accessor
 // fails in the child process after acceptance. No recovery masks a panic.
 func TestCheckedCookGoConsumersNegativeControls(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the generated Go checked-cook negative controls")
 	root, err := filepath.Abs("..")
 	if err != nil {
