@@ -36,8 +36,8 @@ func TestJsFlatCompressedFloatClampsTheTopOfRange(t *testing.T) {
 			t.Parallel()
 			flat := generateProbeFlat(t, tc.max)
 			want := fmt.Sprintf("if (v > %d) { v = %d; }", tc.maxInt, tc.maxInt)
-			if n := strings.Count(flat, want); n != 2 {
-				t.Fatalf("both writer variants must clamp to the step count; found %d of %q", n, want)
+			if n := strings.Count(flat, want); n != 1 {
+				t.Fatalf("the one flat writer must clamp to the step count; found %d of %q", n, want)
 			}
 		})
 	}
