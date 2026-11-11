@@ -334,10 +334,14 @@ func (s *scan) field(at int64, f *ir.Field) error {
 	case f.KeyEnum != "", f.Array == ir.ArrayFixed:
 		return s.slots(value.Offset, f, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		if err := s.slots(value.Offset, f, f.ArrayBound); err != nil {
+		if err := s.companion(pieces[1].Offset, f.ArrayBound, "used count"); err != nil {
 			return err
 		}
-		return s.companion(pieces[1].Offset, f.ArrayBound, "used count")
+		count := int64(int32(s.ord.Uint32(s.buf[pieces[1].Offset:])))
+		if err := s.slots(value.Offset, f, count); err != nil {
+			return err
+		}
+		return s.deadSlots(value.Offset, f, count)
 	case f.Array == ir.ArrayList:
 		return s.list(value.Offset, f)
 	}
@@ -591,6 +595,19 @@ func (s *scan) companion(at, bound int64, what string) error {
 	n := int64(int32(s.ord.Uint32(s.buf[at:])))
 	if n < 0 || n > bound {
 		return fmt.Errorf("the %s is %d and its declared bound is %d", what, n, bound)
+	}
+	return nil
+}
+
+// deadSlots holds a counted array's slots at or past its used count to zero
+// (docs/SPEC-TABLES.md §7.2, §7.4): they are dead bytes, and a conforming
+// writer leaves every dead byte zero.
+func (s *scan) deadSlots(at int64, f *ir.Field, count int64) error {
+	step := elementBytes(s.m.Unit, f)
+	for i := at + count*step; i < at+f.ArrayBound*step; i++ {
+		if s.buf[i] != 0 {
+			return fmt.Errorf("the byte at %d, in slot %d past the used count %d, is 0x%02x: a counted array's slots past its count are zero", i, (i-at)/step, count, s.buf[i])
+		}
 	}
 	return nil
 }
