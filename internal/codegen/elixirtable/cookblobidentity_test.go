@@ -19,9 +19,9 @@ import (
 //   - blob_equal_bytes: two slots holding equal bytes are two blob nodes, and
 //     the cook is `schema cook`'s byte for byte in both orders; so is a FRESH
 //     value built with equal binaries, which writes three directory entries.
-//   - blob_shared: the tolerant read marks the second slot {:blob_shared,
-//     bytes}, and the cook packs it as the one node the wire names, the tool's
-//     bytes in both orders.
+//   - blob_shared: one blob record named from two slots is the strict read's
+//     blob_shared refusal (§2.5, §6.5), so the tool has no cook of that wire
+//     to hold the leg to and this test does not name one.
 //
 // The reference cooks come from the tool's own driver in process. It runs the
 // leg's own toolchain, so it is a FUNCTIONAL test.
@@ -48,24 +48,34 @@ func TestCookNumbersABlobByItsSlotElixir(t *testing.T) {
 	dir := t.TempDir()
 	names := elixirtable.WriteModuleDirForTest(t, dir, files)
 
-	// the tool's cooks of each wire, both orders
-	for _, name := range []string{"blob_equal_bytes", "blob_shared"} {
+	// a blob two slots name is the strict read's blob_shared refusal, so there
+	// is no tool cook of that wire to hold the leg to
+	sharedWire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "blob_shared.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := c.Cook(unit, "Catalog", sharedWire, compiler.CookOptions{}); err == nil ||
+		!strings.Contains(err.Error(), "blob_shared") {
+		t.Fatalf("the tool cooked a blob two slots name = %v, want the blob_shared refusal", err)
+	}
+
+	// the tool's cook of the equal-bytes wire, both orders
+	for _, big := range []bool{false, true} {
+		name := "blob_equal_bytes"
 		wire, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", name+".bin"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, big := range []bool{false, true} {
-			cooked, _, _, err := c.Cook(unit, "Catalog", wire, compiler.CookOptions{Big: big})
-			if err != nil {
-				t.Fatalf("%s: tool cook: %v", name, err)
-			}
-			suffix := ""
-			if big {
-				suffix = "-be"
-			}
-			if err := os.WriteFile(filepath.Join(dir, name+suffix+".cook"), cooked, 0o644); err != nil {
-				t.Fatal(err)
-			}
+		cooked, _, _, err := c.Cook(unit, "Catalog", wire, compiler.CookOptions{Big: big})
+		if err != nil {
+			t.Fatalf("%s: tool cook: %v", name, err)
+		}
+		suffix := ""
+		if big {
+			suffix = "-be"
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+suffix+".cook"), cooked, 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 
@@ -92,7 +102,7 @@ end
 try do
 `)
 	fmt.Fprintf(&probe, `
-for name <- ["blob_equal_bytes", "blob_shared"] do
+for name <- ["blob_equal_bytes"] do
   {:ok, value, _} = %[1]s.load("Catalog", File.read!(Path.join(%[2]q, name <> ".bin")))
 
   for {order, suffix} <- [{:little, ""}, {:big, "-be"}] do
@@ -101,13 +111,8 @@ for name <- ["blob_equal_bytes", "blob_shared"] do
   end
 end
 
-{:ok, shared, _} = %[1]s.load("Catalog", File.read!(Path.join(%[2]q, "blob_shared.bin")))
-Probe.check(match?({:blob_shared, _}, shared["alias"]), "blob_shared", "the second slot is marked")
-
 fresh = %%{"name" => "two", "thumb" => <<1, 2, 3>>, "alias" => <<1, 2, 3>>}
 Probe.check(Probe.nodes(Probe.cook(%[1]s, fresh, :little)) == 3, "fresh equal blobs", "root and two blob nodes")
-one = Map.put(fresh, "alias", {:blob_shared, <<1, 2, 3>>})
-Probe.check(Probe.nodes(Probe.cook(%[1]s, one, :little)) == 2, "fresh shared blob", "root and one blob node")
 `, mod, filepath.Join(root, "testdata", "wire", "tables"), dir)
 	probe.WriteString(`
 rescue
