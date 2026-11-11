@@ -1106,7 +1106,7 @@ func (in *reader) readBase64(fv *Field) bool {
 	// JSON bytes use the same canonical spelling as the writer: padded
 	// standard base64 with zero pad bits (§16.2). The walk above deliberately
 	// accepts decodable unpadded input, so distinguish it from damaged input.
-	canonical := pad > 0 || symbols == 0
+	canonical := symbols%4 == 0
 	if pad == 1 {
 		last := strings.IndexByte(alphabet, raw[len(raw)-2])
 		canonical = last >= 0 && last&0x03 == 0
