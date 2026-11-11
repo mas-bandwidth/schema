@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # type Vec2
 defmodule Example.Vec2 do
@@ -242,7 +242,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Vec2.t(), non_neg_integer()} | :error
   def read_vec2_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -302,7 +302,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_f64_values(value.values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_f64Zvalues(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -328,13 +328,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanF64.t(), non_neg_integer()} | :error
   def read_span_f64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_f64_values(2, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_f64Zvalues(2, [], data, num_bits, 0)
       value = %Example.SpanF64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -387,7 +387,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_u64_values(value.values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_u64Zvalues(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -413,13 +413,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanU64.t(), non_neg_integer()} | :error
   def read_span_u64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_u64_values(2, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_u64Zvalues(2, [], data, num_bits, 0)
       value = %Example.SpanU64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -472,7 +472,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_i64_values(value.values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_i64Zvalues(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -498,13 +498,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanI64.t(), non_neg_integer()} | :error
   def read_span_i64_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 128 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_i64_values(2, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_i64Zvalues(2, [], data, num_bits, 0)
       value = %Example.SpanI64{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -557,7 +557,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_one_values(value.values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_oneZvalues(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -583,13 +583,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanOne.t(), non_neg_integer()} | :error
   def read_span_one_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 64 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_one_values(1, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_oneZvalues(1, [], data, num_bits, 0)
       value = %Example.SpanOne{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -642,7 +642,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_chunk_values(value.values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_chunkZvalues(value.values, <<>>, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -668,13 +668,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanChunk.t(), non_neg_integer()} | :error
   def read_span_chunk_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 64 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_chunk_values_align(4, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_chunkZvaluesZalign(4, [], data, num_bits, 0)
       value = %Example.SpanChunk{values: v_values}
       {:ok, value, bits_read}
     catch
@@ -729,7 +729,7 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_tail_values(value_values, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_tailZvalues(value_values, <<>>, scratch, scratch_bits)
     v = value_tail &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -762,13 +762,13 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanTail.t(), non_neg_integer()} | :error
   def read_span_tail_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 160 > num_bits, do: throw(:invalid)
-      {bits_read, v_values} = r_span_tail_values(2, [], data, num_bits, 0)
+      {bits_read, v_values} = rZspan_tailZvalues(2, [], data, num_bits, 0)
       rv = rdw(data, bits_read, 49)
       v = rv &&& 0xFFFFFFFF
       v_tail = v
@@ -828,13 +828,13 @@ defmodule Example.Degenerate do
 
     scratch_bits = 0
     scratch = 0
-    {data, scratch, scratch_bits} = w_span_twice_a(value_a, <<>>, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_twiceZa(value_a, <<>>, scratch, scratch_bits)
 
     if length(value_b) != 2 do
       raise ArgumentError, "value.b must hold exactly 2 elements"
     end
 
-    {data, scratch, scratch_bits} = w_span_twice_b(value_b, data, scratch, scratch_bits)
+    {data, scratch, scratch_bits} = wZspan_twiceZb(value_b, data, scratch, scratch_bits)
     if scratch_bits != 0, do: <<data::binary, scratch>>, else: data
   end
 
@@ -860,14 +860,14 @@ defmodule Example.Degenerate do
           {:ok, Example.SpanTwice.t(), non_neg_integer()} | :error
   def read_span_twice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
 
       if 256 > num_bits, do: throw(:invalid)
-      {bits_read, v_a} = r_span_twice_a(2, [], data, num_bits, 0)
-      {bits_read, v_b} = r_span_twice_b(2, [], data, num_bits, bits_read)
+      {bits_read, v_a} = rZspan_twiceZa(2, [], data, num_bits, 0)
+      {bits_read, v_b} = rZspan_twiceZb(2, [], data, num_bits, bits_read)
       value = %Example.SpanTwice{a: v_a, b: v_b}
       {:ok, value, bits_read}
     catch
@@ -947,7 +947,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Trio.t(), non_neg_integer()} | :error
   def read_trio_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1040,7 +1040,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioSole.t(), non_neg_integer()} | :error
   def read_trio_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1129,7 +1129,7 @@ defmodule Example.Degenerate do
           {:ok, Example.Vec3Sole.t(), non_neg_integer()} | :error
   def read_vec3_sole_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1221,7 +1221,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioFirst.t(), non_neg_integer()} | :error
   def read_trio_first_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1374,7 +1374,7 @@ defmodule Example.Degenerate do
           {:ok, Example.TrioStraddle.t(), non_neg_integer()} | :error
   def read_trio_straddle_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1456,9 +1456,9 @@ defmodule Example.Degenerate do
     end
   end
 
-  defp w_span_f64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_f64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_f64_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_f64Zvalues([e | rest], data, scratch, scratch_bits) do
     w = f64_bits(e)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1474,12 +1474,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_f64_values(rest, data, scratch, scratch_bits)
+    wZspan_f64Zvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_f64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_f64Zvalues(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_f64_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_f64Zvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1487,12 +1487,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_f64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_f64Zvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp w_span_u64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_u64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_u64_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_u64Zvalues([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1507,12 +1507,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_u64_values(rest, data, scratch, scratch_bits)
+    wZspan_u64Zvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_u64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_u64Zvalues(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_u64_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_u64Zvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1520,12 +1520,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = w
-    r_span_u64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_u64Zvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp w_span_i64_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_i64Zvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_i64_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_i64Zvalues([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1540,12 +1540,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_i64_values(rest, data, scratch, scratch_bits)
+    wZspan_i64Zvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_i64_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_i64Zvalues(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_i64_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_i64Zvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1553,12 +1553,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = if w >= 9_223_372_036_854_775_808, do: w - 18_446_744_073_709_551_616, else: w
-    r_span_i64_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_i64Zvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp w_span_one_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_oneZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_one_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_oneZvalues([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
@@ -1573,12 +1573,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_one_values(rest, data, scratch, scratch_bits)
+    wZspan_oneZvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_one_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_oneZvalues(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_one_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_oneZvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1586,12 +1586,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = w
-    r_span_one_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_oneZvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp w_span_chunk_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_chunkZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_chunk_values([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZspan_chunkZvalues([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     v = e1 &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -1612,10 +1612,10 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_chunk_values(rest, data, scratch, scratch_bits)
+    wZspan_chunkZvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp w_span_chunk_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_chunkZvalues([e | rest], data, scratch, scratch_bits) do
     v = e &&& 0xFFFF
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 16
@@ -1623,13 +1623,13 @@ defmodule Example.Degenerate do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_chunk_values(rest, data, scratch, scratch_bits)
+    wZspan_chunkZvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_chunk_values(0, acc, _data, _num_bits, bits_read),
+  defp rZspan_chunkZvalues(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+  defp rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read)
        when remaining >= 3 do
     rv = rdw(data, bits_read, 48)
     v = rv &&& 0xFFFF
@@ -1638,17 +1638,17 @@ defmodule Example.Degenerate do
     e2 = v
     v = rv >>> 32
     e3 = v
-    r_span_chunk_values(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
+    rZspan_chunkZvalues(remaining - 3, [e3, e2, e1 | acc], data, num_bits, bits_read + 48)
   end
 
-  defp r_span_chunk_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rd(data, bits_read, 16)
     v = rv
     e = v
-    r_span_chunk_values(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
+    rZspan_chunkZvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 16)
   end
 
-  defp r_span_chunk_values_align(remaining, acc, data, num_bits, bits_read)
+  defp rZspan_chunkZvaluesZalign(remaining, acc, data, num_bits, bits_read)
        when remaining >= 4 do
     i = bits_read >>> 3
     q = bits_read &&& 7
@@ -1656,15 +1656,15 @@ defmodule Example.Degenerate do
     if q == 0 do
       case data do
         <<_::binary-size(^i), rest::binary>> ->
-          r_span_chunk_values_fast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
+          rZspan_chunkZvaluesZfast(remaining, acc, data, num_bits, bits_read, rest, 0, 0)
 
         _ ->
-          r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+          rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read)
       end
     else
       case data do
         <<_::binary-size(^i), b0, rest::binary>> ->
-          r_span_chunk_values_fast(
+          rZspan_chunkZvaluesZfast(
             remaining,
             acc,
             data,
@@ -1676,15 +1676,15 @@ defmodule Example.Degenerate do
           )
 
         _ ->
-          r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+          rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read)
       end
     end
   end
 
-  defp r_span_chunk_values_align(remaining, acc, data, num_bits, bits_read),
-    do: r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+  defp rZspan_chunkZvaluesZalign(remaining, acc, data, num_bits, bits_read),
+    do: rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read)
 
-  defp r_span_chunk_values_fast(
+  defp rZspan_chunkZvaluesZfast(
          remaining,
          acc,
          data,
@@ -1707,7 +1707,7 @@ defmodule Example.Degenerate do
     e4 = v
 
     {bits_read, tail} =
-      r_span_chunk_values_fast(
+      rZspan_chunkZvaluesZfast(
         remaining - 4,
         acc,
         data,
@@ -1721,12 +1721,12 @@ defmodule Example.Degenerate do
     {bits_read, [e1, e2, e3, e4 | tail]}
   end
 
-  defp r_span_chunk_values_fast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
-    do: r_span_chunk_values(remaining, acc, data, num_bits, bits_read)
+  defp rZspan_chunkZvaluesZfast(remaining, acc, data, num_bits, bits_read, _rest, _carry, _c),
+    do: rZspan_chunkZvalues(remaining, acc, data, num_bits, bits_read)
 
-  defp w_span_tail_values([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_tailZvalues([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_tail_values([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_tailZvalues([e | rest], data, scratch, scratch_bits) do
     w = f64_bits(e)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1742,12 +1742,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_tail_values(rest, data, scratch, scratch_bits)
+    wZspan_tailZvalues(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_tail_values(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_tailZvalues(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_tail_values(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_tailZvalues(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1755,12 +1755,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_tail_values(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_tailZvalues(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp w_span_twice_a([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_twiceZa([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_twice_a([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_twiceZa([e | rest], data, scratch, scratch_bits) do
     w = f64_bits(e)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1776,12 +1776,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_twice_a(rest, data, scratch, scratch_bits)
+    wZspan_twiceZa(rest, data, scratch, scratch_bits)
   end
 
-  defp w_span_twice_b([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZspan_twiceZb([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_span_twice_b([e | rest], data, scratch, scratch_bits) do
+  defp wZspan_twiceZb([e | rest], data, scratch, scratch_bits) do
     w = f64_bits(e)
     v = w &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1797,12 +1797,12 @@ defmodule Example.Degenerate do
     data = <<data::binary, sc0::little-size(fl0)-unit(8), scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_span_twice_b(rest, data, scratch, scratch_bits)
+    wZspan_twiceZb(rest, data, scratch, scratch_bits)
   end
 
-  defp r_span_twice_a(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_twiceZa(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_twice_a(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_twiceZa(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1810,12 +1810,12 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_twice_a(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_twiceZa(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 
-  defp r_span_twice_b(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
+  defp rZspan_twiceZb(0, acc, _data, _num_bits, bits_read), do: {bits_read, Enum.reverse(acc)}
 
-  defp r_span_twice_b(remaining, acc, data, num_bits, bits_read) do
+  defp rZspan_twiceZb(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 49)
     v = rv &&& 0xFFFFFFFF
     w = v
@@ -1823,6 +1823,6 @@ defmodule Example.Degenerate do
     v = rv
     w = w ||| v <<< 32
     e = f64_value(w)
-    r_span_twice_b(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
+    rZspan_twiceZb(remaining - 1, [e | acc], data, num_bits, bits_read + 64)
   end
 end

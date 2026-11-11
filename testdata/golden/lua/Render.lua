@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local _M = {}
 
@@ -117,7 +117,7 @@ function _M.WriteRenderBlock(stream, v)
   if math.type(v.SpriteCountHint) ~= "integer" then return false end
   if not stream:serializeBits({ value = v.SpriteCountHint }, 32) then return false end -- the storage width
   -- the count guards the loop (SPEC §6.3)
-  if type(v.SpritesCount) ~= "number" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end
+  if math.type(v.SpritesCount) ~= "integer" or v.SpritesCount < 0 or v.SpritesCount > 64 then return false end
   if not stream:serializeBits({ value = v.SpritesCount }, 7) then return false end -- the count
   for _i = 1, v.SpritesCount do
     if not _M.WriteRenderSprite(stream, v.Sprites[_i]) then return false end
