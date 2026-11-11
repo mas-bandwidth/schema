@@ -892,18 +892,18 @@ namespace Tabledemo
             b.Slice(1)[0] = unchecked((byte)value.U8Low);
             b.Slice(2)[0] = unchecked((byte)value.U8High);
             b.Slice(3)[0] = unchecked((byte)value.U8Inside);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(4), (short)value.U16Span);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(6), (short)value.U16Low);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(8), (short)value.U16High);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(10), (short)value.U16Inside);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.U32Span);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(16), (int)value.U32Low);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.U32High);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.U32Inside);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(28), (long)value.U64Span);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(36), (long)value.U64Low);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(44), (long)value.U64High);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(52), (long)value.U64Inside);
+            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(4), unchecked((short)value.U16Span));
+            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(6), unchecked((short)value.U16Low));
+            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(8), unchecked((short)value.U16High));
+            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(10), unchecked((short)value.U16Inside));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), unchecked((int)value.U32Span));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(16), unchecked((int)value.U32Low));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), unchecked((int)value.U32High));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), unchecked((int)value.U32Inside));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(28), unchecked((long)value.U64Span));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(36), unchecked((long)value.U64Low));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(44), unchecked((long)value.U64High));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(52), unchecked((long)value.U64Inside));
             int count_counts = value.CountsCount;
             System.Diagnostics.Debug.Assert(count_counts >= 0 && count_counts <= 4); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), count_counts);
@@ -1233,12 +1233,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RangedSignedFixedSetBytes(dst, p.Dst, wide, need);
@@ -1300,12 +1300,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RangedSignedFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -1876,12 +1876,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RangedUnsignedFixedSetBytes(dst, p.Dst, wide, need);
@@ -1943,12 +1943,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RangedUnsignedFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -2336,24 +2336,24 @@ namespace Tabledemo
         };
 
         public static readonly TableFixedSlot<RangedWidths>[] RangedWidthsFixedSlots = new TableFixedSlot<RangedWidths>[] {
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B8 = (uint)v, reset: (t) => { t.B8 = 0; }),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B16 = (uint)v, reset: (t) => { t.B16 = 0; }),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B32 = (uint)v, reset: (t) => { t.B32 = 0; }),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B64 = (ulong)v, reset: (t) => { t.B64 = 0; }),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B12 = (uint)v, reset: (t) => { t.B12 = 0; }),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B48 = (ulong)v, reset: (t) => { t.B48 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B8 = unchecked((uint)v), reset: (t) => { t.B8 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B16 = unchecked((uint)v), reset: (t) => { t.B16 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B32 = unchecked((uint)v), reset: (t) => { t.B32 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B64 = unchecked((ulong)v), reset: (t) => { t.B64 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B12 = unchecked((uint)v), reset: (t) => { t.B12 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B48 = unchecked((ulong)v), reset: (t) => { t.B48 = 0; }),
         };
 
         private static void RangedWidthsFixedSetRaw(RangedWidths t, uint slot, ulong v, TableReport rep)
         {
             switch (slot)
             {
-                case 0: t.B8 = (uint)v; break;
-                case 1: t.B16 = (uint)v; break;
-                case 2: t.B32 = (uint)v; break;
-                case 3: t.B64 = (ulong)v; break;
-                case 4: t.B12 = (uint)v; break;
-                case 5: t.B48 = (ulong)v; break;
+                case 0: t.B8 = unchecked((uint)v); break;
+                case 1: t.B16 = unchecked((uint)v); break;
+                case 2: t.B32 = unchecked((uint)v); break;
+                case 3: t.B64 = unchecked((ulong)v); break;
+                case 4: t.B12 = unchecked((uint)v); break;
+                case 5: t.B48 = unchecked((ulong)v); break;
                 default: break;
             }
         }
@@ -2482,12 +2482,12 @@ namespace Tabledemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             RangedWidthsFixedSetBytes(dst, p.Dst, wide, need);
@@ -2549,12 +2549,12 @@ namespace Tabledemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 RangedWidthsFixedSetWide(dst, p.Dst, w);
                             }
                             else

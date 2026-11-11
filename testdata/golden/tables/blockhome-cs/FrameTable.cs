@@ -408,7 +408,7 @@ namespace Blockhome
             if (value == null) return;
             ArmorConfigFixedWriteBody(b, value.Armor);
             GunnerSettingsFixedWriteBody(b.Slice(31), value.Gunner);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(335), (int)value.PartId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(335), unchecked((int)value.PartId));
             b.Slice(339)[0] = unchecked((byte)value.Slot);
         }
 
@@ -417,7 +417,7 @@ namespace Blockhome
         public static void PartFrameFixedWriteBody(Span<byte> b, PartFrame value)
         {
             if (value == null) return;
-            BinaryPrimitives.WriteInt64LittleEndian(b, (long)value.Version);
+            BinaryPrimitives.WriteInt64LittleEndian(b, unchecked((long)value.Version));
             int count_parts = value.PartsCount;
             System.Diagnostics.Debug.Assert(count_parts >= 0 && count_parts <= 32); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), count_parts);
@@ -956,12 +956,12 @@ namespace Blockhome
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PartRowFixedSetBytes(dst, p.Dst, wide, need);
@@ -1023,12 +1023,12 @@ namespace Blockhome
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PartRowFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -11174,12 +11174,12 @@ namespace Blockhome
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PartFrameFixedSetBytes(dst, p.Dst, wide, need);
@@ -11241,12 +11241,12 @@ namespace Blockhome
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PartFrameFixedSetWide(dst, p.Dst, w);
                             }
                             else

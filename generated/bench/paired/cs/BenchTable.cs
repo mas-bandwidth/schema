@@ -685,10 +685,10 @@ namespace Bench
                 if (fraction == 0) { o.Put((byte)'0'); return; }
                 while (fraction != 0)
                 {
-                    UInt128 low = (UInt128)(ulong)fraction * 10;
+                    UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
                     UInt128 high = (fraction >> 64) * 10 + (low >> 64);
                     uint carry = (uint)(high >> 64);
-                    fraction = (high << 64) | (ulong)low;
+                    fraction = (high << 64) | unchecked((ulong)low);
                     ulong digit = (ulong)(fraction >> frac);
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
@@ -1106,10 +1106,10 @@ namespace Bench
                 if (value < 0)
                 {
                     o.Put((byte)'-');
-                    WriteUnsigned(ref o, 0ul - (ulong)value);
+                    WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
                     return;
                 }
-                WriteUnsigned(ref o, (ulong)value);
+                WriteUnsigned(ref o, unchecked((ulong)value));
             }
 
             // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -1348,7 +1348,7 @@ namespace Bench
                     case 3:
                     case 4:
                     case 5:
-                        WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                        WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1579,7 +1579,7 @@ namespace Bench
                     if (held >= 8)
                     {
                         held -= 8;
-                        if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+                        if (count < bytes.Length) { bytes[count++] = unchecked((byte)(accumulator >> held)); }
                     }
                 }
                 f.SetChild(owner, index, new TableBlob(bytes));
@@ -3126,12 +3126,12 @@ namespace Bench
                 {
                     switch (n)
                     {
-                        case 1: Byte((byte)v); return;
-                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                        case 1: Byte(unchecked((byte)v)); return;
+                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                         case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                         default:
-                            for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                            for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                             return;
                     }
                     Offset += n;
@@ -3155,9 +3155,9 @@ namespace Bench
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
                 {
-                    if (v < 128) { Byte((byte)v); return; }
-                    while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-                    Byte((byte)v);
+                    if (v < 128) { Byte(unchecked((byte)v)); return; }
+                    while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+                    Byte(unchecked((byte)v));
                 }
             }
 
@@ -4534,7 +4534,7 @@ namespace Bench
                     above = !baseNegative && stored < bits;
                     if (kind < 18)
                     {
-                        ulong raw = (ulong)stored;
+                        ulong raw = unchecked((ulong)stored);
                         negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                         stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
                     }
@@ -4556,8 +4556,8 @@ namespace Bench
                 if (keep)
                 {
                     if (f.SetWide != null) { f.SetWide(value, index, stored); }
-                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)stored; }
-                    else { f.SetRaw(value, index, (ulong)stored); }
+                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = unchecked((byte)stored); }
+                    else { f.SetRaw(value, index, unchecked((ulong)stored)); }
                 }
                 return true;
             }
@@ -4630,7 +4630,7 @@ namespace Bench
                 public void Put(long at, UInt128 raw, int width)
                 {
                     if (Measure) { return; }
-                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
                 }
                 public void Raw(long at, ReadOnlySpan<byte> bytes)
                 { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }
@@ -5035,7 +5035,7 @@ namespace Bench
                 else if (f.GetWide != null)
                 {
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-                    w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+                    w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
             }
@@ -6992,12 +6992,12 @@ namespace Bench
                                     {
                                         int bits = sw * 8;
                                         ulong top = 1UL << (bits - 1);
-                                        if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                        if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                     }
                                     System.Span<byte> cell = wide.Slice(e * dw, dw);
-                                    if (dw == 1) cell[0] = (byte)raw;
-                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                    if (dw == 1) cell[0] = unchecked((byte)raw);
+                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                     else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                                 }
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, need);
@@ -7094,12 +7094,12 @@ namespace Bench
                                     ulong top = 1UL << (bits - 1);
                                     if ((raw & top) != 0)
                                     {
-                                        raw |= ~((top << 1) - 1UL);
+                                        raw |= unchecked(~((top << 1) - 1UL));
                                     }
                                 }
                                 if (p.DstSize == 16)
                                 {
-                                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                    UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                     slots[(int)p.Dst].SetWide?.Invoke(dst, w);
                                 }
                                 else
@@ -8635,12 +8635,12 @@ namespace Bench
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(8), (uint)value.AckBits);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), (long)value.SessionId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.ClientId);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), (long)value.Nonce);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), unchecked((long)value.SessionId));
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), unchecked((int)value.ClientId));
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), unchecked((long)value.Nonce));
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
             BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), unchecked((uint)value.ServerTime));
             int count_entities = value.EntitiesCount;
             System.Diagnostics.Debug.Assert(count_entities >= 0 && count_entities <= 8); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), count_entities);
@@ -8692,10 +8692,10 @@ namespace Bench
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), (ulong)(unchecked((UInt128)value.WideKey)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), (ulong)(unchecked((UInt128)value.WideKey) >> 64));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), (ulong)(unchecked((UInt128)(Int128)value.Flux)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), (ulong)(unchecked((UInt128)(Int128)value.Flux) >> 64));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), unchecked((ulong)(UInt128)value.WideKey));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), unchecked((ulong)((UInt128)value.WideKey >> 64)));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), unchecked((ulong)(UInt128)(Int128)value.Flux));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), unchecked((ulong)((UInt128)(Int128)value.Flux >> 64)));
             BinaryPrimitives.WriteUInt16LittleEndian(b.Slice(1221), (ushort)value.Ping);
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(1223), (uint)value.CrcHint);
             b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
