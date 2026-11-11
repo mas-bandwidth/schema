@@ -117,7 +117,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	// (docs/SPEC-TABLES.md §4.4). Dropping the C leg's defaults copy, or
 	// sending the C present flag back through a plain bool entry, lands the
 	// record's bytes again, and the gate must say so.
-	cFaults := []struct{ name, from, to string }{
+	absentFaults := []struct{ name, from, to string }{
 		{
 			"the C present-defaults entry stops copying the declared defaults",
 			"if ( flag == 0 && defaults != NULL ) { table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }",
@@ -129,7 +129,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 			"e.op = kTableFixedBool; e.arg = arg;",
 		},
 	}
-	for _, fault := range cFaults {
+	for _, fault := range absentFaults {
 		if !strings.Contains(cPlain, fault.from) {
 			t.Fatalf("the real C artifact no longer carries the clause for %q", fault.name)
 		}
