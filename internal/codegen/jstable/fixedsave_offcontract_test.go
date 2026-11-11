@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestJsFixedSaveRefusesOffContract holds the fixed-form writer to docs/SPEC.md
@@ -19,6 +21,7 @@ import (
 // The boundary values themselves must be written and round-trip through the
 // module's own reader: a writer that refused everything would fail here.
 func TestJsFixedSaveRefusesOffContract(t *testing.T) {
+	slowtest.Gate(t, "node")
 	t.Parallel()
 	node := jsNode(t)
 	u := unitFrom(t, jsFixedSaveOffContractSchema)
