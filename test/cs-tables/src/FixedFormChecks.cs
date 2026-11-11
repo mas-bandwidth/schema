@@ -1205,15 +1205,18 @@ static partial class Program
         TD.TableReport r = new TD.TableReport();
         TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
         long loaded = TD.Schema.WeaponConfigFixedLoad(back, buf, plan, r);
-        Check(loaded == 1, "hostile bool: load one record");
-        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
-              "hostile bool: clean report, no counters moved");
-        Check(back.Homing == true, "hostile bool: nonzero byte normalized to true");
+        // STRICT: a bool byte past 1 is wire_damaged on the one read, never
+        // normalized, and the refused record is reset (docs/SPEC-TABLES.md
+        // §3.4; docs/plans/strict-only.md).
+        Check(loaded == -1, "hostile bool: nonzero byte refuses the load");
+        Check(r.Refused && r.Reason == "wire_damaged" && r.Unknown == 0 && r.Widened == 0,
+              "hostile bool: refusal is wire_damaged, no tolerant counters");
+        Check(back.Homing == false, "hostile bool: a refused record is reset, not normalized to true");
 
         byte[] resaved = new byte[buf.Length];
         long savedAgain = TD.Schema.WeaponConfigFixedSave(back, resaved);
         Check(savedAgain == resaved.Length, "hostile bool: resave");
-        Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
+        Check(resaved[homingOffset] == 0, "hostile bool: resaved byte is the refused default, not 0x7F");
     }
 
     static void TestFixedAbsentOptionalCase()
