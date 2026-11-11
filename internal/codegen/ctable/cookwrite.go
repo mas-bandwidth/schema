@@ -323,13 +323,6 @@ func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, ste
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s && %s<%d;%s++) {\n", ind, label, label, label, count, label, f.ArrayBound, label)
 		g.cookExtentField(elem, "", src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
 		g.pf("%s}\n", ind)
-		if f.Array == ir.ArrayCounted {
-			// A hidden container has no place in the region. Measure that
-			// slot independently and refuse even when its shape is invalid.
-			g.pf("%sfor(;%s<%d;%s++) { int64_t %s_hidden=0; int64_t * %s_saved_at=at; at=&%s_hidden;\n", ind, label, f.ArrayBound, label, label, label, label)
-			g.cookExtentField(elem, "", src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
-			g.pf("%s    at=%s_saved_at; if(%s_hidden!=0) { return 0; }\n%s}\n", ind, label, label, ind)
-		}
 		g.pf("%s}\n", ind)
 	default:
 		switch ref := f.Type.Ref.(type) {

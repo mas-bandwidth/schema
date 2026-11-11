@@ -97,10 +97,10 @@ int main(void) {
  CHECK(root_cook(&ctx,root,output,need,table_cook_byte_order==1 ? TableByteOrder_Little : TableByteOrder_Big));
  opened=root_open(output,need);CHECK(opened!=NULL);first=tiny_at(NULL,&opened->first);CHECK(first!=NULL && first->value==3);
  CHECK(root_save(NULL,opened,packed,sizeof(packed))==(int64_t)sizeof(wire));CHECK(!memcmp(packed,wire,sizeof(wire)));
- /* An unreached list must refuse before touching the output. */
+ /* A list in a counted slot past the live count is dead storage. */
  number=bucket_numbers_add(&b.main,&root->buckets[1].numbers);CHECK(number!=NULL);*number=42;
- CHECK(root_cook_measure(&ctx,root)==-1);memset(output,0xa5,sizeof(output));
- CHECK(!root_cook(&ctx,root,output,sizeof(output),TableByteOrder_Little));CHECK(output[0]==0xa5);CHECK(!root_builder_lock(&b));
+ CHECK(root_cook_measure(&ctx,root)==need);memset(output,0xa5,sizeof(output));
+ CHECK(root_cook(&ctx,root,output,sizeof(output),TableByteOrder_Little));CHECK(!memcmp(output,little,sizeof(little)));
  CHECK(bucket_numbers_erase(&b.arena,&root->buckets[1].numbers,number));
  CHECK(root_cook_measure(&ctx,root)==need);
  /* A pointer in a slot past the count is dead storage: the cook never follows
