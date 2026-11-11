@@ -30,7 +30,13 @@ export function ReadVec2Flat(view, numBits, value) {
     return false;
   }
   value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   return true;
 }
 
@@ -91,6 +97,9 @@ export function ReadSpanF64Flat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -402,6 +411,9 @@ export function ReadSpanTailFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.values[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -493,6 +505,9 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.a[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -512,6 +527,9 @@ export function ReadSpanTwiceFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.b[i0] = SC.getFloat64(0, true);
     br += 32;
   }
@@ -607,8 +625,17 @@ export function ReadVec3SoleFlat(view, numBits, value) {
     return false;
   }
   value.v.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.v.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.v.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   return true;
 }
 
