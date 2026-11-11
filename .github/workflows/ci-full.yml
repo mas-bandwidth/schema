@@ -1128,13 +1128,18 @@ jobs:
   # Those four language-toolchain installs and `update-goldens`'s closing
   # `go test ./...` existed only for that duplicate `go test ./...`, which
   # `go-test` already runs across its matrix rows. The pin writers themselves
-  # now fan out across five parallel rows (`pins-source`, `pins-wire-packet`,
+  # now fan out across eight parallel rows (`pins-source-cpp`, `pins-source-c`,
+  # `pins-source-cs`, `pins-source-goldens`, `pins-wire-packet`,
   # `pins-wire-tables`, `pins-wire-tables-forms`, `pins-conformance`), each
   # generating and compiling only the units its writer touches in parallel and
-  # diffing `testdata/` against HEAD in ~10-25s wall. Nothing is dropped from
-  # per-commit; `make conformance-pin update-goldens` remains the local
-  # single-command entry point, and `nightly-conformance.yml` also runs the
-  # full C++ reference corpus check nightly.
+  # diffing `testdata/` against HEAD in ~10-25s wall. The source family is the
+  # slowest, so its three table writers and its pure-Go golden writer are rows
+  # of their own; the golden row runs only the `TestGolden*` set it rewrites,
+  # because the rest of internal/goldens is not a pin writer and already runs
+  # per commit in go-test. Nothing is dropped from per-commit;
+  # `make conformance-pin update-goldens` remains the local single-command
+  # entry point, and `nightly-conformance.yml` also runs the full C++ reference
+  # corpus check nightly.
   pins:
     # Runs on EVERY same-repository pull request, not behind the `full-ci`
     # label (issue #1421): like `generated`, a stale pin is a "this diff is
@@ -1154,8 +1159,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - row: source
-            target: pins-source
+          - row: source-cpp
+            target: pins-source-cpp
+          - row: source-c
+            target: pins-source-c
+          - row: source-cs
+            target: pins-source-cs
+          - row: source-goldens
+            target: pins-source-goldens
           - row: wire-packet
             target: pins-wire-packet
           - row: wire-tables
@@ -1171,7 +1182,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out the C++ serialize runtime (pinned release)
-        if: matrix.row != 'source'
+        if: ${{ !startsWith(matrix.row, 'source') }}
         run: |
           set -euo pipefail
           cd ..

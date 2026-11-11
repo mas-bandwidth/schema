@@ -7488,11 +7488,14 @@ tables-go-checked-cook:
 #
 # Each row of ci-full.yml's pins matrix rewrites one family of committed pins
 # under testdata/ and diffs testdata/ against HEAD. `make conformance-pin
-# update-goldens` remains the single-command maintainer entry point; the five
+# update-goldens` remains the single-command maintainer entry point; the eight
 # targets below partition the same writers across parallel fleet rows without
 # update-goldens' duplicate closing `go test ./...` (already run by go-test),
 # so every row finishes well inside the 2-minute per-commit cap:
-#   - pins-source:            testdata/golden/ (pure-Go + C++, C and C# table sources)
+#   - pins-source-cpp:        testdata/golden/tables/ from the C++ table writer
+#   - pins-source-c:          testdata/golden/tables/*-c/ from the C table writer
+#   - pins-source-cs:         testdata/golden/tables/*-cs/ from the C# table writer
+#   - pins-source-goldens:    testdata/golden/ (pure-Go + C++, C and C# sources)
 #   - pins-wire-packet:       testdata/wire/*.bin, *.bits, packet-defaults/, bench_*.bin
 #   - pins-wire-tables:       testdata/wire/tables/ from test/tables/main.cpp
 #   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/retain)
@@ -7563,29 +7566,55 @@ PINS_SOURCE_CPP_DIRS := examples pointers block blockhome messages stream blobs 
 PINS_SOURCE_C_DIRS   := examples block pointers
 PINS_SOURCE_CS_DIRS  := examples block blockhome
 
-.PHONY: pins-source
-pins-source: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
-pins-source: export PINS_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
-pins-source: export PINS_CS_GENERATE = $(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
-pins-source: bin/schema
-	@mkdir -p testdata/golden build/tables-generated build/tables-generated-c build/tables-generated-cs
+# THE SOURCE FAMILY IS ITSELF FOUR ROWS. The three table writers copy their own
+# generated files into testdata/golden/tables/ and need no Go test: the bytes
+# they copy are the compiler's own output, and the row's `git diff` against
+# HEAD is what proves they are still the committed pins. The fourth row rewrites
+# and verifies the corpus pins through the golden tests. It runs only the
+# `TestGolden*` set it rewrites: the rest of internal/goldens (including
+# TestGeneratedTextNamesNoMachine, which emits every target for every unit) is
+# not a pin writer and already runs per commit in go-test's unit-rest row.
+.PHONY: pins-source-cpp
+pins-source-cpp: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-source-cpp: bin/schema
+	@mkdir -p testdata/golden build/tables-generated
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
-	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
-	$(call pins_generate_dirs,PINS_CS_GENERATE,$(PINS_SOURCE_CS_DIRS),cs-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
+
+.PHONY: pins-source-c
+pins-source-c: export PINS_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
+pins-source-c: bin/schema
+	@mkdir -p testdata/golden build/tables-generated-c
+	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
 		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
+
+.PHONY: pins-source-cs
+pins-source-cs: export PINS_CS_GENERATE = $(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
+pins-source-cs: bin/schema
+	@mkdir -p testdata/golden build/tables-generated-cs
+	$(call pins_generate_dirs,PINS_CS_GENERATE,$(PINS_SOURCE_CS_DIRS),cs-source)
 	@for d in $(PINS_SOURCE_CS_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-cs; \
 		cp build/tables-generated-cs/$$d/*Table.cs testdata/golden/tables/$$d-cs/; \
 	done
-	go test ./internal/goldens -update -run 'TestGolden'
-	go test ./internal/goldens -count=1
+
+.PHONY: pins-source-goldens
+pins-source-goldens: bin/schema
+	@mkdir -p testdata/golden
+	go test ./internal/goldens -update -run '^TestGolden'
+	go test ./internal/goldens -count=1 -run '^TestGolden'
+
+.PHONY: pins-source
+pins-source: pins-source-cpp pins-source-c pins-source-cs pins-source-goldens
+# The writer rows and the golden row touch the same table pins, so the local
+# aggregate keeps them serial; ci-full.yml runs each row in its own checkout.
+.NOTPARALLEL: pins-source
 
 .PHONY: pins-wire-packet
 pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table
