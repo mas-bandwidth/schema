@@ -27,7 +27,8 @@ import (
 //
 // make tables-rust-json-hostile-negative-control plants the old reader (the
 // zero stored as text, the ill-formed byte decoded lossily) through an overlay
-// and requires this test to go red on exactly the refusal rows.
+// and requires this test to go red on exactly the refusal rows those two
+// checks alone decide (the rest refuse under the strict read either way).
 func TestJsonHostileTextRefusalsRust(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "rustc (it compiles and runs the generated JSON probe)")

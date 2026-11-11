@@ -1207,10 +1207,17 @@ tables-rust-retain-negative-control:
 # to the old reader — a decoded U+0000 never flags the string, and the string's
 # bytes decode lossily to U+FFFD — through a `go test -overlay` of
 # internal/codegen/rusttable/variabletext.go, so no tracked file is edited.
-# TestJsonHostileTextRefusalsRust must go red on EXACTLY its fifteen refusal
-# rows, and its five rows that are not the event (a skipped zero, a zero object
-# key, a `\u0001`, a well-formed clamp, a lone surrogate) must stay green: a
-# control that reddened those would localise nothing.
+# TestJsonHostileTextRefusalsRust must go red on EXACTLY the nine rows whose
+# refusal is these two checks' alone (RUST_JSON_HOSTILE_EVENT_ROWS, each by
+# name), and its rows that are not the event (a skipped zero, a zero object
+# key, a `\u0001`, a well-formed string past its bound) must stay green: a
+# control that reddened those would localise nothing. The test's other refusal
+# rows (a zero or an ill-formed byte past the bound, a zero in an integer key
+# or after a lone surrogate, surrogate bytes that decode past the bound) refuse
+# under the strict read whether or not these two checks run, so they pin the
+# verdict and are not this control's event.
+RUST_JSON_HOSTILE_EVENT_ROWS := zero-string zero-blob zero-map-key illformed-inside illformed-truncated \
+	illformed-unknown-value illformed-object-key illformed-map-key str-entry-zero
 tables-rust-json-hostile-negative-control:
 	@rm -rf build/rust-json-hostile-control && mkdir -p build/rust-json-hostile-control
 	@sed -e 's|self.zero [|]= cp == 0;|/* SABOTAGED */|' \
@@ -1226,14 +1233,17 @@ tables-rust-json-hostile-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the suite stayed green with the old Rust JSON reader planted"; \
 		cat build/rust-json-hostile-control/log; exit 1; \
 	fi
-	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = 15 || \
-		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the fifteen refusal rows"; \
+	@test "$$(grep -c 'MISMATCH' build/rust-json-hostile-control/log)" = $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) || \
+		{ echo "NEGATIVE CONTROL FAILED: the old reader did not red exactly the $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) event rows"; \
 		  cat build/rust-json-hostile-control/log; exit 1; }
-	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound|lone-lead-then-escape):' build/rust-json-hostile-control/log || \
+	@for row in $(RUST_JSON_HOSTILE_EVENT_ROWS); do \
+		grep -q "MISMATCH $$row:" build/rust-json-hostile-control/log || \
+			{ echo "NEGATIVE CONTROL FAILED: the old reader left the event row $$row green"; \
+			  cat build/rust-json-hostile-control/log; exit 1; }; \
+	done
+	@! grep -E 'MISMATCH (zero-unknown-value|zero-object-key|one-escape-stored|well-formed-at-bound):' build/rust-json-hostile-control/log || \
 		{ echo "NEGATIVE CONTROL FAILED: a row that is not the event went red"; exit 1; }
-	@grep -m1 'MISMATCH illformed-at-bound' build/rust-json-hostile-control/log
-	@grep -m1 'MISMATCH zero-map-key:' build/rust-json-hostile-control/log
-	@echo "rust json-hostile negative control: the old reader turns exactly the fifteen §16.3 refusal rows RED"
+	@echo "rust json-hostile negative control: the old reader turns exactly the $(words $(RUST_JSON_HOSTILE_EVENT_ROWS)) §16.3 event rows RED, each by name"
 
 # THE GUARD NEGATIVE CONTROL (docs/SPEC-TABLES.md §3.1, §4; test/tables/G1.schema):
 # the generated guard gate is taken out of the numbering, the save and the
