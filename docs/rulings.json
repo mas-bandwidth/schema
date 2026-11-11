@@ -230,6 +230,15 @@
       "supersedes": [
         "the `bytes(N)` row's \"padded and unpadded both read\" and the unpadded-symbol-count rule in the grammar paragraph under §16.2's mapping table"
       ]
+    },
+    {
+      "id": "message-one-encoding",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a message-form batch has one encoding for each value; an explicit default the writer elides, fields out of the writer's order, and an explicit None arm are refused",
+        "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
     }
   ]
 }

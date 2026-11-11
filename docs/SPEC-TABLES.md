@@ -6120,6 +6120,36 @@ the union's empty arm, the three places on this wire where "no id" is a value.
 A reference above `E` is damage (below). For the `backenddemo` unit below,
 `E` is 33 and a reference is 6 bits.
 
+**A BODY HAS EXACTLY ONE ENCODING FOR ITS VALUE, AND A BODY THAT IS NOT THE ONE
+A CONFORMING WRITER EMITS IS DAMAGE.** A conforming writer elides a field at its
+declared default, writes a record's fields in declaration order, and elides a
+union at `None` (§22.2, §22.6). A reader therefore refuses the whole batch
+(damage, the batch discarded, §4) when a body carries any of these three:
+
+- **(a) A FIELD WRITTEN AT THE DEFAULT THE WRITER ELIDES.** A reader knows that
+  default exactly where it names the field under the same announced shape and
+  the same build version: every field's specified default is digested into the
+  build version (§20.1), so two builds at one version give that field one
+  default, and a conforming writer would not have written it. The same rule
+  reaches an empty string or array and an all-default nested table when the
+  writer's declaration makes that value the default it elides. A field whose
+  sender default this reader cannot know — one it meets under a different build
+  version — is read as today: an absent field takes this reader's declared
+  default, which is lawful version evolution.
+- **(b) A BODY'S FIELD REFERENCES OUT OF THE WRITER'S DECLARATION ORDER.** The
+  order a writer emits is the sender's declaration order (§22.2, §22.6), which
+  is the order the announcement gives each record's fields: the cook projection
+  renders a record's fields in declaration order (§20.2). A reader refuses a
+  body whose field references do not follow that order, and a field this reader
+  cannot name still has its place in that order.
+- **(c) A UNION FIELD WRITTEN WITH THE NONE REFERENCE.** Reference `0` is the
+  union's empty arm, and a conforming writer elides an empty union (§22.2), so
+  an explicit arm `0` is not the one encoding a conforming writer emits.
+
+**§3's sentence that field order "is not part of the contract" is the variable
+form's and is neither changed nor carried here**, so no reader takes it as
+licence on a message body.
+
 **A PAYLOAD IS WHAT THE PACKET WIRE WRITES FOR THAT DECLARATION** (SPEC.md
 §4.3), and every row below that departs from it says so, because each departure
 buys something this wire needs and none of them is derivable:
@@ -6550,7 +6580,7 @@ and nothing the read produced is a value to use. A bitpacked body
 carries no length, so a reader that has lost its position has lost it for the
 rest of the buffer anyway and stops there.
 
-The five ways a batch is damaged, at bit granularity:
+The ways a batch is damaged, at bit granularity:
 
 - **A REFERENCE ABOVE THE ENTRY COUNT `E`.** The width can spell values above
   `E` whenever `E` is not one less than a power of two, and every one of them is
@@ -6580,6 +6610,10 @@ The five ways a batch is damaged, at bit granularity:
   count promised `M` bodies and fewer terminators arrive, or the trailing pad to
   the byte boundary is not zero, or BYTES REMAIN AFTER THE PAD, which is §3's
   rule for a file with bytes left over met on a batch.
+- **A BODY THAT IS NOT THE ONE A CONFORMING WRITER EMITS.** A field written at
+  the default the writer elides, fields out of the writer's declaration order,
+  or a union written with the None reference (above): the body is damage, and
+  the whole batch is discarded.
 
 **ILL-FORMED TEXT IS DAMAGE HERE TOO, and it discards the batch like the rest.** §3's
 one content rule holds unchanged in what it rejects, a kind `12` payload that is
