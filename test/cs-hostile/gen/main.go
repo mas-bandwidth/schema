@@ -537,7 +537,9 @@ const packetBody = `
         var v = new {N}.{T}();
         var rs = new Serialize.ReadStream(d, d.Length);
         if (!{N}.Schema.Read{T}(rs, ref v)) { return H.Refuse("packet_refused"); }
-        var ws = new Serialize.WriteStream(new byte[Math.Max(1 << 16, d.Length * 8)]);
+        long size = (long)d.Length * 8;
+        if (size > Array.MaxLength) { return "error: the packet input is too large for the runner: " + size + " writer bytes"; }
+        var ws = new Serialize.WriteStream(new byte[(int)Math.Max(1 << 16, size)]);
         if (!{N}.Schema.Write{T}(ws, ref v)) { return "error: the writer refused the decoded value"; }
         ws.Flush();
         return H.Accept(H.Sha(ws.Data));
