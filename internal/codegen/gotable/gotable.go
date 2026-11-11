@@ -658,7 +658,14 @@ func generateForms(u *ir.Unit, lineage map[string][]FixedLineageEntry, s Surface
 		}
 		maps.Copy(out, view)
 	}
-	return out, forms, goname.RespellFiles(out) // every identifier in Go's initialisms
+	if err := goname.RespellFiles(out); err != nil { // every identifier in Go's initialisms
+		return nil, nil, err
+	}
+	pruned, err := pruneUnreferencedDeclarations(out)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pruned, forms, nil
 }
 
 // emitForm assembles one optional form's buffer into its own file, when the
