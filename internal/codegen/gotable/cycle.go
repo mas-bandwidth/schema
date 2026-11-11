@@ -21,11 +21,11 @@ const tableNodeWireNamed uint64 = 1 << 63
 const tableNodeBlobSeen uint64 = 1 << 62
 const tableNodeSeed uint64 = 1 << 63
 
-func tableCycleCheck(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo)bool{
- return tableCycleCheckReason(base,root,a,dir,nodeType)==TableRefuseOk
+func tableCycleCheck(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo,wire TableReader)bool{
+ return tableCycleCheckReason(base,root,a,dir,nodeType,wire)==TableRefuseOk
 }
 
-func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo)TableRefuseReason{
+func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena,dir []TableNodeDirEntry,nodeType func(uint64)*TableTypeInfo,wire TableReader)TableRefuseReason{
  const mask=uint64(1)<<48-1
  if uint64(len(dir))>math.MaxUint32{return TableRefuseWireDamaged}
  // a blob record no pointer names is unreachable; a named one clears its mark
@@ -54,8 +54,7 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
   if e.Offset>>48==0||e.Offset>>48==65535||uint32(e.TypeID)==math.MaxUint32{return false};e.TypeID++;return true
  }
  for i:=range dir{if !each(i,count){return TableRefuseWireDamaged}}
- // Kahn from the root and from every record an unknown slot named: anything
- // left back is unreachable or held by a cycle, and both are damage
+ // Kahn from the root: anything left back is unreachable or held by a cycle
  head:=uint32(0)
  push:=func(i int){dir[i].TypeID=uint64(head)<<32;head=uint32(i+1)}
  push(0)
@@ -78,6 +77,7 @@ func tableCycleCheckReason(base unsafe.Pointer,root *TableTypeInfo,a *TableArena
  }
  for i:=range dir{if !each(i,resolve){return TableRefuseWireDamaged}}
  for i:=range dir{e:=&dir[i];ordinal:=e.Offset>>48;if ordinal!=0&&ordinal!=65535{e.TypeID=root.CycleType(ordinal).ID;e.Offset&=mask}}
- return TableRefuseOk
+ graph:=tableWireVerify
+ return graph(wire,unsafe.Slice((*uint64)(unsafe.Pointer(&dir[0])),2*len(dir)))
 }
 `

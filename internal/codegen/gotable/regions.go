@@ -379,7 +379,7 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
  nodes.Good=s.whole();report.Unknown+=unknown
  s=tableNodeScanBegin(r);k=1;for {id,body,ok:=s.next();if !ok{break};if directory[k].Offset!=^uint64(0){p:=unsafe.Add(base,directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen));if t:=nodeType(id);t!=nil{body.Nodes=nodes;t.LoadBody(body,p)}else{copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(body.Buffer)),body.Buffer)}}else if reason:=tableWireRecordCheck(body,len(r.Ids)/8,uint64(len(directory)-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");clear(region);return nil};k++}
  r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base);if report.Refused(){clear(region);return nil}
- if reason:=tableCycleCheckReason(base,root,nil,directory,nodeType);reason!=TableRefuseOk{report.Refuse(reason,"")}
+ if reason:=tableCycleCheckReason(base,root,nil,directory,nodeType,r);reason!=TableRefuseOk{report.Refuse(reason,"")}
  if report.Refused(){clear(region);return nil};return base
 }
 func tablePackNodeBytes(e *tableNodeEntry,a *TableArena)int64 {if e.info!=nil {return tableRegionRound(int64(e.info.Size))};extra:=int64(0);if e.id==tableStringTypeID{extra=1};return tableRegionRound(8+int64(*(*uint32)(e.node))+extra)}
@@ -439,7 +439,7 @@ func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []b
  nodes.Good=scan.whole();report.Unknown+=unknown
  scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset&^(tableNodeWireNamed|tableNodeBlobSeen))));if worker.refused!=TableRefuseOk||report.Refused(){return false}}}else if reason:=tableWireRecordCheck(body,len(r.Ids)/8,uint64(count-1),nodes.Mark);reason!=TableRefuseOk{report.Refuse(reason,"");return false};k++}
  r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p)
- if ok&&worker.refused==TableRefuseOk&&!report.Refused(){if reason:=tableCycleCheckReason(p,root,worker.Arena,directory,nodeType);reason!=TableRefuseOk{report.Refuse(reason,"")}}
+ if ok&&worker.refused==TableRefuseOk&&!report.Refused(){if reason:=tableCycleCheckReason(p,root,worker.Arena,directory,nodeType,r);reason!=TableRefuseOk{report.Refuse(reason,"")}}
  return ok&&worker.refused==TableRefuseOk&&!report.Refused()
 }
 `

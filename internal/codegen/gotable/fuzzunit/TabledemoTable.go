@@ -3569,7 +3569,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		clear(region)
 		return nil
 	}
-	if reason := tableCycleCheckReason(base, root, nil, directory, nodeType); reason != TableRefuseOk {
+	if reason := tableCycleCheckReason(base, root, nil, directory, nodeType, r); reason != TableRefuseOk {
 		report.Refuse(reason, "")
 	}
 	if report.Refused() {
@@ -3852,7 +3852,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	r.Nested = false
 	ok := root.LoadBody(r, p)
 	if ok && worker.refused == TableRefuseOk && !report.Refused() {
-		if reason := tableCycleCheckReason(p, root, worker.Arena, directory, nodeType); reason != TableRefuseOk {
+		if reason := tableCycleCheckReason(p, root, worker.Arena, directory, nodeType, r); reason != TableRefuseOk {
 			report.Refuse(reason, "")
 		}
 	}
@@ -4321,11 +4321,11 @@ const tableNodeWireNamed uint64 = 1 << 63
 const tableNodeBlobSeen uint64 = 1 << 62
 const tableNodeSeed uint64 = 1 << 63
 
-func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) bool {
-	return tableCycleCheckReason(base, root, a, dir, nodeType) == TableRefuseOk
+func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo, wire TableReader) bool {
+	return tableCycleCheckReason(base, root, a, dir, nodeType, wire) == TableRefuseOk
 }
 
-func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) TableRefuseReason {
+func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo, wire TableReader) TableRefuseReason {
 	const mask = uint64(1)<<48 - 1
 	if uint64(len(dir)) > math.MaxUint32 {
 		return TableRefuseWireDamaged
@@ -4409,8 +4409,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 			return TableRefuseWireDamaged
 		}
 	}
-	// Kahn from the root and from every record an unknown slot named: anything
-	// left back is unreachable or held by a cycle, and both are damage
+	// Kahn from the root: anything left back is unreachable or held by a cycle
 	head := uint32(0)
 	push := func(i int) { dir[i].TypeID = uint64(head) << 32; head = uint32(i + 1) }
 	push(0)
@@ -4474,7 +4473,8 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 			e.Offset &= mask
 		}
 	}
-	return TableRefuseOk
+	graph := tableWireVerify
+	return graph(wire, unsafe.Slice((*uint64)(unsafe.Pointer(&dir[0])), 2*len(dir)))
 }
 
 const tableRetainPathDepth = 7
@@ -5414,7 +5414,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		retain.reset(nil, nil)
 		return nil
 	}
-	if reason := tableCycleCheckReason(base, root, nil, directory, nodeType); reason != TableRefuseOk {
+	if reason := tableCycleCheckReason(base, root, nil, directory, nodeType, r); reason != TableRefuseOk {
 		report.Refuse(reason, "")
 	}
 	if report.Refused() {
