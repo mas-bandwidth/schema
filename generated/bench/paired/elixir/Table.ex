@@ -1400,6 +1400,28 @@ defmodule Bench.Table do
   # The write is the fixed form's own. The variable codec below is for
   # variable roots, including one that holds a fixed table.
 
+  # the atom each declared enum variant and union arm name stands for
+  @fixed_class_atoms %{
+    "Drone" => :drone,
+    "Fists" => :fists,
+    "Flamer" => :flamer,
+    "Grenade" => :grenade,
+    "Mine" => :mine,
+    "Pistol" => :pistol,
+    "Plasma" => :plasma,
+    "Railgun" => :railgun,
+    "Repair" => :repair,
+    "Rifle" => :rifle,
+    "Rocket" => :rocket,
+    "Shotgun" => :shotgun,
+    "Smg" => :smg,
+    "Sniper" => :sniper,
+    "Turret" => :turret,
+    "chat" => :chat,
+    "hit" => :hit,
+    "pickup" => :pickup
+  }
+
   # A fixed root's Table value is the Table API's value: the fixed record
   # converted by the descriptors above, so the text form, the cook writer
   # and a re-save walk the same string-keyed map a variable root returns.
@@ -1557,14 +1579,13 @@ defmodule Bench.Table do
 
       {arm, payload} when is_binary(arm) ->
         union = Map.fetch!(@unions, Map.fetch!(f, :elem))
-        atom = String.to_atom(fixed_class_snake(arm))
 
         case Map.get(union.by_name, arm) do
           nil ->
-            {atom, payload}
+            raise ArgumentError, "not an arm name: #{inspect(arm)}"
 
           desc ->
-            {atom, fixed_class_value_from_table(desc, payload)}
+            {Map.fetch!(@fixed_class_atoms, arm), fixed_class_value_from_table(desc, payload)}
         end
 
       {arm, payload} when is_atom(arm) ->
@@ -1683,8 +1704,12 @@ defmodule Bench.Table do
 
   defp fixed_class_enum_from_table(_f, "None"), do: :none
 
-  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
-    do: String.to_atom(fixed_class_snake(value))
+  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
 
   defp fixed_class_enum_from_table(_f, value), do: value
 
