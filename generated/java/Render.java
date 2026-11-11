@@ -166,7 +166,10 @@ public final class Render {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRenderSpriteBits(
             RenderSprite value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -303,7 +306,10 @@ public final class Render {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRenderBlockBits(
             RenderBlock value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside

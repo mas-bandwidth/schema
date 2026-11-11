@@ -93,11 +93,11 @@ public final class Wire {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     public static final long PROBE_ID = 244837814094590L;
@@ -269,7 +269,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeHeaderBits(
             ProbeHeader value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -406,7 +409,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeBitsBits(ProbeBits value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -612,7 +618,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeSampleBits(
             ProbeSample value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -759,7 +768,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeRingBits(ProbeRing value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -851,7 +863,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeSlabBits(ProbeSlab value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -978,7 +993,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeShapeBits(
             ProbeShape value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1112,7 +1130,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeColliderBits(
             ProbeCollider value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1227,7 +1248,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeConfigBits(
             ProbeConfig value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1327,7 +1351,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeArrayBits(
             ProbeArray value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         int bitsRead = bitOffset;
@@ -1406,7 +1433,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHeartbeatBits(Heartbeat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         return bitOffset;
@@ -1502,7 +1532,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTestBits(Test value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1614,7 +1647,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBlockBits(Block value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1720,7 +1756,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readChatBits(Chat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1856,7 +1895,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readProbeReportBits(
             ProbeReport value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2144,7 +2186,10 @@ public final class Wire {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readTestDataBits(TestData value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2434,7 +2479,10 @@ public final class Wire {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readCompressedProbeBits(
             CompressedProbe value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside

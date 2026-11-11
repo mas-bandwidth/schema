@@ -93,11 +93,11 @@ public final class Joins {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // type ArmsAgree
@@ -188,7 +188,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsAgreeBits(ArmsAgree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -318,7 +321,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsDisagreeBits(
             ArmsDisagree value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -447,7 +453,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmEmptyBits(ArmEmpty value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -598,7 +607,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmsNestedBits(
             ArmsNested value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -771,7 +783,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmAlignBits(ArmAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -969,7 +984,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArmArrayBits(ArmArray value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1086,7 +1104,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readNarrowBits(Narrow value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1170,7 +1191,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readWideBits(Wide value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1294,7 +1318,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readUnevenBits(Uneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1401,7 +1428,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readHoldsUnevenBits(
             HoldsUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1525,7 +1555,10 @@ public final class Joins {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readArrUnevenBits(ArrUneven value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1686,7 +1719,10 @@ public final class Joins {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRegainAfterAlignBits(
             RegainAfterAlign value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside

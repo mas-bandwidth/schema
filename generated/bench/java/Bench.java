@@ -114,11 +114,11 @@ public final class Bench {
         if (pad == 0) {
             return pos;
         }
-        final int next = pos + 8 - pad;
+        final long next = (long) pos + 8 - pad;
         if (next > numBits || (data[pos >>> 3] & 0xff) >>> pad != 0) {
             return -1;
         }
-        return next;
+        return (int) next;
     }
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
@@ -265,7 +265,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchPacketBits(
             BenchPacket value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -489,7 +492,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchIntsBits(BenchInts value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -653,7 +659,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchBitsBits(BenchBits value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1034,7 +1043,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEntityBits(
             MixedEntity value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1175,7 +1187,10 @@ public final class Bench {
     // family read verdict refusing the wire (bounds, ranges, wire constants,
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedStatBits(MixedStat value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1283,7 +1298,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedHitEventBits(
             MixedHitEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1384,7 +1402,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedChatEventBits(
             MixedChatEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1480,7 +1501,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedPickupEventBits(
             MixedPickupEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1612,7 +1636,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readMixedEventBits(
             MixedEvent value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -2025,7 +2052,10 @@ public final class Bench {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readBenchMixedBits(
             BenchMixed value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
