@@ -1435,7 +1435,9 @@ public final class TableVocabulary {
                 return false;
             }
             int elem = r.u8();
-            if (!knownKind(elem) || elem == 12) {
+            // AN ELEMENT KIND OF 12 IS AN ANNOUNCED SHAPE LIKE ANY OTHER
+            // (§3.3): a string element's shape is the max its kind names.
+            if (!knownKind(elem)) {
                 return false;
             }
             e.element = shapeRead(r, elem);
@@ -1447,7 +1449,12 @@ public final class TableVocabulary {
                     return false;
                 }
                 int inner = r.u8();
-                if (!knownKind(inner) || inner == 12) {
+                if (!knownKind(inner)) {
+                    return false;
+                }
+                // The inner element's own shape follows its kind byte, and a
+                // kind 12 there reads its max like any other announced shape.
+                if (inner == 12 && shapeRead(r, inner) == null) {
                     return false;
                 }
             }
