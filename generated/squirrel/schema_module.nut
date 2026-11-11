@@ -8,9 +8,11 @@
 // A module is a script that receives two arguments, its own exports table
 // and this require, and fills the table: `local _M = vargv[0];`. The table is
 // cached BEFORE the script runs, so two files that name each other load once
-// each and a cycle meets the table it is still filling. Every name is resolved
-// beside this file and nowhere else, wherever the caller's working directory
-// is: there is no search path to shadow.
+// each and a cycle meets the table it is still filling. A load that throws is
+// removed from the cache before the error is rethrown, so every later require
+// of that name fails instead of returning a table the script never filled.
+// Every name is resolved beside this file and nowhere else, wherever the
+// caller's working directory is: there is no search path to shadow.
 local src = getstackinfos(1).src;
 local cut = -1;
 local at;
@@ -33,8 +35,13 @@ require = function(name) {
   if (name in cache) return cache[name];
   local m = {};
   cache[name] <- m;
-  local fn = loadfile(dir + "/" + name + ".nut", true);
-  fn.call(::getroottable(), m, require);
+  try {
+    local fn = loadfile(dir + "/" + name + ".nut", true);
+    fn.call(::getroottable(), m, require);
+  } catch (e) {
+    delete cache[name];
+    throw e;
+  }
   return m;
 };
 return { require = require, dir = dir };
