@@ -103,6 +103,10 @@ var legs = []*leg{
 		name: "cs", lang: "cs", tool: "dotnet (the generated C# sources)", retain: true,
 		run: runCS,
 	},
+	{
+		name: "rust", lang: "rust", tool: "cargo (the generated Rust crate)", retain: true,
+		run: runRust,
+	},
 }
 
 // probeSource is a file of the leg's probe directory.
@@ -432,4 +436,38 @@ func runCS(t *testing.T, x *rowEnv) []byte {
 	dotnet := tool("DOTNET", "dotnet")
 	run(t, proj, []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1", "DOTNET_NOLOGO=1"}, dotnet, "build", "-c", "Release", "--nologo", "-v", "quiet", "-o", filepath.Join(proj, "out"))
 	return run(t, proj, []string{"DOTNET_CLI_TELEMETRY_OPTOUT=1"}, dotnet, filepath.Join(proj, "out", "roundtripprobe.dll"), x.in)
+}
+
+// runRust builds the rendered probe as the binary of a package whose library
+// is the generated crate (both of its accelerator features on, its default),
+// against the pinned serialize.rs, and runs it. The target directory lives
+// under build/ so the runtime dependency compiles once per bench.
+func runRust(t *testing.T, x *rowEnv) []byte {
+	pkg := filepath.Join(x.work, "rs")
+	write(t, filepath.Join(pkg, "src", "main.rs"), renderProbe(t, x, "rust", "main.rs.tmpl", nil))
+	manifest := `[package]
+name = "roundtripprobe"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "` + x.pkg + `"
+path = "` + filepath.Join(x.gen, "lib.rs") + `"
+
+[[bin]]
+name = "roundtripprobe"
+path = "src/main.rs"
+
+[features]
+default = ["block", "cook"]
+block = []
+cook = []
+
+[dependencies]
+serialize = { package = "serialize-official", path = "` + sibling(t, x, "SERIALIZE_RS", "serialize.rs") + `" }
+`
+	write(t, filepath.Join(pkg, "Cargo.toml"), []byte(manifest))
+	env := []string{"CARGO_TARGET_DIR=" + filepath.Join(x.repo, "build", "roundtrip-rust"), "RUSTFLAGS=-A warnings"}
+	run(t, pkg, env, tool("CARGO", "cargo"), "build", "--quiet", "--offline")
+	return run(t, pkg, nil, filepath.Join(x.repo, "build", "roundtrip-rust", "debug", "roundtripprobe"), x.in)
 }

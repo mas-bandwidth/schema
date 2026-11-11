@@ -1,0 +1,147 @@
+// The round-trip gate's Rust probe (test/roundtrip). The gate renders this
+// template over the unit's root tables as the binary of a package whose
+// library is the generated crate, and runs it with the inputs directory as its
+// argument. Every call is the generated table surface, `<unit>::tables`: per
+// root <root>_from_json, <root>_to_json_checked, <root>_save_checked,
+// <root>_load, <root>_load_retain, <root>_save_retain and, at a fixed root,
+// <root>_fixed_load, <root>_fixed_save and <root>_fixed_measure.
+use [[.Package]]::tables as t;
+use std::fs;
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::Path;
+
+fn say(root: &str, name: &str, verb: &str, verdict: &str) {
+    println!("RT {} {} {} {}", root, name, verb, verdict.split_whitespace().collect::<Vec<_>>().join(" "));
+}
+
+fn keep(inputs: &str, root: &str, name: &str, ext: &str, b: &[u8]) {
+    fs::write(Path::new(inputs).join("out").join(root).join(format!("{}{}", name, ext)), b).unwrap();
+}
+
+// call answers f's verdict, and a panic as a refusal by name.
+fn call(f: impl FnOnce() -> String) -> String {
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| String::from("refused:panicked"))
+}
+
+fn why(r: &t::TableReport) -> String {
+    format!("{:?}", r.reason)
+}
+
+fn main() {
+    std::panic::set_hook(Box::new(|_| {}));
+    let args: Vec<String> = std::env::args().collect();
+    let inputs = args[1].clone();
+    let cases = fs::read_to_string(Path::new(&inputs).join("cases.txt")).unwrap();
+    for line in cases.lines() {
+        let p: Vec<&str> = line.split(' ').collect();
+        if p.len() < 3 {
+            continue;
+        }
+        let (root, name) = (p[0], p[1]);
+        let text = fs::read_to_string(Path::new(&inputs).join("samples").join(root).join(format!("{}.json", name))).unwrap();
+        let eng = fs::read(Path::new(&inputs).join("engine").join(root).join(format!("{}.bin", name))).ok();
+        match root {
+[[range .Roots]]            "[[.Name]]" => probe_[[.Snake]](&inputs, root, name, &text, eng.as_deref()),
+[[end]]            _ => say(root, name, "probe", "refused:the unit generated no such root"),
+        }
+    }
+}
+[[range .Roots]]
+fn probe_[[.Snake]](inputs: &str, root: &str, name: &str, text: &str, eng: Option<&[u8]>) {
+    let mut v: Option<t::[[.Name]]> = None;
+    say(root, name, "fromjson", &call(|| {
+        let mut r = t::TableReport::default();
+        match t::[[.Snake]]_from_json(text, &mut r) {
+            Some(x) if !r.refused && !r.damaged => {
+                v = Some(x);
+                String::from("ok")
+            }
+            _ => format!("refused:{}", why(&r)),
+        }
+    }));
+    let Some(v) = v else { return };
+    let want = t::[[.Snake]]_to_json_checked(&v);
+    let same = |got: &t::[[.Name]]| -> String {
+        match (&want, t::[[.Snake]]_to_json_checked(got)) {
+            (Some(a), Some(b)) => String::from(if *a == b { "ok" } else { "diff" }),
+            _ => String::from("refused:ToJson refuses the value"),
+        }
+    };
+    let load_verdict = |b: &[u8]| -> String {
+        let mut r = t::TableReport::default();
+        match t::[[.Snake]]_load(b, &mut r) {
+            Some(got) if !r.refused && !r.damaged => same(&got),
+            _ => format!("refused:{}", why(&r)),
+        }
+    };
+    let mut wire: Option<Vec<u8>> = None;
+    say(root, name, "save", &call(|| match t::[[.Snake]]_save_checked(&v) {
+        Ok(w) => {
+            keep(inputs, root, name, ".save", &w);
+            wire = Some(w);
+            String::from("ok")
+        }
+        Err(e) => format!("refused:{}", e),
+    }));
+    if let Some(w) = &wire {
+        say(root, name, "load", &call(|| load_verdict(w)));
+    }
+    if let Some(e) = eng {
+        say(root, name, "loadeng", &call(|| load_verdict(e)));
+    }
+[[if eq .Class "fixed"]]    // THE FIXED FORM HOLDS ITS VALUE IN ANOTHER TYPE ([[.Name]]Row), and the
+    // generated crate carries no path between it and [[.Name]], the type
+    // from_json and to_json use. The probe does not bridge the two by hand:
+    // FixedSave(v) is answered as having no generated path, and FixedLoad(engine
+    // bytes) is run and held to what generated code can show (FixedSave of what
+    // it read is the engine bytes) before it too is answered as having no path
+    // to compare with v.
+    say(root, name, "fixedsave", "refused:no generated path from the value type to the row type");
+    if let Some(e) = eng {
+        say(root, name, "fixedloadeng", &call(|| {
+            let mut values = vec![t::[[.Name]]Row::default(); 1];
+            let mut plan = vec![t::TableFixedEntry::default(); 1 << 14];
+            let mut remap = vec![0u16; 1 << 14];
+            let mut r = t::TableFixedReport::default();
+            match t::[[.Snake]]_fixed_load(&mut values, e, &mut plan, &mut remap, &mut r) {
+                Some(1) => {
+                    let mut o = vec![0u8; t::[[.Snake]]_fixed_measure(1)];
+                    match t::[[.Snake]]_fixed_save(&values, &mut o) {
+                        Some(n) if o[..n] == e[..] => String::from("refused:no generated path from the row type to the value type"),
+                        _ => String::from("diff:FixedSave of the loaded value is not the engine bytes"),
+                    }
+                }
+                other => format!("refused:fixed load {:?}", other),
+            }
+        }));
+    }
+[[end]][[if eq .Class "variable"]]    if let Some(w) = &wire {
+        say(root, name, "retain", &call(|| {
+            let mut store = t::TableRetain::default();
+            let mut r = t::TableReport::default();
+            match t::[[.Snake]]_load_retain(w, &mut store, &mut r) {
+                Some(got) if !r.refused && !r.damaged => {
+                    let mut sr = t::TableReport::default();
+                    let back = t::[[.Snake]]_save_retain(&got, &mut store, &mut sr);
+                    if sr.refused {
+                        format!("refused:{}", why(&sr))
+                    } else if back != *w {
+                        String::from("diff")
+                    } else {
+                        same(&got)
+                    }
+                }
+                _ => format!("refused:{}", why(&r)),
+            }
+        }));
+    }
+    say(root, name, "json", &call(|| {
+        let Some(text) = &want else { return String::from("refused:ToJson refuses the value") };
+        let mut r = t::TableReport::default();
+        match t::[[.Snake]]_from_json(text, &mut r) {
+            Some(j) if !r.refused && !r.damaged => same(&j),
+            _ => format!("refused:{}", why(&r)),
+        }
+    }));
+[[end]]}
+[[end]]
