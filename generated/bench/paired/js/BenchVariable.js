@@ -1755,8 +1755,12 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     const from = sub.at;
     sub.at += L;
     const structural = ak === 13 || ak === 14 || ak === 15 || ak === 16;
-    if (structural && depth >= 128) { return false; }
-    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, structural ? depth + 1 : depth);
+    // This arm-content path enters NoteContent directly, so a table, array or
+    // keyed arm needs its own structural payload level after the union level.
+    // A nested union enters NotePayload below, which accounts for its level.
+    const levels = structural ? (ak === 15 ? 1 : 2) : 0;
+    if (depth + levels > 128) { return false; }
+    return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, depth + levels);
   }
   if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32) {
     const L = sub.leb();
@@ -1842,7 +1846,11 @@ function TableVariableNoteKeyed(inner, table, st, report, depth) {
     if (inner.bad || inner.at + L > inner.end) { return false; }
     const from = inner.at;
     inner.at += L;
-    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, depth)) { return false; }
+    // Key framing is free; the structural payload it frames is one level.
+    // Unlike arrays, keyed entries enter NoteContent directly.
+    const structural = ek === 13 || ek === 14 || ek === 16;
+    if (structural && depth >= 128) { return false; }
+    if (!TableVariableNoteContent(inner.b, from, inner.at, ek, table, st, report, structural ? depth + 1 : depth)) { return false; }
   }
   return inner.at === inner.end;
 }
