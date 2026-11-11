@@ -1363,20 +1363,24 @@ func TestGooseControlsInstallThePin(t *testing.T) {
 	}
 
 	// The negative control: the same check over an in-test copy of the verdict
-	// target with the old prerequisite must fail, naming the bare dependency.
-	const oldVerdict = ".PHONY: tables-goose-wire-fuzz-verdict-negative-control\n" +
-		"tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose\n" +
+	// target with the old prerequisite must fail, naming the target and the
+	// bare dependency.
+	const negTarget = "tables-goose-wire-fuzz-verdict-negative-control"
+	const oldVerdict = ".PHONY: " + negTarget + "\n" +
+		negTarget + ": toolchain-goose\n" +
 		"\tSCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'\n"
 	negRules, err := gooseRules(oldVerdict)
 	if err != nil {
 		t.Fatal(err)
 	}
-	problems := gooseControlProblems(negRules, "tables-goose-wire-fuzz-verdict-negative-control")
+	problems := gooseControlProblems(negRules, negTarget)
 	found := false
 	for _, problem := range problems {
-		found = found || strings.Contains(problem, "depends on bare toolchain-goose")
+		if strings.Contains(problem, negTarget) && strings.Contains(problem, "depends on bare toolchain-goose") {
+			found = true
+		}
 	}
 	if !found {
-		t.Errorf("PLANTED: the verdict control with the old prerequisite (toolchain-goose) must be caught as a bare toolchain dependency, got %v", problems)
+		t.Errorf("PLANTED: %s with the old prerequisite (toolchain-goose) must be caught by name as a bare toolchain dependency, got %v", negTarget, problems)
 	}
 }
