@@ -259,7 +259,8 @@ $(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test
 
 # The link still names the stamp and the driver's own sources, so the
 # prerequisite graph `make -p` prints reaches every input from this target.
-build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h) \
+	test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_OBJECTS) -o $@ -lm
 

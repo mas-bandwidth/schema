@@ -400,3 +400,232 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 		t.Errorf("%s", o)
 	}
 }
+
+// TestPerCommitLegBuildsFitTheWall holds the three leg jobs the two-minute
+// rule names to the shape that fits it: the toolchain-dependent build is
+// restored from a cache (or handed over as an artifact), the make
+// prerequisite is a real stamp rather than a phony regenerator, and the fuzz
+// row runs the bounded per-commit smoke while the full campaign still runs
+// nightly in certify.yml. A job that rebuilds its driver from nothing on
+// every run spends its two minutes before it tests, which is the red this
+// pins.
+func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	wfs := workflows(t, root)
+	wf, ok := wfs["ci-full.yml"]
+	if !ok {
+		t.Fatal("ci-full.yml is the workflow this gate reads")
+	}
+	jobs := yamlJobs(wf)
+	if len(jobs) == 0 {
+		t.Fatal("ci-full.yml has no jobs: this gate would pass over an empty set")
+	}
+
+	legs := []struct {
+		job      string
+		cacheID  string
+		cacheKey string
+		touch    []string
+		build    string
+		run      string
+	}{
+		{
+			job:      "cs-fuzz",
+			cacheID:  "cs-fuzz-cache",
+			cacheKey: "cs-fuzz-driver-",
+			touch: []string{
+				"build/tables-generated-cs/.stamp",
+				"build/tables-generated-cs/cards/.stamp",
+			},
+			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
+			run:   `make ${{ matrix.target }}-smoke`,
+		},
+		{
+			job:      "dart-fuzz",
+			cacheID:  "dart-fuzz-cache",
+			cacheKey: "dart-fuzz-driver-",
+			touch: []string{
+				"build/tables-generated-dart/.stamp",
+				"build/tables-generated-dart/cards/.stamp",
+				"build/conformance-dart",
+			},
+			build: `make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart`,
+			run:   `make ${{ matrix.target }}-smoke`,
+		},
+	}
+	for _, leg := range legs {
+		body, ok := jobs[leg.job]
+		if !ok {
+			t.Errorf("ci-full.yml has no %s job: the leg this gate names cannot be checked", leg.job)
+			continue
+		}
+		for _, want := range []string{
+			"id: " + leg.cacheID,
+			"key: " + leg.cacheKey,
+			"actions/cache/save@",
+			"cache-primary-key",
+			leg.build,
+			leg.run,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s does not carry %q: the leg rebuilds or reruns the campaign the card moved", leg.job, want)
+			}
+		}
+		for _, path := range leg.touch {
+			if !strings.Contains(body, "touch "+path) {
+				t.Errorf("%s does not touch %s after restoring the cached build, so make rebuilds it over the new checkout", leg.job, path)
+			}
+		}
+		const hostedOnly = "if: runner.environment == 'github-hosted'\n        with:\n          path: ${{ env.GO_BUILD_CACHE }}"
+		if strings.Contains(body, hostedOnly) {
+			t.Errorf("%s restores the Go build cache only on a github-hosted runner, so a fleet runner starts cold", leg.job)
+		}
+	}
+
+	conf, ok := jobs["conformance"]
+	if !ok {
+		t.Fatal("ci-full.yml has no conformance job: the C leg this gate names cannot be checked")
+	}
+	for _, want := range []string{
+		"id: conformance-c-cache",
+		"if: matrix.lang == 'c'",
+		"key: conformance-c-driver-v2-",
+		"'test/c-tables/**'",
+		"touch build/tables-generated-c/collections.stamp",
+		"touch build/tables-generated-c/.stamp",
+		"build/conformance-c-objs",
+		"touch build/conformance-c",
+		"actions/cache/save@",
+		"cache-primary-key",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("conformance does not carry %q: the C leg rebuilds its driver over the new checkout", want)
+		}
+	}
+
+	// The C driver links from build/conformance-c-objs. If either cache path
+	// list omits that directory, a hit restores the linked driver without its
+	// objects and make recompiles all 98 translation units; if the hit step
+	// touches only the stamp and the driver, the restored objects stay older
+	// than the checkout and make recompiles them anyway. Both path lists must
+	// carry the objects, and the hit step must stand the generated sources and
+	// every object newer than the generated stamp and older than the linked
+	// driver: the generated units carry an empty stamp prerequisite, so a
+	// stamp newer than them is remade at make time and recompiles its object
+	// even when the object itself was touched.
+	pathLines := 0
+	for _, l := range strings.Split(conf, "\n") {
+		if strings.TrimSpace(l) == "build/conformance-c-objs" {
+			pathLines++
+		}
+	}
+	if pathLines < 2 {
+		t.Errorf("conformance lists build/conformance-c-objs on %d cache path lines, want it in both the restore and save lists: a hit restores the driver without its objects and make recompiles all of them", pathLines)
+	}
+	stampAt := strings.Index(conf, "touch build/tables-generated-c/.stamp")
+	driverAt := strings.Index(conf, "touch build/conformance-c")
+	generatedAt, objectsAt := -1, -1
+	for _, l := range strings.Split(conf, "\n") {
+		if strings.Contains(l, "find build/tables-generated-c ") &&
+			strings.Contains(l, "-exec touch") {
+			generatedAt = strings.Index(conf, l)
+		}
+		if strings.Contains(l, "find build/conformance-c-objs") &&
+			strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
+			objectsAt = strings.Index(conf, l)
+		}
+	}
+	if generatedAt < 0 {
+		t.Error("conformance does not refresh the restored generated C sources after touching the stamp: the empty stamp rule remakes them at make time and recompiles every generated unit's object")
+	}
+	if objectsAt < 0 {
+		t.Error("conformance does not stand every restored object under build/conformance-c-objs newer than the checkout: make recompiles all of the C driver's translation units on a cache hit")
+	}
+	if stampAt < 0 || driverAt < 0 || generatedAt < 0 || objectsAt < 0 ||
+		!(stampAt < generatedAt && generatedAt < objectsAt && objectsAt < driverAt) {
+		t.Error("conformance refreshes the C driver inputs out of order: the stamp, then the generated sources, then the objects, then the linked driver must each stand newer than the last, or make recompiles or relinks on a hit")
+	}
+
+	dartMK := readCI(t, root, "make/dart.mk")
+	if !strings.Contains(dartMK, "build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP)") {
+		t.Error("make/dart.mk: build/conformance-dart still depends on the phony cards-dart-generate, so a restored driver is rebuilt every run")
+	}
+	if !strings.Contains(dartMK, "$(CARDS_DART_STAMP): bin/schema") {
+		t.Error("make/dart.mk: the cards stamp the driver depends on has no rule")
+	}
+	csMK := readCI(t, root, "make/cs.mk")
+	if !strings.Contains(csMK, "build-conformance-cs: build/tables-generated-cs/.stamp $(CARDS_CS_STAMP)") {
+		t.Error("make/cs.mk: build-conformance-cs still depends on the phony cards-cs-generate, so a restored driver is rebuilt every run")
+	}
+	if !strings.Contains(csMK, "$(CARDS_CS_STAMP): bin/schema") {
+		t.Error("make/cs.mk: the cards stamp the driver depends on has no rule")
+	}
+
+	// The phony generator is an alias for the stamp, never a second copy of
+	// its clean-and-regenerate recipe: under make -j the driver and the cards
+	// test both reach the tree, and two recipes would delete it under each
+	// other.
+	if !strings.Contains(csMK, "cards-cs-generate: $(CARDS_CS_STAMP)") {
+		t.Error("make/cs.mk: cards-cs-generate duplicates the stamp recipe instead of depending on it; make -j can run both and delete the tree under the other")
+	}
+	if strings.Count(csMK, "rm -rf build/tables-generated-cs/cards") != 1 {
+		t.Error("make/cs.mk: the cards clean-and-regenerate recipe appears more than once, so parallel targets race on the tree")
+	}
+	if !strings.Contains(dartMK, "cards-dart-generate: $(CARDS_DART_STAMP)") {
+		t.Error("make/dart.mk: cards-dart-generate duplicates the stamp recipe instead of depending on it; make -j can run both and delete the tree under the other")
+	}
+	if strings.Count(dartMK, "rm -rf build/tables-generated-dart/cards") != 1 {
+		t.Error("make/dart.mk: the cards clean-and-regenerate recipe appears more than once, so parallel targets race on the tree")
+	}
+
+	cMK := readCI(t, root, "make/c.mk")
+	sources := strings.Fields("test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c")
+	prereqs := map[string]bool{}
+	for _, p := range targetPrereqs(cMK, "build/conformance-c") {
+		prereqs[p] = true
+	}
+	for _, src := range sources {
+		if !prereqs[src] {
+			t.Errorf("make/c.mk: build/conformance-c does not list %s as a prerequisite, so a change to it keeps a cached driver", src)
+		}
+	}
+
+	cert := readCI(t, root, ".github/workflows/certify.yml")
+	for _, target := range []string{"tables-cs-wire-fuzz", "tables-cs-region-fuzz", "tables-dart-wire-fuzz"} {
+		if !strings.Contains(cert, target) {
+			t.Errorf("certify.yml does not run the full %s campaign nightly: the per-commit smoke dropped its cases", target)
+		}
+	}
+}
+
+// TestCSharpCacheHitRefreshesEveryRestoredOutput pins the incremental compile
+// the C# fuzz cache relies on. dotnet compares the freshly checked-out sources
+// and csproj against every restored obj/bin output, so touching only the
+// driver assembly leaves its inputs older and CoreCompile rebuilds the whole
+// driver. A cache hit must stand every restored file under
+// test/conformance/cs/obj and test/conformance/cs/bin newer than the checkout.
+func TestCSharpCacheHitRefreshesEveryRestoredOutput(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	body, ok := yamlJobs(workflows(t, root)["ci-full.yml"])["cs-fuzz"]
+	if !ok {
+		t.Fatal("ci-full.yml has no cs-fuzz job: the C# cache-hit refresh cannot be checked")
+	}
+	if !strings.Contains(body, "if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'") {
+		t.Fatal("cs-fuzz has no cache-hit guard: the refresh this gate checks could run on a miss")
+	}
+	for _, dir := range []string{"test/conformance/cs/obj", "test/conformance/cs/bin"} {
+		refreshed := false
+		for _, l := range strings.Split(body, "\n") {
+			if strings.Contains(l, "find") && strings.Contains(l, dir) &&
+				strings.Contains(l, "-type f") && strings.Contains(l, "-exec touch") {
+				refreshed = true
+				break
+			}
+		}
+		if !refreshed {
+			t.Errorf("cs-fuzz does not stand every restored file under %s newer than the checkout: dotnet sees the sources as newer and recompiles the whole driver on a cache hit", dir)
+		}
+	}
+}
