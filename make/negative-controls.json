@@ -2406,7 +2406,7 @@
     {
       "name": "nightly",
       "when": "nightly",
-      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size. This group runs tables-message-form-negative-control, schema-go-generated-golangci-lint-gate-negative-control, and schema-go-generated-golangci-lint-gate-negative-control-ratchet. tables-message-form-negative-control drives 49 sabotage rows one submake each and was 124 s on the runner where the rule is 120, so it stays nightly. The golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet). The three pull-request blades are message-form-count, message-form-emitter, and message-form-text. conformance-negative-control-go-message is not in this group: the 117 s figure included a cold generated-Go tree and driver build, and after those prerequisites exist make conformance-negative-control-go-message took 5.56 s and then 3.92 s on hetzner2, both walls including the repeated prerequisite steps the make still runs, so it is on the go-message pull-request row beside tables-go-message-form-negative-controls. certify.yml runs this tier on the schedule it already carries.",
+      "why": "the controls that do not fit the owner's rule for CI that runs per commit, on their own, at any group size. This group runs tables-message-form-negative-control, schema-go-generated-golangci-lint-gate-negative-control, and schema-go-generated-golangci-lint-gate-negative-control-ratchet. tables-message-form-negative-control drives 44 sabotage rows one submake each, four at a time; it was 124 s on the runner where the rule is 120 when the rows ran one after another, and stays nightly until a runner measurement of the parallel run places it under the rule. The golangci-lint controls lint the generated packet corpus (its plant and its raised-pin ratchet). The three pull-request blades are message-form-count, message-form-emitter, and message-form-text. conformance-negative-control-go-message is not in this group: the 117 s figure included a cold generated-Go tree and driver build, and after those prerequisites exist make conformance-negative-control-go-message took 5.56 s and then 3.92 s on hetzner2, both walls including the repeated prerequisite steps the make still runs, so it is on the go-message pull-request row beside tables-go-message-form-negative-controls. certify.yml runs this tier on the schedule it already carries.",
       "targets": [
         "tables-message-form-negative-control",
         "schema-go-generated-golangci-lint-gate-negative-control",
@@ -3117,7 +3117,7 @@
     },
     {
       "target": "tables-message-form-one-negative-control",
-      "reason": "a parameterized worker with no sabotage of its own: it reads SABOTAGE, SABOTAGE_FILE and SABOTAGE_TEST from the command line, and tables-message-form-negative-control, which the nightly tier runs, drives it once for each of its 49 sabotage rows. Invoked bare it has nothing to break."
+      "reason": "a parameterized worker with no sabotage of its own: it reads SABOTAGE, SABOTAGE_FILE and SABOTAGE_TEST from the command line, and tables-message-form-negative-control, which the nightly tier runs, drives it once for each of its 44 sabotage rows. Invoked bare it has nothing to break."
     },
     {
       "target": "tables-maps-negative-controls",

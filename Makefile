@@ -5880,31 +5880,31 @@ endef
 
 # one line a row: the sabotage, the engine file, the harness test
 MESSAGE_FORM_CONTROLS := \
-	message-tail-without-node-table:ir/tablewire.go:TestTheVocabularyIsTheMessageClosure \
+	message-closure-announces-node-table:internal/tablewire/messageclosure.go:TestTheVocabularyIsTheMessageClosure \
 	message-order-reversed:ir/tablewire.go:TestTheAnnouncementIsTheUnitsOwn \
-	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheTwoFormsRoundTrip \
-	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheCostRows \
-	message-align-between-bodies:internal/tablewire/messageencode.go:TestTheBatch \
+	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
+	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
+	message-align-between-bodies:internal/tablewire/messageencode.go:TestDamageIsTerminal \
 	message-no-batch-bound:internal/tablewire/messageencode.go:TestTheFiveAnswers \
-	message-string-no-align:internal/tablewire/messageencode.go:TestTheCostRows \
+	message-string-no-align:internal/tablewire/messageencode.go:TestTheShapesOneRowAKind \
 	message-reference-past-entries:internal/tablewire/messagedecode.go:TestAReferenceAtAndAboveTheEntryCount \
-	message-read-on-after-damage:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
+	message-damage-keeps-earlier-bodies:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
 	message-no-pad-check:internal/tablewire/messagedecode.go:TestThePadAndWhatFollowsIt \
 	message-no-capacity-refusal:internal/tablewire/messagedecode.go:TestTheFiveAnswers \
 	message-any-sort-names:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-any-sort-arms:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
-	message-offset-past-max-is-damage:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
-	message-clamp-drops-surplus:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
+	message-offset-past-max-clamps:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
+	message-count-over-bound-clamps:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \
 	message-second-announcement-accepted:internal/tablewire/message.go:TestTheMessageFormRefusesByName \
-	message-strict-checks-relaxed:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
+	message-announcement-field-twice-accepted:internal/tablewire/wirecheck.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-no-entry-bound:internal/tablewire/message.go:TestTheTwoBounds \
 	message-no-byte-bound:internal/tablewire/message.go:TestTheTwoBounds \
-	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheThreeReservedIdsWhereTheyDoNotBelong \
-	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidth \
-	message-list-count-sixteen:ir/tablemessage.go:TestTheCountsTheDataDecide \
+	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheReservedIdsInAnAnnouncement \
+	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidthOnAMessage \
+	message-list-count-sixteen:ir/tablemessage.go:TestAHostileShape \
 	message-bits-unbounded:ir/tablemessage.go:TestAHostileShape \
 	message-reference-eight-bits:ir/tablemessage.go:TestAWideVocabulary \
 	message-base-zigzag-unsigned:ir/tablemessage.go:TestTheBasesTwoEncodings \
@@ -5913,26 +5913,32 @@ MESSAGE_FORM_CONTROLS := \
 	message-refusal-not-terminal:internal/tablewire/message.go:TestARefusedFirstAnnouncement \
 	message-width-above-kind:ir/tablemessage.go:TestTheSixFindings \
 	message-count-not-offset:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
-	message-surplus-lands-on-zero:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-wide-reads-raw:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-max-above-int32:ir/tablemessage.go:TestAHostileShape \
 	message-quantized-index-above-count:internal/tablewire/messagedecode.go:TestTheQuantizedIndexAcrossTheForms \
-	message-surplus-walked:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount \
-	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
+	message-count-over-bound-clamps-zero-width:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount \
+	message-strict-check-ignored:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
 	message-array-of-text-refused:ir/tablemessage.go:TestAHostileShape \
 	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
+	message-text-over-bound-kept:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
+
+# One phony target a row, so the rows run in parallel (each is its own
+# go test under its own overlay and log) and -k reports every row that does
+# not go red rather than stopping at the first.
+MESSAGE_FORM_ROWS := $(foreach row,$(MESSAGE_FORM_CONTROLS),message-form-row/$(firstword $(subst :, ,$(row))))
+message_form_row = $(subst :, ,$(filter $(1):%,$(MESSAGE_FORM_CONTROLS)))
 
 .PHONY: tables-message-form-negative-control
 tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
-	@for row in $(MESSAGE_FORM_CONTROLS); do \
-		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
-		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
-			SABOTAGE=$$name SABOTAGE_FILE=$$file SABOTAGE_TEST=$$test || exit 1; \
-	done
+	@$(MAKE) --no-print-directory -k -j4 $(MESSAGE_FORM_ROWS)
+
+.PHONY: $(MESSAGE_FORM_ROWS)
+$(MESSAGE_FORM_ROWS): message-form-row/%:
+	@$(MAKE) --no-print-directory tables-message-form-one-negative-control \
+		SABOTAGE=$* SABOTAGE_FILE=$(word 2,$(call message_form_row,$*)) SABOTAGE_TEST=$(word 3,$(call message_form_row,$*))
 
 .PHONY: tables-message-form-one-negative-control
 tables-message-form-one-negative-control:
