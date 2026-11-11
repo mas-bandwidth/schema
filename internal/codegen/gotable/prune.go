@@ -7,9 +7,10 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"path"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/goname"
 )
 
 // pruneUnreferencedDeclarations drops private package declarations that no
@@ -244,8 +245,7 @@ func pruneImports(specs []ast.Spec, referenced map[string]bool) []ast.Spec {
 		if imp.Name != nil {
 			name = imp.Name.Name
 		} else {
-			name = path.Base(strings.Trim(imp.Path.Value, "\""))
-			name = strings.TrimSuffix(name, ".v2")
+			name = goname.ImportName(strings.Trim(imp.Path.Value, "\""))
 		}
 		if referenced[name] {
 			kept = append(kept, imp)
