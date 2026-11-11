@@ -1,0 +1,185 @@
+# The round-trip gate's Elixir probe (test/roundtrip):
+#   elixir -pa <ebin> probe.exs <inputs dir>
+# The gate renders this template over the unit's root tables. Every call is the
+# generated API: the unit's [[.Title]].Table (from_json, to_json, save, load,
+# load_retain, save_retain) and, at a fixed root, the <File>Fixed module that
+# exports <root>_fixed_load.
+[inputs] = System.argv()
+t = [[.Title]].Table
+fixed_modules = [[.FixedModules]]
+fixed_of = %{
+[[range .Roots]]  "[[.Name]]" => "[[.Snake]]",
+[[end]]}
+
+say = fn root, name, verb, verdict ->
+  IO.puts("RT #{root} #{name} #{verb} " <> String.replace(verdict, ~r/\s+/, " "))
+end
+
+keep = fn root, name, ext, bytes ->
+  File.write!(Path.join([inputs, "out", root, name <> ext]), bytes)
+end
+
+# call answers f's verdict, and a raise or throw as a refusal by name.
+call = fn f ->
+  try do
+    f.()
+  rescue
+    e -> "refused:raise " <> Exception.message(e)
+  catch
+    kind, value -> "refused:#{kind} #{inspect(value)}"
+  end
+end
+
+tj = fn root, v ->
+  case t.to_json(root, v) do
+    {:ok, s} -> {:ok, IO.iodata_to_binary(s)}
+    other -> other
+  end
+end
+
+report = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0, reason: ""}
+
+for line <- String.split(File.read!(Path.join(inputs, "cases.txt")), "\n", trim: true) do
+  [root, name, class] = String.split(line, " ")
+  text = File.read!(Path.join([inputs, "samples", root, name <> ".json"]))
+
+  eng =
+    case File.read(Path.join([inputs, "engine", root, name <> ".bin"])) do
+      {:ok, b} -> b
+      _ -> nil
+    end
+
+  v =
+    try do
+      case t.from_json(root, text) do
+        {:ok, v} -> {:ok, v}
+        {:ok, v, _} -> {:ok, v}
+        other -> {:refused, inspect(other)}
+      end
+    rescue
+      e -> {:refused, "raise " <> Exception.message(e)}
+    end
+
+  case v do
+    {:refused, why} ->
+      say.(root, name, "fromjson", "refused:" <> why)
+
+    {:ok, v} ->
+      say.(root, name, "fromjson", "ok")
+      want = tj.(root, v)
+
+      same = fn got ->
+        case {want, tj.(root, got)} do
+          {{:ok, a}, {:ok, a}} -> "ok"
+          {{:ok, _}, {:ok, _}} -> "diff"
+          {w, g} -> "refused:to_json #{inspect(w)} #{inspect(g)}"
+        end
+      end
+
+      load_verdict = fn bytes ->
+        case t.load(root, bytes) do
+          {:ok, got, _} -> same.(got)
+          {:ok, got} -> same.(got)
+          {:error, reason, _} -> "refused:#{inspect(reason)}"
+          other -> "refused:#{inspect(other)}"
+        end
+      end
+
+      wire =
+        try do
+          case t.save(root, v) do
+            {:ok, w} -> {:ok, IO.iodata_to_binary(w)}
+            other -> {:refused, inspect(other)}
+          end
+        rescue
+          e -> {:refused, "raise " <> Exception.message(e)}
+        end
+
+      wire =
+        case wire do
+          {:ok, w} ->
+            keep.(root, name, ".save", w)
+            say.(root, name, "save", "ok")
+            say.(root, name, "load", call.(fn -> load_verdict.(w) end))
+            w
+
+          {:refused, why} ->
+            say.(root, name, "save", "refused:" <> why)
+            nil
+        end
+
+      if eng != nil do
+        say.(root, name, "loadeng", call.(fn -> load_verdict.(eng) end))
+      end
+
+      # THE FIXED FORM HOLDS ITS VALUE IN ANOTHER SHAPE (the <Root> struct of
+      # the <File>Fixed module), and the generated code exports no path between
+      # it and the table-shaped value from_json and to_json use. The probe does
+      # not bridge the two by hand: FixedSave(v) is answered as having no
+      # generated path, and FixedLoad(engine bytes) is run and held to what
+      # generated code can show (FixedSave of what it read is the engine's
+      # bytes) before it too is answered as having no path to compare with v.
+      if class == "fixed" do
+        snake = Map.fetch!(fixed_of, root)
+        m = Enum.find(fixed_modules, fn m -> Code.ensure_loaded?(m) and function_exported?(m, :"#{snake}_fixed_load", 2) end)
+
+        if m == nil do
+          say.(root, name, "fixedsave", "refused:no module exports #{snake}_fixed_load")
+        else
+          say.(root, name, "fixedsave", "refused:no generated path from the table value to the fixed value")
+
+          if eng != nil do
+            say.(root, name, "fixedloadeng", call.(fn ->
+              case apply(m, :"#{snake}_fixed_load", [eng, []]) do
+                {:ok, [x], _} ->
+                  back = IO.iodata_to_binary(apply(m, :"#{snake}_fixed_save", [[x]]))
+
+                  if back == eng,
+                    do: "refused:no generated path from the fixed value to the table value",
+                    else: "diff:FixedSave of the loaded value is not the engine's bytes"
+
+                other ->
+                  "refused:#{inspect(other)}"
+              end
+            end))
+          end
+        end
+      end
+
+      if class == "variable" do
+        if wire != nil do
+          say.(root, name, "retain", call.(fn ->
+            retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+
+            case t.load_retain(root, wire, retain, report) do
+              {:ok, got, _, retain} ->
+                case t.save_retain(root, got, retain, report) do
+                  {:ok, back, _, _} ->
+                    if IO.iodata_to_binary(back) == wire, do: same.(got), else: "diff"
+
+                  other ->
+                    "refused:#{inspect(other)}"
+                end
+
+              other ->
+                "refused:#{inspect(other)}"
+            end
+          end))
+        end
+
+        say.(root, name, "json", call.(fn ->
+          case want do
+            {:ok, text} ->
+              case t.from_json(root, text) do
+                {:ok, j} -> same.(j)
+                {:ok, j, _} -> same.(j)
+                other -> "refused:#{inspect(other)}"
+              end
+
+            other ->
+              "refused:to_json #{inspect(other)}"
+          end
+        end))
+      end
+  end
+end

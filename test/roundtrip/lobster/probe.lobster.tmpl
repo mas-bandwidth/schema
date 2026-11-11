@@ -1,0 +1,101 @@
+// The round-trip gate's Lobster probe (test/roundtrip). The gate renders this
+// template over the unit's root tables into the generated directory and runs
+//   lobster roundtrip_probe.lobster -- <inputs dir>
+// Every call is the generated API: the runtime's root-named entry points
+// (json_read, json_write, save_reasoned, load, load_retain, save_retain) and,
+// at a fixed root, the unit's <Root>FixedLoad and <Root>FixedSave.
+[[range .Modules]]import .[[.]]
+[[end]]import .load
+import .schema_save
+import .json
+import .retain_unknown
+
+let args = command_line_arguments()
+let inputs = args[length(args) - 1]
+
+def say(root:string, name:string, verb:string, verdict:string):
+    print("RT " + root + " " + name + " " + verb + " " + verdict)
+
+def keep(root:string, name:string, ext:string, bytes:string):
+    assert write_file(inputs + "/out/" + root + "/" + name + ext, bytes)
+
+def jw(rec:schema_rt.Record) -> string:
+    let js, why = schema_rt.json_write(rec)
+    if why != "":
+        return "!" + why
+    return js
+
+// THE FIXED FORM HOLDS ITS VALUE IN THE GENERATED CLASS, the plain pair and
+// JSON in a schema_rt.Record, and the generated code carries no path between
+// the two. The probe does not bridge them by hand: FixedSave(v) is answered as
+// having no generated path, and FixedLoad(engine bytes) is run and held to
+// what generated code can show (FixedSave of what it read is the engine's
+// bytes) before it too is answered as having no path to compare with v.
+def fixed_probe(root:string, name:string, eng:string):
+    say(root, name, "fixedsave", "refused:no generated path from the record to the fixed class")
+    if eng != "":
+        var verdict = "refused:the unit generated no fixed form for this root"
+[[range .Roots]][[if eq .Class "fixed"]]        if root == "[[.Name]]":
+            let rows = [New[[.Name]]()]
+            let plan:[schema_rt.TableFixedEntry] = []
+            let r = schema_rt.TableReport {}
+            if [[.Name]]FixedLoad(rows, eng, plan, r) != 1:
+                verdict = "refused:" + r.reason
+            else:
+                verdict = if [[.Name]]FixedSave(rows) == eng: "refused:no generated path from the fixed class to the record" else: "diff:FixedSave of the loaded value is not the engine's bytes"
+[[end]][[end]]        say(root, name, "fixedloadeng", verdict)
+
+def load_verdict(root:string, bytes:string, want:string) -> string:
+    let r = schema_rt.LoadReport {}
+    let got = schema_rt.load(root, bytes, r)
+    if not got:
+        return "refused:" + schema_rt.strict_reason(r)
+    return if jw(got) == want: "ok" else: "diff"
+
+let cases = read_file(inputs + "/cases.txt")
+assert cases
+for(tokenize(cases, "\n", " \t\r")) line:
+    let f = tokenize(line, " ", " \t\r")
+    if length(f) == 3:
+        let root = f[0]
+        let name = f[1]
+        let cls = f[2]
+        let text = read_file(inputs + "/samples/" + root + "/" + name + ".json")
+        assert text
+        let eng_read = read_file(inputs + "/engine/" + root + "/" + name + ".bin")
+        let eng = if eng_read: eng_read else: ""
+        let rep = schema_rt.LoadReport {}
+        let v = schema_rt.json_read(root, text, rep)
+        if not v:
+            say(root, name, "fromjson", "refused:" + schema_rt.strict_reason(rep))
+        else:
+            say(root, name, "fromjson", "ok")
+            let want = jw(v)
+            let w, why = schema_rt.save_reasoned(v)
+            if why != "":
+                say(root, name, "save", "refused:" + why)
+            else:
+                keep(root, name, ".save", w)
+                say(root, name, "save", "ok")
+                say(root, name, "load", load_verdict(root, w, want))
+            if eng != "":
+                say(root, name, "loadeng", load_verdict(root, eng, want))
+            if cls == "fixed":
+                fixed_probe(root, name, eng)
+            if cls == "variable":
+                if why == "":
+                    let store = schema_rt.Retain { capacity: 1048576, id_capacity: 131072 }
+                    let r = schema_rt.LoadReport {}
+                    let got = schema_rt.load_retain(root, w, store, r)
+                    if not got:
+                        say(root, name, "retain", "refused:" + schema_rt.strict_reason(r))
+                    else:
+                        let sr = schema_rt.LoadReport {}
+                        let back = schema_rt.save_retain(got, store, sr)
+                        say(root, name, "retain", if back == w and jw(got) == want: "ok" else: "diff")
+                let jr = schema_rt.LoadReport {}
+                let j = schema_rt.json_read(root, want, jr)
+                if not j:
+                    say(root, name, "json", "refused:" + schema_rt.strict_reason(jr))
+                else:
+                    say(root, name, "json", if jw(j) == want: "ok" else: "diff")

@@ -26,6 +26,7 @@ package roundtrip
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -71,15 +72,27 @@ func checksFor(class string, retain bool) []string {
 
 // answers is a probe's output: per "<root> <sample>", per verb, the verdict.
 // A probe line is `RT <root> <sample> <verb> <verdict...>`; every other line
-// is the probe's own noise and is ignored.
+// is the probe's own noise and is ignored. A probe whose runtime cannot write
+// a file (the luau and moo CLIs have no io library) prints the bytes instead,
+// `RTB <root> <sample> <ext> <hex>`, and they are written to outDir here.
 type answers map[string]map[string]string
 
-func parseAnswers(out []byte) answers {
+func parseAnswers(out []byte, outDir string) (answers, error) {
 	a := answers{}
 	sc := bufio.NewScanner(bytes.NewReader(out))
-	sc.Buffer(make([]byte, 1<<20), 1<<24)
+	sc.Buffer(make([]byte, 1<<20), 1<<26)
 	for sc.Scan() {
 		f := strings.SplitN(strings.TrimSpace(sc.Text()), " ", 5)
+		if len(f) == 5 && f[0] == "RTB" {
+			b, err := hex.DecodeString(f[4])
+			if err != nil {
+				return nil, fmt.Errorf("probe bytes for %s/%s%s: %w", f[1], f[2], f[3], err)
+			}
+			if err := os.WriteFile(filepath.Join(outDir, f[1], f[2]+f[3]), b, 0o644); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if len(f) < 5 || f[0] != "RT" {
 			continue
 		}
@@ -89,7 +102,7 @@ func parseAnswers(out []byte) answers {
 		}
 		a[c][f[3]] = f[4]
 	}
-	return a
+	return a, sc.Err()
 }
 
 // evaluate turns a probe's answers and the files it wrote into one outcome per
@@ -359,7 +372,11 @@ func newRow(t *testing.T, l *leg) *rowEnv {
 func measure(t *testing.T, l *leg, x *rowEnv) (map[key]*outcome, []string, []string) {
 	t.Helper()
 	out := l.run(t, x)
-	res, hard := evaluate(x.roots, l.retain, parseAnswers(out), filepath.Join(x.in, "out"))
+	ans, err := parseAnswers(out, filepath.Join(x.in, "out"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, hard := evaluate(x.roots, l.retain, ans, filepath.Join(x.in, "out"))
 	errs := ratchet(l.name, res, knownRed(t)[l.name])
 	return res, errs, hard
 }
