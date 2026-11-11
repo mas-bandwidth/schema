@@ -231,8 +231,10 @@ float, a bad declaration, an operation past the buffer) by throwing
 nine format 2.0 reasons (`past_end`, `value_out_of_range`, `nonzero_padding`, ...). A
 `serializeInt` whose bounds leave int32 traps on write, so a range of 32 bits that is
 not inside int32 (`[0, 2^32-1]`) rides `serializeInt64`, the read's own selection, whose
-wire for 32 bits or fewer is the same single group. `serializeEnd` is optional and, as in
-the nine main ports, not emitted.
+wire for 32 bits or fewer is the same single group. The generated `Read<T>` calls
+`serializeEnd()` once, after the top-level object, refusing a whole byte left over as
+`trailing_data` and non-zero unused bits in the final byte as `nonzero_padding`; a nested
+type's read does not end (SPEC §5).
 
 **How a module reaches its runtime.** Squirrel has no `require`; it has
 `dofile` and `loadfile`. The loader, `schema_module.nut`, is the one file a
