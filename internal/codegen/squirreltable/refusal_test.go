@@ -40,15 +40,16 @@ local run = function(unit, mod, root, key, form, integrity) {
 `
 
 type refusalCase struct {
-	key       string
-	unit      string
-	root      string
-	input     string
-	form      int // -1 for the input's own bytes
-	integrity bool
-	side      string // for a read: "unknown:<field>" or "duplicate:<field>" it must still count
-	want      string
-	field     string // "" for any field; "-" for none
+	key         string
+	unit        string
+	root        string
+	input       string
+	form        int // -1 for the input's own bytes
+	integrity   bool
+	side        string // for a read: "unknown:<field>" or "duplicate:<field>" it must still count
+	want        string
+	field       string // "" for any field; "-" for none
+	verdictOnly bool
 }
 
 // strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
@@ -310,7 +311,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		// a repeated field and an unknown one READ (§6.5, §4: last wins;
 		// unknown is evolution); unknown is counted with its field, and a
 		// a repeated field id is damage (decision 5)
-		refusalCase{key: "repeated", unit: "streamdemo", root: "Feed", input: "dup", form: -1, want: "malformed", field: "-"},
+		refusalCase{key: "repeated", unit: "streamdemo", root: "Feed", input: "dup", form: -1, field: "-", verdictOnly: true},
 		refusalCase{key: "unknown", unit: "streamdemo", root: "Feed", input: "unknown", form: -1, want: "ok", field: "-", side: fmt.Sprintf("unknown:#%016x", unknownId)},
 		refusalCase{key: "clean", unit: "streamdemo", root: "Feed", input: "clean_plain", form: -1, want: "ok", field: "-"},
 		refusalCase{key: "integrity_ok", unit: "streamdemo", root: "Feed", input: "integrity_ok", form: -1, integrity: true, want: "ok", field: "-"},
@@ -373,7 +374,11 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			t.Fatalf("probe line %q is not case %s's input, reason and field", lines[i], c.key)
 		}
 		reason, field := parts[1], parts[2]
-		if !strictNameMatches(reason, c.want) {
+		if c.verdictOnly && reason == "ok" {
+			t.Errorf("%s: strict read accepted a damaged wire", c.key)
+			continue
+		}
+		if !c.verdictOnly && !strictNameMatches(reason, c.want) {
 			t.Errorf("%s: strict read refuses %q, want %q", c.key, reason, c.want)
 			continue
 		}
@@ -549,14 +554,11 @@ func leb128(v uint64) []byte {
 	}
 }
 
-// TestSquirrelStrictReadNamesNestedPointerArrayElement drives ReadStrict over
+// TestSquirrelStrictReadRefusesNestedPointerArrayDamage drives ReadStrict over
 // a generated unit whose root holds a pointer array inside an inline table,
-// inside a union arm and inside an array element. Each wire is forged so the
-// only counter that moves is the one resolution moves on that nested
-// pointer-array ELEMENT's pending slot, and the field the refusal names must
-// be the nested field whose array is the slot's holder, not null
-// (docs/SPEC-TABLES.md §11, §3.1).
-func TestSquirrelStrictReadNamesNestedPointerArrayElement(t *testing.T) {
+// inside a union arm and inside an array element. The wire-alone check refuses
+// each whole file before value decode; its diagnostic does not name a field.
+func TestSquirrelStrictReadRefusesNestedPointerArrayDamage(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "NestedPP.schema")
@@ -747,11 +749,6 @@ table Root
 	if len(lines) != len(keys) {
 		t.Fatalf("the probe printed %d lines for %d cases:\n%s", len(lines), len(keys), stdout)
 	}
-	want := map[string]string{
-		"inline":  "kids",
-		"union":   "list",
-		"element": "links",
-	}
 	for i, k := range keys {
 		parts := strings.Split(lines[i], "|")
 		if len(parts) != 3 || parts[0] != k {
@@ -759,9 +756,6 @@ table Root
 		}
 		if parts[1] == "ok" {
 			t.Errorf("%s: strict read did not refuse", k)
-		}
-		if parts[2] != want[k] {
-			t.Errorf("%s: %s names field %q, want %q (the nested pointer-array field)", k, parts[1], parts[2], want[k])
 		}
 	}
 }

@@ -124,7 +124,7 @@ foreach (key in __LOADS__) {
   local report = newReport();
   local v = L.loadWalk(T, "Root", inputs[key], report);
   if (v == null) {
-    print(key + " tol=nil refused=" + report.refused + " reason=" + nn(report.reason) + "\n");
+    print(key + " tol=nil refused=" + report.refused + " malformed=" + report.bodyDamaged + "\n");
   } else {
     print(key + " tol=" + (report.bodyDamaged ? 1 : 0).tostring() + "," +
           (report.refused ? 1 : 0).tostring() + "," + report.unknown.tostring() + "," +
@@ -137,8 +137,7 @@ foreach (key in __LOADS__) {
   }
   local r2 = {};
   local sv = R.ReadStrict(T, "Root", inputs[key], r2);
-  print(key + " strict=" + (r2.reason == null ? "ok" : r2.reason) + " field=" +
-        nn(r2.field) + " value=" + (sv == null ? "nil" : "some") + "\n");
+  print(key + " strict=" + (sv == null ? "nil" : "some") + "\n");
 }
 // SAVE rows: one value at one location, Save and Measure
 foreach (row in __SAVES__) {
@@ -165,7 +164,7 @@ foreach (key in __RETAINS__) {
   local store = { capacity = 1048576, idCapacity = 1024 };
   local v = RT.LoadRetain(T, "Root", inputs[key], store, report);
   print(key + " retain=" + (v == null ? "nil" : "some") + " refused=" + report.refused +
-        " reason=" + nn(("reason" in report) ? report.reason : null) + "\n");
+        " malformed=" + report.bodyDamaged + "\n");
 }
 `
 
@@ -394,10 +393,7 @@ func nfVectors(t *testing.T) (u *ir.Unit, loads, retains []string, saveRows [][3
 				}
 				loads = append(loads, key)
 				inputs[key] = wire
-				wants[key] = []string{
-					fmt.Sprintf("tol=nil refused=true reason=non_finite_float: %s", loc.owner),
-					fmt.Sprintf("strict=non_finite_float field=%s value=nil", loc.owner),
-				}
+				wants[key] = []string{"tol=nil refused=true malformed=false", "strict=nil"}
 				continue
 			}
 			if encErr != nil {
@@ -428,7 +424,7 @@ func nfVectors(t *testing.T) (u *ir.Unit, loads, retains []string, saveRows [][3
 				"tol=0,0,0,0,0,0,0",
 				fmt.Sprintf("bits=%016x,%016x,%016x,%016x,%016x,%016x", got[0], got[1], got[2], got[3], got[4], got[5]),
 				fmt.Sprintf("save=%s measure=%d", hex.EncodeToString(wire), len(wire)),
-				"strict=ok field=- value=some",
+				"strict=some",
 			}
 		}
 	}
@@ -467,12 +463,12 @@ func nfVectors(t *testing.T) (u *ir.Unit, loads, retains []string, saveRows [][3
 			if derr != nil {
 				t.Fatalf("%s: the oracle refused a finite retained float: %v", key, derr)
 			}
-			wants[key] = []string{"retain=some refused=false reason=-"}
+			wants[key] = []string{"retain=some refused=false malformed=false"}
 		} else {
 			if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](derr); !ok {
 				t.Fatalf("%s: the oracle's retaining reader answered %v, want non_finite_float: %s", key, derr, name)
 			}
-			wants[key] = []string{"retain=nil refused=true reason=non_finite_float: " + name}
+			wants[key] = []string{"retain=nil refused=true malformed=false"}
 		}
 		retains = append(retains, key)
 		inputs[key] = wire
@@ -529,7 +525,7 @@ var nfSabotages = []nfSabotage{
 				"    case 11: { local bits = readU64(r); return casti2f(bits); }"},
 		},
 		red: func(key string, want []string) bool {
-			return !strings.Contains(key, ":") && strings.HasPrefix(want[0], "tol=nil")
+			return !strings.Contains(key, ":") && strings.HasPrefix(want[0], "tol=nil refused=true")
 		},
 	},
 	{
@@ -540,7 +536,7 @@ var nfSabotages = []nfSabotage{
 			{"        if (!retainedFinite(r.b, start, r.at, kind)) {", "        if (false) {"},
 		},
 		red: func(key string, want []string) bool {
-			return strings.HasPrefix(key, "retain:") && strings.HasPrefix(want[0], "retain=nil")
+			return strings.HasPrefix(key, "retain:") && strings.HasPrefix(want[0], "retain=nil refused=true")
 		},
 	},
 	{
@@ -575,6 +571,9 @@ func TestSquirrelTableFiniteFloatNegativeControl(t *testing.T) {
 					src = strings.Replace(src, e[0], e[1], 1)
 				}
 				tables[sab.file] = []byte(src)
+				if sab.name == "read-check" || sab.name == "retained-check" {
+					tables["schema_table_load.nut"] = []byte(withoutWireCheck(t, string(tables["schema_table_load.nut"])))
+				}
 			})
 			red, wantRed := 0, 0
 			for key, want := range wants {
