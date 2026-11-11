@@ -42,7 +42,8 @@ func withFixedClassWire(u *ir.Unit, ns, runtime string) string {
 	load.WriteString("    end\n")
 	load.WriteString("  end\n\n")
 	for _, st := range roots {
-		fmt.Fprintf(&load, "  def strict_load(%q, data) when is_binary(data), do: load(%q, data)\n\n", st.Name, st.Name)
+		load.WriteString(exDefDo("  ", fmt.Sprintf("def strict_load(%q, data) when is_binary(data)", st.Name), fmt.Sprintf("load(%q, data)", st.Name)))
+		load.WriteString("\n")
 	}
 	for _, st := range noFile {
 		fmt.Fprintf(&load, "  def strict_load(%q, _data),\n    do: {:error, :no_file_form, Map.put(empty_report(), :reason, \"unknown_form\")}\n\n", st.Name)
@@ -82,7 +83,8 @@ func variableLoadImpl(runtime string) string {
 	end := strings.Index(runtime, variableLoadEnd) + len(variableLoadEnd)
 	impl := strings.Replace(runtime[start:end], variableLoadHead, "  defp variable_load_impl(table, data) when is_binary(data) do\n", 1)
 	impl = strings.Replace(impl, "case entries(body, ids, desc, desc.variable) do", "case entries(body, ids, desc, true) do", 1)
-	return impl + "\n"
+	// the load's own blank line follows the copy: one blank line, never two
+	return impl
 }
 
 const strictHelpers = `  defp strict_flag?, do: Process.get(:elixir_strict_framing, false)
@@ -500,6 +502,15 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
     }
   end
 
+  # A refusal names its reason in the report (docs/SPEC-TABLES.md §4.2): the
+  # fixed form's own word when it gave one, the refusal's name otherwise.
+  defp fixed_class_refused(reason, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = report -> %{report | reason: Atom.to_string(reason)}
+      report -> report
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -597,7 +608,6 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
   end
 
   defp fixed_class_keyed_to_table(_f, _value), do: %{}
-
 `
 
 const fixedClassHelperTail = `
@@ -677,7 +687,12 @@ const fixedClassHelperTail = `
     case Map.get(f, :fixed_array) do
       n when is_integer(n) ->
         kept = Enum.take(elems, n)
-        kept ++ List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), max(n - length(kept), 0))
+
+        kept ++
+          List.duplicate(
+            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
+            max(n - length(kept), 0)
+          )
 
       _ ->
         elems
@@ -720,9 +735,14 @@ const fixedClassHelperTail = `
     Enum.map(Map.fetch!(f, :key_names), fn name ->
       raw =
         cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) -> Map.get(value, String.to_atom(fixed_class_snake(name)))
-          true -> Map.get(item, :default)
+          Map.has_key?(value, name) ->
+            Map.get(value, name)
+
+          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
+            Map.get(value, String.to_atom(fixed_class_snake(name)))
+
+          true ->
+            Map.get(item, :default)
         end
 
       fixed_class_value_from_table(item, raw)
@@ -763,7 +783,8 @@ func fixedRootSaveClause(name, call string) string {
 	if exWidth(one) <= exLineLimit {
 		b.WriteString(one + "\n")
 	} else {
-		b.WriteString("    data =\n")
+		// a broken assignment is set off by a blank line on either side
+		b.WriteString("\n    data =\n")
 		b.WriteString(exBreakSaveCall(call))
 		b.WriteString("\n")
 	}
@@ -787,15 +808,17 @@ func fixedRootLoadClauses(name, call string) string {
 	var b strings.Builder
 	b.WriteString(exLoadFormHead(name))
 	b.WriteString("    report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}\n")
-	b.WriteString("    {:error, :previous_form, fixed_class_report(report)}\n")
+	b.WriteString("    {:error, :previous_form, fixed_class_refused(:previous_form, report)}\n")
 	b.WriteString("  end\n\n")
 	b.WriteString(exLoadDataHead(name))
 	b.WriteString(exLoadCase(call))
 	b.WriteString("      {:ok, [value], report} ->\n")
 	b.WriteString("        {:ok, fixed_class_to_table(" + fmt.Sprintf("%q", name) + ", value), fixed_class_report(report)}\n")
-	b.WriteString("      {:ok, [], report} -> {:error, :truncated, fixed_class_report(report)}\n")
-	b.WriteString("      {:error, reason, report} -> {:error, reason, fixed_class_report(report)}\n")
-	b.WriteString("      {:ok, _values, report} -> {:error, :batch_too_large, fixed_class_report(report)}\n")
+	// a clause that breaks breaks every clause of its case, each set off by
+	// a blank line, as the formatter keeps them
+	b.WriteString("\n      {:ok, [], report} ->\n        {:error, :truncated, fixed_class_refused(:truncated, report)}\n")
+	b.WriteString("\n      {:error, reason, report} ->\n        {:error, reason, fixed_class_refused(reason, report)}\n")
+	b.WriteString("\n      {:ok, _values, report} ->\n        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}\n")
 	b.WriteString("    end\n")
 	b.WriteString("  end\n\n")
 	return b.String()
