@@ -818,14 +818,15 @@ test-cs: tables-cs-fixed-rows
 
 # I13 (docs/PORTING.md): the C# leg's text differential against a third
 # implementation, slug json-differential. A C# probe (Roslyn csc + dotnet exec,
-# the t10 harness's build, with the sibling serialize.cs for the nested plain
-# type) fills 200 random float-only instances from a splitmix64 and writes each
-# as (wire, text); internal/tabletext reads the wire and its text is
-# byte-compared against the leg's, then the leg's text is packed back and
-# byte-compared against the leg's wire. The control caps the emitted walker's
-# float32 at six significant digits in memory and must go red on the text
-# comparison. Its first run found the walker writing a float64 at fifteen
-# digits through .NET's custom format cap (json.go FormatG).
+# the t10 harness's build, its nested type a fixed table so the unit needs no
+# packet runtime) fills 200 random float-only instances from a splitmix64 and
+# writes each as (wire, text); internal/tabletext reads the wire through the
+# variable form the leg's RootSave writes and its text is byte-compared against
+# the leg's, then the leg's text is packed back and byte-compared against the
+# leg's wire. The control caps the emitted walker's float32 at six significant
+# digits in memory and must go red on the text comparison. Its first run found
+# the walker writing a float64 at fifteen digits through .NET's custom format
+# cap (json.go FormatG).
 .PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
 tables-cs-json-differential:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
