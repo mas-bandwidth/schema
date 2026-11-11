@@ -22,6 +22,8 @@ import (
 // a string(N), a bytes(N), a text list's count and element, and a compressed float.
 // A direct text list cannot declare a positive minimum (§2.13), so tm uses a
 // counted array of records whose JSON values contain bounded text fields.
+// A map key past its string(N), a float field holding a value that is not a
+// number and a bool field holding a value that is not a bool are refused too.
 const offContractSchema = `package probe
 type TextEntry
 {
@@ -41,6 +43,9 @@ table T
     b bytes(3)
     ts [..2]string(4)
     f float32 | min = -1.0, max = 1.0, resolution = 0.5
+    mp map[string(4)]int32
+    fl float32
+    bo bool
 }
 `
 
@@ -90,6 +95,14 @@ var offContractCases = []offContractCase{
 	{"float_low", "f", "-1.5", "-1.5", false},
 	{"float_high_edge", "f", "1.0", "1", true},
 	{"float_low_edge", "f", "-1.0", "-1", true},
+	{"map_key_past", "mp", `mapOf("abcde", 1)`, `{"abcde":1}`, false},
+	{"map_key_edge", "mp", `mapOf("abcd", 1)`, `{"abcd":1}`, true},
+	{"float_string", "fl", `"x"`, `"x"`, false},
+	{"float_table", "fl", "{}", "{}", false},
+	{"float_number", "fl", "0.5", "0.5", true},
+	{"bool_string", "bo", `"x"`, `"x"`, false},
+	{"bool_integer", "bo", "1", "1", false},
+	{"bool_edge", "bo", "true", "true", true},
 }
 
 // offContractPrelude sets each case's field on an otherwise lawful T (k holds
@@ -114,6 +127,15 @@ local textList = function(a) {
   foreach (s in a) { local rec = M.Descriptors[textTable].make(); rec.Value = s; out.append(rec); }
   return out;
 };
+local mapEntryName = null, mapKeyMember = null, mapValueMember = null;
+foreach (fd in M.Descriptors.T.fields) if (fd.name == "mp") {
+  mapEntryName = fd.entry; mapKeyMember = fd.mapkey.member; mapValueMember = fd.mapvalue.member;
+}
+local mapOf = function(k, x) {
+  local rec = M.Descriptors[mapEntryName].make();
+  rec[mapKeyMember] = k; rec[mapValueMember] = x;
+  return [rec];
+};
 local norm;
 norm = function(x) {
   local t = typeof x;
@@ -123,6 +145,8 @@ norm = function(x) {
     for (local i = 0; i < x.len(); i++) s += format("%%02x", x[i] & 0xff);
     return s;
   }
+  if ((t == "instance" || t == "table") && (mapKeyMember in x) && mapKeyMember != "Value")
+    return "ent:" + norm(x[mapKeyMember]) + "=" + norm(x[mapValueMember]);
   if (t == "instance" || t == "table") return "rec:" + norm(x.Value);
   if (t == "float") return "f:" + format("%%.17g", x);
   return t + ":" + x;

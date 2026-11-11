@@ -1041,6 +1041,16 @@ writeMap = function(T, d, val, depth, g, out) {
   local kd = d.mapkey, vd = d.mapvalue;
   local n = val == null ? 0 : val.len();
   if (n == 0) { out.append("{}"); return true; }
+  // every key is admitted before any text is written: a string key within
+  // its string(N), an integer key within its declaration (§5.1 rows 1, 4)
+  foreach (ent in val) {
+    local k = ent[kd.member];
+    if (kd.shape == "str") {
+      if (typeof k != "string" || k.len() > kd.bound) return false;
+    } else if (!intAdmitted(kd, k)) {
+      return false;
+    }
+  }
   local order = [];
   for (local i = 0; i < n; i++) order.append(i);
   local src = val;
@@ -1233,8 +1243,13 @@ writeScalar = function(T, d, val, depth, g, out) {
       out.append(indent(depth) + "]");
       return true;
     }
-    case "bool": out.append(val ? "true" : "false"); return true;
+    case "bool":
+      if (typeof val != "bool") return false; // only a bool is a bool's value
+      out.append(val ? "true" : "false");
+      return true;
     case "float": {
+      // only a number is a float's value, refused before it is converted
+      if (typeof val != "float" && typeof val != "integer") return false;
       local t = floatText(val, d.f32);
       if (t == null) return false; // a non-finite float (§16.3)
       if (!floatAdmitted(d, val)) return false;
