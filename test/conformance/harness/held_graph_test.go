@@ -75,7 +75,6 @@ func TestHeldGraphVectorsAnswerTheEngine(t *testing.T) {
 		}
 	}
 	for _, tc := range heldGraphVectors {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			v, ok := vectors[tc.name]
