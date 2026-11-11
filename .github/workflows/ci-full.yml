@@ -1516,8 +1516,13 @@ jobs:
   # still owes on every merge. Its report (the commit, the red cells) is kept
   # as the `proof` artifact: release.yml downloads it for the commit it
   # releases, and `make release` refuses unless it is green at that commit.
+  #
+  # always() keeps it running when a conformance leg failed, since a red leg is
+  # a red cell. !cancelled() keeps it from running once the run is cancelled:
+  # a superseded run would otherwise queue this job for a fleet runner, never
+  # finish, and hold the next run behind it in the concurrency group.
   proof:
-    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     needs: conformance
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
