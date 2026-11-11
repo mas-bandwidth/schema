@@ -33,6 +33,7 @@ import (
 	"tblp1"
 	"tblp3"
 	"tblr1"
+	tblr1var "tblr1var"
 	"tblr2"
 	tblscalars2 "tblscalars2"
 	"tblv1"
@@ -140,7 +141,42 @@ func init() {
 		return fixedForm(c, tblp3.ChainFixedLoad, tblp3.ChainFixedMeasure, tblp3.ChainFixedSave)
 	})
 	bind("tblr1", "Cfg", func(c codec) codec {
-		return fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		c = fixedForm(c, tblr1.CfgFixedLoad, tblr1.CfgFixedMeasure, tblr1.CfgFixedSave)
+		// A declared fixed root's Load refuses form 1, so the framing vectors
+		// read through the same declaration with Cfg's class variable. The
+		// canonical text carries that value back into the fixed package, which
+		// is what writes the form 3 answer the framing surface owes.
+		c.variableLoad = func(value any, wire []byte, rep *report) bool {
+			var b tblr1var.CfgBuilder
+			if !b.Init() {
+				*rep = report{refused: true}
+				return false
+			}
+			defer b.Shutdown()
+			var inner tblr1var.TableReport
+			if !tblr1var.CfgLoadBuilder(&b, wire, &inner) {
+				*rep = snapReport(&inner)
+				return false
+			}
+			size := tblr1var.CfgToJSONMeasure(b.GetRoot())
+			if size < 0 {
+				*rep = snapReport(&inner)
+				return false
+			}
+			text := make([]byte, size)
+			if tblr1var.CfgToJSON(b.GetRoot(), text) != size {
+				*rep = snapReport(&inner)
+				return false
+			}
+			var fixed tblr1.TableReport
+			if !tblr1.CfgFromJSON(value.(*tblr1.Cfg), text, &fixed) {
+				*rep = snapReport(&fixed)
+				return false
+			}
+			*rep = snapReport(&inner)
+			return true
+		}
+		return c
 	})
 	bind("tblr2", "Cfg", func(c codec) codec {
 		return fixedForm(c, tblr2.CfgFixedLoad, tblr2.CfgFixedMeasure, tblr2.CfgFixedSave)
