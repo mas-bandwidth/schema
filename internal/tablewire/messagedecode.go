@@ -438,8 +438,13 @@ func (d *bitDecoder) textPayload(shape ir.TableMessageShape, isString bool) ([]b
 // node index each RESOLVE something, and a resolve that contradicts its
 // position is damage this reader must still find, so they are walked however
 // many there are; a keyed entry's slot carries a key reference for the same
-// reason. A ZERO is a real answer, and it is why this exists: a ranged element
-// whose `min` equals its `max` rides no bits at all (§3.3).
+// reason. A FLOAT and a RANGED or QUANTIZED element carry a VALUE CONDITION
+// the wire and the announcement decide — finiteness, an index at or below its
+// count, an offset within its kind's range — so they are walked too, through
+// the same checks a named field takes (§3.3, §4). A ZERO is a real answer, and
+// it is why this exists: a ranged element whose `min` equals its `max` rides
+// no bits at all, and a zero-width run still carries no value condition
+// (§3.3).
 func elementRunBits(kind, elem uint8, inner ir.TableMessageShape) int64 {
 	if int(kind) != ir.TableKindArray {
 		return -1
@@ -455,7 +460,17 @@ func elementRunBits(kind, elem uint8, inner ir.TableMessageShape) int64 {
 		// bytes of wire. The C# reader takes them the same way.
 		return 0
 	}
-	return ir.TableMessageValueBits(elem, inner)
+	width := ir.TableMessageValueBits(elem, inner)
+	if width > 0 {
+		switch int(elem) {
+		case ir.TableKindF32, ir.TableKindF64:
+			return -1
+		}
+		if inner.Packing == ir.TableMessageRanged || inner.Packing == ir.TableMessageQuantized {
+			return -1
+		}
+	}
+	return width
 }
 
 // skipRun steps over `n` elements of one fixed width in a single arithmetic

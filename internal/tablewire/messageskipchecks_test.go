@@ -153,6 +153,90 @@ fixed table Probe { x uint8 }
 			},
 		},
 		{
+			name: "an array of non-finite f32",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF32, Inner: empty()}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(uint64(math.Float32bits(float32(math.NaN()))), 32)
+			},
+			bad: true,
+		},
+		{
+			name: "a lawful array of f32",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF32, Inner: empty()}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(uint64(math.Float32bits(1.5)), 32)
+			},
+		},
+		{
+			name: "an array of non-finite f64",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF64, Inner: empty()}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(math.Float64bits(math.Inf(1)), 64)
+			},
+			bad: true,
+		},
+		{
+			name: "a lawful array of f64",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF64, Inner: empty()}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(math.Float64bits(2.5), 64)
+			},
+		},
+		{
+			name: "an array of quantized indices above count",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF32, Inner: &quantized}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(uint64(quantizedCount+1), int(quantized.Bits))
+			},
+			bad: true,
+		},
+		{
+			name: "a lawful array of quantized indices",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindF32, Inner: &quantized}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(uint64(quantizedCount/2), int(quantized.Bits))
+			},
+		},
+		{
+			name: "an array of ranged offsets above the sender's maximum",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindI8, Inner: &ranged}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(255, 8)
+			},
+			bad: true,
+		},
+		{
+			name: "a lawful array of ranged offsets",
+			entries: []ir.TableVocabularyEntry{
+				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindI8, Inner: &ranged}},
+			},
+			write: func(w *bitWriter, _ int) {
+				w.put(1, 2)
+				w.put(227, 8)
+			},
+		},
+		{
 			name: "an array count above its announced maximum",
 			entries: []ir.TableVocabularyEntry{
 				{Id: id(1), Kind: ir.TableKindArray, Shape: ir.TableMessageShape{Min: 0, Max: 2, Elem: ir.TableKindNoPayload, Inner: empty()}},
