@@ -1061,7 +1061,10 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.entities_count < 0 || value.entities_count > 8 { return false; }
+        debug_assert!(
+            value.entities_count >= 0 && value.entities_count <= 8,
+            "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
+        );
         if value.entities_count > 0 {
             w.put(10, TABLE_MESSAGE_REF_BITS);
             w.put((value.entities_count as u64).wrapping_sub(1), 3);
@@ -1071,7 +1074,10 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.stats_count < 0 || value.stats_count > 80 { return false; }
+        debug_assert!(
+            value.stats_count >= 0 && value.stats_count <= 80,
+            "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
+        );
         if value.stats_count > 0 {
             w.put(11, TABLE_MESSAGE_REF_BITS);
             w.put((value.stats_count as u64).wrapping_sub(0), 7);
@@ -1115,7 +1121,10 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.player_name_length < 0 || value.player_name_length > 15 { return false; }
+        debug_assert!(
+            value.player_name_length >= 0 && value.player_name_length <= 15,
+            "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
+        );
         if value.player_name_length > 0 {
             w.put(14, TABLE_MESSAGE_REF_BITS);
             w.put(value.player_name_length as u64, 4);
@@ -1123,7 +1132,10 @@ pub fn bench_mixed_save_message_body(w: &mut TableBitWriter, value: &BenchMixedR
         }
     }
     {
-        if value.payload_length < 0 || value.payload_length > 16 { return false; }
+        debug_assert!(
+            value.payload_length >= 0 && value.payload_length <= 16,
+            "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
+        );
         if value.payload_length > 0 {
             w.put(15, TABLE_MESSAGE_REF_BITS);
             w.put((value.payload_length as u64).wrapping_sub(0), 5);

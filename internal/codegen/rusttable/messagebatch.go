@@ -214,15 +214,22 @@ func (m *msgGen) emitSaveBody(st *ir.Struct) {
 	m.pf("    w.put(0, TABLE_MESSAGE_REF_BITS);\n    !w.overflow\n}\n\n")
 }
 
-// storageCheck refuses a used length or a live count outside its storage,
-// which no wire can spell (gotable emitStorageCheck).
+// storageCheck is the WRITE-SIDE STORAGE CHECK, and it is DEBUG-ONLY BY RULE
+// (docs/SPEC.md §5.1): a used length or a live count outside its storage is
+// the caller's bug, and `debug_assert!` tells them so in a debug build and is
+// gone in release, exactly as the fixed form's fixedWriteBound. The release
+// build carries no write-side check; reads check everything in every build.
 func (m *msgGen) storageCheck(f *ir.Field, expr, ind string) {
+	member, bound, what := expr+"_length", f.Type.Size, "length"
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		m.pf("%sif %s_length < 0 || %s_length > %d { return false; }\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted:
-		m.pf("%sif %s_count < 0 || %s_count > %d { return false; }\n", ind, expr, expr, f.ArrayBound)
+		member, bound, what = expr+"_count", f.ArrayBound, "count"
+	default:
+		return
 	}
+	m.pf("%sdebug_assert!(\n%s    %s >= 0 && %s <= %d,\n%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n%s);\n",
+		ind, ind, member, member, bound, ind, what, ind)
 }
 
 // rides is whether a field is OFF its declared default and so rides the body

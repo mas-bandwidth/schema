@@ -2157,9 +2157,9 @@ fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
 // is read into the vocabulary the `message` surface reads against; the one
 // value is measured and saved through MeasureMessages and SaveMessages as a
 // batch of one. The Rust message writer refuses with -1 (an enum ordinal or a
-// union tag outside its set, a NaN or an infinity, a count or length past its
-// storage, every build) or a debug_assert! panic (the write contract over the
-// whole batch, debug builds).
+// union tag outside its set, a NaN or an infinity, every build) or a
+// debug_assert! panic (the write contract over the whole batch, a count or
+// length past its storage included, debug builds).
 fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal-message") {
         if f.len() < 8 {

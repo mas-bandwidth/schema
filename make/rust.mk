@@ -1772,38 +1772,32 @@ tables-rust-bool-byte-negative-control:
 		  cat $(RUST_BOOL_NC)/log; exit 1; }
 	@echo "negative control: a Rust fixed read that lands a bool byte of 2 turns TestFixedBoolByteIsDamageRust RED"
 
-# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1). A wstring(N) length past the
-# storage it indexes is refused in EVERY build, so this gate runs the generated
-# writer in --release, where every debug_assert! is gone, and requires the
-# message writer to refuse before the first byte. The control strips the
-# generated guard and requires the same release gate to go red.
-STORAGE_RELEASE_RUST := build/storage-release-rust
-.PHONY: write-refusal-storage-release-rust write-refusal-storage-release-rust-negative-control
-write-refusal-storage-release-rust: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
-	@rm -rf $(STORAGE_RELEASE_RUST) && mkdir -p $(STORAGE_RELEASE_RUST)/src
-	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)/src $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)/src/main.rs
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)/Cargo.toml
-	PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)/Cargo.toml
-
-write-refusal-storage-release-rust-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/rust/storage_release.rs
-	@rm -rf $(STORAGE_RELEASE_RUST)-negative && mkdir -p $(STORAGE_RELEASE_RUST)-negative/src
-	./bin/schema generate --lang rust --out $(STORAGE_RELEASE_RUST)-negative/src $(STORAGE_RELEASE_SCHEMA)
-	@cp test/conformance/rust/storage_release.rs $(STORAGE_RELEASE_RUST)-negative/src/main.rs
-	@sed -i.bak 's/if value.wide_length < 0 || value.wide_length > 8 { return false; }/if false { return false; } \/\/ SABOTAGED/g' \
-		$(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs
-	@grep -q 'SABOTAGED' $(STORAGE_RELEASE_RUST)-negative/src/storage_message.rs || \
-		{ echo "NEGATIVE CONTROL FAILED: the storage guard sabotage did not apply"; exit 1; }
-	@printf '[package]\nname = "storage_release"\nversion = "0.0.0"\nedition = "2024"\n\n[lib]\npath = "src/lib.rs"\n\n[[bin]]\nname = "storage-release"\npath = "src/main.rs"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "$(abspath $(SERIALIZE_RS))" }\n' > $(STORAGE_RELEASE_RUST)-negative/Cargo.toml
-	@if PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release --manifest-path $(STORAGE_RELEASE_RUST)-negative/Cargo.toml > $(STORAGE_RELEASE_RUST)-negative/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the release storage gate passed with the guard removed"; \
-		cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; \
+# THE MESSAGE WRITER's STORAGE CHECK IS A DEBUG ASSERT (docs/SPEC.md §5.1):
+# Rust is an assert leg, so a count or length past the storage it indexes is
+# caught by debug_assert! in a debug build and the release build carries no
+# write-side check. TestMessageStorageDebugAssertRust builds the writer with
+# debug assertions on and requires the assert on an over-long count and length.
+# The control takes the assert's condition out of the emitter through go test
+# -overlay and requires that test red.
+RUST_MSG_STORAGE_NC := build/rust-message-storage-assert-nc
+.PHONY: tables-rust-message-storage-assert-negative-control
+tables-rust-message-storage-assert-negative-control:
+	@mkdir -p $(RUST_MSG_STORAGE_NC)
+	@sed -e 's|%s    %s >= 0 && %s <= %d,|%s    true \|\| %s >= 0 \&\& %s <= %d,|' \
+		internal/codegen/rusttable/messagebatch.go > $(RUST_MSG_STORAGE_NC)/messagebatch.go.txt
+	@test "$$(diff internal/codegen/rusttable/messagebatch.go $(RUST_MSG_STORAGE_NC)/messagebatch.go.txt | grep -c '^>')" = 1 || \
+		{ echo "NEGATIVE CONTROL: the Rust message storage-assert sabotage did not patch exactly the one check"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/rusttable/messagebatch.go":"%s/$(RUST_MSG_STORAGE_NC)/messagebatch.go.txt"}}\n' \
+		"$$PWD" "$$PWD" > $(RUST_MSG_STORAGE_NC)/overlay.json
+	@if PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -overlay $(RUST_MSG_STORAGE_NC)/overlay.json \
+			-run '^TestMessageStorageDebugAssertRust$$' ./internal/codegen/rusttable > $(RUST_MSG_STORAGE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the message storage assert is gone and the gate stayed green"; \
+		cat $(RUST_MSG_STORAGE_NC)/log; exit 1; \
 	fi
-	@grep -q 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the storage refusal"; \
-		  cat $(STORAGE_RELEASE_RUST)-negative/log; exit 1; }
-	@grep -m1 'FAIL storage release' $(STORAGE_RELEASE_RUST)-negative/log
-	@echo "negative control: removing the Rust storage guard turns the release gate RED"
+	@grep -q "an over-long count or length must hit the debug assert" $(RUST_MSG_STORAGE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(RUST_MSG_STORAGE_NC)/log; exit 1; }
+	@echo "negative control: a Rust message writer without its storage debug_assert! turns TestMessageStorageDebugAssertRust RED"
 
 # THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROLS (docs/SPEC.md §5.1): one
 # check is removed from a copy of the generated crates, the conformance driver
@@ -1856,4 +1850,4 @@ conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness
 
 .PHONY: conformance-negative-control-rust-write-refusal-message
 conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
-	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,if value.sku_length < 0 || value.sku_length > 32 { return false; },if false { return false; },write-refusal-message,message)
+	$(call rust_wref_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_message.rs,value.sku_length >= 0 && value.sku_length <= 32,true,write-refusal-message,message)
