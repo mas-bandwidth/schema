@@ -350,6 +350,22 @@ func messageBatchRustc(t *testing.T) {
 	}
 }
 
+// rustcHostLinker returns the flags that name the host linker by its resolved
+// path. rustc's default is the bare name "cc", which depends on its own PATH
+// lookup; naming the resolved path builds the same way wherever the C compiler
+// is found, and the flags are empty when no C compiler is on PATH so rustc's
+// default stands.
+func rustcHostLinker() []string {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		return nil
+	}
+	if abs, err := filepath.Abs(cc); err == nil {
+		cc = abs
+	}
+	return []string{"-C", "linker=" + cc}
+}
+
 // runMessageBatchProbe writes the unit's fixed-form and message-form modules
 // beside a crate root and builds them with rustc alone: a unit's table
 // runtimes are self-contained, so no packet module and no cargo workspace is
@@ -400,7 +416,8 @@ fn main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "batchprobe")
-	cmd := exec.Command("rustc", "--edition", "2024", "-o", bin, "main.rs")
+	args := append(rustcHostLinker(), "--edition", "2024", "-o", bin, "main.rs")
+	cmd := exec.Command("rustc", args...)
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the probe did not build: %v\n%s", err, out)
