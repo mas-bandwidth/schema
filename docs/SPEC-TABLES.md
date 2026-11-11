@@ -11504,7 +11504,7 @@ fields would get wrong:
   bytes (below): the cook writes zero there whatever the storage holds, so a
   cook of a loaded wire and a cook of a built structure agree. A pointer stored
   in a slot past the count is never followed or checked, because that slot is
-  dead.
+  dead (docs/rulings.json `fixed-dead-bytes-are-zero`).
 - **A `*T` SLOT IS EIGHT BYTES AT EIGHT**, holding the signed self-relative
   delta of §6.3, and **NULL IS ZERO**. It is as wide as the offsets it is the
   difference of, so a region of any size expresses every reference it holds and
@@ -12032,7 +12032,8 @@ does not imply a non-`ok` measurement reason.
   `static_assert`s and the build version all come from.
 - **A COUNTED ARRAY WRITES ITS LIVE ELEMENTS.** Its slots past the live count
   are zero (§7.2) whatever the storage holds there, which is why a cook of a
-  loaded wire and a cook of a built structure agree.
+  loaded wire and a cook of a built structure agree (docs/rulings.json
+  `fixed-dead-bytes-are-zero`).
 - **THE ATTRIBUTION PART IS WRITTEN.** One entry per node in index order —
   `offset (u64), type id (u64)`, the root first at offset zero, a type id the
   `fnv1a64` of the table's name (§3.1, §6.3) — so what comes out is a file
@@ -12086,11 +12087,12 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the count, an absent optional's value or an unset union arm. The record writer
   does not write a counted array's slots past the count either: they are zero
   (§7.2), and a pointer stored there is never followed or checked, because the
-  slot is dead. A non-null slot the record writer does write in storage the
-  walk did not reach names a node the region will not hold, and `Cook`
-  returns `false` rather than writing a partial region, which is what the
-  tool does with the same input. A region `Load` produced holds null in every
-  such slot, so a cook of a loaded wire never meets the case.
+  slot is dead (docs/rulings.json `fixed-dead-bytes-are-zero`). A non-null
+  slot the record writer does write in storage the walk did not reach names a
+  node the region will not hold, and `Cook` returns `false` rather than
+  writing a partial region, which is what the tool does with the same input. A
+  region `Load` produced holds null in every such slot, so a cook of a loaded
+  wire never meets the case.
 - **THE GO WRITER NAMES ITS REFUSALS.** For pointered roots, an invalid
   value (including a nil root, a counted used count below zero or above `N`,
   a union tag past the arms, or a negative count or non-empty container in dead

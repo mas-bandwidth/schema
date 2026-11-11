@@ -313,7 +313,8 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 	case f.Array == ir.ArrayCounted:
 		// the live elements are written; a slot past the count is DEAD BYTES
 		// and stays the buffer's zero, and a pointer stored there is never
-		// followed (docs/SPEC-TABLES.md §7.2)
+		// followed (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero)
 		if err := w.slots(value.Offset, f, fv.Elems, fv.Count); err != nil {
 			return err
 		}

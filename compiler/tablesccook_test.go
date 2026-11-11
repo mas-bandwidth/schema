@@ -124,8 +124,9 @@ int main(void) {
 }
 
 // A COUNTED ARRAY'S SLOTS PAST ITS COUNT ARE DEAD BYTES: zero on write, refused
-// on read when not zero (docs/SPEC-TABLES.md §7.2, and the cook check's dead-byte
-// clause). Storage past the count holds a pattern here; both
+// on read when not zero (docs/SPEC-TABLES.md §7.2; docs/rulings.json
+// fixed-dead-bytes-are-zero, whose dead bytes include these slots). Storage
+// past the count holds a pattern here; both
 // cooks must ignore it, agree byte for byte, and leave the tail zero.
 func TestCTableCookCountedArrayTailZero(t *testing.T) {
 	t.Parallel()

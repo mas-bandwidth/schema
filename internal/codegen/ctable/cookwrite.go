@@ -204,7 +204,8 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 		elem := sequenceElement(f)
 		// a counted array writes its live elements; a slot past the count is
 		// DEAD BYTES and stays the zeroed extent's zero, and a pointer stored
-		// there is never followed (docs/SPEC-TABLES.md §7.2)
+		// there is never followed (docs/SPEC-TABLES.md §7.2;
+		// docs/rulings.json fixed-dead-bytes-are-zero)
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
