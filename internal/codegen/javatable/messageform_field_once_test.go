@@ -42,7 +42,7 @@ type repeatedFieldBits struct {
 }
 
 func (w *repeatedFieldBits) put(v uint64, bits int) {
-	for i := 0; i < bits; i++ {
+	for i := range bits {
 		if w.n/8 == len(w.data) {
 			w.data = append(w.data, 0)
 		}
@@ -216,7 +216,6 @@ func TestJavaMessageBodyRepeatedFieldRefuses(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			oracle := repeatedFieldOracle(t, u, tc.wire)
