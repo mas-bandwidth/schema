@@ -11,11 +11,11 @@ import (
 func nestedBlockSource(depth int) string {
 	var b strings.Builder
 	b.WriteString("package t\ntype T\n{\n    on bool\n")
-	for i := 0; i < depth; i++ {
+	for range depth {
 		b.WriteString("    if on {\n")
 	}
 	b.WriteString("        x int32\n")
-	for i := 0; i < depth; i++ {
+	for range depth {
 		b.WriteString("    }\n")
 	}
 	b.WriteString("}\n")
