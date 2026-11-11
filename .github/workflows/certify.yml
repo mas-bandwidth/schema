@@ -959,8 +959,16 @@ jobs:
   # green-conf-go-big-endian.
   big-endian:
     name: big-endian (${{ matrix.leg }})
-    runs-on: ubuntu-24.04
+    # ON THE FLEET'S RUNNERS (2026-11-11), as ci-full.yml's per-commit rows:
+    # the hosted image's apt archive was unreachable for whole runs (run
+    # 43052853540), and the fleet's runner-packages already carry the cross
+    # compiler and qemu-user, so a fleet runner fetches nothing. The
+    # exact-version apt pins stay as the hosted fallback.
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       matrix:
@@ -977,40 +985,60 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - name: the pinned cross toolchain and emulator
+      - name: the pinned cross toolchain and emulator (hosted fallback)
+        if: runner.environment == 'github-hosted'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1 \
             qemu-user=1:8.2.2+ds-0ubuntu1.18
+          {
+            echo "BE_CXX=s390x-linux-gnu-g++-13"
+            echo "BE_CC=s390x-linux-gnu-gcc-13"
+          } >> "$GITHUB_ENV"
 
-      - name: what the pins resolved to
+      - name: what the cross toolchain and emulator are
         run: |
-          s390x-linux-gnu-g++-13 --version | head -1
+          set -euo pipefail
+          cxx=${BE_CXX:-s390x-linux-gnu-g++}
+          cc=${BE_CC:-s390x-linux-gnu-gcc}
+          missing=
+          for tool in qemu-s390x "$cxx" "$cc"; do
+            command -v "$tool" >/dev/null || missing="$missing $tool"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::this runner has no$missing: the fleet's runner-packages install qemu-user, g++-s390x-linux-gnu and gcc-s390x-linux-gnu on every schema runner"
+            exit 1
+          fi
+          "$cxx" --version | head -1
           qemu-s390x --version | head -1
-          dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          rm -rf serialize serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
       - name: ${{ matrix.target }}
-        run: make -j"$(nproc)" ${{ matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(nproc)" ${{ matrix.target }}

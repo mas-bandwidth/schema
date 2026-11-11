@@ -1234,6 +1234,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 	}
 	wantKeys := []string{
 		"caa-self-test.yml:caa-self-test",
+		"certify.yml:big-endian",
 		"certify.yml:inline-gate",
 		"certify.yml:negative-controls-nightly",
 		"certify.yml:negative-controls-nightly-matrix",
@@ -1250,6 +1251,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:plan",
+		"ci-full.yml:big-endian",
 		"ci-full.yml:conformance",
 		"ci-full.yml:conformance-matrix",
 		"ci-full.yml:cpp-lock",

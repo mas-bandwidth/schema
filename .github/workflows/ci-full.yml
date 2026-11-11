@@ -2155,14 +2155,27 @@ jobs:
   # edit, the same act as the golangci-lint pin below, and the versions come
   # from the policy the failing install prints. The step after the install
   # records the resolved closure both pins pull in.
+  #
+  # ON THE FLEET'S RUNNERS NOW (2026-11-11). On the hosted image every row
+  # spent its whole 15 minutes in `apt-get update` (run 43052853540: `Temporary
+  # failure resolving 'azure.archive.ubuntu.com'` from the first second to the
+  # cancel), so nothing ran. The fleet's runner-packages already carry the
+  # cross compiler (g++-s390x-linux-gnu, gcc-s390x-linux-gnu) and qemu-user,
+  # so on a fleet runner nothing is fetched: the job names the toolchain it
+  # found and refuses by name when one is missing. The exact-version apt pins
+  # stay as the hosted fallback only.
   big-endian:
     name: big-endian (${{ matrix.leg }})
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Runs on a pull request only when it comes from this repository and
+    # carries the `full-ci` label; on a merge, the nightly and a dispatch it
+    # always runs. A fork pull request never reaches the fleet runners. The
+    # expression is repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
     strategy:
       fail-fast: false
       # ONE PIECE PER ROW (issue #684). The pieces share nothing but bin/schema
@@ -2215,27 +2228,32 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # hosted fallback only; a fleet runner's go is on its PATH
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache on hosted Linux: `go-test` runs on the self-hosted
-      # fleet, so the `go` row here is the hosted-Linux writer (saving both
-      # host tools and GOOS=linux GOARCH=s390x packages for the next run).
+      # The Go build cache on a hosted fallback; on a fleet runner the build
+      # cache is the runner's own and warm.
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - name: the pinned cross toolchain and emulator
+      - name: the pinned cross toolchain and emulator (hosted fallback)
+        if: runner.environment == 'github-hosted'
+        shell: bash
         run: |
           sudo apt-get update
           if [ "${{ matrix.leg }}" = "go" ]; then
@@ -2243,14 +2261,29 @@ jobs:
           else
             sudo apt-get install -y --no-install-recommends               g++-13-s390x-linux-gnu=13.3.0-6ubuntu2~24.04.1cross1               qemu-user=1:8.2.2+ds-0ubuntu1.18
           fi
+          {
+            echo "BE_CXX=s390x-linux-gnu-g++-13"
+            echo "BE_CC=s390x-linux-gnu-gcc-13"
+          } >> "$GITHUB_ENV"
 
-      - name: what the pins resolved to
+      # THE FLEET'S CROSS TOOLCHAIN, never fetched: runner-packages installs it
+      # on every fleet host. A host without it is refused by name here rather
+      # than failing forty lines into a make recipe.
+      - name: what the cross toolchain and emulator are
         run: |
-          if [ "${{ matrix.leg }}" != "go" ]; then
-            s390x-linux-gnu-g++-13 --version | head -1
+          set -euo pipefail
+          cxx=${BE_CXX:-s390x-linux-gnu-g++}
+          cc=${BE_CC:-s390x-linux-gnu-gcc}
+          missing=
+          for tool in qemu-s390x "$cxx" "$cc"; do
+            command -v "$tool" >/dev/null || missing="$missing $tool"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::this runner has no$missing: the fleet's runner-packages install qemu-user, g++-s390x-linux-gnu and gcc-s390x-linux-gnu on every schema runner"
+            exit 1
           fi
+          "$cxx" --version | head -1
           qemu-s390x --version | head -1
-          dpkg-query -W -f='${Package} ${Version}\n' | grep -E 's390x|^qemu-user'
 
       # BOTH siblings in every row, the argument the negative-control rows make
       # one door over: a table unit declaring a 128-bit field takes its storage
@@ -2261,13 +2294,17 @@ jobs:
       - name: Check out the serialize runtimes (pinned releases)
         run: |
           cd ..
+          # a fleet runner's workspace PARENT persists between runs: re-cloned
+          # at the pinned tag every time, never reused
+          rm -rf serialize serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
-      # -j BECAUSE EVERY ROW STILL HAS BINARIES TO BUILD. BE_CXX and BE_CC name
-      # the pinned compilers: the exact-version package installs the SUFFIXED
-      # drivers, and the Makefile's unsuffixed defaults are for a workstation
-      # that installed the metapackage. The C leg needs the C driver because the
+      # -j BECAUSE EVERY ROW STILL HAS BINARIES TO BUILD. BE_CXX and BE_CC come
+      # from the environment: the hosted fallback's exact-version package
+      # installs the SUFFIXED drivers and its install step names them; a fleet
+      # runner carries the metapackage, which is what the Makefile's unsuffixed
+      # defaults name. The C leg needs the C driver because the
       # tolerant wire has a C reader too, and the g++ cross package pulls its
       # gcc sibling in.
       #
@@ -2282,10 +2319,10 @@ jobs:
       - name: ${{ matrix.target }}
         env:
           GOFLAGS: ${{ matrix.leg == 'go' && '-gcflags=all=-l' || '' }}
-        run: make -j"$(nproc)" ${{ matrix.leg == 'go' && 'conformance-big-endian-smoke' || matrix.target }} BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(nproc)" ${{ matrix.leg == 'go' && 'conformance-big-endian-smoke' || matrix.target }}
 
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: matrix.leg == 'go'
+        if: matrix.leg == 'go' && runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
