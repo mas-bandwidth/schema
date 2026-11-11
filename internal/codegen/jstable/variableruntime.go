@@ -68,9 +68,11 @@ function TableVariableRefuseNonFinite() {
 }
 
 // a float's payload at its kind's width; false (refused) for a non-finite one
-function TableVariableWriteFloat(w, f32, v) {
-  if (!TableVariableFiniteFloat(f32, v)) { return TableVariableRefuseNonFinite(); }
-  if (f32) { w.f32(v); } else { w.f64(v); }
+// or one outside the range its declaration admits (§5.1 row 10)
+function TableVariableWriteFloat(w, d, v) {
+  if (!TableVariableFiniteFloat(d.f32, v)) { return TableVariableRefuseNonFinite(); }
+  if (!TableVariableFloatValid(d, v)) { return false; }
+  if (d.f32) { w.f32(v); } else { w.f64(v); }
   return true;
 }
 
@@ -103,11 +105,39 @@ function TableVariableWidens(kind, declared) {
   return false;
 }
 
-function TableVariableUnboundedTextValid(value) {
+// THE WRITE CONTRACT'S VALUE TESTS (docs/SPEC.md §5.1): JavaScript storage is
+// untyped, so a value is checked for the representation its declaration gives
+// it as well as its range before any byte is written. A value the declaration
+// does not admit is refused, never wrapped or coerced.
+function TableVariableTextValid(value, bound) {
   if (typeof value !== "string") { return false; }
   const bytes = TableVariableUtf8Encode(value), decoded = TableVariableUtf8Decode(bytes);
-  return bytes.length <= 0xffffffff && decoded.ok && decoded.s === value;
+  return bytes.length <= (bound >= 0 ? bound : 0xffffffff) && decoded.ok && decoded.s === value;
 }
+function TableVariableBlobValid(fd, val) {
+  if (fd.s === "sblob") { return (typeof val === "string" || val instanceof String) && TableVariableTextValid(String(val), -1); }
+  return val instanceof Uint8Array;
+}
+function TableVariableIntegerValid(d, x) {
+  if (d.big ? typeof x !== "bigint" : typeof x !== "number" || !Number.isInteger(x)) { return false; }
+  if (d.lo !== null && (x < d.lo || x > d.hi)) { return false; }
+  if (d.bits > 0 && d.bits < 64 && x > d.bmax) { return false; }
+  if (d.dlo !== undefined) { return x >= d.dlo && x <= d.dhi; }
+  const hi = d.big ? (1n << BigInt(d.kw * 8)) - 1n : (2 ** (d.kw * 8)) - 1;
+  return x >= (d.big ? 0n : 0) && x <= hi;
+}
+function TableVariableArrayValid(fd, val) {
+  if (!Array.isArray(val)) { return false; }
+  if (fd.fixed) { return val.length === fd.bound; }
+  if (fd.list) { return true; }
+  return val.length >= (fd.min || 0) && val.length <= fd.bound;
+}
+function TableVariableFloatValid(d, v) {
+  if (d.lo === null) { return true; }
+  const x = d.f32 ? Math.fround(v) : v;
+  return x >= d.lo && x <= d.hi;
+}
+function TableVariableUnboundedTextValid(value) { return TableVariableTextValid(value, -1); }
 function TableVariableTextExtent(r, at) {
   const size = r.leb();
   if (r.bad || size > r.end - r.at) { r.at = r.end; return at; }
@@ -162,8 +192,9 @@ function TableVariableFreeze(x) {
   return x;
 }
 
-// the live count of an array: a bounded array never writes past its bound
-function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return fd.list ? val.length : Math.min(val.length, fd.bound); }
+// the live count of an array (its length; the write contract refuses one past
+// its bound rather than writing it short)
+function TableVariableCount(fd, val) { if (fd.fixed) { return fd.bound; } return val.length; }
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
@@ -230,6 +261,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       TableVariableEdges(fd.c, val, out, everyGuard);
       break;
     case "map":
+      if (!(val instanceof Map)) { out.push({ invalid: true }); return; }
       if (everyGuard) {
         const e = fd.c.make();
         for (const [k, mv] of val) { e.key = k; e.value = mv; TableVariableEdges(fd.c, e, out, true); }
@@ -244,6 +276,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { out.push({ invalid: true }); return; }
       const n = TableVariableCount(fd, val);
       if (fd.e.s === "ptr") {
         for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
@@ -270,6 +303,7 @@ function TableVariableNumber(c, root, refuseShared, why) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
+    if (e.invalid) { return null; }
     if (e.blob) {
       if (!TableVariableBlobNode(nodes, e.holder, e.fd, e.val) && refuseShared) {
         if (why) { why.reason = "blob_shared"; }
@@ -366,20 +400,22 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       w.u8(15);
       return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
     case "bool":
+      if (typeof val !== "boolean") { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); }
       return true;
     case "int": case "flags":
+      if (!TableVariableIntegerValid(fd, val)) { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); }
       return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       if (!TableVariableSameFloat(fd.f32, val, fd.def)) {
         TableVariableHeader(w, ids, fd, fd.k);
-        TableVariableWriteFloat(w, fd.f32, val);
+        return TableVariableWriteFloat(w, fd, val);
       }
       return true;
     case "str":
-      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
+      if (!TableVariableTextValid(val, fd.bound)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
         TableVariableHeader(w, ids, fd, 12);
@@ -388,6 +424,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "bytes":
+      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       if (!TableVariableSameBytes(val, fd.def)) {
         // bytes ride as an array of u8 (§2.5): the body is the element kind,
         // the count and the bytes, and L is that body's length — the count's
@@ -415,6 +452,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     case "sblob": case "bblob":
       if (val !== null) {
+        if (!TableVariableBlobValid(fd, val)) { return false; }
         const index = fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val);
         TableVariableHeader(w, ids, fd, 17);
         w.leb(index);
@@ -433,6 +471,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { return true; }
@@ -466,9 +505,15 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   if (fd.plain) { const b = TableVariableUtf8Encode(val.value); w.leb(b.length); w.raw(b); return true; }
   const e = fd.e;
   switch (e.s) {
-    case "bool": w.u8(val ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, e.kw, val); return true;
-    case "float": return TableVariableWriteFloat(w, e.f32, val);
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      w.u8(val ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(e, val)) { return false; }
+      TableVariableWriteInt(w, e.kw, val);
+      return true;
+    case "float": return TableVariableWriteFloat(w, e, val);
     case "enum": {
       const vref = TableVariableEnumRef(e, ids, val);
       if (vref < 0) { return false; }
@@ -1901,6 +1946,7 @@ function TableVariableTextCount(c, root, g) {
     const top = stack[stack.length - 1];
     if (top.i >= top.edges.length) { open.delete(top.v); stack.pop(); continue; }
     const e = top.edges[top.i++];
+    if (e.invalid) { return null; }
     if (e.blob) {
       if (typeof e.val === "object") { g.blobs.set(e.val, (g.blobs.get(e.val) || 0) + 1); }
       continue;
@@ -2002,6 +2048,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { out.push("[]"); return true; }

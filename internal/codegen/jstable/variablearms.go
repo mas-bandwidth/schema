@@ -258,18 +258,27 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "ptr":
       TableVariableHeader(w, ids, fd, 17); w.leb(val === null ? 0 : nodes.index.get(val)); return true;
     case "sblob": case "bblob": {
+      if (val !== null && !TableVariableBlobValid(fd, val)) { return false; }
       const index = val === null ? 0 : (fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val));
       TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
     }
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
-    case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
-    case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      TableVariableHeader(w, ids, fd, 1);
+      w.u8(val ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(fd, val)) { return false; }
+      TableVariableHeader(w, ids, fd, fd.k);
+      TableVariableWriteInt(w, fd.kw, val);
+      return true;
     case "float":
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
-      return TableVariableWriteFloat(w, fd.f32, val);
+      return TableVariableWriteFloat(w, fd, val);
     case "str": {
-      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
+      if (!TableVariableTextValid(val, fd.bound)) { return false; }
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
@@ -277,6 +286,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "bytes": {
+      if (!(val instanceof Uint8Array) || (fd.bound >= 0 && val.length > fd.bound)) { return false; }
       TableVariableHeader(w, ids, fd, 14);
       const body = new TableVariableWriter();
       body.u8(6);
@@ -304,6 +314,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       w.leb(ids.ref(fd.id));
@@ -326,6 +337,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 // order, each entry ALWAYS riding (identity is the key); only a non-optional
 // empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
+  if (!(val instanceof Map)) { return false; }
   if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
@@ -415,11 +427,23 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   }
   const f = arm.f, x = val.value;
   switch (f.s) {
-    case "bool": w.u8(x ? 1 : 0); return true;
-    case "int": case "flags": TableVariableWriteInt(w, f.kw, x); return true;
-    case "float": return TableVariableWriteFloat(w, f.f32, x);
-    case "str": w.raw(TableVariableUtf8Encode(x)); return true;
-    case "bytes": w.u8(6); w.leb(x.length); w.raw(x); return true;
+    case "bool":
+      if (typeof x !== "boolean") { return false; }
+      w.u8(x ? 1 : 0);
+      return true;
+    case "int": case "flags":
+      if (!TableVariableIntegerValid(f, x)) { return false; }
+      TableVariableWriteInt(w, f.kw, x);
+      return true;
+    case "float": return TableVariableWriteFloat(w, f, x);
+    case "str":
+      if (!TableVariableTextValid(x, f.bound)) { return false; }
+      w.raw(TableVariableUtf8Encode(x));
+      return true;
+    case "bytes":
+      if (!(x instanceof Uint8Array) || (f.bound >= 0 && x.length > f.bound)) { return false; }
+      w.u8(6); w.leb(x.length); w.raw(x);
+      return true;
     case "enum": {
       const vref = TableVariableEnumRef(f, ids, x);
       if (vref < 0) { return false; }
@@ -429,9 +453,11 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
     case "ptr": w.leb(x === null ? 0 : nodes.index.get(x)); return true;
     case "sblob": case "bblob":
       if (x === null) { w.leb(0); return true; }
+      if (!TableVariableBlobValid(f, x)) { return false; }
       w.leb(f.s === "sblob" && typeof x === "string" ? nodes.slot(val, "value") : nodes.index.get(x));
       return true;
     case "arr": {
+      if (!TableVariableArrayValid(f, x)) { return false; }
       const n = TableVariableCount(f, x);
       w.u8(f.ek);
       w.leb(n);
