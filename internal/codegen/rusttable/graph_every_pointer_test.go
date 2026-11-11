@@ -63,7 +63,7 @@ func TestRustGraphCheckedOverEveryPointer(t *testing.T) {
 let mut r = TableReport::default(); let v = %s_load(&wire, &mut r);
 let expected = %t;
 if v.is_some() != expected || (r.err().is_none()) != expected { println!("FAIL: %s plain verdict"); failed = true; }
-let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(256) };
+let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 16), ids: Vec::with_capacity(256), nodes: Default::default() };
 let mut rr = TableReport::default(); let rv = %s_load_retain(&wire, &mut retain, &mut rr);
 if rv.is_some() != expected || (rr.err().is_none()) != expected || (!expected && (!retain.bytes.is_empty() || !retain.ids.is_empty())) { println!("FAIL: %s retaining verdict"); failed = true; }
 }}`, rustBytes(wire), fn, c.read, c.name, fn, c.name)

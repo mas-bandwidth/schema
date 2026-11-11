@@ -77,7 +77,7 @@ func TestRustRetainKeepsDepth128(t *testing.T) {
         if plain.is_none() { println!("PLAIN_REPORT %s: {:?}", plain_report); }
         check(plain.is_some(), "%s: strict load refused a readable depth");
         let mut report = TableReport::default();
-        let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17) };
+        let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
         let value = scene_load_retain(&wire_%d, &mut retain, &mut report);
         if value.is_none() { println!("REPORT %s: {:?}", report); }
         check(value.is_some(), "%s: retaining load refused a readable depth");
@@ -96,7 +96,7 @@ func TestRustRetainKeepsDepth128(t *testing.T) {
 		fmt.Fprintf(&body, `
     {
         let mut report = TableReport::default();
-        let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17) };
+        let mut retain = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
         let value = scene_load_retain(&refused_%d, &mut retain, &mut report);
         check(value.is_none(), "%s: retaining load accepted a refused depth");
     }
