@@ -198,6 +198,106 @@ func TestSquirrelRuntimeNameScanGoesRed(t *testing.T) {
 	}
 }
 
+// squirrelUnitModuleKeys is every key the unit's table module spells over the
+// whole corpus, without repeats: the unit's own names, the ones no declaration
+// spells.
+func squirrelUnitModuleKeys(t *testing.T) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, u := range squirrelManifestUnits(t) {
+		files, err := squirreltable.Generate(u)
+		if err != nil {
+			continue
+		}
+		module := squirreltable.ModuleName(u) + ".nut"
+		for _, k := range squirrelUnitKeys(string(files[module])) {
+			seen[k] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(seen))
+}
+
+// generateRefuses runs the generate path the way the command does: load (the
+// check), then emit. It returns the refusal, or nil when the target accepted
+// the unit.
+func generateRefuses(t *testing.T, source, target string) error {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	u, err := c.Load([]string{path})
+	if err != nil {
+		return err
+	}
+	_, err = c.Generate(u, target, Options{})
+	return err
+}
+
+// TestSquirrelModuleKeysAreClaimedForEveryTarget pins the claim on the unit's
+// table module for EVERY target: a table named for a key that module defines
+// is refused by the check, before any target is chosen, and so by
+// `generate --lang go` as well. The check is the one every generation runs, so
+// the refusal does not depend on the Squirrel emitter being the target. A near
+// name is the author's.
+func TestSquirrelModuleKeysAreClaimedForEveryTarget(t *testing.T) {
+	t.Parallel()
+	keys := squirrelUnitModuleKeys(t)
+	if len(keys) == 0 {
+		t.Fatal("the scan found no key in the unit's emitted table module at all: the scan, not the registry, is what broke")
+	}
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+			src := "package probe\n\ntable Gadget\n{\n    n int32\n}\n\ntable " + key + "\n{\n    n int32\n}\n"
+			if errs := checkErrors(t, src); len(errs) == 0 {
+				t.Fatalf("check accepted a table named %s: the Squirrel table module defines that key, so the unit cannot be generated for any target", key)
+			}
+			if err := generateRefuses(t, src, "go"); err == nil {
+				t.Fatalf("generate --lang go accepted a table named %s: the check that runs before every generation must refuse it", key)
+			}
+		})
+	}
+	// THE CONTROL: a near name is not a key of the module, and stays legal.
+	const near = "package probe\n\ntable Gadget\n{\n    n int32\n}\n\ntable CookBook\n{\n    n int32\n}\n"
+	if errs := checkErrors(t, near); len(errs) != 0 {
+		t.Fatalf("check refused CookBook, which the unit's table module does not define: %v", errs[0])
+	}
+	if err := generateRefuses(t, near, "go"); err != nil {
+		t.Fatalf("generate --lang go refused CookBook: %v", err)
+	}
+}
+
+// unitWithTableNamed loads a unit that declares table Template and renames it
+// to name, so the Squirrel emitter's own key guard can be reached after the
+// checker has refused the same declaration: the two guards are separate, and
+// this test is the emitter's.
+func unitWithTableNamed(t *testing.T, src, name string) *ir.Unit {
+	t.Helper()
+	u := unitFromSource(t, src)
+	st := u.Tables["Template"]
+	if st == nil {
+		t.Fatal("the fixture declares no table Template")
+	}
+	delete(u.Tables, "Template")
+	st.Name = name
+	u.Tables[name] = st
+	if file, ok := u.DeclFile["Template"]; ok {
+		delete(u.DeclFile, "Template")
+		u.DeclFile[name] = file
+	}
+	for _, f := range u.Files {
+		for _, tbl := range f.Tables {
+			if tbl == st {
+				tbl.Name = name
+			}
+		}
+	}
+	return u
+}
+
 // TestSquirrelRefusesADeclarationOnAModuleKey is the claimable half: a
 // declaration named for one of the unit's own names is REFUSED beside a table, naming the key,
 // and the same declaration in a table-free unit is kept, because no table
@@ -207,8 +307,8 @@ func TestSquirrelRefusesADeclarationOnAModuleKey(t *testing.T) {
 	for _, name := range []string{"Roots", "Descriptors", "Package", "Keyed"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			withTable := "package probe\n\ntable Gadget\n{\n    n int32\n    k [Team]int32\n}\n\nenum Team { Red, Blue }\n\ntable " + name + "\n{\n    n int32\n}\n"
-			if _, err := squirreltable.Generate(unitFromSource(t, withTable)); err == nil || !strings.Contains(err.Error(), name+" twice") {
+			withTable := "package probe\n\ntable Gadget\n{\n    n int32\n    k [Team]int32\n}\n\nenum Team { Red, Blue }\n\ntable Template\n{\n    n int32\n}\n"
+			if _, err := squirreltable.Generate(unitWithTableNamed(t, withTable, name)); err == nil || !strings.Contains(err.Error(), name+" twice") {
 				t.Fatalf("a table named %s beside the module's own %s was not refused by name: %v", name, name, err)
 			}
 			tableFree := "package probe\n\ntype " + name + "\n{\n    n int32\n}\n"
