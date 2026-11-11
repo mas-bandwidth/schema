@@ -927,7 +927,10 @@ test-rust: tables-rust-view
 # turn red on the named fields and on nothing else: the ACCESSOR control swaps
 # RenderCamera's camera_id and camera_type declarations (and withdraws the
 # compile-time offset_of! asserts that would stop the build first), the SLOT
-# control describes TreeNode.left one reference slot on.
+# control describes TreeNode.left one reference slot on. Both controls read the
+# cook images, so each depends on build/cook-fuzz/.stamp: without it the gate
+# reports every cook root missing and the control reads that as a field other
+# than the one its sabotage moved.
 .PHONY: tables-rust-accessor-descriptor-agreement tables-rust-accessor-negative-control tables-rust-slot-negative-control
 tables-rust-accessor-descriptor-agreement: build/tables-generated-rust/.stamp build/cook-fuzz/.stamp
 	cd test/rust-agree && PATH="$(RUSTUP_BIN):$$PATH" RUSTFLAGS="-D warnings" cargo build --quiet
