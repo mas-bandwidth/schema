@@ -184,6 +184,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
+	# THE FRAMING VECTORS AT tblr1's FIXED ROOT (test/conformance/harness/
+	# generate.go, framingVariableUnit): they are form-1 files the oracle reads
+	# with Cfg declared a plain variable table, while the fixed root's own Load
+	# refuses every form-1 file as previous_form (docs/SPEC-TABLES.md §3.4). The
+	# driver reads them through this second build of the same unit, so the
+	# verdict is still the generated code's. Same package, its own module name
+	# (go_table_module below).
+	@mkdir -p build/framing-variable
+	sed 's/^fixed table Cfg$$/table Cfg/' test/tables/R1.schema > build/framing-variable/R1.schema
+	@grep -q '^table Cfg$$' build/framing-variable/R1.schema || { echo "framing-variable: Cfg is no longer declared 'fixed table Cfg' in test/tables/R1.schema"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go/r1framing build/framing-variable/R1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/r2 test/tables/R2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/scalars tables/scalars
 	./bin/schema generate --lang go --out build/tables-generated-go/scalars2 test/tables/Scalars2.schema
@@ -226,6 +237,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,k1,tblk1)
 	$(call go_table_module,k2,tblk2)
 	$(call go_table_module,r1,tblr1)
+	$(call go_table_module,r1framing,tblr1framing)
 	$(call go_table_module,r2,tblr2)
 	@touch $@
 

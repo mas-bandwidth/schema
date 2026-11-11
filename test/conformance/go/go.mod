@@ -64,6 +64,10 @@ require tblr1 v0.0.0
 
 replace tblr1 => ../../../build/tables-generated-go/r1
 
+require tblr1framing v0.0.0
+
+replace tblr1framing => ../../../build/tables-generated-go/r1framing
+
 require tblr2 v0.0.0
 
 replace tblr2 => ../../../build/tables-generated-go/r2
