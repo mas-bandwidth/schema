@@ -1054,8 +1054,8 @@ final class TableWireReader {
   // a field it cannot skip — stops the gather and keeps the table found so far,
   // as nodeTableBytes does. Only the gathered payload is scanned, on its own
   // length: a count the scan does not match, a type reference of 0 or above the
-  // entry count, or a record length past the payload is damage and reads
-  // nothing (§3.1). A record whose type id is the *string blob stores its
+  // entry count or naming a reserved id, or a record length past the payload
+  // is damage and reads nothing (§3.1). A record whose type id is the *string blob stores its
   // bytes; any other type id keeps its index, counts one unknown at the
   // record, and every pointer naming it reads null (§3.1). A string blob that
   // is not well-formed UTF-8 without NUL is damage and reads null too.
@@ -1116,6 +1116,12 @@ final class TableWireReader {
     while (pos < tableEnd) {
       final typeRef = readLeb();
       if (typeRef == null || typeRef < 1 || typeRef > entryCount) {
+        framed = false;
+        break;
+      }
+      // a RESERVED id in a record's TYPE position is damage (§3.1, §3.3)
+      final rid = refToId[typeRef];
+      if (rid == _kNodeTableId || rid == _kBuildVersionId || rid == _kVocabularyId) {
         framed = false;
         break;
       }
@@ -4733,6 +4739,7 @@ int tableEntityWireMeasure(Uint8List data) {
       final blen = r.readLeb();
       if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
       final tid = r.refToId[typeRef] ?? 0;
+      if (tid == _kNodeTableId || tid == _kBuildVersionId || tid == _kVocabularyId) return 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
@@ -4887,6 +4894,7 @@ int tableStatWireMeasure(Uint8List data) {
       final blen = r.readLeb();
       if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
       final tid = r.refToId[typeRef] ?? 0;
+      if (tid == _kNodeTableId || tid == _kBuildVersionId || tid == _kVocabularyId) return 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
@@ -5112,6 +5120,7 @@ int tableMixedWireMeasure(Uint8List data) {
       final blen = r.readLeb();
       if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
       final tid = r.refToId[typeRef] ?? 0;
+      if (tid == _kNodeTableId || tid == _kBuildVersionId || tid == _kVocabularyId) return 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {

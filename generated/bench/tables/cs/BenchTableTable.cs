@@ -3414,6 +3414,9 @@ namespace Benchtable
                         while (off < t.Length)
                         {
                             if (!Leb(t, ref off, out ulong reference) || reference == 0 || reference > (ulong)(Ids.Length / 8)) { Damage(); return; }
+                            // A RESERVED ID IS NO RECORD'S TYPE (§3.1, §3.3): the three ids
+                            // the language holds back are damage outside their own transport
+                            if (Read64(Ids, (int)(reference - 1) * 8) >= ulong.MaxValue - 2) { Damage(); return; }
                             if (!Leb(t, ref off, out ulong length) || length > (ulong)(t.Length - off)) { Damage(); return; }
                             off += (int)length; records++;
                         }
@@ -4430,15 +4433,61 @@ namespace Benchtable
             // depth is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth).
             // Callers that omit it start at 0. A nested body, a union arm and a walked
             // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
+            // A SKIPPED PAYLOAD IS HELD TO THE RULES A NAMED READ APPLIES (§3.3, §4):
+            // a nested body's reserved or repeated id, a keyed slot's key, text content,
+            // a float's finiteness and a quantized index, a count past its maximum and a
+            // ranged value past its kind's domain are all refused on the skip path too.
             static bool MessageSkipBody(ref BitReader r, MessageRead d, int depth = 0)
             {
                 if (depth > 128) { return false; }
+                Span<ulong> few = stackalloc ulong[16];
+                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry e)) { return false; }
                     if (reference == 0) { return true; }
+                    if (Reserved(e.Id) || !SeenOnce(few, ref count, ref more, e.Id)) { return false; }
                     if (!MessageSkip(ref r, d, e.Kind, e.Shape, depth)) { return false; }
                 }
+            }
+            // SeenOnce records one id of a body or one key of a keyed array and
+            // answers false on a repeat: an id twice in one body, or a key twice in
+            // one array, is damage whether this reader can name it or not (§3.2, §3.3).
+            // The first ids sit in the caller's stack; a long body spills to a set.
+            static bool SeenOnce(Span<ulong> few, ref int count, ref System.Collections.Generic.HashSet<ulong> more, ulong id)
+            {
+                for (int i = 0; i < count && i < few.Length; i++) { if (few[i] == id) { return false; } }
+                if (count < few.Length) { few[count++] = id; return true; }
+                more ??= new System.Collections.Generic.HashSet<ulong>();
+                count++; return more.Add(id);
+            }
+            // RangedHolds reconstructs a ranged offset from the sender's base and holds
+            // it to its kind's own domain: the offset's bits can spell a value past it.
+            static bool RangedHolds(byte kind, UInt128 baseRaw, UInt128 offset)
+            {
+                int w = Width(kind) * 8;
+                if (w == 0) { return true; }
+                bool signed = Signed(kind);
+                Int128 b = kind >= 18 || signed ? unchecked((Int128)baseRaw) : (Int128)(ulong)baseRaw;
+                if (w == 128)
+                {
+                    if (signed) { return offset <= unchecked((UInt128)Int128.MaxValue - (UInt128)b); }
+                    return b >= 0 ? offset <= UInt128.MaxValue - (UInt128)b : offset >= unchecked((UInt128)0 - (UInt128)b);
+                }
+                // the offset is under 2^64 here, so the sum leaves Int128 only past every bound
+                Int128 v = unchecked(b + (Int128)offset);
+                if (v < b) { return false; }
+                Int128 lo = signed ? -((Int128)1 << (w - 1)) : 0;
+                Int128 hi = signed ? ((Int128)1 << (w - 1)) - 1 : ((Int128)1 << w) - 1;
+                return v >= lo && v <= hi;
+            }
+            // a non-finite float under an entry this reader does not declare refuses
+            // the batch as a named one does; no reader field names it
+            static void NonFiniteSkipped(TableReport report)
+            {
+                if (report.NonFiniteFloat != null) { return; }
+                report.NonFiniteFloat = "";
+                report.NonFiniteReason = "non_finite_float";
             }
             static bool MessageSkip(ref BitReader r, MessageRead d, byte kind, TableMessageShape shape, int depth = 0)
             {
@@ -4455,26 +4504,65 @@ namespace Benchtable
                     case 13: return MessageSkipBody(ref r, d, depth + 1);
                     case 17: return false; // a node reference: no fixed body holds one
                     case 12:
-                        if (!r.Get(BitCount(shape.Max), out UInt128 length) || kind == 12 && !r.Align()) { return false; }
-                        return r.Skip((long)length * (kind == 12 ? 8 : 16));
+                        if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
+                        if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
+                        r.At += (long)length * 8; return true;
                     case 31:
                         return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
                     case 14:
                     case 16:
                         ulong min = kind == 16 ? 0 : shape.Min;
-                        if (!r.Get(BitCount(shape.Max - min), out UInt128 raw) || kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                        if (!r.Get(BitCount(shape.Max - min), out UInt128 raw)) { return false; }
                         ulong n = (ulong)raw + min;
-                        if (Width(shape.Elem) != 0 || shape.Elem == 0 || shape.Elem == 32)
-                        { return r.Skip((long)n * (ValueBits(shape.Elem, shape.Inner) + (kind == 16 ? d.Vocabulary.RefBits : 0))); }
+                        if (n > shape.Max) { return Fail(d.Report, "count_over_bound"); }
+                        if (kind == 14 && shape.Elem == 6 && !r.Align()) { return false; }
+                        // A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC; a float and a
+                        // ranged or quantized element carry a value condition and are
+                        // walked, as is every keyed slot, whose key resolves
+                        int run = -1;
+                        if (kind == 14 && (shape.Elem == 0 || shape.Elem == 32)) { run = 0; }
+                        else if (kind == 14 && shape.Elem != 13 && shape.Elem != 15 && shape.Elem != 17 && shape.Elem != 30)
+                        {
+                            int w = ValueBits(shape.Elem, shape.Inner);
+                            if (w == 0 || w > 0 && shape.Elem != 10 && shape.Elem != 11 && (shape.Inner == null || shape.Inner.Packing == 0)) { run = w; }
+                        }
+                        if (run >= 0) { return run == 0 || n <= (ulong)(long.MaxValue / run) && r.Skip((long)n * run); }
+                        bool nested = shape.Elem == 13 || shape.Elem == 14 || shape.Elem == 15 || shape.Elem == 16 || shape.Elem == 17 || shape.Elem == 30;
+                        Span<ulong> few = stackalloc ulong[16];
+                        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                         for (ulong i = 0; i < n; i++)
                         {
-                            if (kind == 16 && !r.Get(d.Vocabulary.RefBits, out _)) { return false; }
-                            if (shape.Elem == 13 || shape.Elem == 15 || shape.Elem == 17 || shape.Elem == 30)
-                            { if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, depth + 1)) { return false; } }
-                            else { int bits = ValueBits(shape.Elem, shape.Inner); if (bits < 0 || !r.Skip(bits)) { return false; } }
+                            long at = r.At;
+                            if (kind == 16 && (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id))) { return false; }
+                            if (!MessageSkip(ref r, d, shape.Elem, shape.Inner, nested ? depth + 1 : depth)) { return false; }
+                            // an element that consumed no bits is the rest of the run
+                            // too: a remaining count the bits left cannot back is damage
+                            if (r.At == at) { return n - i - 1 <= (ulong)(r.End - r.At); }
                         }
                         return true;
-                    default: return MessageKind(kind) && r.Skip(ValueBits(kind, shape));
+                    case 10:
+                        if (shape.Packing == 2)
+                        {
+                            if (!r.Get(shape.Bits, out UInt128 index) || index > shape.Steps) { return false; }
+                            float normalized = (float)(uint)index / shape.Steps;
+                            if (NonFiniteBits(10, TableFloatToBits(normalized * shape.Delta + shape.QMin))) { NonFiniteSkipped(d.Report); }
+                            return true;
+                        }
+                        if (!r.Get(32, out UInt128 f32)) { return false; }
+                        if (NonFiniteBits(10, (ulong)f32)) { NonFiniteSkipped(d.Report); }
+                        return true;
+                    case 11:
+                        if (!r.Get(64, out UInt128 f64)) { return false; }
+                        if (NonFiniteBits(11, (ulong)f64)) { NonFiniteSkipped(d.Report); }
+                        return true;
+                    default:
+                        if (!MessageKind(kind)) { return false; }
+                        if (MessageNumber(kind) && shape.Packing == 1)
+                        {
+                            if (!r.Get(shape.Bits, out UInt128 offset)) { return false; }
+                            return RangedHolds(kind, shape.Base, offset) || Fail(d.Report, "out_of_range");
+                        }
+                        return r.Skip(ValueBits(kind, shape));
                 }
             }
             static bool MessageCompatible(TableMessageEntry entry, TableFieldInfo f, out bool widened)
@@ -4487,11 +4575,13 @@ namespace Benchtable
             {
                 if (depth > 128) { return false; }
                 if (value != null) { type.Reset(value); }
+                Span<ulong> few = stackalloc ulong[16];
+                int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                 for (; ; )
                 {
                     if (!MessageReference(ref r, d, out ulong reference, out TableMessageEntry entry)) { return false; }
                     if (reference == 0) { return true; }
-                    if (Reserved(entry.Id)) { return false; }
+                    if (Reserved(entry.Id) || !SeenOnce(few, ref count, ref more, entry.Id)) { return false; }
                     TableFieldInfo field = FindField(type, entry.Id);
                     if (field == null)
                     { d.Report.Unknown++; if (!MessageSkip(ref r, d, entry.Kind, entry.Shape, depth)) { return false; } continue; }
@@ -4528,9 +4618,11 @@ namespace Benchtable
                     ulong n = (ulong)raw + shape.Min;
                     if (f.KeyId != null)
                     {
+                        Span<ulong> few = stackalloc ulong[16];
+                        int count = 0; System.Collections.Generic.HashSet<ulong> more = null;
                         for (ulong i = 0; i < n; i++)
                         {
-                            if (!MessageName(ref r, d, out _, out TableMessageEntry key)) { return false; }
+                            if (!MessageName(ref r, d, out _, out TableMessageEntry key) || !SeenOnce(few, ref count, ref more, key.Id)) { return false; }
                             int slot = FindVariant(f, key.Id, true);
                             if (slot == 0) { d.Report.Unknown++; }
                             if (!MessageReadElement(ref r, d, value, f, slot - 1, shape.Elem, shape.Inner, slot != 0, depth)) { return false; }
@@ -9533,7 +9625,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -10068,7 +10160,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;
@@ -12065,7 +12157,7 @@ namespace Benchtable
                 census_unknown = lane.Unknown;
                 census_kind = lane.KindChanged;
             }
-            if (record_bytes <= 8 || rest % record_bytes != 0)
+            if (record_bytes <= 8 || rest % record_bytes != 0 || (rest == 0 && values.Length == 1))
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
                 return -1;

@@ -181,7 +181,7 @@ func scanCSStringLiterals(src string) []csLiteral {
 			}
 		case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
 			i += 2
-			for i+1 < len(src) && !(src[i] == '*' && src[i+1] == '/') {
+			for i+1 < len(src) && (src[i] != '*' || src[i+1] != '/') {
 				i++
 			}
 			if i+1 < len(src) {
@@ -295,7 +295,7 @@ func decodeCSString(raw string) (string, error) {
 			}
 			n, err := strconv.ParseUint(raw[i:j], 16, 32)
 			if err != nil {
-				return "", fmt.Errorf(`bad \x escape: %v`, err)
+				return "", fmt.Errorf(`bad \x escape: %w`, err)
 			}
 			b.WriteRune(rune(n))
 			i = j
@@ -305,7 +305,7 @@ func decodeCSString(raw string) (string, error) {
 			}
 			n, err := strconv.ParseUint(raw[i:i+4], 16, 32)
 			if err != nil {
-				return "", fmt.Errorf(`bad \u escape: %v`, err)
+				return "", fmt.Errorf(`bad \u escape: %w`, err)
 			}
 			b.WriteRune(rune(n))
 			i += 4
@@ -315,7 +315,7 @@ func decodeCSString(raw string) (string, error) {
 			}
 			n, err := strconv.ParseUint(raw[i:i+8], 16, 64)
 			if err != nil {
-				return "", fmt.Errorf(`bad \U escape: %v`, err)
+				return "", fmt.Errorf(`bad \U escape: %w`, err)
 			}
 			b.WriteRune(rune(n))
 			i += 8
