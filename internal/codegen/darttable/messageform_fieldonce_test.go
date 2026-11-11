@@ -403,7 +403,7 @@ func TestDartMessageBodyFieldOnceNegativeControl(t *testing.T) {
 	root, vectors := backendFieldOnceVectors(t, u)
 	body := fieldOnceProbeBody(root, tablewire.Announce(u), vectors)
 	replaced := 0
-	out, err := runBatchProbeWith(t, u, root, body, func(files map[string][]byte) {
+	out, err := runBatchProbe(t, u, root, body, func(files map[string][]byte) {
 		for name, data := range files {
 			n := strings.Count(string(data), "r.seenHasId(named)")
 			if n == 0 {

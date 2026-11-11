@@ -161,9 +161,7 @@ fn fixed_put_bool(out: u8[>..]&, v: bool) {
 // §3: the IEEE-754 bit pattern, no canonicalisation). Float to bits is a
 // `bytes_of` view of a one-element array; bits to float is a verified
 // one-element image through `from_bytes`, which moves the bytes and never
-// converts them, so a signalling NaN and its payload survive. Both are pure
-// Goose: the C sidecar is schema-goose-serialize-vendor's and is not vendored
-// yet.
+// converts them. Both are pure Goose.
 fn fixed_f32_bits(x: f32) -> u32 {
     let a: f32[1] = [x];
     let b = bytes_of(a);

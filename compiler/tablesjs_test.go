@@ -221,6 +221,7 @@ func TestJsModuleScopeScanSeesEveryConvention(t *testing.T) {
 // self-maintaining: a port that adds a module-scope name and forgets to claim
 // it fails here, whatever the name looks like.
 func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
+	t.Parallel()
 	source := runtimeSrc + "\ntable VariableNameProbe | integrity = \"crc32c\" { payload *bytes\n text *string }\n"
 	files, err := New().Generate(unitFromSource(t, source), "js", Options{})
 	if err != nil {
