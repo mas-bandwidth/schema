@@ -116,11 +116,14 @@ an old file, and no write at a fixed root writes it: the plain `<T>Save` of a
 fixed table writes form `3`, the bytes `<T>FixedSave` writes, and so does
 `schema pack`.
 
-**STATUS: EVERY LEG STILL CARRIES THE FORM-`1` PAIR AT A FIXED ROOT.** This is
+**STATUS: EIGHT LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT.** This is
 status, not the rule above. `<T>FixedLoad` refuses form `1` as
-`previous_form` in every leg. Beside it, every leg still emits a form-`1`
-`<T>Save` for a declared fixed table and a `<T>Load` and `ReadStrict` that
-read form `1` there. The tool's engine now writes and reads form `3` at an
+`previous_form` in every leg. Elixir emits the fixed form alone there: its save
+writes form `3`, and its read at that root refuses form `1`. C, C++, C#, Dart,
+Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save` for a declared
+fixed table; Go's plain `<T>Load` and `ReadStrict` already refuse form `1`
+there, while C, C++, C#, Dart, Java, JavaScript and Rust still read form `1`
+through their plain load. The tool's engine now writes and reads form `3` at an
 admitted fixed root; the conformance corpus's historical form-1 fixed-root
 files are now `previous_form` refusal rows that owe `refused`, and its
 fixed-root positives are form `3`. A
@@ -6438,16 +6441,11 @@ slot. Two entries that agree on all three parts are malformed, and both engines
 enforce that at `AnnounceRead` rather than leaving it to a writer's good
 behavior. **An element kind of `12` in an announced array or keyed
 shape is a shape like any other**, and its own shape is the `max` the kind
-names. A text list (§2.13) is a kind `14` array of element kind `12`, so a unit
-that declares one announces one, and an announcement that carried the shape
-would otherwise be refused whole: the unit's own would be (a Go unit with a text
-list refused its own announcement until this rule was written down). The
-element's `max` is the list's `M`, and `0` for the unbounded spelling, the value
-the element record's own `value` entry gives it. Such an element is framed, so
-a skip steps it one element at a time and never by width. A target that does not
-yet carry text lists (§2.13) reads the shape all the same: it can never meet the
-field in a body, because the form is fixed-only (§3.3), and refusing the entry
-would refuse the announcement.
+names. A text list (§2.13) is a VARIABLE-table construct: a fixed table that
+declares one is refused by the compiler (`a text list is a VARIABLE-table
+construct`, §2.2, §11), so the message closure — the fixed tables and the
+records they reach by value — never holds one, and no message vocabulary carries
+its shape.
 
 **THREE PROPERTIES FOLLOW from announcing the unit rather than the message.**
 
@@ -6618,8 +6616,9 @@ The ways a batch is damaged, at bit granularity:
   rule for a file with bytes left over met on a batch.
 - **A BODY THAT IS NOT THE ONE A CONFORMING WRITER EMITS.** A field written at
   the default the writer elides, fields out of the writer's declaration order,
-  or a union written with the None reference (above): the body is damage, and
-  the whole batch is discarded.
+  the same field id twice in one body (last-wins is retired: a repeated field id
+  is damage in every body, this form's included), or a union written with the
+  None reference (above): the body is damage, and the whole batch is discarded.
 
 **ILL-FORMED TEXT IS DAMAGE HERE TOO, and it discards the batch like the rest.** §3's
 one content rule holds unchanged in what it rejects, a kind `12` payload that is
@@ -9141,10 +9140,12 @@ that replays it:
    The capacity rule itself is held by each engine's own retain gate, where
    the buffer is pinned one byte short of the last record.
 4. **`LoadMeasure` holds the two implications and never asks past a stated
-   bound.** Within the leg, a measure refusal implies a `Load` refusal, and a
-   `Load` acceptance implies a measure acceptance whose size the `Load` fits
-   in; the measure's verdict and size are never compared across legs, because
-   storage layouts differ by language. Within the leg, the answer may not exceed the most the framing
+   bound.** A measure is a FRAMING bound and not a verdict: it may answer a size
+   for input the `Load` refuses, because the `Load` also refuses conditions the
+   framing walk never reads. Within the leg, a measure refusal implies a `Load`
+   refusal, and a `Load` acceptance implies a measure acceptance whose size the
+   `Load` fits in; the measure's verdict and size are never compared across
+   legs, because storage layouts differ by language. Within the leg, the answer may not exceed the most the framing
    could have commanded, which is one unit of the leg's largest storage per TWO
    wire bytes (a map entry's `L` and its terminator is the smallest wire
    footprint that commands one storage unit), and the leg's own `Load` fills
@@ -9927,14 +9928,16 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   every declaration condition are the `Load`'s to refuse;
   a measure that answered a size for such a wire has sized a region the caller
   pays for and the `Load` does not fill.
-- **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
-  refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
-  a null beside a value of it (§7, §19.2), and a call that answers `-1`
-  answers the same way, as an
-  enum out-parameter; the spellings are recommended, not compared (above). One enum covers
-  both, because a caller asking "why can I not have this file" is asking one
-  question whichever call refused it, and two enums would be two vocabularies
-  for one answer in nine ports. **The enum's rule is §7's**, one value per
+- **A `-1` CARRIES A REASON, and the reference spells it with the
+  accelerators' recommended vocabulary: `TableRefuseReason`** (§7, §11). `Open`
+  and `BlockOpen` answer a null beside a value of it (§7, §19.2), and a call
+  that answers `-1` answers the same way, as an
+  enum out-parameter; the vocabulary is RECOMMENDED and per-language, not
+  compared (above). The reference uses one vocabulary for both calls, because a
+  caller asking "why can I not have this file" is asking one question whichever
+  call refused it; a port may spell the names differently or not at all, since
+  the verdict, not the name, is the contract (§6.5's refusal-verdict-only
+  ruling). **The vocabulary's rule is §7's**, one value per
   clause with nothing invented and nothing hiding behind another value, so what
   this side adds is one value per refusal it distinguishes:
 
@@ -10011,7 +10014,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   <!-- refusal-names:end -->
 
   **THE TABLE IS THE RECOMMENDED VOCABULARY, NOT A CONTRACT.**
-  `TableRefuseReason` is the reference's closed enum, shared by its load,
+  `TableRefuseReason` is the reference's own vocabulary, shared by its load,
   measure, cook, fixed-form, message and text paths, and a port is RECOMMENDED
   to spell the same members in its own idiom so its diagnostics read alike.
   Which member a read names is per-language detail (§6.5's contract, above):
@@ -10391,11 +10394,13 @@ and the multiple grows only because the record does: the plain `Load` skips the
 whole field by its outer framing, so its own cost barely moves between the two
 depths and the multiple is the record's size read against a flat denominator.
 
-**The walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies.** A
+**The walk's nesting cap is 128 nested bodies, §4's one binary bound.** A
 retained record's inner nesting is the WRITER's and not this build's, so it is
 the one depth on this path a file can drive, and a record past the cap is
-dropped on the same rule as any other shape the walk cannot take. It bounds the
-recursion and nothing else: with the walk linear, no cost rests on it.
+dropped on the same rule as any other shape the walk cannot take. The cap is
+§4's `binary_max_depth` and not a smaller constant of its own, because a
+conforming file may nest to 128. It bounds the recursion and nothing else: with
+the walk linear, no cost rests on it.
 
 **A retained record is READER-PRIVATE.** It is not a wire form: it has no form
 byte, no version, no declared byte order, and nothing ever writes one to disk
@@ -15660,9 +15665,9 @@ its storage comes from (§6.5):
 SceneFromJson( builder, text, text_bytes, &report );
 ```
 
-**Backend status for this section: the FIXED class in all nine — C++, C, C#,
-Dart, Elixir, Go, Java, JavaScript and Rust — and the VARIABLE class in C and
-C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
+**Backend status for this section: the FIXED class in every table backend —
+C++, C, C#, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, MOO,
+Rust and Squirrel — and the VARIABLE class in C and C++ (§16.7).** A pointered unit's text form reads through the builder. In C#, Dart,
 Elixir, Go, Java, JavaScript and Rust the absence is already made one level
 up: a
 pointered unit gets no table source at all (§11), so it has no text form for
@@ -15719,8 +15724,9 @@ gated on LIVE BYTES, which answers "does this leak", and a formatter that
 allocated and freed the same bytes every iteration read +0 there for an hour.
 The count is what the claim is about.
 
-**ELIXIR HAS NO WALK TO MEASURE**: it emits no text form and no table wire
-(schema#515), so the claim above is not one its leg makes or fails. The readers'
+**ELIXIR HAS A WALK TO MEASURE**: it emits the text form and both table wires
+(form `1` and form `3`), and its BEAM walk allocates, so the zero-allocation
+claim above is Rust's and not one Elixir's leg makes. The readers'
 fuzz oracle, `make tables-elixir-fuzz`, takes `SEED=` and
 `ELIXIR_FUZZ_N=` as every other leg's does and prints the seed it ran, so a
 find reproduces from its own output; its negative control removes both extent
@@ -16025,6 +16031,15 @@ written as something else.
   names** — refused by the NAME, not by a bound, so a vocabulary that
   disagrees with its own extent cannot slip through as a placeholder.
 - **A union tag outside its arm range.**
+- **A ranged integer, or a `fixed`/`ufixed` raw value, off its `min`/`max`** —
+  `invalid_value` (docs/SPEC.md §5.1 row 1).
+- **A `bits(N)` value wider than `N` bits** — `invalid_value` (§5.1 row 2).
+- **A counted array's count past its `Max` or below its `Min`** —
+  `invalid_value` (§5.1 row 3).
+- **A `string(N)` or `bytes(N)` length past `N`** — `invalid_value` (§5.1
+  row 4).
+- **A compressed or ranged float off its range** — `invalid_value` (§5.1
+  row 10).
 - **A graph nested past 128** (§16.2): the writer carries the reader's depth
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
@@ -17024,8 +17039,8 @@ tool's engine (`internal/tabletext`) and the generated Go walk (`tableJsonIn`).
 The layer is a leading byte-order mark if there is one, then ONE whole value
 under RFC 8259's grammar, then whitespace, then the end of the input, under the
 caps both walks carry: depth 128 and a key of 255 bytes. A number token has no
-length limit in the verdict; a walk's token cap (511 bytes in Go) is a caller
-resource limit, outside the verdict contract (§6.5). **The table walk above it is not ruled here**: its refusals (§16.2)
+length limit in the verdict, and NO LEG MAY CAP IT: no number-length limit is
+part of the verdict contract (§6.5, §16.2). **The table walk above it is not ruled here**: its refusals (§16.2)
 decide whether an accepted value lands in a field, and they never turn a
 refusal into an acceptance.
 
@@ -17077,16 +17092,16 @@ verdict.
 | `n_object_trailing_comment.json` | accept (dialect) | a `/* */` comment, accepted on read for hand-edited texts and never written (§16.2) |
 | `n_object_trailing_comment_slash_open.json` | accept (dialect) | a `//` comment that runs to the end of input, accepted on read and never written (§16.2) |
 | `n_structure_object_with_comment.json` | accept (dialect) | a `/* */` comment between a key and its value, accepted on read and never written (§16.2) |
-| `i_number_double_huge_neg_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_neg_int_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_pos_double_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_real_neg_overflow.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_real_pos_overflow.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_double_huge_neg_exp.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_huge_exp.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_neg_int_huge_exp.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_pos_double_huge_exp.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_real_neg_overflow.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_real_pos_overflow.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
 | `i_number_real_underflow.json` | accept | lands as the correctly rounded value, zero or a subnormal (§16.2) |
-| `i_number_too_big_neg_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_too_big_pos_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_very_big_negative_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_too_big_neg_int.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_too_big_pos_int.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_very_big_negative_int.json` | accept | no number-length limit is part of the verdict, and no leg may cap a number token (§6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
 | `i_string_UTF-8_invalid_sequence.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
 | `i_string_UTF8_surrogate_U+D800.json` | refuse | `string_not_utf8`: a surrogate encoded as UTF-8 bytes is not well-formed UTF-8 (§16.3) |
 | `i_string_invalid_utf-8.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
@@ -17364,12 +17379,19 @@ that writer does, so where this text and the reference disagree, the
 disagreement is a defect in one of them and is fixed, not tolerated.
 
 **W0. The result is the whole text or nothing.** Every refusal is decided
-before a byte is handed back — §16.3's list, a deprecated enum variant
-(§2.15), a `required` value outside its declared range (§2.3), a text list
-past its declared total (§2.13), a table value past the depth cap (W2), and
-STORAGE THAT IS NOT TEXT, `invalid_value`: a string holding ill-formed
-UTF-8 (W8), which is refused
-and never replaced: the write returns `-1`, measure returns
+before a byte is handed back: §16.3's list, which is every row docs/SPEC.md
+§5.1 lists for the text writer — a ranged integer or a `fixed`/`ufixed` raw
+value off its `min`/`max`, a `bits(N)` value wider than `N` bits, a counted
+array's count past its `Max` or below its `Min`, a `string(N)` or `bytes(N)`
+length past `N`, an enum ordinal outside its variant set, a union tag outside
+its arm set, a NaN or an infinity, ill-formed text, a flags bit no variant
+names, and a compressed or ranged float off its range — and, beside those rows,
+a deprecated enum variant (§2.15), a `required` value outside its declared range
+(§2.3), a text list past its declared total (§2.13), a table value past the
+depth cap (W2), a blob named from two slots (`blob_shared`, §2.5), a `&node`
+definition that would hold no field (§16.3), and STORAGE THAT IS NOT TEXT,
+`invalid_value`: a string holding ill-formed UTF-8 (W8). Each is refused and
+never replaced: the write returns `-1`, measure returns
 `-1`, and no prefix of a text is ever a result. A ZERO BYTE IS NOT
 ILL-FORMED HERE: W8 spells it `\u0000`, because JSON has a spelling for it.
 The binary writers' rule is docs/SPEC.md §5.1 row 8, where a zero byte

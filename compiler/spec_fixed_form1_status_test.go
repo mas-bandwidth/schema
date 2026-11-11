@@ -44,10 +44,10 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 				"`ReadStrict`",
 				"the retain load",
 				"`schema pack`",
-				"STATUS: SEVEN LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
-				"Dart and Elixir emit the fixed form alone",
-				"C, C++, C#, Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save`",
-				"C, C++, C#, Java, JavaScript and Rust still read form `1`",
+				"STATUS: EIGHT LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
+				"Elixir emits the fixed form alone",
+				"C, C++, C#, Dart, Go, Java, JavaScript and Rust still emit a form-`1` `<T>Save`",
+				"C, C++, C#, Dart, Java, JavaScript and Rust still read form `1`",
 				"This is status, not the",
 				"<T>Save",
 				"<T>Load",
@@ -59,7 +59,9 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 				"GO STATUS",
 				"SCHEDULED FOR REMOVAL once form `3` lands",
 				"STATUS: SIX LEGS STILL WRITE FORM `1`",
+				"STATUS: SEVEN LEGS STILL WRITE FORM `1`",
 				"Dart, Elixir and Rust emit the fixed form alone",
+				"Dart and Elixir emit the fixed form alone",
 			},
 		},
 		{
@@ -93,7 +95,7 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 			t.Parallel()
 			text := flat(r.text)
 			for _, want := range r.wants {
-				if !strings.Contains(text, want) {
+				if !strings.Contains(text, flat(want)) {
 					t.Errorf("%s: the section no longer states %q", r.row, want)
 				}
 			}
