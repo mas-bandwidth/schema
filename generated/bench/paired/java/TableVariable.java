@@ -950,6 +950,13 @@ public final class TableVariable {
                     recBlob = java.util.Arrays.copyOf(recBlob, n * 2);
                 }
                 long typeId = ids[(int) ref - 1];
+                // A RESERVED ID IN A RECORD'S TYPE POSITION IS DAMAGE
+                // (docs/SPEC-TABLES.md §3.1): the node table, build-version
+                // and message-vocabulary ids belong to their own transports,
+                // never to a record's type.
+                if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
+                    return DAMAGED;
+                }
                 recStart[n] = at;
                 recEnd[n] = at + (int) length;
                 recBlob[n] = typeId == BYTES_ID || typeId == STRING_ID;
@@ -1805,6 +1812,14 @@ public final class TableVariable {
             }
             long typeId = r.resolve(ref);
             if (r.fail) {
+                r.report.damaged = true;
+                return null;
+            }
+            // A RESERVED ID IN A RECORD'S TYPE POSITION IS DAMAGE
+            // (docs/SPEC-TABLES.md §3.1): the node table, build-version and
+            // message-vocabulary ids belong to their own transports, never to
+            // a record's type.
+            if (typeId == NODE_ID || typeId == BUILD_ID || typeId == VOCAB_ID) {
                 r.report.damaged = true;
                 return null;
             }

@@ -90,6 +90,13 @@ public final class MixedHitEventFixed {
             }
             v.hitKind = (int) (q);
         }
-        v.crit = b[at + 12] != 0;
+        {
+            long q = (b[at + 12] & 0xFF);
+            if (q > 1L) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+                return;
+            }
+            v.crit = q != 0;
+        }
     }
 }
