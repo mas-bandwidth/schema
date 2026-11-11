@@ -2433,3 +2433,36 @@ test-java: conformance-java-framing
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-java/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# Java's write-side storage checks are assertions (docs/SPEC.md §5.1).
+# The driver exercises both message entry points with -ea; the negative
+# control removes the generated count assert and requires the gate to go red.
+STORAGE_DEBUG_JAVA := build/storage-debug-java
+.PHONY: write-refusal-storage-debug-java write-refusal-storage-debug-java-negative-control
+write-refusal-storage-debug-java: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/java/StorageDebug.java
+	@rm -rf $(STORAGE_DEBUG_JAVA) && mkdir -p $(STORAGE_DEBUG_JAVA)/generated $(STORAGE_DEBUG_JAVA)/classes
+	./bin/schema generate --lang java --out $(STORAGE_DEBUG_JAVA)/generated $(STORAGE_RELEASE_SCHEMA)
+	$(JAVAC) --release 17 -nowarn -d $(STORAGE_DEBUG_JAVA)/classes \
+		$(STORAGE_DEBUG_JAVA)/generated/*.java test/conformance/java/StorageDebug.java
+	$(JAVA) -ea -cp $(STORAGE_DEBUG_JAVA)/classes StorageDebug
+
+write-refusal-storage-debug-java-negative-control: bin/schema $(STORAGE_RELEASE_SCHEMA) test/conformance/java/StorageDebug.java
+	@rm -rf $(STORAGE_DEBUG_JAVA)-negative && mkdir -p $(STORAGE_DEBUG_JAVA)-negative/generated $(STORAGE_DEBUG_JAVA)-negative/classes
+	./bin/schema generate --lang java --out $(STORAGE_DEBUG_JAVA)-negative/generated $(STORAGE_RELEASE_SCHEMA)
+	@sed -i.bak 's/assert v.itemsCount >= 0 \&\& v.itemsCount <= 8;/assert true; \/\/ SABOTAGED/g' \
+		$(STORAGE_DEBUG_JAVA)-negative/generated/RootMessage.java
+	@grep -q 'SABOTAGED' $(STORAGE_DEBUG_JAVA)-negative/generated/RootMessage.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the storage assert sabotage did not apply"; exit 1; }
+	$(JAVAC) --release 17 -nowarn -d $(STORAGE_DEBUG_JAVA)-negative/classes \
+		$(STORAGE_DEBUG_JAVA)-negative/generated/*.java test/conformance/java/StorageDebug.java
+	@if $(JAVA) -ea -cp $(STORAGE_DEBUG_JAVA)-negative/classes StorageDebug > $(STORAGE_DEBUG_JAVA)-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the debug gate passed with the count assert removed"; \
+		cat $(STORAGE_DEBUG_JAVA)-negative/log; exit 1; \
+	fi
+	@grep -q 'FAIL storage debug: count' $(STORAGE_DEBUG_JAVA)-negative/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for another reason"; \
+		  cat $(STORAGE_DEBUG_JAVA)-negative/log; exit 1; }
+	@grep -m1 'FAIL storage debug: count' $(STORAGE_DEBUG_JAVA)-negative/log
+	@echo "negative control: removing the Java storage assert turns the debug gate RED"
+
+test-java: write-refusal-storage-debug-java write-refusal-storage-debug-java-negative-control

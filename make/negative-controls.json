@@ -2999,6 +2999,15 @@
       "rust": "stable"
     },
     {
+      "name": "write-refusal-storage-debug-java",
+      "when": "pull-request",
+      "why": "the Java debug storage gate (docs/SPEC.md §5.1): it generates a table unit, runs the message writer with -ea, and requires an overlong count and length to assert. The control strips the generated count assert and requires the gate to go red. One small javac and java run.",
+      "targets": [
+        "write-refusal-storage-debug-java-negative-control"
+      ],
+      "java": "21"
+    },
+    {
       "name": "write-refusal-storage-release-dart",
       "when": "pull-request",
       "why": "the Dart release storage gate (docs/SPEC.md §5.1): it generates a small table unit, compiles the cook writer AOT, and requires a count past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small Dart compile.",
