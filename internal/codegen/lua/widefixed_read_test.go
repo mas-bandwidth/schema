@@ -18,11 +18,13 @@ import (
 // (SPEC §4.3, §4.6).
 func TestLuaTypeWireWideFixedRoundTrip(t *testing.T) {
 	t.Parallel()
+	// I + F must equal a storage width (SPEC §4.6): 70 + 58 and 100 + 28
+	// both make the 128-bit storage this case pins.
 	schema := []byte(`package widefixed
 type WideFixedRT
 {
-    s fixed(120, 8) | min = -1000, max = 1000
-    u ufixed(124, 4) | min = 0, max = 100000
+    s fixed(70, 58) | min = -1000, max = 1000
+    u ufixed(100, 28) | min = 0, max = 100000
 }
 `)
 	path := filepath.Join(t.TempDir(), "WideFixed.schema")
@@ -63,8 +65,8 @@ type WideFixedRT
 		{"max", 1000, 100000},
 	}
 	for _, sc := range scenarios {
-		sRaw := Int128Literal(new(big.Int).Lsh(big.NewInt(sc.s), 8))
-		uRaw := Int128Literal(new(big.Int).Lsh(big.NewInt(sc.u), 4))
+		sRaw := Int128Literal(new(big.Int).Lsh(big.NewInt(sc.s), 58))
+		uRaw := Int128Literal(new(big.Int).Lsh(big.NewInt(sc.u), 28))
 		fmt.Fprintf(&probe, "check(%q, %s, %s)\n", sc.name, sRaw, uRaw)
 	}
 
