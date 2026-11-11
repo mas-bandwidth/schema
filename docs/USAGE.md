@@ -4582,7 +4582,7 @@ func main() {
     if !loaded.Init() { panic("builder allocation failed") }
     defer loaded.Shutdown()
     var report graphdemo.TableReport
-    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Malformed {
+    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Err() != nil {
         panic("load failed")
     }
     if !loaded.Lock() { panic("packing failed") }
