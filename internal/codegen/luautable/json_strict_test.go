@@ -23,9 +23,10 @@ import (
 // TEXT READ COUNTS A MISSING REQUIRED FIELD AS THE BINARY READ DOES (§2.3):
 // J.FromJson refuses with one named reason and no value every read that
 // crosses a meaning boundary (malformed, missing_required, blob_shared,
-// out_of_range, kind_mismatch, duplicate), while unknown and widened alone
-// are counted and the read succeeds. The verdict — the whole value or a
-// refusal — is the cross-language contract; why a read refused is
+// out_of_range, kind_mismatch, non_finite_float), while unknown and widened
+// alone are counted and the read succeeds; a repeated key, keyed slot or map
+// key is damage and is refused as malformed (§6.5). The verdict — the whole
+// value or a refusal — is the cross-language contract; why a read refused is
 // per-language diagnostic detail and is not compared (§6.5,
 // docs/rulings.json refusal-verdict-only). Every answer is compared with
 // schema-go's generated <T>FromJSON over the same unit and the same text,
