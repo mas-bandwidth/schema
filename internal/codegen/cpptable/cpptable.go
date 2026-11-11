@@ -2285,16 +2285,36 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	adj := make([][]int, n)
 	indeg := make([]int, n)
 	for i, st := range tables {
-		for _, f := range st.Fields {
+		seenEdge := map[int]bool{}
+		edge := func(name string) {
+			if j, ok := byName[name]; ok && j != i && !seenEdge[j] {
+				seenEdge[j] = true
+				adj[j] = append(adj[j], i)
+				indeg[i]++
+			}
+		}
+		seenUnion := map[*ir.Union]bool{}
+		var walkField func(*ir.Field)
+		var walkUnion func(*ir.Union)
+		walkUnion = func(un *ir.Union) {
+			if seenUnion[un] {
+				return
+			}
+			seenUnion[un] = true
+			for _, v := range un.Variants {
+				if !v.Void() {
+					walkField(v.F)
+				}
+			}
+		}
+		walkField = func(f *ir.Field) {
+			if f.IsMap() {
+				edge(f.MapEntry.Name)
+				return
+			}
 			// Pointer storage is TableRef, so the target is not a by-value dependency.
 			if f.Type.Kind != ir.TNamed || f.Type.Pointer {
-				continue
-			}
-			edge := func(name string) {
-				if j, ok := byName[name]; ok && j != i {
-					adj[j] = append(adj[j], i)
-					indeg[i]++
-				}
+				return
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Struct:
@@ -2302,14 +2322,13 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 					edge(ref.Name)
 				}
 			case *ir.Union:
-				// a table-armed union is emitted just before its holder, so the
-				// holder follows every same-file table an arm names (§2.6)
-				for _, v := range ref.Variants {
-					if v.Ref != nil && v.Ref.IsTable {
-						edge(v.Type)
-					}
-				}
+				// walk nested union arms transitively so every same-file table
+				// reached by value precedes its holder regardless of depth (§2.6)
+				walkUnion(ref)
 			}
+		}
+		for _, f := range st.Fields {
+			walkField(f)
 		}
 	}
 	order := make([]*ir.Struct, 0, n)

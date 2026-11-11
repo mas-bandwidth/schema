@@ -260,6 +260,25 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		return
 	}
 	seen[st.Name] = true
+	seenUnion := map[*ir.Union]bool{}
+	var walkUnion func(*ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue // a payload-free or scalar arm names no composite type (§2.6)
+			}
+			switch r := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				fixedCollectTypes(r, seen, order)
+			case *ir.Union:
+				walkUnion(r)
+			}
+		}
+	}
 	for _, f := range st.Fields {
 		if f.Type.Kind != ir.TNamed {
 			continue
@@ -268,14 +287,7 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		case *ir.Struct:
 			fixedCollectTypes(r, seen, order)
 		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a payload-free arm names no type (§2.6)
-				}
-				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-					fixedCollectTypes(s, seen, order)
-				}
-			}
+			walkUnion(r)
 		}
 	}
 	*order = append(*order, st)
