@@ -47,26 +47,6 @@ import (
 	"testing"
 )
 
-const deadCWideSrc = `package probe
-
-table Note
-{
-    title wstring(4)
-    tally int32
-}
-`
-
-// the nearest neighbour: kind 12 where the fixture above spells kind 33, and
-// nothing else moved.
-const deadCNarrowSrc = `package probe
-
-table Note
-{
-    title string(4)
-    tally int32
-}
-`
-
 // A fixed table: the message form, whose f32-shaped entry the float rung
 // reads, is a fixed table's (docs/SPEC-TABLES.md §3.3).
 const deadCF64Src = `package probe
@@ -137,8 +117,6 @@ table Note
 `
 
 var (
-	// the three kind 33 helpers, by name.
-	deadCWideSymbols = []string{"table_wire_utf16_unit", "table_wire_utf16(", "table_wire_utf16_clamp"}
 	// the byte buffer's own surface: the views, the reserved ids, the read
 	// accessors and the blob node type.
 	deadCBlobSymbols = []string{
