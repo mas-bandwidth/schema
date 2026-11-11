@@ -105,6 +105,8 @@ Uint8List body(int bits) {
  return Uint8List.sublistView(wire,0,writer.bits>>3);
 }
 void main() {
+ final vocab=m.TableVocabulary(entries:List<m.TableMessageEntry>.generate(4096,(i)=>m.TableMessageEntry(0,0)));
+ check(m.announceRead(vocab,m.tableAnnouncement,m.TableReport()),'the announcement');
  // EVERY FINITE PATTERN rides bit for bit: -0, the smallest and the largest
  // subnormal, and ordinary values, through the block read and the message
  // form both ways. A nonzero default keeps -0 on the wire (§3).
@@ -113,7 +115,7 @@ void main() {
   final row=b.CellRow(data,0);
   check(raw(row.value)==bits,'block changed $bits');
   check(row.nonFiniteFloat.isEmpty,'block latched a finite $bits');
-  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits));
+  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits))..vocabulary=vocab;
   final value=m.Cell();
   check(m.cellLoadMessageBody(reader,value),'message load refused $bits');
   check(raw(value.value)==bits,'message load changed $bits');
@@ -135,7 +137,7 @@ void main() {
   final row=b.CellRow(data,0);
   check(row.value==0.0,'block returned the non-finite $bits');
   check(row.nonFiniteFloat=='Cell.value','block did not latch the non-finite $bits: "${row.nonFiniteFloat}"');
-  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits));
+  final reader=m.TableMessageReader()..bits=m.TableBitReader(body(bits))..vocabulary=vocab;
   check(!m.cellLoadMessageBody(reader,m.Cell()),'message load kept the non-finite $bits');
   check(reader.report.reason=='non_finite_float: Cell.value','message load reason for $bits: "${reader.report.reason}"');
  }

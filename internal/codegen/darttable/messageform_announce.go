@@ -121,6 +121,10 @@ class TableMessageEntry {
   /// The entry's wire bytes, its triple's identity: §3.3 lets one NAME appear
   /// at two shapes, so a repeated entry is the same bytes and not the same id.
   final Uint8List signature;
+  /// The decoded shape, resolved once when a batch opens (the runtime's own
+  /// shape type): a body read spends no allocation on the facts its entry
+  /// already carries.
+  dynamic shape;
   TableMessageEntry(this.id, this.kind, [Uint8List? signature])
       : signature = signature ?? Uint8List(0);
 }
