@@ -46,6 +46,13 @@ var schemaFieldCallableSuffixes = map[string]bool{
 	"TextAt": true, "Append": true, "AppendAbsent": true,
 }
 
+var schemaTableAPIDeclarations = map[string]bool{
+	"FixedPlanMax":       true,
+	"LoadRetainBuilder":  true,
+	"SaveRetainMessages": true, "LoadRetainMessages": true,
+	"LoadRetain": true, "MeasureRetain": true, "SaveRetain": true,
+}
+
 // schemaAPIEntries recognizes only table-rooted callable names the emitter
 // defines. The roots come from declared schema tables after Go escaping; the
 // suffixes are the generated table API, not arbitrary names with a table-like
@@ -59,6 +66,9 @@ func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 		}
 		root := goname.Initialisms(st.Name)
 		for suffix := range schemaCallableSuffixes {
+			candidates[root+suffix] = true
+		}
+		for suffix := range schemaTableAPIDeclarations {
 			candidates[root+suffix] = true
 		}
 		for _, f := range st.Fields {
@@ -79,12 +89,26 @@ func schemaAPIEntries(u *ir.Unit, files map[string][]byte) map[string]bool {
 			continue // the pruner reports the contextual parse error
 		}
 		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv != nil {
-				continue
-			}
-			if candidates[fn.Name.Name] {
-				entries[fn.Name.Name] = true
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				if decl.Recv == nil && candidates[decl.Name.Name] {
+					entries[decl.Name.Name] = true
+				}
+			case *ast.GenDecl:
+				for _, spec := range decl.Specs {
+					switch spec := spec.(type) {
+					case *ast.TypeSpec:
+						if candidates[spec.Name.Name] {
+							entries[spec.Name.Name] = true
+						}
+					case *ast.ValueSpec:
+						for _, name := range spec.Names {
+							if candidates[name.Name] {
+								entries[name.Name] = true
+							}
+						}
+					}
+				}
 			}
 		}
 	}

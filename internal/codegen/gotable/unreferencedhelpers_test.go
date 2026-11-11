@@ -175,11 +175,24 @@ func TestLowercaseEntryPoints(t *testing.T) {
     _ = lowerEditTextForm
     _ = lowerOpen
     _ = lowerAt
-    _ = lowerBlockOpen
-    _ = lowerBlockBegin
-    _ = lowerBlockBytes
 }
 `)
+	t.Run("block lowercase root", func(t *testing.T) {
+		t.Parallel()
+		u := unitFrom(t, `package probe
+table blocklower | forms = "wire,block" {
+    values [4]int32
+}
+`)
+		assertCompiles(t, u, DefaultSurfaces(), `package probe
+import "testing"
+func TestBlockEntryPoints(t *testing.T) {
+    _ = blocklowerBlockOpen
+    _ = blocklowerBlockBegin
+    _ = blocklowerBlockBytes
+}
+`)
+	})
 }
 
 func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
@@ -289,9 +302,9 @@ func rootedTopLevelDeclarations(t *testing.T, files map[string][]byte, roots [][
 				if !strings.HasPrefix(name, from) {
 					continue
 				}
-				if kind == "const" && strings.HasSuffix(name, "LoadRetainBuilder") || kind == "func" && strings.HasSuffix(name, "MeasureBodyRetain") {
-					// retain.go emits a refusal-reason constant and a recursive
-					// retained-child measurement worker; neither is a table API.
+				if kind == "func" && strings.HasSuffix(name, "MeasureBodyRetain") {
+					// retain.go emits this recursive retained-child measurement
+					// worker; the table's retain entry points are checked below.
 					return
 				}
 				target := to + strings.TrimPrefix(name, from)
