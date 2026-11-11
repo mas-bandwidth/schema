@@ -1387,13 +1387,6 @@ local function armAt(t: any, ref: number): any
 	return e
 end
 
-local function index(t: any): (number, boolean)
-	if t.indexBits <= 0 then
-		return 0, false
-	end
-	return get(t.r, t.indexBits)
-end
-
 -- the bits one element of an array occupies where that is one number, -1
 -- where each must be walked (elementRunBits)
 local function runBits(kind: number, elem: number, inner: any): number
@@ -1406,7 +1399,44 @@ local function runBits(kind: number, elem: number, inner: any): number
 	if elem == 0 or elem == 32 then
 		return 0
 	end
-	return valueBits(elem, inner or {})
+	local s = inner or {}
+	local width = valueBits(elem, s)
+	-- A FLOAT AND A RANGED OR QUANTIZED ELEMENT CARRY A VALUE CONDITION
+	-- (§3.3, §4), so they are walked through skipEntry, never multiplied
+	if width > 0 and (elem == 10 or elem == 11 or s.packing == 1 or s.packing == 2) then
+		return -1
+	end
+	return width
+end
+
+-- rangedHolds: a ranged integer reconstructed from the sender's base and
+-- the wire's offset is inside its kind's own domain (skipRanged, kindHolds).
+-- The sum is taken in five limbs, so a value past 128 bits is seen too.
+local function rangedHolds(kind: number, base: { number }?, offset: { number }): boolean
+	local w = kindWidth(kind) * 8
+	if w == 0 then
+		return true
+	end
+	local b = base or { 0, 0, 0, 0 }
+	local signed = V.signedKind(kind)
+	local fill = if signed and b[4] >= 2147483648 then 4294967295 else 0
+	local sum = table.create(5, 0)
+	local carry = 0
+	for i = 1, 5 do
+		local x = (if i <= 4 then offset[i] else 0) + (if i <= 4 then b[i] else fill) + carry
+		sum[i] = x % TWO32
+		carry = x // TWO32
+	end
+	local function bitAt(k: number): number
+		return (sum[k // 32 + 1] // 2 ^ (k % 32)) % 2
+	end
+	local want = if signed then bitAt(w - 1) else 0
+	for k = w, 159 do
+		if bitAt(k) ~= want then
+			return false
+		end
+	end
+	return true
 end
 
 local function skipRun(r: any, n: number, width: number): boolean
@@ -1416,7 +1446,10 @@ local function skipRun(r: any, n: number, width: number): boolean
 	return skipBits(r, n * width)
 end
 
+-- skipBody walks a nested body it cannot name under the body rules a named
+-- body keeps: a reserved id is damage and a field id twice is damage (§3.3)
 local function skipBody(t: any): boolean
+	local seen: { [string]: boolean } = {}
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -1426,7 +1459,12 @@ local function skipBody(t: any): boolean
 			return true
 		end
 		local e = entryAt(t, ref)
-		if e == nil or not skipEntry(t, e.kind, e.shape) then
+		if e == nil or reserved(e.id) or seen[e.id] then
+			t.report.damaged = true
+			return false
+		end
+		seen[e.id] = true
+		if not skipEntry(t, e.kind, e.shape) then
 			return false
 		end
 	end
@@ -1461,14 +1499,22 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 	elseif kind == 13 then
 		return skipBody(t)
 	elseif kind == 17 then
-		local _, ok = index(t)
-		return ok
+		-- A FIXED ROOT NUMBERS NO NODE, so a node index has no width to be
+		-- stepped over at: an entry of kind 17 in its batch is damage (§3.1)
+		return false
 	elseif kind == 12 then
 		local n, ok = get(r, bitsReq(0, shape.max))
-		if not ok or not ralign(r) then
+		if not ok or not ralign(r) or not has(r, n * 8) then
 			return false
 		end
-		return skipBits(r, n * 8)
+		-- ILL-FORMED TEXT IS DAMAGE ON THE SKIP PATH TOO (§3.3, §4)
+		local at = r.base + r.off // 8
+		r.off += n * 8
+		if not V.utf8(r.b, at, n) then
+			t.report.damaged = true
+			return false
+		end
+		return true
 	elseif kind == 31 then
 		if not ralign(r) then
 			return false
@@ -1494,6 +1540,11 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 				n += shape.min
 			end
 		end
+		-- THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED MAXIMUM, and a
+		-- count above it is refused here as at a named field (§3.3)
+		if n > shape.max then
+			return refuseRead(t, "count_over_bound")
+		end
 		if aligns(kind, shape) and not ralign(r) then
 			return false
 		end
@@ -1502,13 +1553,26 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		if run >= 0 then
 			return skipRun(r, n, run)
 		end
+		local keys: { [string]: boolean } = {}
 		for i = 1, n do
 			local at = r.off
 			if kind == 16 then
-				local _, ok = reference(t)
+				-- A KEYED SLOT'S KEY IS RESOLVED AS A NAME, AND A KEY TWICE
+				-- IN ONE ARRAY IS DAMAGE (§3.2, §3.3)
+				local ref, ok = reference(t)
 				if not ok then
+					t.report.damaged = true
 					return false
 				end
+				local key = nameAt(t, ref)
+				if key == nil then
+					return false
+				end
+				if keys[key.id] then
+					t.report.damaged = true
+					return false
+				end
+				keys[key.id] = true
 			end
 			if not skipEntry(t, shape.elem, inner) then
 				return false
@@ -1522,10 +1586,55 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 			end
 		end
 		return true
+	elseif kind == 10 then
+		-- A FLOAT IS HELD FINITE AND A QUANTIZED INDEX TO ITS COUNT on the
+		-- skip path as on a named read (float32Wire, §3.3)
+		local bits: number
+		if shape.packing == 2 then
+			local index, ok = get(r, shape.bits)
+			if not ok or shape.count == nil or index > shape.count then
+				t.report.damaged = true
+				return false
+			end
+			local normalized = Fl.fdiv(Fl.fromUint(index), Fl.fromUint(shape.count))
+			bits = Fl.fadd(Fl.fmul(normalized, shape.delta), shape.qmin)
+		else
+			local raw, ok = get(r, 32)
+			if not ok then
+				return false
+			end
+			bits = raw
+		end
+		if not V.finite32(bits) then
+			t.report.nonFinite += 1
+		end
+		return true
+	elseif kind == 11 then
+		local lo, ok1 = get(r, 32)
+		local hi, ok2 = get(r, 32)
+		if not ok1 or not ok2 then
+			return false
+		end
+		if not V.finite64(lo, hi) then
+			t.report.nonFinite += 1
+		end
+		return true
 	end
 	local width = valueBits(kind, shape)
 	if width < 0 then
 		return false
+	end
+	if shape.packing == 1 then
+		-- A RANGED INTEGER IS RECONSTRUCTED AND HELD TO ITS KIND'S RANGE
+		-- (skipRanged, §3.3): the offset's bits can spell past the maximum
+		local offset, ok = getLimbs(r, width)
+		if not ok then
+			return false
+		end
+		if not rangedHolds(kind, shape.base, offset) then
+			return refuseRead(t, "out_of_range")
+		end
+		return true
 	end
 	return skipBits(r, width)
 end
@@ -2058,7 +2167,7 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		refuse(rep, "batch_too_large")
 		return count, {}
 	end
-	local t: any = { r = r, v = v, report = rep, indexBits = 0 }
+	local t: any = { r = r, v = v, report = rep }
 	local values = {}
 	local whole = true
 	for i = 1, count do
