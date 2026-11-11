@@ -7,8 +7,9 @@ package fuzz_test
 // through runGeneratedTableUnit under -race. For each scalar field of Root,
 // the probe writes the {} document with that one field set to each of:
 // min-1, max+1, the implied extremes plus one, 1e400, 2.5, "7" and null,
-// and reads it with RootFromJSON (plus RootFromJSONTolerant to verify clamp
-// and kind-mismatch storage invariants).
+// and reads it with RootFromJSON. The read is strict-only (docs/SPEC-TABLES.md
+// §6.5): a value past its range or of the wrong kind refuses by name and lands
+// nothing, and the bound itself reads clean.
 
 import (
 	"bytes"
@@ -28,10 +29,11 @@ import (
 
 type boundCase struct {
 	name string
-	mode string // "must_accept", "must_clamp", "must_kind_mismatch", "must_refuse_named", "must_unknown"
+	mode string // "must_accept", "must_refuse_range", "must_refuse_kind", "must_refuse_named", "must_unknown"
 	text string
-	// want is the single-field JSON document the read must store for a
-	// must_clamp case: a clamp keeps the value at the declared/implied bound.
+	// want is, for a must_refuse_range case, the single-field JSON document
+	// at the declared/implied bound the text is one past: it must read clean
+	// and store exactly that value, so the oracle's edge is the reader's.
 	want string
 }
 
@@ -65,10 +67,10 @@ func singleFieldDoc(fieldName, rawVal string) string {
 	return fmt.Sprintf("{%q:%s}", fieldName, rawVal)
 }
 
-// intClampWant returns the JSON spellings of the lower and upper clamp targets
+// intBoundWant returns the JSON spellings of the lower and upper bounds
 // for a signed integer field: the declared bounds when a range is declared,
 // else the storage-width implied bounds.
-func intClampWant(f *genField) (lo, hi string) {
+func intBoundWant(f *genField) (lo, hi string) {
 	if f.IMode == mExtreme || f.IMode == mExclDefault {
 		return strconv.FormatInt(f.Imin, 10), strconv.FormatInt(f.Imax, 10)
 	}
@@ -76,8 +78,8 @@ func intClampWant(f *genField) (lo, hi string) {
 	return impLo.String(), impHi.String()
 }
 
-// uintClampWant is intClampWant for unsigned fields.
-func uintClampWant(f *genField) (lo, hi string) {
+// uintBoundWant is intBoundWant for unsigned fields.
+func uintBoundWant(f *genField) (lo, hi string) {
 	if f.IMode == mExtreme || f.IMode == mExclDefault {
 		umin, umax, _, _ := uintBounds(f.Bits, f.IMode)
 		return strconv.FormatUint(umin, 10), strconv.FormatUint(umax, 10)
@@ -121,13 +123,13 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 			if isRootScalarField(f) {
 				cases = append(cases, boundCase{
 					name: "sabotage_in_range_" + f.Name,
-					mode: "must_clamp",
+					mode: "must_refuse_range",
 					text: singleFieldDoc(f.Name, inRangeRawValue(f)),
 				})
-				// The bound-oracle negative control: a clamp case whose expected
-				// post-clamp value is deliberately the adjacent in-range value,
-				// so the gate must go red on the want mismatch.
-				if cc := sabotageClampWantCase(u); cc != nil {
+				// The bound-oracle negative control: a range case whose bound
+				// document is deliberately one past the bound, so the edge
+				// read refuses and the gate must go red on it.
+				if cc := sabotageBoundWantCase(u); cc != nil {
 					cases = append(cases, *cc)
 				}
 				return cases
@@ -135,7 +137,7 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 		}
 		cases = append(cases, boundCase{
 			name: "sabotage_empty_root",
-			mode: "must_clamp",
+			mode: "must_refuse_range",
 			text: "{}",
 		})
 		return cases
@@ -154,26 +156,25 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 
 			// A declared min-1/max+1 only exists when a range is declared.
 			// mNone and mBothZero declare no range (the whole storage width, or
-			// a bare default), so their Imin/Imax are not what a clamp guards.
+			// a bare default), so their Imin/Imax are not what a range guards.
 			if f.IMode == mExtreme || f.IMode == mExclDefault {
 				minMinus1 := new(big.Int).Sub(big.NewInt(f.Imin), one).String()
 				maxPlus1 := new(big.Int).Add(big.NewInt(f.Imax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imin, 10))},
-					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imax, 10))},
+					boundCase{name: fn + "_min_minus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imin, 10))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatInt(f.Imax, 10))},
 				)
 			}
-			// An implied case clamps to the declared bound when a range is
-			// declared (a value past the declared range stops there), else to
-			// the storage-width implied bound.
-			wantLo, wantHi := intClampWant(f)
+			// An implied case's bound is the declared one when a range is
+			// declared, else the storage-width implied bound.
+			wantLo, wantHi := intBoundWant(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gUint:
 			impLo, impHi := impliedUintBounds(f.Bits)
@@ -185,88 +186,88 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				minMinus1 := new(big.Int).Sub(new(big.Int).SetUint64(umin), one).String()
 				maxPlus1 := new(big.Int).Add(new(big.Int).SetUint64(umax), one).String()
 				cases = append(cases,
-					boundCase{name: fn + "_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatUint(umin, 10))},
-					boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatUint(umax, 10))},
+					boundCase{name: fn + "_min_minus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, minMinus1), want: singleFieldDoc(fn, strconv.FormatUint(umin, 10))},
+					boundCase{name: fn + "_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, maxPlus1), want: singleFieldDoc(fn, strconv.FormatUint(umax, 10))},
 				)
 			}
-			wantLo, wantHi := uintClampWant(f)
+			wantLo, wantHi := uintBoundWant(f)
 			cases = append(cases,
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_clamp", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, impLoMinus1), want: singleFieldDoc(fn, wantLo)},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, impHiPlus1), want: singleFieldDoc(fn, wantHi)},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gFloat32:
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-3.5e38")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "3.5e38")},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-3.5e38")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "3.5e38")},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-3.5e38")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "3.5e38")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-3.5e38")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "3.5e38")},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_accept", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gFloat64:
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1e309")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e309")},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1e309")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e309")},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1e309")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e309")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1e309")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e309")},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
 				boundCase{name: fn + "_2_5", mode: "must_accept", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gBool:
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2")},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2")},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2")},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gEnum:
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "3")},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "3")},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "3")},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "3")},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_unknown", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gString:
 			overStr := fmt.Sprintf("%q", strings.Repeat("a", f.StrN+1))
 			wantStr := fmt.Sprintf("%q", strings.Repeat("a", f.StrN))
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, overStr), want: singleFieldDoc(fn, wantStr)},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_accept", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gBytes:
 			overBytes := fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, f.StrN+1)))
 			wantBytes := fmt.Sprintf("%q", base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, f.StrN)))
 			cases = append(cases,
-				boundCase{name: fn + "_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
-				boundCase{name: fn + "_implied_min_minus_1", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "-1")},
-				boundCase{name: fn + "_implied_max_plus_1", mode: "must_clamp", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
-				boundCase{name: fn + "_str_7", mode: "must_kind_mismatch", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
+				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_kind", text: singleFieldDoc(fn, "-1")},
+				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_range", text: singleFieldDoc(fn, overBytes), want: singleFieldDoc(fn, wantBytes)},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_str_7", mode: "must_refuse_kind", text: singleFieldDoc(fn, `"7"`)},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		case gTimestamp:
 			cases = append(cases,
@@ -274,48 +275,47 @@ func buildFieldBoundCases(u *genUnit, sabotage bool) []boundCase {
 				boundCase{name: fn + "_max_plus_1", mode: "must_refuse_named", text: singleFieldDoc(fn, `"2262-04-11T23:47:16.854775808Z"`)},
 				boundCase{name: fn + "_implied_min_minus_1", mode: "must_refuse_named", text: singleFieldDoc(fn, `"1677-09-21T00:12:43.145224191Z"`)},
 				boundCase{name: fn + "_implied_max_plus_1", mode: "must_refuse_named", text: singleFieldDoc(fn, `"2262-04-11T23:47:16.854775808Z"`)},
-				boundCase{name: fn + "_1e400", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "1e400")},
-				boundCase{name: fn + "_2_5", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "2.5")},
+				boundCase{name: fn + "_1e400", mode: "must_refuse_kind", text: singleFieldDoc(fn, "1e400")},
+				boundCase{name: fn + "_2_5", mode: "must_refuse_kind", text: singleFieldDoc(fn, "2.5")},
 				boundCase{name: fn + "_str_7", mode: "must_refuse_named", text: singleFieldDoc(fn, `"7"`)},
-				boundCase{name: fn + "_null", mode: "must_kind_mismatch", text: singleFieldDoc(fn, "null")},
+				boundCase{name: fn + "_null", mode: "must_refuse_kind", text: singleFieldDoc(fn, "null")},
 			)
 		}
 	}
 	return cases
 }
 
-// sabotageClampWantCase builds a clamp case with an intentionally wrong
-// expected post-clamp value (the adjacent in-range value) for the first Root
-// integer scalar field, demonstrating the independent bound oracle: the probe
-// must observe a (boundsclampwanted divergence when the stored clamp lands at
-// the bound but the case expects the adjacent in-range value.
-func sabotageClampWantCase(u *genUnit) *boundCase {
+// sabotageBoundWantCase builds a range case whose bound document is
+// deliberately one step past the lower bound for the first Root integer scalar
+// field, demonstrating the independent bound oracle: the reader refuses that
+// edge, so the probe must observe a boundswantrefused divergence.
+func sabotageBoundWantCase(u *genUnit) *boundCase {
 	one := big.NewInt(1)
 	for _, f := range u.Root.Fields {
 		switch f.Kind {
 		case gInt:
 			impLo, _ := impliedIntBounds(f.Bits)
 			belowMin := new(big.Int).Sub(impLo, one).String()
-			wantLo, _ := intClampWant(f)
+			wantLo, _ := intBoundWant(f)
 			wantBound, _ := new(big.Int).SetString(wantLo, 10)
-			wantAdj := new(big.Int).Add(wantBound, one).String()
+			wantPast := new(big.Int).Sub(wantBound, one).String()
 			return &boundCase{
-				name: "sabotage_clamp_want_" + f.Name,
-				mode: "must_clamp",
+				name: "sabotage_bound_want_" + f.Name,
+				mode: "must_refuse_range",
 				text: singleFieldDoc(f.Name, belowMin),
-				want: singleFieldDoc(f.Name, wantAdj),
+				want: singleFieldDoc(f.Name, wantPast),
 			}
 		case gUint:
 			impLo, _ := impliedUintBounds(f.Bits)
 			belowMin := new(big.Int).Sub(impLo, one).String()
-			wantLo, _ := uintClampWant(f)
+			wantLo, _ := uintBoundWant(f)
 			wantBound, _ := new(big.Int).SetString(wantLo, 10)
-			wantAdj := new(big.Int).Add(wantBound, one).String()
+			wantPast := new(big.Int).Sub(wantBound, one).String()
 			return &boundCase{
-				name: "sabotage_clamp_want_" + f.Name,
-				mode: "must_clamp",
+				name: "sabotage_bound_want_" + f.Name,
+				mode: "must_refuse_range",
 				text: singleFieldDoc(f.Name, belowMin),
-				want: singleFieldDoc(f.Name, wantAdj),
+				want: singleFieldDoc(f.Name, wantPast),
 			}
 		}
 	}
@@ -339,7 +339,7 @@ func record(div *[]string, format string, args ...any) {
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }
 
-func checkAcceptedOrClampedRoundTrip(div *[]string, name string, pv *Root) {
+func checkAcceptedRoundTrip(div *[]string, name string, pv *Root) {
 	m, mreason := RootMeasureReason(pv)
 	if m < 0 || mreason != nil || RootMeasure(pv) != m {
 		record(div, "boundsmeasure %s m=%d reason=%v", name, m, mreason)
@@ -431,50 +431,44 @@ func TestBoundsPassProbe(t *testing.T) {
 					record(&div, "boundsrefused %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, pv)
+				checkAcceptedRoundTrip(&div, name, pv)
 			case "must_unknown":
 				if !ok || pv == nil || pr.Err() != nil || pr.Unknown <= 0 {
 					record(&div, "boundsunknown %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, pv)
-			case "must_clamp":
-				if ok || pr.Err() == nil || pr.Clamped <= 0 {
+				checkAcceptedRoundTrip(&div, name, pv)
+			case "must_refuse_range":
+				if ok || pr.Err() == nil || (pr.Refusal != TableRefuseOutOfRange && pr.Refusal != TableRefuseLengthOverBound) {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
+				// THE READ IS STRICT-ONLY (§6.5): the refusal lands nothing, so
+				// a value read into a reset Root leaves it at its defaults.
 				var rv Root
 				RootReset(&rv)
 				var rr TableReport
 				probeFromJSONValue(&rv, decoded, &rr)
-				// The strict read refused and reset to defaults, so the CLAMPED
-				// value is observed through the tolerant read, which keeps the
-				// recovered value (§6.5): it must sit exactly at the declared/
-				// implied bound (a clamp keeps the value at the bound).
+				gotJSON := make([]byte, RootToJSONMeasure(&rv))
+				RootToJSON(&rv, gotJSON)
+				if !bytes.Equal(gotJSON, defJSON) {
+					record(&div, "boundsrangelanded %s got=%s want=%s", name, b64(gotJSON), b64(defJSON))
+					return
+				}
+				// AND THE BOUND ITSELF, the value one step inside the text,
+				// reads clean and stores exactly that value: the oracle's edge
+				// is the reader's edge.
 				if len(wantRaw) > 0 {
-					var tr TableReport
-					tv, _ := probeFromJSONTolerant(decoded, &tr)
-					if tv == nil {
-						tv = &defVal
-					}
-					gotJSON := make([]byte, RootToJSONMeasure(tv))
-					RootToJSON(tv, gotJSON)
 					var wantR TableReport
 					wantV, wok := probeFromJSON(wantRaw, &wantR)
 					if !wok || wantV == nil || wantR.Err() != nil {
 						record(&div, "boundswantrefused %s err=%v", name, wantR.Err())
 						return
 					}
-					wantJSON := make([]byte, RootToJSONMeasure(wantV))
-					RootToJSON(wantV, wantJSON)
-					if !bytes.Equal(gotJSON, wantJSON) {
-						record(&div, "boundsclampwanted %s got=%s want=%s", name, b64(gotJSON), b64(wantJSON))
-						return
-					}
+					checkAcceptedRoundTrip(&div, name+"_bound", wantV)
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
-			case "must_kind_mismatch":
-				if ok || pr.Err() == nil || pr.KindMismatch <= 0 {
+			case "must_refuse_kind":
+				if ok || pr.Err() == nil || pr.Refusal != TableRefuseKindMismatch {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
 					return
 				}
@@ -482,14 +476,13 @@ func TestBoundsPassProbe(t *testing.T) {
 				RootReset(&rv)
 				var rr TableReport
 				probeFromJSONValue(&rv, decoded, &rr)
-				// A kind mismatch leaves the field at its declared default.
+				// A kind mismatch refuses and leaves every field at its default.
 				gotJSON := make([]byte, RootToJSONMeasure(&rv))
 				RootToJSON(&rv, gotJSON)
 				if !bytes.Equal(gotJSON, defJSON) {
 					record(&div, "boundskindmismatchnotdefault %s got=%s want=%s", name, b64(gotJSON), b64(defJSON))
 					return
 				}
-				checkAcceptedOrClampedRoundTrip(&div, name, &rv)
 			case "must_refuse_named":
 				if ok || pr.Err() == nil || pr.Reason == "" {
 					record(&div, "boundsaccepted %s ok=%v err=%v report=%+v", name, ok, pr.Err(), pr)
@@ -515,7 +508,7 @@ func runBoundsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (unexpec
 	var lines []string
 	for _, c := range cases {
 		want := "-"
-		if c.mode == "must_clamp" && c.want != "" {
+		if c.mode == "must_refuse_range" && c.want != "" {
 			want = base64.StdEncoding.EncodeToString([]byte(c.want))
 		}
 		lines = append(lines, fmt.Sprintf("%s %s %s %s", c.name, c.mode, base64.StdEncoding.EncodeToString([]byte(c.text)), want))
@@ -589,9 +582,9 @@ func TestRandomTableBoundsPass(t *testing.T) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on an unexpected divergence: %v", unexpected)
 		}
 		// The bound oracle's negative control must itself turn red: the
-		// sabotaged clamp case expects the adjacent in-range value, so the
-		// probe must report a boundsclampwanted divergence.
-		if !strings.Contains(strings.Join(unexpected, "\n"), "boundsclampwanted") {
+		// sabotaged range case names a bound one step outside the range, so the
+		// probe must report a boundswantrefused divergence.
+		if !strings.Contains(strings.Join(unexpected, "\n"), "boundswantrefused") {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the bound oracle was not exercised: %v", unexpected)
 		}
 	})

@@ -105,9 +105,9 @@ func TestRandomTableGenFixedPoint(t *testing.T) {
 // TestRandomTableGenFixedPointPlantClamp is the regression guard for the
 // clean-read assertion above. It plants an out-of-range whole-unit value into a
 // fixed/ufixed root leaf (declared bounds are min=0,max=1) and asserts the
-// generated reader surfaces it as a clamp or refusal — never a silent clean
-// read with an empty TableReport. Without the empty-report assertion a silent
-// clamp (or kind mismatch) would pass as clean; this plant goes red if one does.
+// generated reader refuses it out_of_range (the read is strict-only, §6.5) —
+// never a clean read and never a clamp. A reader that read it clean, or kept
+// a clamped value, turns this plant red.
 func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
@@ -129,7 +129,7 @@ func TestRandomTableGenFixedPointPlantClamp(t *testing.T) {
 		planted := withFieldReplaced(base, fixedField.Name, "2")
 		var probe strings.Builder
 		probe.WriteString("package probe\nimport \"testing\"\nfunc TestClampDetected(t *testing.T) {\n")
-		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJSON(&value, []byte(%q), &report); if !ok { return }; if report != (TableReport{}) { return }; t.Errorf(\"seed %%d: out-of-range %s value read clean with an empty report: %%q\", %d, %q) }\n", planted, fixedKey(fixedField), seed, planted)
+		fmt.Fprintf(&probe, "{ var value Root; var report TableReport; RootReset(&value); ok := RootFromJSON(&value, []byte(%q), &report); if !ok && report.Refused() && report.Refusal == TableRefuseOutOfRange { return }; t.Errorf(\"seed %%d: out-of-range %s value was not refused out_of_range: ok=%%v report=%%+v %%q\", %d, ok, report, %q) }\n", planted, fixedKey(fixedField), seed, planted)
 		probe.WriteString("}\n")
 		output, err := runGeneratedTableUnit(t, unit, probe.String(), map[string]string{"NOVA_TEST_NO_HOST": "1"}, "-timeout=600s")
 		if err != nil {
