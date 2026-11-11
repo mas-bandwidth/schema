@@ -2285,7 +2285,7 @@ statement of the rule; [CONTRIBUTING.md](CONTRIBUTING.md),
 
 **The contract**, for every writer of both wires — the packet `Write`, the
 table variable-form `Save` and its `Measure`, the fixed-form `FixedSave`, the
-message-form `SaveMessages` and the text writer — is the closed list of values
+message-form `SaveMessages` and its `MeasureMessages`, the text writer — is the closed list of values
 a caller can hold that the declaration does not admit:
 
 | # | the value | the reader's answer to it (§4, SPEC-TABLES §4) |

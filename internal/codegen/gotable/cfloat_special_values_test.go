@@ -181,14 +181,19 @@ func TestMessage(t *testing.T) {
 			}
 			continue
 		}
-		buf := make([]byte, ReadingMeasureMessages(values, nil))
-		var wrep TableReport
 		if c.counts > 0 {
-			if ReadingSaveMessages(values, buf, &wrep) != -1 || wrep.Err() != TableRefuseInvalidValue {
+			var wrep TableReport
+			var sink [64]byte
+			if ReadingMeasureMessages(values, nil) != -1 {
+				t.Errorf("message %s: the measure accepted a value past an end", c.name)
+			}
+			if ReadingSaveMessages(values, sink[:], &wrep) != -1 || wrep.Err() != TableRefuseInvalidValue {
 				t.Errorf("message %s: the writer quantized a value past an end: %+v", c.name, wrep)
 			}
 			continue
 		}
+		buf := make([]byte, ReadingMeasureMessages(values, nil))
+		var wrep TableReport
 		if ReadingSaveMessages(values, buf, &wrep) != int64(len(buf)) || wrep.Err() != nil {
 			t.Fatalf("message %s: save %+v", c.name, wrep)
 		}
