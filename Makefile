@@ -3835,7 +3835,7 @@ tables-maps-ascending-negative-control: bin/schema build/tables-generated/.stamp
 # tolerant-era form, no longer moves the verdict.)
 .PHONY: tables-maps-duplicate-negative-control
 tables-maps-duplicate-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,duplicate,'s@if ( order == 0 ) { r.report->refused = true; r.report->refuse_reason = malformed; }@if ( false ) { r.report->refused = true; r.report->refuse_reason = malformed;; } // SABOTAGED@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
+	$(call map_negative_control,duplicate,'s@%\[1\]s        if ( order == 0 )\\n%\[1\]s        {\\n%\[1\]s            r.report->refused = true;@%[1]s        if ( false ) // SABOTAGED\\n%[1]s        {\\n%[1]s            r.report->refused = true;@',internal/codegen/cpptable/maps.go,accepting a duplicate key left the map gate GREEN)
 
 # THE KEY-KIND RULE DECODES ANYWAY. The row written under a CHANGED KEY KIND
 # meets it: the strict read refuses it as kind_mismatch, and the sabotaged
@@ -3885,7 +3885,7 @@ tables-maps-clamp-negative-control: bin/schema build/tables-generated/.stamp
 # first and a count past it never reaches the L check.
 .PHONY: tables-maps-fit-negative-control
 tables-maps-fit-negative-control: bin/schema build/tables-generated/.stamp
-	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; }@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false ) { reason = count_over_length; return false; }@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
+	$(call map_negative_control,fit,'s@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) )@if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) \&\& false )@',internal/codegen/cpptable/maps.go,an N the map L cannot carry left the map gate GREEN)
 
 # N = 0x80000000, PAST THE INT32 CAP. The measure-refusals row meets it: the
 # cap is tested before the L, so the reason is count_over_extent_cap, and a
@@ -3927,10 +3927,10 @@ tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stam
 # A MAP IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK (§2.8, §3.1), so
 # the numbering descends every entry and a node named ONLY by a map entry takes
 # its index there. The sabotage short-circuits that per-entry descent. The
-# `Docs` and `Chunks` rows are what meet it: their `*string` and `*bytes` values
-# are the only slots in this corpus that name a node NOTHING ELSE names, so an
-# undescended entry leaves a non-null slot the walk never reached and `Save`
-# answers the -1 §7.6 gives a pointer in that position. `Fleet.by_id` cannot
+# `Docs` and `Chunks` rows are what meet it (and the `pairs`, `crews` and
+# `trails` wire goldens, measured 2026-11-11): their pointer values name a node
+# NOTHING ELSE names, so an undescended entry leaves a non-null slot the walk
+# never reached and `Save` answers the -1 §7.6 gives a pointer in that position. `Fleet.by_id` cannot
 # meet it, because `Fleet.flagship` names the same node.
 #
 # Its sabotage carries the unbalanced parenthesis a $(call) argument cannot, so
@@ -3939,7 +3939,7 @@ tables-maps-text-order-negative-control: bin/schema build/tables-generated/.stam
 .PHONY: tables-maps-entry-node-negative-control
 tables-maps-entry-node-negative-control: bin/schema build/tables-generated/.stamp
 	@mkdir -p build
-	@sed -e 's@if ( !%sNumber( ctx@if ( false \&\& !%sNumber( ctx@' \
+	@sed -e 's@if ( !%\[2\]sNumber( ctx@if ( false \&\& !%[2]sNumber( ctx@' \
 		internal/codegen/cpptable/maps.go > build/map-entrynode.gotext
 	@cmp -s build/map-entrynode.gotext internal/codegen/cpptable/maps.go && \
 		{ echo "NEGATIVE CONTROL FAILED: the entrynode sabotage patched nothing"; exit 1; } || true

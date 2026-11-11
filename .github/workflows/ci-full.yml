@@ -1527,8 +1527,13 @@ jobs:
   # still owes on every merge. Its report (the commit, the red cells) is kept
   # as the `proof` artifact: release.yml downloads it for the commit it
   # releases, and `make release` refuses unless it is green at that commit.
+  #
+  # always() keeps it running when a conformance leg failed, since a red leg is
+  # a red cell. !cancelled() keeps it from running once the run is cancelled:
+  # a superseded run would otherwise queue this job for a fleet runner, never
+  # finish, and hold the next run behind it in the concurrency group.
   proof:
-    if: always() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci')))
     needs: conformance
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 5
@@ -2841,7 +2846,19 @@ jobs:
       # not redundant: a control's own refusal lines are the sentence a reader
       # needs (a sabotage that patched nothing, a gate that stayed green), and
       # this pulls them out of a log that is thousands of compiler lines long
-      # and puts them in the run's annotations.
+      # and prints them at the end of the step.
+      #
+      # A refusal is `NEGATIVE CONTROL FAILED:` (the gate stayed green) or
+      # `sabotage <name>: ...` (tools/sabotage found its anchor 0 or 2+ times,
+      # so the sabotage patched nothing). When the group failed, the cause
+      # lines add make's and go test's own failure lines; they are not a
+      # refusal on their own, because a passing control's sabotaged gate
+      # prints them on purpose.
+      #
+      # THE LOG STREAMS. awk prints each line as make writes it and keeps the
+      # copy the scan reads, so a group the runner kills at its time limit
+      # (which kills every later step of the job too) still shows how far it
+      # got. Not tee: internal/ci/negative_controls_tee_test.go says why.
       #
       # The overrides are certify.yml's: RUSTUP_BIN defaults to a homebrew keg
       # on the author's machine, and DART, JAVA/JAVAC, ELIXIR/MIX and NODE
@@ -2853,15 +2870,20 @@ jobs:
           set -o pipefail
           targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
           echo "$targets" | tr ' ' '\n'
+          refusal='^NEGATIVE CONTROL( FAILED)?:|^sabotage[ :]'
+          cause="$refusal"'|\*\*\* \[|^FAIL|--- FAIL'
           status=0
+          : >controls.log
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            >controls.log 2>&1 || status=1
-          cat controls.log
-          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            2>&1 | awk '{ print; fflush(); print > "controls.log" }' || status=1
+          if grep -qE "$refusal" controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
-            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
             status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "the cause, as controls.log names it:"
+            grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status
