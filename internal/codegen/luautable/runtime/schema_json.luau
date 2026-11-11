@@ -303,6 +303,10 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
+  -- a skipped object's keys are held to the layer's rule too
+  -- (docs/SPEC-TABLES.md §16.2): a repeated key refuses the read, as it does
+  -- in an object the read places
+  local keys: { [string]: boolean } = {}
   while true do
     local c = peek(inp)
     if c == close then inp.p = inp.p + 1; return true end
@@ -314,6 +318,8 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       local key = scanned :: string -- an ok scan returns its string
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
+      if keys[key] then inp.bad = true; return false end
+      keys[key] = true
       if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
         if not first or key ~= "&node" then inp.bad = true; return false end
         local label = scan_label(inp)
