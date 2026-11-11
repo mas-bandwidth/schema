@@ -269,12 +269,11 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #515
-and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
-FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
-the write template, the plan-driven read and the LAYOUT / vocabulary block — and
-neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+these surfaces too. Rust, Elixir and Java carry both table wires, form
+1 and form 3 (§3.4), beside the block and cook read halves. **Dart and
+JavaScript carry both wires too**, form 1 and form 3 (§3.4): form 3 is
+the FIXED form — the write template, the plan-driven read and the LAYOUT /
+vocabulary block — and form 1 is the id-table wire. Their fixed forms carry the
 fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
 §3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
 block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
@@ -286,8 +285,9 @@ none for a `table` — neither declares the member nor reads it. Every generated
 language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
-reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
-3.4's FIXED form is carried by the C++ reference, by Go, by Dart, and by JavaScript, whose
+reference, the compiler engine (`internal/tablewire`), C, C#, Go, Dart,
+JavaScript, Rust, Elixir and Java. Section 3.4's FIXED form is carried by the C++ reference, by Go,
+by Rust, by Elixir, by Java, by Dart, and by JavaScript, whose
 layout/block, hash and record bytes are held against the reference's own over the
 paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
 OPTIONAL corpus the reference writes at every place a present byte can ride —
@@ -350,12 +350,10 @@ and any remaining optimization or instrumentation carry-across issues.
 **ELIXIR IS THE READING TIER, and the tier is a property of the LANGUAGE rather
 than of the port.** A BEAM term has no layout a producer could write, so this
 backend never produces a block or a cook: it OPENS one another build wrote and
-reads every slot at its offset. **And it emits the two accelerators and no
-table wire**: the Elixir port of the variable wire and the text form wrote the
-form that preceded the id-table wire, which this specification does not
-describe and the C++ reference does not open, and it was removed rather than
-carried — schema#515 brings the id-table wire to Elixir, and ROADMAP.md marks
-the cells. What the readers spell is the language's and is named where it is
+reads every slot at its offset. **And it emits the two accelerators and both table wires**: the VARIABLE form
+(form byte 1) for variable roots and nested bodies, and the FIXED form (form
+byte 3) for declared fixed roots, beside the block and cook read halves (§3,
+§3.4). What the readers spell is the language's and is named where it is
 spelled: a row is a SUB-BINARY the runtime shares rather than copies; a refusal
 is `:error` against `{:ok, result}`, the packet emitter's reader verdict; and
 `Open` — both the block's and the cook's — takes a `lead` beside the bytes —
@@ -536,14 +534,11 @@ generic array extent. Its layout contract is a generated `init()` that REFUSES,
 naming the record, the field and both numbers, where C++ has `static_assert`,
 Rust has a const assert and C# a check at type initialization.
 
-**JAVA emits the two accelerators and no table wire.** A unit that declares
+**JAVA emits the two accelerators and both table wires.** A unit that declares
 tables gets `<Table>Block.java` (§19) and `<Table>Cook.java` (§7) per table,
 `<Name>Row.java` for every blittable record in the closure, and the runtime
-types those need; it gets no `<Base>Table.java`. The Java port of the table
-wire wrote the form that preceded the id-table wire, which this specification
-does not describe and the C++ reference does not open, and it was removed
-rather than carried (schema#517 brings the current wire to Java; ROADMAP.md
-marks the cells). **JAVA's divergences**, each forced by the language and each
+types those need; the TABLE WIRE rides the FIXED form (§3.4) for every fixed
+table and the VARIABLE form (§3, form byte 1) beside it (schema#517). **JAVA's divergences**, each forced by the language and each
 named where it is spelled: **the unit's namespace is the PACKAGE and a public
 type lives in a file of its own name**, so the shared runtime is ONE FILE PER
 TYPE — `TableBytes.java`, `TableBlockInfo.java`, `TableCookInfo.java` and the
