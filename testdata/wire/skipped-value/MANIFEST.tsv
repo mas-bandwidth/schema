@@ -14,9 +14,12 @@
 # JSON rows read at the reader unit's Root. Message rows decode a batch of one
 # Root body against announcement.bin (the writer unit's announcement): the
 # canonical batch reads, and each damaged batch refuses, one per message-skip
-# condition of docs/SPEC-TABLES.md §3.3. The reserved-id condition (a nested
-# body naming a reserved id) needs a vocabulary no conforming writer announces,
-# so no batch carries it.
+# condition of docs/SPEC-TABLES.md §3.3 that this writer unit can carry. Three
+# conditions have no batch: a nested body naming a reserved id needs a
+# vocabulary no conforming writer announces; a ranged integer's offset over the
+# sender's max needs a ranged integer, and the writer unit declares none; and a
+# keyed array's count out of [min, max] cannot be written, since the [Color]
+# count's two bits hold 0 to 3 and every one of those is within its bounds.
 #
 unknown-string-zero.json	json	refused
 unknown-string-control.json	json	read
@@ -30,5 +33,5 @@ float-nan.bin	message	refused
 quant-index-over.bin	message	refused
 array-count-over.bin	message	refused
 keyed-repeat.bin	message	refused
-keyed-wrong-sort.bin	message	refused
+keyed-payload-entry.bin	message	refused
 nested-id-twice.bin	message	refused

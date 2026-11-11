@@ -111,7 +111,7 @@ func run() error {
 			setBits(b, layout.keyedKey1, getBits(b, layout.keyedKey0, refBits), refBits) // one key twice
 			return b
 		}},
-		{"keyed-wrong-sort", func(b []bool) []bool {
+		{"keyed-payload-entry", func(b []bool) []bool {
 			setBits(b, layout.keyedKey0, getBits(b, layout.knownRef, refBits), refBits) // a key naming a payload entry
 			return b
 		}},

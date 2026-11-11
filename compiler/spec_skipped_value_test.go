@@ -119,7 +119,7 @@ func TestSpecSkippedValueIsValidated(t *testing.T) {
 			"quant-index-over.bin":            "refused",
 			"array-count-over.bin":            "refused",
 			"keyed-repeat.bin":                "refused",
-			"keyed-wrong-sort.bin":            "refused",
+			"keyed-payload-entry.bin":         "refused",
 			"nested-id-twice.bin":             "refused",
 		}
 		seen := map[string]bool{}
