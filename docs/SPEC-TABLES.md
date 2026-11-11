@@ -6550,7 +6550,15 @@ plain float's NaN or infinity.
 field, a variant, an arm or a key names it, and never at resolve time. The
 difference from the variable form is that the reader now SKIPS it by the announced
 shape rather than by a length on the wire, and the result is the same: the field
-is stepped over exactly and one event counts. **The skip walk is bounded at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
+is stepped over exactly and one event counts. **SKIPPED IS NOT UNREAD ON THIS
+FORM TOO (§4):** the skipped payload is held to the conditions the wire and the
+announcement decide — an enum-keyed array's key names a declared no-payload
+entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
+byte, a float is finite and a quantized float's index is at most its `count`, an
+array's or keyed array's count is within `[min, max]` and a ranged integer's
+offset is within the sender's `max`, and a nested body names no field id twice
+and no reserved id — and a failure refuses the batch. **The skip walk is bounded
+at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 
 **A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS REFUSES THE READ.** When a
 skipped entry walks an array's elements one by one, an element that consumes no bits
