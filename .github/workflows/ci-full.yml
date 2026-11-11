@@ -186,15 +186,15 @@ jobs:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
     # MANY ROWS, because this job was 650 s median (2026-09-11) and a matrix
-    # row is a job: the emitter packages, the compiler package in two halves,
+    # row is a job: the emitter packages, the compiler package in 15 rows,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
     # two halves, and the fixed-form versioning suites — one row per leg — that
     # cannot ride `go test ./...` at all. Every step below is the step it was;
     # what is new is which row runs it, and no step runs in none of them or in
     # two.
     #   unit-codegen    — go test ./internal/codegen/... less elixirtable
-    #   unit-compiler-1 — go test ./compiler, the tests one pattern names
-    #   unit-compiler-2 — go test ./compiler, every other test
+    #   unit-compiler-1..14 — go test ./compiler, the tests one pattern names
+    #   unit-compiler-15 — go test ./compiler, every other test
     #   unit-rest       — go vet ./..., go test over everything that is
     #                     neither an emitter package nor ./compiler, the
     #                     projection's three controls, the toolchain control,
@@ -250,7 +250,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
+        group: [ unit-codegen, unit-compiler-1, unit-compiler-2, unit-compiler-3, unit-compiler-4, unit-compiler-5, unit-compiler-6, unit-compiler-7, unit-compiler-8, unit-compiler-9, unit-compiler-10, unit-compiler-11, unit-compiler-12, unit-compiler-13, unit-compiler-14, unit-compiler-15, unit-rest, unit-elixir, slow-gate-codegen-0, slow-gate-codegen-1, slow-gate-codegen-2, slow-gate-codegen-3, slow-gate-codegen-4, slow-gate-codegen-5, slow-gate-codegen-6, slow-gate-codegen-7, slow-gate-codegen-8, slow-gate-codegen-9, slow-gate-codegen-10, slow-gate-codegen-11, slow-gate-codegen-12, slow-gate-codegen-13, slow-gate-codegen-14, slow-gate-codegen-15, slow-gate-codegen-16, slow-gate-codegen-17, slow-gate-codegen-18, slow-gate-codegen-19, slow-gate-codegen-20, slow-gate-codegen-21, slow-gate-codegen-22, slow-gate-codegen-23, slow-gate-codegen-24, slow-gate-codegen-25, slow-gate-rest-0, slow-gate-rest-1, slow-gate-rest-2, slow-gate-rest-3, slow-gate-rest-4, slow-gate-rest-5, slow-gate-rest-6, slow-gate-rest-7, slow-gate-rest-8, slow-gate-rest-9, versioning-conformance-a, versioning-conformance-b, versioning-go, versioning-c, versioning-rust, versioning-java, versioning-js, versioning-dart, versioning-cs, versioning-elixir, versioning-luau, versioning-goose ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -376,13 +376,14 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       # THE LUAU PIN for the test rows below: internal/codegen/luau,
-      # internal/codegen/luautable, the compiler's Luau testgen gate and the
+      # internal/codegen/luautable, the compiler's Luau tests (unit-compiler-1, the
+      # row whose pattern holds every one of them) and the
       # Luau lanes under internal/ci run generated Luau under the pinned
       # interpreter and fail, never skip, without it
       # (internal/codegen/luau/luaurun). Installed as make/luau.mk's dist-luau
       # does, the sha256 refused before anything is unpacked.
       - name: install the Luau pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest'
         run: make dist-luau
 
       - name: go vet
@@ -408,15 +409,15 @@ jobs:
 
       # THE SQUIRREL PIN, on the three rows that run generated Squirrel and on
       # no other. Under SCHEMA_SLOW=1 internal/codegen/squirrel and
-      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-2;
-      # no Squirrel test matches the first half's pattern) and internal/ci's
+      # squirreltable (unit-codegen), compiler's TestSquirrel* (unit-compiler-1;
+      # the row whose pattern holds every Squirrel test) and internal/ci's
       # hostile-corpus runner (unit-rest) fail, never skip, without it. The
       # slow-gate rows run plain `go test`, where every Squirrel test skips at
       # internal/slowtest.Gate before the interpreter is resolved, so they pay
       # nothing. make/squirrel.mk's dist-squirrel builds sq at the sha256 it
       # names, into the dist/ path the leg's default names.
       - name: install the Squirrel pin
-        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-2' || matrix.group == 'unit-rest'
+        if: matrix.group == 'unit-codegen' || matrix.group == 'unit-compiler-1' || matrix.group == 'unit-rest'
         run: make dist-squirrel
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
@@ -472,29 +473,110 @@ jobs:
         if: matrix.group == 'unit-codegen'
         run: make test-lobster
 
-      # THE COMPILER PACKAGE, IN TWO ROWS, because on its own it is 441 s of
-      # the complement below and one package is one test binary: the only cut
-      # that splits it is by test name. ONE PATTERN, handed to -run on the
-      # first row and to -skip on the second, so the two rows are complements
-      # and a new test lands in the second row with no edit here. It is spelled
-      # out on both lines because tools/slowgatescan reads these lines and
-      # credits what they select (a shell variable would earn nothing), and
-      # its TestCIFullGoTestRunsEveryTestExactlyOnce goes red if the two
-      # spellings ever stop being complements. The pattern was balanced on a
-      # -json timing of the package (2026-10-27: the C++ and issue tests 138 s,
-      # the rest 142 s, at GOMAXPROCS=4); -v keeps each test's time in the log
-      # for the next rebalance.
-      - name: go test the compiler package, first half
+      # THE COMPILER PACKAGE, IN 15 ROWS, because one package is one test
+      # binary and the only cut that splits it is by test name. Run one way,
+      # the package was 1152 s on four threads (2026-11-10), and the two
+      # halves this replaces were each killed at the per-commit two-minute
+      # rule. Rows 1..14 each -run one pattern, an alternation of test-name
+      # families (the first CamelCase word after Test, or an exact name when
+      # a family outweighs a row); row 15 -skips all of them, so it is the
+      # complement and a new test lands there with no edit here. Row 1 is
+      # every test that runs generated Luau or Squirrel, so the two pins are
+      # installed on that row and no other. The patterns are spelled out on
+      # each line because tools/slowgatescan reads these lines and credits
+      # what they select, and its TestCIFullGoTestRunsEveryTestExactlyOnce
+      # goes red if a test is selected by no row or by two. They were packed
+      # from a -json timing of the package, and -v keeps each test's time in
+      # the log for the next repack.
+      - name: go test the compiler package, row 1 of 15
         if: matrix.group == 'unit-compiler-1'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -run '^Test(Cpp|CPP|Issue)'
+        run: go test -v ./compiler -run '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))'
 
-      - name: go test the compiler package, second half
+      - name: go test the compiler package, row 2 of 15
         if: matrix.group == 'unit-compiler-2'
         env:
           SCHEMA_SLOW: '1'
-        run: go test -v ./compiler -skip '^Test(Cpp|CPP|Issue)'
+        run: go test -v ./compiler -run '^Test(CppTableRefOrdinalBytes$)'
+
+      - name: go test the compiler package, row 3 of 15
+        if: matrix.group == 'unit-compiler-3'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))'
+
+      - name: go test the compiler package, row 4 of 15
+        if: matrix.group == 'unit-compiler-4'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))'
+
+      - name: go test the compiler package, row 5 of 15
+        if: matrix.group == 'unit-compiler-5'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))'
+
+      - name: go test the compiler package, row 6 of 15
+        if: matrix.group == 'unit-compiler-6'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))'
+
+      - name: go test the compiler package, row 7 of 15
+        if: matrix.group == 'unit-compiler-7'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))'
+
+      - name: go test the compiler package, row 8 of 15
+        if: matrix.group == 'unit-compiler-8'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))'
+
+      - name: go test the compiler package, row 9 of 15
+        if: matrix.group == 'unit-compiler-9'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))'
+
+      - name: go test the compiler package, row 10 of 15
+        if: matrix.group == 'unit-compiler-10'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))'
+
+      - name: go test the compiler package, row 11 of 15
+        if: matrix.group == 'unit-compiler-11'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))'
+
+      - name: go test the compiler package, row 12 of 15
+        if: matrix.group == 'unit-compiler-12'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$)|Java([^a-z]|$))'
+
+      - name: go test the compiler package, row 13 of 15
+        if: matrix.group == 'unit-compiler-13'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))'
+
+      - name: go test the compiler package, row 14 of 15
+        if: matrix.group == 'unit-compiler-14'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -run '^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)'
+
+      - name: go test the compiler package, row 15 of 15
+        if: matrix.group == 'unit-compiler-15'
+        env:
+          SCHEMA_SLOW: '1'
+        run: go test -v ./compiler -skip '^Test((Lua|Luau|Squirrel|Testgen)([^a-z]|$))|^Test(CppTableRefOrdinalBytes$)|^Test(Blob([^a-z]|$)|CPPRequired([^a-z]|$)|CTablePlain([^a-z]|$)|Carried([^a-z]|$)|Carries([^a-z]|$)|Competition([^a-z]|$)|CppVariableWideAlignment$|Deprecated([^a-z]|$)|Gather([^a-z]|$)|Message([^a-z]|$)|Register([^a-z]|$)|Scalar([^a-z]|$)|Strict([^a-z]|$)|Tutorial([^a-z]|$))|^Test(Optional([^a-z]|$)|Table([^a-z]|$)|Unbounded([^a-z]|$))|^Test(CNo([^a-z]|$)|CTableView([^a-z]|$)|CppTableWidenListWidthFollowsTheCensus$|Cs([^a-z]|$)|Elixir([^a-z]|$))|^Test(CEmits([^a-z]|$)|CPPJSON([A-Z][a-z]|[^A-Za-z]|$)|CPPMap([^a-z]|$)|CPPOne([^a-z]|$)|CTableMessage([^a-z]|$)|CppTableFloatRungIsTheFiniteTestAndTheConversion$|CppTableOmitsEmptyTypeIdSwitch$|Each([^a-z]|$)|Lobster([^a-z]|$)|Map([^a-z]|$)|No([^a-z]|$)|String([^a-z]|$)|Target([^a-z]|$))|^Test(A([A-Z][a-z]|[^A-Za-z]|$)|CPPBlob([^a-z]|$)|CPPUnbounded([^a-z]|$)|CTableBlob([^a-z]|$)|CTableRetain([^a-z]|$)|CppTableRetainFramedDepth$|CppTableWidenSignedFollowsTheCensus$|Fixed([^a-z]|$)|Required([^a-z]|$))|^Test(CBlock([^a-z]|$)|CTableCook([^a-z]|$)|CppTableWidenArmWidthFollowsTheCensus$|Rust([^a-z]|$))|^Test(CPPExact([^a-z]|$)|CPPOptional([^a-z]|$)|CTableAnnouncement([^a-z]|$)|CTableDead([^a-z]|$)|CTableFloat([^a-z]|$)|CTableKeyed([^a-z]|$)|CTableMap([^a-z]|$)|CUfixed([^a-z]|$)|CppCollectionWidening$|CppCookOpenNodeAlignment$|CppTableAnnouncementDistinctQuantizedShapes$|CppTableBlobThunksFollowTheCensus$|CppTableRuntimeNamesAreClaimed$|Emitted([^a-z]|$)|Js([^a-z]|$)|Maps([^a-z]|$)|Packet([^a-z]|$)|Porting([^a-z]|$)|Timestamp([^a-z]|$)|Usage([^a-z]|$))|^Test(CGenerator([^a-z]|$)|CTableWire([^a-z]|$)|CppTableRefOrdinalSharedId$|CppTableWidenUnsignedFollowsTheCensus$|Repeated([^a-z]|$))|^Test(CTableRuntime([^a-z]|$)|Count([^a-z]|$)|CppCookExtentCanonicalAlignment$|Issue([^a-z]|$))|^Test(CppTableHeaderAndPut128Bytes$|Integrity([^a-z]|$)|Java([^a-z]|$))|^Test(CExternals([^a-z]|$)|Go([^a-z]|$)|Refusal([^a-z]|$)|Spec([^a-z]|$))|^Test(CPPFrom([^a-z]|$)|CPPTable([^a-z]|$)|CPPText([^a-z]|$)|CPPTimestamp([^a-z]|$)|CTablePointer([^a-z]|$)|CTableRef([^a-z]|$)|Checked([^a-z]|$)|CppNoPlanClamps$|CppTableFixedClampOmitsEmptyUnionSwitch$|CppTableWidenRuntimeAbsentFromALadderlessUnit$)'
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in this row with no edit to this file.
