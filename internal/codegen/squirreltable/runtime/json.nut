@@ -1915,6 +1915,7 @@ readMap = function(T, c, fd, r, v, depth) {
   local kd = fd.mapkey, vd = fd.mapvalue;
   local ed = tableDesc(T, fd.entry);
   local out = [];
+  local seen = {};
   for (;;) {
     local ch = peek(r);
     if (ch == '}') { r.p++; break; }
@@ -1973,13 +1974,12 @@ readMap = function(T, c, fd, r, v, depth) {
       }
     }
     if (valueOk) {
-      local at = -1;
-      for (local i = 0; i < out.len(); i++) {
-        if (mapKeyOrder(kd, out[i][kd.member], ent[kd.member]) == 0) { at = i; break; }
-      }
       // A REPEATED MAP KEY, judged as the reader decodes it, IS DAMAGE
-      // (decisions 5 and 11, §2.8)
-      if (at >= 0) { r.bad = true; return false; }
+      // (decisions 5 and 11, §2.8). The keys seen are held by identity, so
+      // the test is one lookup an entry rather than a scan of the entries
+      // read so far.
+      if (ent[kd.member] in seen) { r.bad = true; return false; }
+      seen[ent[kd.member]] <- true;
       out.append(ent);
     }
     ch = peek(r);
