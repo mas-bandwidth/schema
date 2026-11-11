@@ -51,6 +51,7 @@ func regionGoProbe(t *testing.T, u *ir.Unit, statements string) string {
 }
 
 func TestRegionClosureElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "native map/keyed/union region closure")
 	dir := "../../../testdata/conformance/feature-witnesses/region-closure"
 	source, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))

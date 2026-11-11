@@ -428,7 +428,14 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 	for i := range f.KeyEnumRef.Variants {
 		g.pf("%s            case 0x%016xull: slot = %d; break;\n", ind, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
 	}
-	g.pf("%s            default: "+g.unknownEvent()+" break;\n%s        }\n%s        if ( slot < 0 ) { continue; }\n", ind, ind, ind)
+	nodesExpr := "0"
+	if g.anyVariable {
+		nodesExpr = "( r->nodes != NULL ? (int64_t) r->nodes->count - 1 : 0 )"
+	}
+	g.pf("%s            default: "+g.unknownEvent()+" break;\n%s        }\n", ind, ind)
+	g.pf("%s        if ( slot < 0 )\n%s        {\n", ind, ind)
+	g.pf("%s            if ( !table_skip_framed( elem, elem_kind, "+nodesExpr+", 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; break; }\n", ind)
+	g.pf("%s            continue;\n%s        }\n", ind, ind)
 	g.retainIndex(f, "slot", ind+"        ")
 	dst := fmt.Sprintf("value->%s[slot]", f.Name)
 	if kind == tkTable {

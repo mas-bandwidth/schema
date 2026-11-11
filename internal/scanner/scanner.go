@@ -258,7 +258,13 @@ func (s *state) scanDoc() (Token, bool) {
 			}
 			s.advance()
 		}
-		text := strings.TrimRight(string(s.src[start:s.off]), " \t\r")
+		raw := s.src[start:s.off]
+		text := strings.TrimRight(string(raw), " \t\r")
+		if strings.HasSuffix(text, "\\") {
+			p := s.pos()
+			p.Col -= len(raw) - len(text) + 1
+			s.errf(p, "a backslash at the end of a /// doc line continues the comment onto the next line in C and C++ compilers; remove it (SPEC §4.1)")
+		}
 		text = strings.TrimPrefix(text, " ")
 		lines = append(lines, text)
 		// the run continues when the next line is another `///` line

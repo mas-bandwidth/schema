@@ -466,7 +466,7 @@ namespace Blockdemo
             b[0] = unchecked((byte)value.Tag);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1), value.Value);
             b.Slice(9)[0] = (byte)(value.Flag ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(10), (int)value.Id);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(10), unchecked((int)value.Id));
             int len_label = value.Label != null ? value.LabelLength : 0;
             System.Diagnostics.Debug.Assert(len_label <= 15);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(14), len_label);
@@ -486,7 +486,7 @@ namespace Blockdemo
         {
             if (value == null) return;
             b[0] = unchecked((byte)value.Marker);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(1), (long)value.Stamp);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(1), unchecked((long)value.Stamp));
             int count_rows = value.RowsCount;
             System.Diagnostics.Debug.Assert(count_rows >= 0 && count_rows <= 64); // the declared count is the bound (§3.4)
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(9), count_rows);
@@ -554,11 +554,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void PaddedRowFixedClamp(PaddedRow value, TableReport report)
+        public static bool PaddedRowFixedClamp(PaddedRow value, TableReport report)
         {
             int clamped = 0;
             PaddedRowFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- PaddedRow, the fixed form ----
@@ -779,12 +780,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PaddedRowFixedSetBytes(dst, p.Dst, wide, need);
@@ -846,12 +847,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PaddedRowFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -1115,6 +1116,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]); }
                 PaddedRowFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, PaddedRowFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = PaddedRowFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -1130,12 +1132,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                PaddedRowFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!PaddedRowFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -1179,11 +1185,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void PaddedFrameFixedClamp(PaddedFrame value, TableReport report)
+        public static bool PaddedFrameFixedClamp(PaddedFrame value, TableReport report)
         {
             int clamped = 0;
             PaddedFrameFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- PaddedFrame, the fixed form ----
@@ -3951,12 +3958,12 @@ namespace Blockdemo
                                 {
                                     int bits = sw * 8;
                                     ulong top = 1UL << (bits - 1);
-                                    if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                    if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                 }
                                 Span<byte> cell = wide.Slice(e * dw, dw);
-                                if (dw == 1) cell[0] = (byte)raw;
-                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                if (dw == 1) cell[0] = unchecked((byte)raw);
+                                else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                 else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                             }
                             PaddedFrameFixedSetBytes(dst, p.Dst, wide, need);
@@ -4018,12 +4025,12 @@ namespace Blockdemo
                                 ulong top = 1UL << (bits - 1);
                                 if ((raw & top) != 0)
                                 {
-                                    raw |= ~((top << 1) - 1UL);
+                                    raw |= unchecked(~((top << 1) - 1UL));
                                 }
                             }
                             if (p.DstSize == 16)
                             {
-                                UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                 PaddedFrameFixedSetWide(dst, p.Dst, w);
                             }
                             else
@@ -5053,6 +5060,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]); }
                 PaddedFrameFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, PaddedFrameFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = PaddedFrameFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -5068,12 +5076,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                PaddedFrameFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!PaddedFrameFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);

@@ -15,6 +15,7 @@ import (
 )
 
 func TestTimestampConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir timestamp RFC3339, wire, message, fixed and cook")
 	base := "../../../testdata/conformance/feature-witnesses/timestamp/rust-boundaries/"
 	source, err := os.ReadFile(base + "Probe.schema")
@@ -136,6 +137,7 @@ IO.puts("TIMESTAMP_OK")
 }
 
 func TestTimestampClosureElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir timestamp collection and kind identity")
 	u := unitFrom(t, `package probe
  enum Key { A, B }

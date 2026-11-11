@@ -84,6 +84,9 @@ func Parse(text string) ([]Case, error) {
 		if len(f) != 9 {
 			return nil, fmt.Errorf("manifest line %d: %d fields, want 9", i+1, len(f))
 		}
+		if err := validateInput(f[4]); err != nil {
+			return nil, fmt.Errorf("manifest line %d (%s): %w", i+1, f[0], err)
+		}
 		out = append(out, Case{
 			Name: f[0], Carrier: f[1], Schema: f[2], Table: f[3], Input: f[4],
 			Provenance: f[5], Verdict: f[6], Reason: f[7], Digest: f[8],
@@ -142,12 +145,34 @@ func EngineReasons() []string {
 	}
 }
 
-// Payload reads one input from the corpus directory.
-func Payload(dir, input string) ([]byte, error) {
+// validateInput requires input to name a file inside the corpus's inputs/
+// directory: the part after "inputs/" must be a local slash-separated path
+// with no backslash, empty, "." or ".." segment.
+func validateInput(input string) error {
 	rel := strings.TrimPrefix(input, "inputs/")
 	if rel == input {
-		return nil, fmt.Errorf("input %q is not under inputs/", input)
+		return fmt.Errorf("input %q is not under inputs/", input)
 	}
+	if strings.Contains(rel, `\`) {
+		return fmt.Errorf("input %q is not slash-separated", input)
+	}
+	if !filepath.IsLocal(rel) {
+		return fmt.Errorf("input %q is not a local path under inputs/", input)
+	}
+	for _, segment := range strings.Split(rel, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("input %q has an empty, \".\" or \"..\" segment", input)
+		}
+	}
+	return nil
+}
+
+// Payload reads one input from the corpus directory.
+func Payload(dir, input string) ([]byte, error) {
+	if err := validateInput(input); err != nil {
+		return nil, err
+	}
+	rel := strings.TrimPrefix(input, "inputs/")
 	payload, err := os.ReadFile(filepath.Join(dir, "inputs", filepath.FromSlash(rel)))
 	if err != nil {
 		return nil, fmt.Errorf("input %q: %w", input, err)
