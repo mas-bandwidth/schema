@@ -652,7 +652,7 @@ impl TableNodeReader {
             }
             12 | 13 | 14 | 16 | 31 | 32 => {
                 let Some(n) = leb_read(payload, &mut off) else { report.damaged = true; return; };
-                if off + (n as usize) != payload.len() { report.damaged = true; return; }
+                if off > payload.len() || n != (payload.len() - off) as u64 { report.damaged = true; return; }
                 self.note_unknown_content(ids, kind, &payload[off..], depth, report);
             }
             15 => self.note_unknown_content(ids, 15, payload, depth, report),
@@ -755,7 +755,7 @@ impl TableNodeReader {
                 if aref as usize > ids.len() || off >= content.len() { report.damaged = true; return; }
                 let akind = content[off]; off += 1;
                 let Some(al) = leb_read(content, &mut off) else { report.damaged = true; return; };
-                if off + (al as usize) != content.len() { report.damaged = true; return; }
+                if off > content.len() || al != (content.len() - off) as u64 { report.damaged = true; return; }
                 let next_depth = if matches!(akind, 13..=16) { depth + 1 } else { depth };
                 self.note_unknown_content(ids, akind, &content[off..], next_depth, report);
             }
