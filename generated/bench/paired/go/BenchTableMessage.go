@@ -691,7 +691,7 @@ func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 // readers then hold these lanes to the declared ranges, as the file read does.
 func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
 	lo, ok := r.Get(min(s.Bits, 64))
-	if !ok {
+	if !ok || s.Packing == 2 && lo > uint64(s.QCount) {
 		return false
 	}
 	hi := uint64(0)
@@ -711,7 +711,7 @@ func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 		hi += s.Base[1] + carry
 	}
 	if s.Packing == 2 {
-		index := min(uint32(lo), s.QCount)
+		index := uint32(lo)
 		ratio := float32(float32(index) / float32(s.QCount))
 		scaled := float32(ratio * s.QDelta)
 		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
