@@ -2,7 +2,7 @@
 -- SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 -- your choice. See the LICENSE exception in the schema compiler; the compiler is
 -- AGPL-3.0, its output is not.
--- package example — protocol id 0xeb26c970fde3fd71
+-- package example — protocol id 0xf35accd0582cdd84
 
 local _M = {}
 
@@ -75,13 +75,42 @@ _M.Weapon = {
   Laser = 1,
   Missile = 2,
   Railgun = 3,
+  Flak = 4,
+  Beam = 5,
+  Plasma = 6,
+  Torpedo = 7,
+  Mine = 8,
+  Drone = 9,
+  Swarm = 10,
+  Pulse = 11,
+  Lance = 12,
+  Comet = 13,
+  Quake = 14,
+  Arc = 15,
   Max = 15, -- the exported extent (SPEC §4.2)
 }
 
 -- EnumNameWeapon: debug/log/tooling name for any Weapon wire value;
 -- out-of-set values (wire-legal up to the declared max) name as "???"
 do
-  local names = { [0] = "None", [1] = "Laser", [2] = "Missile", [3] = "Railgun" }
+  local names = {
+    [0] = "None",
+    [1] = "Laser",
+    [2] = "Missile",
+    [3] = "Railgun",
+    [4] = "Flak",
+    [5] = "Beam",
+    [6] = "Plasma",
+    [7] = "Torpedo",
+    [8] = "Mine",
+    [9] = "Drone",
+    [10] = "Swarm",
+    [11] = "Pulse",
+    [12] = "Lance",
+    [13] = "Comet",
+    [14] = "Quake",
+    [15] = "Arc",
+  }
   function _M.EnumNameWeapon(value)
     return names[value] or "???"
   end
@@ -792,7 +821,7 @@ function _M.WriteProbeSample(stream, v)
     if not stream:serializeBits({ value = v.IdleTicks }, 32) then return false end -- the storage width
   end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.SamplesCount) ~= "number" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
+  if math.type(v.SamplesCount) ~= "integer" or v.SamplesCount < 1 or v.SamplesCount > 8 then return false end
   if not stream:serializeBits({ value = v.SamplesCount - 1 }, 3) then return false end -- the count
   for _i = 1, v.SamplesCount do
     if math.type(v.Samples[_i]) ~= "integer" then return false end
@@ -837,7 +866,7 @@ function _M.WriteProbeCollider(stream, v)
   if not _M.WriteProbeShape(stream, v.Shape) then return false end
   if not _M.WriteProbeShape(stream, v.Backup) then return false end
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ExtrasCount) ~= "number" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
+  if math.type(v.ExtrasCount) ~= "integer" or v.ExtrasCount < 0 or v.ExtrasCount > 2 then return false end
   if not stream:serializeBits({ value = v.ExtrasCount }, 2) then return false end -- the count
   for _i = 1, v.ExtrasCount do
     if not _M.WriteProbeShape(stream, v.Extras[_i]) then return false end
@@ -924,7 +953,7 @@ function _M.WriteTestData(stream, v)
   if not stream:serializeBits({ value = v.F }, 8) then return false end -- the declared bit width
   if not stream:serializeBool({ value = v.G }) then return false end -- SPEC §4.3
   -- the count guards the loop (SPEC §6.3)
-  if type(v.ItemsCount) ~= "number" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
+  if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 16 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
   for _i = 1, v.ItemsCount do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 255 then return false end

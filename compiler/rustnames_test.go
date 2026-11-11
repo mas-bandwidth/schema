@@ -50,6 +50,7 @@ var rustTableTypeDecl = regexp.MustCompile(`(?m)^pub (?:struct|enum) ([A-Za-z_][
 // crate, and builds and runs it: a name that is ambiguous at the root, or
 // missing from crate::tables, does not compile.
 func TestRustEverySchemaNameIsReachable(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Rust toolchain (it builds each generated crate and a test naming its schema names)")
 	repo, err := filepath.Abs("..")
 	if err != nil {

@@ -16,6 +16,7 @@ import (
 )
 
 func TestUnionArrayElementKindsElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir array-arm inner kind mismatch clears the selected union in both readers")
 	u := unitFrom(t, `package armarraykind
  enum Mode { A }
@@ -148,6 +149,7 @@ end
 }
 
 func TestPinnedUnionArrayElementKindElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir permanent union-array mismatched element kind replay")
 	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
