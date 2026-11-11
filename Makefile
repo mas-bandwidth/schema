@@ -1173,7 +1173,7 @@ tables-cook-fuzz-negative-control:
 		{ echo "NEGATIVE CONTROL: the cook-check sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/cook-fuzz-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cook-fuzz-control/overlay.json
-	@if SEED=$(SEED) N=$(N) go test -count=1 -overlay=build/cook-fuzz-control/overlay.json \
+	@if SCHEMA_SLOW=1 SEED=$(SEED) N=$(N) go test -count=1 -overlay=build/cook-fuzz-control/overlay.json \
 			-run 'TestCookCheck' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook battery stayed green with the directory scan removed"; \
 		exit 1; \
@@ -2798,7 +2798,7 @@ check-wstring-refusal-negative-control:
 	@sed 's|c.errf(f.Type.Pos, wstringRefusalMsg, fix)|_, _ = wstringRefusalMsg, fix // SABOTAGED: the wstring refusal is removed|' \
 		internal/check/check.go > build/wstring-refusal-negative/check.gotext
 	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/wstring-refusal-negative/check.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
-	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: TestWstringKind33Retired stayed green with the wstring refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
 	fi
 	@grep -q 'wstring' build/wstring-refusal-negative/log || \
@@ -3804,7 +3804,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	@grep -Fq '!report.damaged' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
-	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@if SCHEMA_SLOW=1 go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
 	@grep -Fq 'must refuse count_over_extent_cap' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
@@ -4408,7 +4408,7 @@ tables-lists-cook-check-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the cook-check list sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/list-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-cook-check-control/overlay.json
-	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckListSlot' ./internal/tablecook/ > build/list-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping cook-check's element-array clause left its test GREEN"; exit 1; \
 	fi
@@ -4425,7 +4425,7 @@ tables-lists-cook-check-negative-control:
 .PHONY: tables-maps-cook-check-negative-control
 tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-control
 	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
-	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the shared containment clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4438,7 +4438,7 @@ tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-contro
 		{ echo "NEGATIVE CONTROL FAILED: the ascending sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/map-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-cook-check-control/overlay.json
-	@if go test -count=1 -overlay=build/map-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/map-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the keys' ascending clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4463,7 +4463,8 @@ build/schema_test_listcook: build/tables-generated/.stamp test/tables/listcook_m
 .PHONY: tables-lists-tool-cook
 tables-lists-tool-cook: build/schema_test_listcook
 	@rm -rf build/list-tool-cook && mkdir -p build/list-tool-cook
-	SCHEMA_LIST_TOOL_COOK_DIR=$(CURDIR)/build/list-tool-cook go test -count=1 \
+	SCHEMA_LIST_TOOL_COOK_DIR=$(CURDIR)/build/list-tool-cook sh test/slowgate/proof tables-lists-tool-cook \
+		'TestTheToolCooksAndUncooksAList TestAListRidesInItsHolderNodeExtent TestTheToolWritesTheReferencesListCook' -count=1 \
 		-run 'TestTheToolCooksAndUncooksAList|TestAListRidesInItsHolderNodeExtent|TestTheToolWritesTheReferencesListCook' \
 		./internal/tablecook/
 	./build/schema_test_listcook build/list-tool-cook
@@ -4486,7 +4487,7 @@ tables-lists-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/list-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-tool-cook-control/overlay.json
-	@if go test -count=1 -overlay=build/list-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-tool-cook-control/overlay.json \
 			-run 'TestAListRidesInItsHolderNodeExtent' ./internal/tablecook/ > build/list-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an unaligned element array left the tool's cook GREEN"; exit 1; \
 	fi
@@ -4502,7 +4503,8 @@ tables-lists-tool-cook-negative-control:
 # these bytes by the conformance cook-write rows.
 .PHONY: tables-maps-tool-cook tables-maps-tool-cook-negative-control
 tables-maps-tool-cook:
-	go test -count=1 -run 'TestTheToolCooksAndUncooksAMap|TestAMapRidesInItsHolderNodeExtent' ./internal/tablecook/
+	sh test/slowgate/proof tables-maps-tool-cook 'TestTheToolCooksAndUncooksAMap TestAMapRidesInItsHolderNodeExtent' \
+		-count=1 -run 'TestTheToolCooksAndUncooksAMap|TestAMapRidesInItsHolderNodeExtent' ./internal/tablecook/
 
 # ITS NEGATIVE CONTROL: the carve writes a map's entries in DESCENDING order,
 # and the tool's own cook-check must refuse the cook on the keys.
@@ -4514,7 +4516,7 @@ tables-maps-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the descending sabotage did not apply once"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/map-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-tool-cook-control/overlay.json
-	@if go test -count=1 -overlay=build/map-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/map-tool-cook-control/overlay.json \
 			-run 'TestTheToolCooksAndUncooksAMap' ./internal/tablecook/ > build/map-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: descending entries left the tool's map cook GREEN"; exit 1; \
 	fi
@@ -4585,7 +4587,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half sabotage did not apply once"; exit 1; }; \
 		printf '{"Replace":{"%s/ir/tablelist.go":"%s/build/node-align-control/%s.go.txt"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$half" > build/node-align-control/$$half.json; \
-		if go test -count=1 -overlay=build/node-align-control/$$half.json \
+		if SCHEMA_SLOW=1 go test -count=1 -overlay=build/node-align-control/$$half.json \
 				-run 'TestCookWriteFixturesAreTheToolsBytes' ./test/conformance/harness/ > build/node-align-control/$$half.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half half taken away left the tool's cook of widelist_wide GREEN"; exit 1; \
 		fi; \
@@ -5470,7 +5472,7 @@ tables-wire-fuzz-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
@@ -5596,7 +5598,7 @@ tables-engine-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
 	@sed '/case markOpen:/{n;s/return false/continue/;}' test/conformance/harness/strictcheck.go > $(ENGINE_CYCLE_NC)/strictcheck.go.txt && printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(ENGINE_CYCLE_NC)/strictcheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
 		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
@@ -5621,7 +5623,7 @@ tables-engine-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
 		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -5864,7 +5866,7 @@ define message_form_control
 	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
-	@if go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
 			./test/conformance/harness -run '^$(3)$$' > build/message-nc/$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and $(3) stayed green"; \
 		cat build/message-nc/$(1).log; exit 1; \
@@ -5878,7 +5880,7 @@ endef
 
 # one line a row: the sabotage, the engine file, the harness test
 MESSAGE_FORM_CONTROLS := \
-	message-tail-without-node-table:ir/tablewire.go:TestTheTailIsUnconditional \
+	message-tail-without-node-table:ir/tablewire.go:TestTheVocabularyIsTheMessageClosure \
 	message-order-reversed:ir/tablewire.go:TestTheAnnouncementIsTheUnitsOwn \
 	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheTwoFormsRoundTrip \
 	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheCostRows \
