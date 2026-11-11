@@ -203,7 +203,7 @@ func t08W13(t *testing.T) {
 	block := fixedLayoutBytes(fixedWalkRoot(st).entries)
 	const (
 		refEntries   = 75
-		refHash      = uint64(0x17a486dabf3bc923)
+		refHash      = uint64(0x5f1320927e9ad910)
 		refBodyBytes = int64(1236)
 	)
 	if len(fixedWalkRoot(st).entries) != refEntries {

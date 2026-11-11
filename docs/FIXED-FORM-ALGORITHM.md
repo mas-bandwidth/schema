@@ -676,14 +676,13 @@ once — and append, per field:
 
 | the fact | the bytes |
 |---|---|
-| an INTEGER or FIXED-POINT range whose bounds fit in an i64 | `'R'`, then min and max, each as an i64 LE (a fixed-point bound is its RAW scaled value) |
-| an INTEGER or FIXED-POINT range with a bound OUTSIDE i64 | `'W'`, then min and max, each as a full **16-byte two's-complement** value, little-endian. The wide row carries the bound whole, where an i64 row would saturate two different wide maxima to the same bytes |
+| an INTEGER range | `'R'`, then min and max, each as an i64 LE |
 | a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
+| a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
 | a FLOAT range's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, immediately after that range's `'R'` and bounds. This row is present for every float range, including an uncompressed range whose absent resolution is `0.0` (eight zero bytes). It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
-| a `flags` type, at its FIRST use | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
-| a `flags` type ALREADY seen, at each later field that names it | `'G'`, a reference row with no payload, so one use and two uses of the same flags type do not hash alike |
+| a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
 | a reader-side limit | `'L'`, then the limit as u64 LE. **RESERVED:** no table spelling of a reader-side limit exists; `--fixed-record-limit` is outside the law (§6) and does not emit this row. The row stays empty until a table-declared limit exists. The pin is `TestTableFixedDefinitionsDigestLReservedUntilALimitExists`. |
 | a nested `table` / `type` | recurse, once per type name |
 | a union | recurse into each arm's payload, in declared order |
@@ -691,20 +690,17 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for an integer or fixed-point range whose
-bounds fit in an i64 — an i64 for each bound — and `'W'` for one with a bound outside it, both bounds as
-full sixteen-byte two's-complement values; a float range is `'R'` with the `float64`'s own bits. It emits
-`'Q'` for every float range's resolution (including zero for an uncompressed range), `'F'` at a flags
-type's first use and `'G'` at each later field that names it. `'L'` is reserved: no table spelling exists,
-so that row is empty. **Structs, flags and unions share one `seen` map keyed by bare name.**
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
+way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — `'Q'`
+for every float range's resolution (including zero for an uncompressed range), and
+`'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
+unions share one `seen` map keyed by bare name.**
 
-**The ORDER inside one field is fixed**: `'R'` — or `'W'` when a bound is outside i64 — FIRST when the
-field has a range, `'Q'` straight after it when that range is a float's, including an uncompressed
-float's zero resolution, then the KIND TAG — `'B'`
-for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type's first
-use, `'G'` for a later field naming one already seen, a RECURSE for a nested `table`/`type`, a recurse into
-each arm's payload in declared order for a union. A field spends none, one, two or three of those, in that
-order and never another.
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
+that range is a float's, including an uncompressed float's zero resolution, then the KIND TAG — `'B'`
+for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
+for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
+none, one, two or three of those, in that order and never another.
 
 **A flags type's WIRE BIT COUNT falls back to `len(Variants)` when it is `0`**: a `flags` declared with no
 explicit width spends one bit per flag, and the digest records the count either way.
@@ -1275,7 +1271,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and sets a flag | a content violation REFUSES BY NAME, `text_ill_formed` (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type's definition once by NAME, with a `'G'` reference row at each later field that names it** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | no census: the entry is UNLAWFUL and refused `layout_malformed` (§5.2, §5.4) |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `REFUSE out_of_range` on both, in the bounds pass (§4.6) |
 | 16 | a `bool` or a present byte lands by a one-byte copy, and a ranged value, a tag and an ordinal past the writer's are clamped and counted | `wire_damaged` for the byte and `out_of_range` for the rest, refused (§4.5, §4.6; 2026-11-03) |

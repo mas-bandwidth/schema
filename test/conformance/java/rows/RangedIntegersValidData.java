@@ -38,7 +38,7 @@
 //
 // The frame, as the generated writer writes it (§3's header, form byte 3): the
 // form byte at 0; seven reserved zeros at 1..7; the layout hash —
-// 0xcbf32b9992cc8183L for RangedSigned, 0xe0d607e32ae0db0fL for
+// 0xcbf32b9992cc8183L for RangedSigned, 0x8b7880ef6aaed3c0L for
 // RangedUnsigned — as eight little-endian bytes at 8, a COMPILE-TIME CONSTANT
 // a runtime never derives; the u32 LE layout length (327) at 16; the 327
 // layout bytes from 20; then the records back to back, each eight bytes of

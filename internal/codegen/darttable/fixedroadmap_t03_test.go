@@ -158,7 +158,7 @@ fixed table T
 }
 
 // t03R5: R5 "the digest carries every range, every resolution (tag 'Q') and
-// every reader limit (tag 'L'), and a flags type's definition once, with a reference row at each later field".
+// every reader limit (tag 'L'), and a flags type deduped by name, once".
 // §5.2 THE DEFINITIONS DIGEST: "Without it `int32 | 0..100` and `| 0..200`
 // hash identically and an old reader cannot refuse the widening", the 'Q' row
 // "is present for every float range", the 'L' row "stays empty until a
@@ -258,10 +258,9 @@ fixed table T
 		t.Errorf("R5: the digest carries an 'L' row at %d with no table spelling of a reader-side limit — the row stays empty until one exists", i)
 	}
 
-	// (4) A FLAGS TYPE'S DEFINITION ONCE, WITH A REFERENCE ROW AT EACH LATER
-	// FIELD: "Structs, flags and unions share one `seen` map keyed by bare
-	// name", so a flags type named by two fields spends one 'F' row and then a
-	// 'G' reference row — two uses are not the digest of one.
+	// (4) A FLAGS TYPE DEDUPED BY NAME, ONCE: "Structs, flags and unions share
+	// one `seen` map keyed by bare name", so a flags type named by two fields
+	// spends one 'F' row — the digest a table naming it once spells.
 	twice := `package probe
 
 flags Caps { Jump, Crouch }
@@ -283,17 +282,11 @@ fixed table T
 `
 	dTwice := ir.TableFixedDefinitionsDigest(findTable(t, unitFrom(t, twice), "T"))
 	dOnce := ir.TableFixedDefinitionsDigest(findTable(t, unitFrom(t, once), "T"))
-	if !bytes.HasPrefix(dTwice, dOnce) {
-		t.Errorf("R5: a later field leaves the first use's flags bytes alone: once % x, twice % x", dOnce, dTwice)
+	if !bytes.Equal(dTwice, dOnce) {
+		t.Errorf("R5: a flags type named by two fields is re-emitted — the digest is deduped by name, once")
 	}
 	if n := bytes.Count(dTwice, []byte{'F'}); n != 1 {
-		t.Errorf("R5: the digest carries %d 'F' rows for one flags type, want 1", n)
-	}
-	if n := bytes.Count(dTwice, []byte{'G'}); n != 1 {
-		t.Errorf("R5: the second field naming the flags type carries %d 'G' reference rows, want 1", n)
-	}
-	if dTwice[len(dTwice)-1] != 'G' {
-		t.Errorf("R5: the digest ends in the second use's reference row, got % x", dTwice)
+		t.Errorf("R5: the digest carries %d 'F' rows for one flags type, want 1 — deduped by name, once", n)
 	}
 }
 

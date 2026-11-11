@@ -8,7 +8,7 @@
 //
 // Reference hash:
 //   generated/bench/paired/cpp/FixedTableTable.h:4283
-//   constexpr uint64_t FixedTableFixedHash = 0x17a486dabf3bc923ull
+//   constexpr uint64_t FixedTableFixedHash = 0x5f1320927e9ad910ull
 // (split across two uint32 lanes in JS because BigInt allocates).
 
 import { readFileSync } from "node:fs";
@@ -24,8 +24,8 @@ const m = await import(
   pathToFileURL(resolve(generated, "FixedTableTable.js")).href
 );
 
-const REF_HASH_LO = 0xbf3bc923;
-const REF_HASH_HI = 0x17a486da;
+const REF_HASH_LO = 0x7e9ad910;
+const REF_HASH_HI = 0x5f132092;
 const REF_BODY_BYTES = 1236;
 const REF_LAYOUT_BYTES = 1279;
 const REF_RECORD_BYTES = 1244;

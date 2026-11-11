@@ -13,7 +13,6 @@ package javatable
 // assertion of every clause that had none.
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"reflect"
@@ -303,7 +302,7 @@ fixed table T
 }
 
 // t02R5: R5 "the digest carries every range, every resolution (tag 'Q') and
-// every reader limit (tag 'L'), and a flags type's definition once, with a reference row at each later field". The
+// every reader limit (tag 'L'), and a flags type deduped by name, once". The
 // bytes are positional and named by tag, so each clause is read off the digest
 // directly. docs/FIXED-FORM-ALGORITHM.md §5.2's contract table states the
 // reader-limit row: "'L', then the limit as u64 LE. RESERVED: no table spelling
@@ -369,17 +368,8 @@ fixed table T
 }
 `), "T")
 	twiceDigest := ir.TableFixedDefinitionsDigest(flagsTwice)
-	if !bytes.HasPrefix(twiceDigest, once) {
-		t.Errorf("R5: a later field leaves the first use's flags bytes alone: once % x, twice % x", once, twiceDigest)
-	}
-	if n := bytes.Count(twiceDigest, []byte{'F'}); n != 1 {
-		t.Errorf("R5: a flags type emits its definition once, got %d 'F' in % x", n, twiceDigest)
-	}
-	if n := bytes.Count(twiceDigest, []byte{'G'}); n != 1 {
-		t.Errorf("R5: the second field naming the flags type carries %d 'G' reference rows, want 1", n)
-	}
-	if twiceDigest[len(twiceDigest)-1] != 'G' {
-		t.Errorf("R5: the digest ends in the second use's reference row, got % x", twiceDigest)
+	if got := twiceDigest; string(got) != string(once) {
+		t.Errorf("R5: the flags type is not deduped by name: once % x, twice % x", once, got)
 	}
 
 	// ALGORITHM §5.2 reserves 'L' because no table spelling of a reader-side

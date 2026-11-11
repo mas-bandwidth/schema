@@ -70,7 +70,7 @@ public final class FixedTableFixed {
      * fnv1a64 over the layout's bytes exactly as written, and the eight bytes every record carries.
      * A WIRE IDENTITY and not a security claim.
      */
-    public static final long hash = 0x17a486dabf3bc923L;
+    public static final long hash = 0x5f1320927e9ad910L;
 
     /**
      * THE LAYOUT (form 1 called this the vocabulary block): 75 entries, a PRE-ORDER walk of this
@@ -178,7 +178,7 @@ public final class FixedTableFixed {
      * carries is COMPARED with the bytes the lock recorded, never walked.
      */
     public static final TableFixed.KnownLayout[] known = {
-        new TableFixed.KnownLayout(0x17a486dabf3bc923L, layout, layout.length, 1244),
+        new TableFixed.KnownLayout(0x5f1320927e9ad910L, layout, layout.length, 1244),
     };
 
     /**

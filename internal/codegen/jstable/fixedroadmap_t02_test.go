@@ -16,7 +16,6 @@ package jstable
 // tests that never executed.
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -416,7 +415,7 @@ fixed table T
 }
 
 // t02R5: R5 [weak] "the digest carries every range, every resolution (tag 'Q')
-// and every reader limit (tag 'L'), and a flags type's definition once, with a reference row at each later field"
+// and every reader limit (tag 'L'), and a flags type deduped by name, once"
 // (§5.2 THE DEFINITIONS DIGEST, bill §13). The rows are positional and named by
 // tag, so each clause is read off the digest directly. 'L' is RESERVED: no table
 // spelling of a reader-side limit exists, so no row is emitted for one.
@@ -470,22 +469,12 @@ fixed table T
     n Marks
 }
 `))
-	twiceDigest := ir.TableFixedDefinitionsDigest(flagsTwice)
-	if !bytes.HasPrefix(twiceDigest, once) {
-		t.Errorf("R5: a later field leaves the first use's flags bytes alone: once % x, twice % x", once, twiceDigest)
-	}
-	if n := bytes.Count(twiceDigest, []byte{'F'}); n != 1 {
-		t.Errorf("R5: a flags type emits its definition once, got %d 'F' in % x", n, twiceDigest)
-	}
-	if n := bytes.Count(twiceDigest, []byte{'G'}); n != 1 {
-		t.Errorf("R5: the second field naming the flags type carries %d 'G' reference rows, want 1", n)
-	}
-	if twiceDigest[len(twiceDigest)-1] != 'G' {
-		t.Errorf("R5: the digest ends in the second use's reference row, got % x", twiceDigest)
+	if got := ir.TableFixedDefinitionsDigest(flagsTwice); string(got) != string(once) {
+		t.Errorf("R5: the flags type is not deduped by name: once % x, twice % x", once, got)
 	}
 	// 'L' would be a reader-side limit. No table spelling makes one, so the
 	// reserved row is absent rather than silently unhashed.
-	for _, d := range [][]byte{once, twiceDigest} {
+	for _, d := range [][]byte{once, ir.TableFixedDefinitionsDigest(flagsTwice)} {
 		for _, b := range d {
 			if b == 'L' {
 				t.Error("R5: the digest carries a reader-limit row no table spelling produces")

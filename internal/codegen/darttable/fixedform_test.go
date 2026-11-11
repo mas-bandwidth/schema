@@ -35,7 +35,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refLayoutLen = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash      = uint64(0x17a486dabf3bc923)
+		refHash      = uint64(0x5f1320927e9ad910)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {

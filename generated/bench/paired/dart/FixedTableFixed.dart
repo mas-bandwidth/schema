@@ -68,7 +68,7 @@ const int fixedTableFixedRecordBytes = 1244; // the hash and the body
 
 /// fnv1a64 over the layout's bytes exactly as written. A Dart int is a full
 /// 64-bit two's complement value, so the hash rides as itself.
-const int fixedTableFixedHash = 0x17a486dabf3bc923;
+const int fixedTableFixedHash = 0x5f1320927e9ad910;
 
 /// THE LAYOUT: 75 entries, a PRE-ORDER walk of the closure in the writer's
 /// declared order. Every byte is settled by the compiler.
@@ -447,7 +447,7 @@ const int fixedTableFixedIdentitySplit = 9;
 /// is `layout_newer` — ship the reader.
 // dart format off
 final List<TableFixedKnownLayout> fixedTableFixedKnown = <TableFixedKnownLayout>[
-  TableFixedKnownLayout(0x17a486dabf3bc923, Uint8List.fromList(const <int>[
+  TableFixedKnownLayout(0x5f1320927e9ad910, Uint8List.fromList(const <int>[
   0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85,
   0x0d, 0xd4, 0x04, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8,
   0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04, 0x00, 0x00, 0x1b, 0x00,

@@ -78,7 +78,7 @@ pub fn fixed_table_fixed_finite_body(value: &FixedTableRow) -> &'static str {
 pub const FIXED_TABLE_FIXED_BODY_BYTES: usize = 1236;
 pub const FIXED_TABLE_FIXED_RECORD_BYTES: usize = 8 + FIXED_TABLE_FIXED_BODY_BYTES; // the hash and the body
 /// fnv1a64 over the layout and the definitions digest (bill §13).
-pub const FIXED_TABLE_FIXED_HASH: u64 = 0x17a486dabf3bc923;
+pub const FIXED_TABLE_FIXED_HASH: u64 = 0x5f1320927e9ad910;
 
 /// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 /// PRE-ORDER walk of the closure in the writer's declared order. Every byte
@@ -279,7 +279,7 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
 /// is not on the wire and the number cannot be re-derived from a file (§5.2).
 pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
     TableFixedKnown {
-        hash: 0x17a486dabf3bc923,
+        hash: 0x5f1320927e9ad910,
         layout: &FIXED_TABLE_FIXED_BLOCK,
         record: 1244,
         retired: false,
