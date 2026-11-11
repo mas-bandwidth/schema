@@ -550,7 +550,13 @@ impl TableNodeReader {
                         if tref == 0 || tref as usize > ids.len() { scan_ok = false; break; }
                         let Some(bl) = leb_read(&wire[..sub], &mut off) else { scan_ok = false; break; };
                         if off > sub || bl > (sub - off) as u64 { scan_ok = false; break; }
-                        recs.push((ids[tref as usize - 1], off, off + bl as usize));
+                        let type_id = ids[tref as usize - 1];
+                        if type_id == NODE_TABLE_ID || type_id == BUILD_VERSION_ID || type_id == VOCABULARY_ID {
+                            report.damaged = true;
+                            scan_ok = false;
+                            break;
+                        }
+                        recs.push((type_id, off, off + bl as usize));
                         off += bl as usize;
                     }
                     if off != sub || declared != recs.len() as u64 { scan_ok = false; }
