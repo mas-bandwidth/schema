@@ -621,6 +621,8 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// load that cannot frame a body whole refuses the whole load, the retained
 	// store included. The one read holds for the retaining read too.
 	g.pf("\tif (r.wireUnreachedNode()) { r.report.refuse('wire_damaged'); }\n")
+	g.pf("\tif (r.wireCycle()) { r.report.refuse('wire_damaged'); }\n")
+	g.pf("\tif (r.wireStringBlobBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireFramingBad()) { r.report.refuse('wire_damaged'); }\n")
 	g.pf("\tif (r.wireBlobShared()) { r.report.refuse('blob_shared'); }\n")
 	g.pf("\tif (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }\n")
