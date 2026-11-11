@@ -14,6 +14,7 @@ import (
 )
 
 func TestIntegrityConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir CRC-32C file fixed message and retaining surfaces")
 	const src = `package probe
  fixed table Reading | integrity="crc32c" { x int32
@@ -160,6 +161,7 @@ const elixirIntegrityFixedGolden = "03000000000000006938893b09682701480000000400
 const elixirIntegrityPlainFixedGolden = "030000000000000064f3fa8daeaf844448000000040000000deeaf527dc1c0970d1200000003000000071702864cf563af040400000000000000541502864cf463af0302000000000000003d62cb8fecfcf7390c0c0000000000000064f3fa8daeaf8444e80300000000020000006f6b00000000000064f3fa8daeaf8444e9030000f9ff00000000000000000000000064f3fa8daeaf8444ea030000f2ff080000006569676874206368"
 
 func TestIntegritySingleRootElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir integrity-only closure warning-clean generation")
 	for _, decl := range []string{"table", "fixed table", "wire-only"} {
 		t.Run(decl, func(t *testing.T) {

@@ -19,14 +19,15 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate is the skeleton (docs/PORT-PYTHON.md, THE CARD MAP: P3). The shared
-// refusal chain every port calls refuses, by name, each construct the target
-// does not carry, as it does for every skeleton (docs/PORT-GOOSE.md, THE
-// CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused by
-// the driver against the python carries set, which compiler/carries_python.go
+// Generate is the packet core (docs/PORT-PYTHON.md, THE PACKET CORE CUT). The
+// shared refusal chain every port calls refuses, by name, each construct the
+// target does not carry, as it does for every skeleton (docs/PORT-GOOSE.md,
+// THE CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused
+// by the driver against the python carries set, which compiler/carries_python.go
 // registers empty. Then the emitter holds every name to the leg's identifier
-// rules and refuses each declaration kind it does not carry yet, naming the
-// layer that carries it. A unit that declares nothing generates its package.
+// rules, emits every packet declaration's class surface and the wire of the
+// carried kinds, and refuses a field or item of any other kind by name, naming
+// the design's packet layer.
 func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
 		return nil, err

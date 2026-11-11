@@ -124,17 +124,17 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "elixir leg only",
 			files: "internal/codegen/elixirtable/wire.go",
-			want:  `no|./internal/codegen/elixirtable|["elixir"]`,
+			want:  `no|./internal/codegen/elixirtable ./internal/goldens|["elixir"]`,
 		},
 		{
 			name:  "luau leg only",
 			files: "internal/codegen/luautable/fixedlineage.go",
-			want:  `no|./internal/codegen/luautable|["luau"]`,
+			want:  `no|./internal/codegen/luautable ./internal/goldens|["luau"]`,
 		},
 		{
 			name:  "goose leg only",
 			files: "internal/codegen/goosetable/fixedform.go",
-			want:  `no|./internal/codegen/goosetable|["goose"]`,
+			want:  `no|./internal/codegen/goosetable ./internal/goldens|["goose"]`,
 		},
 		{
 			// the Squirrel row runs make targets only, so it names no package
@@ -145,7 +145,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "dart leg only",
 			files: "internal/codegen/darttable/darttable.go",
-			want:  `no|./internal/codegen/darttable|["dart"]`,
+			want:  `no|./internal/codegen/darttable ./internal/goldens|["dart"]`,
 		},
 		{
 			name:  "ci package only",
@@ -165,7 +165,24 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "lobster leg only",
 			files: "internal/codegen/lobstertable/load.go",
-			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster|["lobster"]`,
+			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster ./internal/goldens|["lobster"]`,
+		},
+		{
+			// a golden alone selects no leg, and still re-checks the goldens
+			name:  "golden only",
+			files: "testdata/golden/java/Types.java",
+			want:  `no|./internal/goldens|[]`,
+		},
+		{
+			// an emitter alone re-checks the goldens it writes
+			name:  "java emitter only",
+			files: "internal/codegen/java/canonical_test.go",
+			want:  `no|./internal/codegen/java ./internal/codegen/javatable ./internal/goldens|["java"]`,
+		},
+		{
+			name:  "usage page",
+			files: "docs/USAGE.md",
+			want:  `no|./internal/goldens|[]`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
