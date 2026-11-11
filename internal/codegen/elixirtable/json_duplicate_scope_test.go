@@ -59,7 +59,7 @@ defmodule Probe do
     case Duplicatescope.Table.save("Root", value) do
     {:ok, wire} when is_binary(wire) ->
      case Duplicatescope.Table.load("Root", wire) do
-      {:ok, loaded, report} ->
+      {:ok, loaded, _report} ->
        check(true, name <> " plain load report")
        check(Duplicatescope.Table.to_json("Root", loaded) == {:ok, want_json}, name <> " plain load canonical value")
       result -> check(false, name <> " plain load: " <> inspect(result))
@@ -67,7 +67,7 @@ defmodule Probe do
      store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
      zero = %{unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, malformed: false, retained: 0, retain_lost: 0}
      case Duplicatescope.Table.load_retain("Root", wire, store, zero) do
-      {:ok, loaded, report, _store} ->
+      {:ok, loaded, _report, _store} ->
        check(true, name <> " retaining load report")
        check(Duplicatescope.Table.to_json("Root", loaded) == {:ok, want_json}, name <> " retaining load canonical value")
       result -> check(false, name <> " retaining load: " <> inspect(result))
@@ -114,7 +114,7 @@ end
 		if err != nil {
 			t.Fatalf("%s oracle writer: %v", row.name, err)
 		}
-		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, kind_mismatch: %d, clamped: %d, widened: %d, duplicate: %d, malformed: %t}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, 0, 0, report.Widened, 0, report.Refused, elixirString(row.name))
+		fmt.Fprintf(&probe, "Probe.row(%s, %t, %s, %%{unknown: %d, kind_mismatch: %d, clamped: %d, widened: %d, duplicate: %d}, %s)\n", elixirString(row.text), ok, elixirString(string(json)+"\n"), report.Unknown, 0, 0, report.Widened, 0, elixirString(row.name))
 	}
 	probe.WriteString(`
 # Present enum None and an absent optional are distinct cook storage states.
