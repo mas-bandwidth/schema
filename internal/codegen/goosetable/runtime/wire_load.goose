@@ -174,7 +174,7 @@ struct LoadUnit {
 //   bits   an integer's value (sign-extended to 128 bits on a signed kind), a
 //          bool's 0 or 1, an enum's variant ordinal (0 = None), a union's tag,
 //          a pointer's node index, a float's IEEE bits (f32 in the low 32)
-//   off    a text, bytes or wstring value: a VIEW into the input, nothing
+//   off    a text or bytes value: a VIEW into the input, nothing
 //   len    copied; len is the view's byte length, or a collection's live count
 //   first  the first child slot: a record's fields in descriptor order, an
 //   count  array's elements, a map's entries, a union's one payload slot
@@ -769,8 +769,8 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
 // ---- THE DISPATCH (schema_tables.goose, load_registry; docs/PORT-GOOSE.md,
 // THE LOADED VALUE: the dispatch) ----
 
-// loader_of looks a descriptor up in the registry: the first row whose shape,
-// array kind (0: any) and wstring flag match. A shape no row registers reads
+// loader_of looks a descriptor up in the registry: the first row whose shape
+// and array kind (0: any) match. A shape no row registers reads
 // as a fixed-width scalar, as a header kind it does not know is skipped by
 // its width (docs/SPEC-TABLES.md §3).
 fn loader_of(d: FieldDesc) -> Loader {
