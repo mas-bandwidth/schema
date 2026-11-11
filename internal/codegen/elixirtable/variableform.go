@@ -1905,6 +1905,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
+    if ends_early?(body, ids), do: throw(:wire_damaged)
+
     case entries(body, ids, desc, :nested) do
       {:ok, fields, []} -> {desc, fields, true}
       {:stop, fields, [], _} -> {desc, fields, false}
@@ -2668,12 +2670,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-            {:cont, v, report} ->
-              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged)}
+          else
+            case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+              {:cont, v, report} ->
+                read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-            {:halt, v, report} ->
-              {:halt, Map.put(acc, name, v), report}
+              {:halt, v, report} ->
+                {:halt, Map.put(acc, name, v), report}
+            end
           end
 
         :error ->
@@ -6668,8 +6676,8 @@ const variableRetainSource = `
     read_arm_retain(f.elem, f.ordinal, payload, nodes, ids, report, retain, path)
   end
 
-  # an enum-keyed array: slot k is the step pair {ordinal, k}; a slot written
-  # again resets the earlier one's records.
+  # an enum-keyed array: slot k is the step pair {ordinal, k}; a second pair
+  # naming a slot already placed is damage (§3.2, §4).
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
@@ -6988,25 +6996,31 @@ const variableRetainSource = `
 
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          slot = Enum.find_index(f.key_names, &(&1 == name))
-          retain = retain_reset(retain, path, f.ordinal, slot)
+          if Map.has_key?(acc, name) do
+            # a keyed body names each slot at most once (§3.2); a second pair
+            # whose key resolves to a placed slot is damage (§4)
+            {:cont, acc, throw(:wire_damaged), retain}
+          else
+            slot = Enum.find_index(f.key_names, &(&1 == name))
+            retain = retain_reset(retain, path, f.ordinal, slot)
 
-          case read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
-            {:cont, v, report, retain} ->
-              read_keyed_retain(
-                f,
-                rest,
-                n - 1,
-                nodes,
-                ids,
-                Map.put(acc, name, v),
-                report,
-                retain,
-                path
-              )
+            case read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot) do
+              {:cont, v, report, retain} ->
+                read_keyed_retain(
+                  f,
+                  rest,
+                  n - 1,
+                  nodes,
+                  ids,
+                  Map.put(acc, name, v),
+                  report,
+                  retain,
+                  path
+                )
 
-            {:halt, v, report, retain} ->
-              {:halt, Map.put(acc, name, v), report, retain}
+              {:halt, v, report, retain} ->
+                {:halt, Map.put(acc, name, v), report, retain}
+            end
           end
 
         :error ->

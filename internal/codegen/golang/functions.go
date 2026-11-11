@@ -544,6 +544,22 @@ func (g *gen) emitReadRangedFold64(lo string, bits int64, diff *big.Int, loZero 
 
 // rangeFillsBits reports whether a span of `diff` covers every value `bits`
 // wire bits can carry, which makes the headroom refusal provably vacuous.
+// emitBitsWidthGuard refuses a bits(N) value wider than N bits (SPEC §5.1):
+// the storage is uint32 or uint64, so only a field narrower than its storage
+// can hold such a value, and one as wide as its storage carries no test.
+func (g *gen) emitBitsWidthGuard(f *ir.Field, name, ind string) {
+	storage := int64(64)
+	if f.Type.Width <= 32 {
+		storage = 32
+	}
+	w := int64(f.Type.Width)
+	if w >= storage {
+		return
+	}
+	g.pf("%sif %s > %d { // a value above the bits(%d) wire width cannot ride\n", ind, name, uint64(1)<<uint(w)-1, w)
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+}
+
 func rangeFillsBits(diff *big.Int, bits int64) bool {
 	if bits >= 64 {
 		return diff.Cmp(maxUint64) == 0
@@ -835,6 +851,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.emitWriteBareInt(f, name, ind)
 	case ir.TBits:
+		g.emitBitsWidthGuard(f, name, ind)
 		if f.Type.Width <= 32 {
 			g.pf("%sstream.SerializeBits(&%s, %d)\n", ind, name, f.Type.Width)
 		} else {
@@ -847,8 +864,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.emitWriteCompressedFold(f, name, ind)
 			return
 		}
+		g.emitWriteFiniteGuard("math.Float32bits("+name+")", "0x7f800000", ind)
 		g.pf("%sstream.SerializeFloat32(&%s)\n", ind, name)
 	case ir.TFloat64:
+		g.emitWriteFiniteGuard("math.Float64bits("+name+")", "0x7ff0000000000000", ind)
 		g.pf("%sstream.SerializeFloat64(&%s)\n", ind, name)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
@@ -886,6 +905,18 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%sif err := Write%s(stream, &%s); err != nil {\n%s\treturn err\n%s}\n", ind, f.Type.Name, name, ind, ind)
 		}
 	}
+}
+
+// emitWriteFiniteGuard refuses a NaN or an infinity before a plain float is
+// written, in every build (SPEC §4.3, SPEC §5.1 row 7): its exponent field is
+// all ones. It is tested on the raw bits, as the flat path does, so negative
+// zero and the subnormals still ride bit exact and the runtime write is only
+// ever reached with a finite value. bitsExpr is the pattern at its own width,
+// exponent the mask of its exponent field.
+func (g *gen) emitWriteFiniteGuard(bitsExpr, exponent, ind string) {
+	g.needsMath = true
+	g.pf("%sif %s&%s == %s { // NaN and the infinities are not values of the type\n", ind, bitsExpr, exponent, exponent)
+	g.pf("%s\treturn serialize.ErrNonFiniteFloat\n%s}\n", ind, ind)
 }
 
 // emitWriteBareInt writes a bare integer at its storage width. Signed values

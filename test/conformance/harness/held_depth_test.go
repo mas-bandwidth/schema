@@ -66,7 +66,6 @@ func TestHeldDepthVectorsAnswerTheEngine(t *testing.T) {
 		t.Fatal("graphdemo declares no root Scene")
 	}
 	for _, v := range heldDepthVectors {
-		v := v
 		t.Run(v.name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join(root, framingDir, v.name+".bin"))
 			if err != nil {

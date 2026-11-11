@@ -1765,6 +1765,44 @@ jobs:
           ln -sf "$PWD/dist/squirrel-3.2/bin/sq" "$RUNNER_TEMP/bin/sq"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # THE C DRIVER'S TOOLCHAIN-DEPENDENT BUILD, kept between runs. The C
+      # leg's per-unit compile and link is what ran to 66-108 s (job 121-139
+      # in the runs the card names); the shared inputs above do not include
+      # build/tables-generated-c, build/conformance-c-objs or
+      # build/conformance-c, so the leg rebuilt all of them. A warm hit turns
+      # that build into a timestamp check.
+      #
+      # The driver links from build/conformance-c-objs, so a cache that omits
+      # the objects restores the linked driver and make recompiles every
+      # translation unit. The hit step below stands the stamp, then the
+      # restored generated sources, then the objects, then the driver newer in
+      # that order: a stamp newer than a generated unit remakes that unit
+      # through its empty stamp prerequisite and recompiles its object even
+      # when the object itself was touched.
+      #
+      # The -v2 names the layout that carries the objects. A cache key is
+      # immutable once saved, so without the new name a cache from the earlier
+      # path list (no objects) could be restored into this step and keep
+      # recompiling every unit no matter how the hit step touches it.
+      - id: conformance-c-cache
+        if: matrix.lang == 'c'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/tables-generated-c
+            build/conformance-c-objs
+            build/conformance-c
+          key: conformance-c-driver-v2-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.SERIALIZE_C_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'tables/**', 'test/tables/**', 'test/c-tables/**', 'testdata/conformance/**', 'test/conformance/c/**', 'make/c.mk', 'Makefile', 'go.mod') }}
+
+      - name: stand cached C driver inputs newer than this checkout
+        if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit == 'true'
+        run: |
+          touch build/tables-generated-c/collections.stamp
+          touch build/tables-generated-c/.stamp
+          find build/tables-generated-c \( -name '*.c' -o -name '*.h' \) -type f -exec touch {} +
+          find build/conformance-c-objs -type f -exec touch {} +
+          touch build/conformance-c
+
       # Its own step so the run log carries the build cost and the run cost
       # separately — the two halves answer different questions when a leg
       # stops fitting. The row's env is the make overrides CI needs: a JDK on
@@ -1773,6 +1811,15 @@ jobs:
       # driver (and its base64 row where it has one), in parallel.
       - name: build the ${{ matrix.lang }} driver
         run: make -j"$(nproc)" ${{ matrix.targets }} ${{ matrix.env }}
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.lang == 'c' && steps.conformance-c-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            build/tables-generated-c
+            build/conformance-c-objs
+            build/conformance-c
+          key: ${{ steps.conformance-c-cache.outputs.cache-primary-key }}
 
       - name: the ${{ matrix.lang }} leg over every surface
         run: env ${{ matrix.env }} ./build/conformance-harness run --only ${{ matrix.lang }} --results build/conformance/legs/${{ matrix.lang }}.json
@@ -1848,7 +1895,9 @@ jobs:
   #
   # Running as its own matrix rows keeps each fuzz target well under 1 minute
   # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
-  # leg over the 2-minute ceiling.
+  # leg over the 2-minute ceiling. The toolchain-dependent build is cached
+  # between runs, and each row runs the seeded per-commit smoke while the full
+  # 100,000-mutant campaigns run nightly in certify.yml's release targets.
   cs-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -1883,17 +1932,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache, restored on fleet runners too — `go-test` is the
+      # one Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -1907,11 +1953,50 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
-      - name: build the harness and the C# driver
-        run: make build/conformance-harness build-conformance-cs
+      # THE TOOLCHAIN-DEPENDENT BUILD, kept between runs: the compiler, the
+      # harness, the generated C# tree and the built driver. The build is what
+      # ran past the wall (107-110 s in the runs the card names); a warm hit
+      # turns it into a timestamp check and leaves the fuzz its budget. dotnet
+      # compares the checked-out sources and csproj against every restored
+      # obj/bin output, so the hit step below must stand all of them, not just
+      # the driver assembly, newer than the checkout; otherwise CoreCompile
+      # rebuilds the whole driver on the hit.
+      - id: cs-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
 
-      - name: run C# ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }}
+      - name: stand cached C# fuzz inputs newer than this checkout
+        if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-cs/.stamp
+          touch build/tables-generated-cs/cards/.stamp
+          find test/conformance/cs/obj test/conformance/cs/bin -type f -exec touch {} +
+
+      - name: build the harness and the C# driver
+        run: make -j"$(nproc)" build/conformance-harness build-conformance-cs
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.name == 'wire' && steps.cs-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-cs
+            test/conformance/cs/bin
+            test/conformance/cs/obj
+          key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}
+
+      - name: run C# ${{ matrix.name }} fuzz (per-commit smoke)
+        run: make ${{ matrix.target }}-smoke SEED=24845619678 N=2000
 
   # JAVASCRIPT WIRE FUZZ (docs/PORTING.md I15, the js cell; #492).
   #
@@ -1992,7 +2077,9 @@ jobs:
   # the Dart wire surface carries: the plain Load/Save run and the message arm.
   # Its own job keeps the target off the conformance (dart) leg's clock. The
   # Dart leg clones no runtime (generated Dart is self-contained), so the job is
-  # Go and the pinned SDK only.
+  # Go and the pinned SDK only. The AOT driver build is cached between runs and
+  # the job runs the seeded per-commit smoke while the full 100,000-mutant
+  # campaign runs nightly in certify.yml.
   dart-fuzz:
     # Runs on a pull request only when it carries the `full-ci` label; on a
     # merge, the nightly and a dispatch it always runs. The expression is
@@ -2020,17 +2107,14 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # The Go build cache, restore only — `go-test` is the one Linux writer.
-      # The block on that job carries the reasoning.
+      # The Go build cache, restored on fleet runners too — `go-test` is the
+      # one Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
-        if: runner.environment == 'github-hosted'
-        shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -2040,11 +2124,46 @@ jobs:
         with:
           sdk: '3.13.2'
 
-      - name: build the harness and the Dart driver
-        run: make build/conformance-harness build/conformance-dart DART=dart
+      # THE TOOLCHAIN-DEPENDENT BUILD, kept between runs: the compiler, the
+      # harness, the generated Dart tree and the AOT driver. The build is what
+      # ran past the wall (80-98 s in the runs the card names); a warm hit
+      # turns it into a timestamp check and leaves the fuzz its budget.
+      - id: dart-fuzz-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: dart-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-3.13.2-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/dart/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/dart.mk', 'Makefile', 'go.mod') }}
 
-      - name: run Dart ${{ matrix.name }} fuzz
-        run: make ${{ matrix.target }} DART=dart
+      - name: stand cached Dart fuzz inputs newer than this checkout
+        if: steps.dart-fuzz-cache.outputs.cache-hit == 'true'
+        run: |
+          touch bin/schema
+          touch build/conformance-harness
+          touch build/tables-generated-dart/.stamp
+          touch build/tables-generated-dart/cards/.stamp
+          touch build/conformance-dart
+
+      - name: build the harness and the Dart driver
+        run: make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.dart-fuzz-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            bin/schema
+            build/conformance-harness
+            build/tables-generated-dart
+            build/tables-generated-dart-scalars
+            build/conformance-dart
+          key: ${{ steps.dart-fuzz-cache.outputs.cache-primary-key }}
+
+      - name: run Dart ${{ matrix.name }} fuzz (per-commit smoke)
+        run: make ${{ matrix.target }}-smoke DART=dart SEED=24845619678 N=2000
 
 
   # THE C# TABLES LEG, PER PULL REQUEST. Before this job the leg ran in no

@@ -278,9 +278,15 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp encode_array(vocab, shape, elem, value, acc) do
     count = length(value)
-    acc2 = put_bits(acc, count - shape.min, bit_length(shape.max - shape.min))
-    acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
-    encode_elements(vocab, elem, value, acc3)
+    min = Map.get(shape, :min, 0)
+
+    if count < min or count > shape.max do
+      :error
+    else
+      acc2 = put_bits(acc, count - min, bit_length(shape.max - min))
+      acc3 = if elem.kind == 6, do: align_write(acc2), else: acc2
+      encode_elements(vocab, elem, value, acc3)
+    end
   end
 
   defp encode_elements(_vocab, _elem, [], acc), do: {:ok, acc}
@@ -413,7 +419,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
-         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- n <= shape.max,
+         true <- text_ok?(bytes) do
       {:ok, bytes, rest3}
     else
       _ -> :malformed
@@ -570,6 +578,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
       {:ok, {int, off + pad, total}}
     end
   end
+
+  defp text_ok?(bytes), do: String.valid?(bytes) and :binary.match(bytes, <<0>>) == :nomatch
 
   # r is byte-aligned here (align precedes the call), so read n bytes whole.
   # A legal zero-length text is an exact empty binary and the cursor unchanged.

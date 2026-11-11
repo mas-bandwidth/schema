@@ -419,8 +419,8 @@ func TestSquirrelRetainOnMessageFormNegativeControl(t *testing.T) {
 		{
 			name:   "retain strict bodyDamaged store clear",
 			file:   "schema_table_load.nut",
-			from:   `  if (retain != null && report.bodyDamaged) {`,
-			to:     `  if (false && retain != null && report.bodyDamaged) {`,
+			from:   `if (check.fail == "damage") { report.bodyDamaged = true; return retainClear(retain, report, "malformed"); }`,
+			to:     `if (check.fail == "damage") { report.bodyDamaged = true; return null; }`,
 			caught: "strict_damaged",
 		},
 		{
