@@ -1491,6 +1491,13 @@ All compile errors with positions:
   `None = 0`, so its wire range is the degenerate `[0, 0]` and it costs zero
   bits — the value is recovered from the range alone, under the same rule as
   any degenerate range.
+- **A packet counted array of a zero-bit element is refused:** an `[..N]T`
+  whose element `T` encodes in zero bits — an empty `type`, a ranged integer
+  or fixed value with `min = max`, or a type all of whose fields cost nothing —
+  is a compile error, because the count alone would be almost the whole cost
+  on the wire while the reader still materializes the declared bound in
+  memory, whereas a fixed `[N]T` stays legal because its extent is a
+  compile-time constant.
 - **A derived size past the cap:** an array bound, a `string(N)` and a
   `bytes(N)` are capped at int32 one at a time (§4.3),
   and what they multiply
