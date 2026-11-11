@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -24,7 +24,7 @@
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0xeb26c970fde3fd71;
+const int protocolId = 0xf35accd0582cdd84;
 
 const int positionUnits = 1024;
 

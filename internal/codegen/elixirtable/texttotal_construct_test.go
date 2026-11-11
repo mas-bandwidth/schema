@@ -12,6 +12,7 @@ import (
 )
 
 func TestTextTotalConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir text-list total over-bound and discarded-tail refusals")
 	source := elixirTextListSource + `
  table Totals {

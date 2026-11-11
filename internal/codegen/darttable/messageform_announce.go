@@ -121,12 +121,163 @@ class TableMessageEntry {
   /// The entry's wire bytes, its triple's identity: §3.3 lets one NAME appear
   /// at two shapes, so a repeated entry is the same bytes and not the same id.
   final Uint8List signature;
-  /// The decoded shape, resolved once when a batch opens (the runtime's own
-  /// shape type): a body read spends no allocation on the facts its entry
-  /// already carries.
-  dynamic shape;
-  TableMessageEntry(this.id, this.kind, [Uint8List? signature])
-      : signature = signature ?? Uint8List(0);
+  /// The shape announceRead decoded and checked, which the batch's
+  /// unknown-entry skip reads rather than walking the signature a second time.
+  TableMessageShape? shape;
+  TableMessageEntry(this.id, this.kind, [Uint8List? signature, this.shape])
+      : signature = signature ?? Uint8List(0) {
+    if (shape == null && this.signature.length >= 9) {
+      final decoded = TableMessageShape.decode(this.signature, 9, this.signature.length, this.kind);
+      if (decoded != null) shape = decoded.$1;
+    }
+  }
+}
+
+/// ONE ANNOUNCED ENTRY'S SHAPE: the width facts a reader needs to step over a
+/// field it cannot name (docs/SPEC-TABLES.md §3.3). decode is the ONE checked
+/// decoder, the mirror of ir.DecodeShape, so a shape is accepted exactly when
+/// the engine accepts it.
+final class TableMessageShape {
+  int packing = 0;
+  int bits = 0;
+  int min = 0;
+  int max = 0;
+  int elem = 0;
+  TableMessageShape? inner;
+
+  /// Decodes ONE shape at at in an announced entry's signature, mirroring
+  /// ir.DecodeShape. Answers the shape and the offset past it, or null where
+  /// the bytes run out or a width is one no kind can hold.
+  static (TableMessageShape, int)? decode(Uint8List sig, int at, int end, int kind) {
+    final s = TableMessageShape();
+    if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
+      if (at >= end) return null;
+      s.packing = sig[at];
+      at += 1;
+      if (s.packing == 0) {
+        return (s, at);
+      }
+      if (s.packing == 1 && kind != 10) {
+        final n = tableMessageLeb(sig, at, end);
+        if (!n.$3 || n.$1 < 0 || n.$1 > tableMessageKindWidth(kind) * 8) return null;
+        s.bits = n.$1;
+        at = n.$2;
+        if (kind >= 18) {
+          if (at + 16 > end) return null;
+          return (s, at + 16);
+        }
+        final b = tableMessageLeb(sig, at, end);
+        return b.$3 ? (s, b.$2) : null;
+      }
+      if (s.packing == 2 && kind == 10) {
+        final bits = quantizedBits(sig, at, end);
+        if (bits == null) return null;
+        s.bits = bits;
+        return (s, at + 12);
+      }
+      return null;
+    }
+    if (kind == 12) {
+      final n = tableMessageLeb(sig, at, end);
+      if (!n.$3 || n.$1 < 0 || n.$1 > 0x7fffffff) return null;
+      s.max = n.$1;
+      return (s, n.$2);
+    }
+    if (kind == 14 || kind == 16) {
+      if (kind == 14) {
+        final lo = tableMessageLeb(sig, at, end);
+        if (!lo.$3 || lo.$1 < 0 || lo.$1 > 0xffffffff) return null;
+        s.min = lo.$1;
+        at = lo.$2;
+      }
+      final hi = tableMessageLeb(sig, at, end);
+      if (!hi.$3 || hi.$1 < 0 || hi.$1 > 0xffffffff || hi.$1 < s.min) return null;
+      s.max = hi.$1;
+      at = hi.$2;
+      if (at >= end) return null;
+      s.elem = sig[at];
+      at += 1;
+      if (!tableMessageKnownKind(s.elem)) return null;
+      final inner = decode(sig, at, end, s.elem);
+      if (inner == null) return null;
+      s.inner = inner.$1;
+      return (s, inner.$2);
+    }
+    return (s, at);
+  }
+
+  /// The width of a quantized f32 (ir.DecodeShape, ir.TableMessageQuantization):
+  /// bits.Len32 of ceil(float32((max - min) / res)), clamped to [1, 2^32 - 256],
+  /// or null where the triple is not conforming.
+  static int? quantizedBits(Uint8List sig, int at, int end) {
+    if (at + 12 > end) return null;
+    final view = ByteData.sublistView(sig, at, at + 12);
+    final f = Float32List(3);
+    f[0] = view.getFloat32(0, Endian.little);
+    f[1] = view.getFloat32(4, Endian.little);
+    f[2] = view.getFloat32(8, Endian.little);
+    if (!(f[0] < f[1]) || !(f[2] > 0)) return null;
+    f[1] = f[1] - f[0];
+    f[2] = f[1] / f[2];
+    final delta = f[1];
+    var values = f[2];
+    if (delta - delta != 0 || values - values != 0) return null;
+    if (!(values >= 1)) {
+      values = 1;
+    } else if (values > 4294967040.0) {
+      values = 4294967040.0;
+    }
+    var count = values.ceil();
+    var width = 0;
+    while (count != 0) {
+      width++;
+      count >>= 1;
+    }
+    return width;
+  }
+
+  /// bits_required(min, max): the width of max - min, and zero where the two
+  /// are equal (ir.TableMessageBitsRequired). The difference is taken in the
+  /// 64-bit domain Go's int64 subtraction wraps in, and a span near 2^64 reads
+  /// back negative in a Dart int: its uint64 bit length is 64, exactly what
+  /// bits.Len64 answers after the same wrap.
+  static int bitsRequired(int min, int max) {
+    if (max <= min) {
+      return 0;
+    }
+    final value = max - min;
+    if (value < 0) {
+      return 64;
+    }
+    var width = 0;
+    var v = value;
+    while (v != 0) {
+      width++;
+      v >>= 1;
+    }
+    return width;
+  }
+
+  /// ONE value's width in bits under a shape (ir.TableMessageValueBits), or -1
+  /// where the kind has no fixed-width payload.
+  static int valueBits(int kind, TableMessageShape s) {
+    if (kind == 1) {
+      return 1;
+    }
+    if (kind == 11 || kind == 36) {
+      return 64;
+    }
+    if (kind == 10) {
+      return s.packing == 2 ? s.bits : 32;
+    }
+    if ((kind >= 2 && kind <= 9) || (kind >= 18 && kind <= 29)) {
+      if (s.packing == 1) {
+        return s.bits;
+      }
+      return tableMessageKindWidth(kind) * 8;
+    }
+    return -1;
+  }
 }
 
 /// THE REPORT the announcement read answers on. A refusal is terminal: it
@@ -206,25 +357,29 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     return false;
   }
   final view = ByteData.sublistView(bytes);
-  // the trailer: a run of u64 ids and a u64 count at the very end
+  // the trailer: a run of u64 ids and a u64 count at the very end (§3, §3.3)
   final trailerCount = view.getUint64(bytes.length - 8, Endian.little);
-  if (trailerCount > (bytes.length - 9) ~/ 8) {
+  if (trailerCount < 0 ||
+      trailerCount > 4096 ||
+      trailerCount > (bytes.length - 9) ~/ 8) {
     report.Damage();
     return false;
   }
   final end = bytes.length - 8 - trailerCount * 8;
+  if (end < 1) {
+    report.Damage();
+    return false;
+  }
   // A BODY'S REFERENCES RESOLVE against the trailer's ids, which begin here.
   final ids = <int>[];
-  for (var i = end; i < end + trailerCount * 8; i += 8) {
-    ids.add(view.getUint64(i, Endian.little));
-  }
-  for (var i = 0; i < ids.length; i++) {
-    for (var j = 0; j < i; j++) {
-      if (ids[i] == ids[j]) {
-        report.Damage();
-        return false;
-      }
+  final seenIds = <int>{};
+  for (var k = 0; k < trailerCount; k++) {
+    final id = view.getUint64(end + k * 8, Endian.little);
+    if (!seenIds.add(id)) {
+      report.Damage();
+      return false;
     }
+    ids.add(id);
   }
   // THE BODY walks references into those ids. THE TWO STRICT CHECKS: exactly
   // one build-version field and exactly one vocabulary field, both answered
@@ -240,6 +395,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
     final ref = bytes[at];
     at += 1;
     if (ref == 0) {
+      if (at != bodyEnd) {
+        break;
+      }
       terminated = true;
       break;
     }
@@ -324,17 +482,27 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   var seen = 0;
   var nodeSeen = false;
   while (vAt < vEnd) {
-    if (seen >= vocabulary.maxEntries) {
+    if (seen >= vocabulary.maxEntries || seen >= vocabulary.entries.length) {
       return report.Refuse('vocabulary_too_large');
     }
     final start = vAt;
-    final next = tableMessageEntryEnd(bytes, vAt, vEnd);
-    if (next < 0) {
+    if (vAt + 9 > vEnd) {
       report.Damage();
       return false;
     }
     final id = view.getUint64(vAt, Endian.little);
     final kind = bytes[vAt + 8];
+    if (!tableMessageKnownKind(kind)) {
+      report.Damage();
+      return false;
+    }
+    final decoded = TableMessageShape.decode(bytes, vAt + 9, vEnd, kind);
+    if (decoded == null) {
+      report.Damage();
+      return false;
+    }
+    final next = decoded.$2;
+    final shape = decoded.$1;
     // §3.3: "THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE
     // VOCABULARY." An entry carrying one is malformed; the node table's id may
     // name at most one entry; a repeated entry is malformed too.
@@ -354,113 +522,13 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
       }
     }
     vAt = next;
-    vocabulary.entries[seen] = TableMessageEntry(id, kind, bytes.sublist(start, next));
+    vocabulary.entries[seen] = TableMessageEntry(id, kind, bytes.sublist(start, next), shape);
     seen++;
   }
   vocabulary.count = seen;
   vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
   vocabulary.announced = true;
   return true;
-}
-
-/// Steps over ONE entry: a u64 id, a kind byte, and the SHAPE the kind gives it
-/// (docs/SPEC-TABLES.md §3.3). Answers the offset past the entry, or -1 where
-/// the bytes run out or a kind is outside the closed set. This is the mirror of
-/// ir.DecodeShape, so an entry's shape is stepped over by its kind and never
-/// mistaken for the next entry.
-int tableMessageEntryEnd(Uint8List bytes, int at, int end) {
-  if (at + 9 > end) {
-    return -1;
-  }
-  final kind = bytes[at + 8];
-  if (!tableMessageKnownKind(kind)) {
-    return -1;
-  }
-  var p = tableMessageShapeEnd(bytes, at + 9, end, kind);
-  if (p < 0) {
-    return -1;
-  }
-  if (kind == 14 || kind == 16) {
-    if (p >= end) {
-      return -1;
-    }
-    final elem = bytes[p];
-    p += 1;
-    if (!tableMessageKnownKind(elem) || elem == 12) {
-      return -1;
-    }
-    p = tableMessageShapeEnd(bytes, p, end, elem);
-    if (p < 0) {
-      return -1;
-    }
-    if (elem == 14 || elem == 16) {
-      if (p >= end) {
-        return -1;
-      }
-      final inner = bytes[p];
-      p += 1;
-      if (!tableMessageKnownKind(inner) || inner == 12) {
-        return -1;
-      }
-    }
-  }
-  return p;
-}
-
-/// Steps over one SHAPE, the width facts the kind names (docs/SPEC-TABLES.md
-/// §3.3), mirroring ir.DecodeShape's lengths: a packing byte, then its width
-/// and base, or a length, or an array's two counts. -1 where the bytes run out.
-int tableMessageShapeEnd(Uint8List bytes, int at, int end, int kind) {
-  if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
-    if (at >= end) {
-      return -1;
-    }
-    final packing = bytes[at];
-    at += 1;
-    if (packing == 0) {
-      return at;
-    }
-    if (packing == 1 && kind != 10) {
-      // A WIDTH ABOVE THE KIND'S OWN DOMAIN IS A HOSTILE WIDTH, checked once
-      // here and never again (ir.DecodeShape checks the width against TableMessageKindBits). The
-      // value is read whole, so a width near 2^63 still trips this test rather
-      // than wrapping into a small number.
-      final n = tableMessageLeb(bytes, at, end);
-      if (!n.$3 || n.$1 < 0 || n.$1 > tableMessageKindWidth(kind) * 8) {
-        return -1;
-      }
-      at = n.$2;
-      if (kind >= 18) {
-        return at + 16 <= end ? at + 16 : -1;
-      }
-      // A RANGED BASE IS A WHOLE LEB VALUE, and a signed kind's is a zigzag
-      // near 2^64 for a minimum near -2^63 (ir.DecodeShape's
-      // tableMessageUnzigzag). The bit pattern may read back negative in a
-      // Dart int; that is a value, never a failed read.
-      final base = tableMessageLeb(bytes, at, end);
-      return base.$3 ? base.$2 : -1;
-    }
-    if (packing == 2 && kind == 10) {
-      return at + 12 <= end ? at + 12 : -1;
-    }
-    return -1;
-  }
-  if (kind == 12) {
-    final n = tableMessageLeb(bytes, at, end);
-    return (!n.$3 || n.$1 < 0) ? -1 : n.$2;
-  }
-  if (kind == 14 || kind == 16) {
-    if (kind == 14) {
-      final lo = tableMessageLeb(bytes, at, end);
-      if (!lo.$3 || lo.$1 < 0) {
-        return -1;
-      }
-      at = lo.$2;
-    }
-    final hi = tableMessageLeb(bytes, at, end);
-    return (!hi.$3 || hi.$1 < 0) ? -1 : hi.$2;
-  }
-  return at;
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
@@ -587,15 +655,23 @@ int tableMessageBits(int n) {
 (int, int, bool) tableMessageLeb(Uint8List bytes, int at, int end) {
   var value = 0;
   var shift = 0;
-  while (at < end && shift < 64) {
+  for (var i = 0; ; i++) {
+    if (at >= end || i >= 10) {
+      return (0, at, false);
+    }
     final b = bytes[at];
     at++;
+    if (i == 9 && b > 1) {
+      return (0, at, false); // a tenth byte with a bit above the 64th value bit
+    }
     value |= (b & 0x7f) << shift;
     if ((b & 0x80) == 0) {
+      if (i > 0 && b == 0) {
+        return (0, at, false); // a longer spelling of the same number
+      }
       return (value, at, true);
     }
     shift += 7;
   }
-  return (0, at, false);
 }
 `
