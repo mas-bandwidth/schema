@@ -197,6 +197,11 @@ impl<'a> TableVocabulary<'a> {
 // measure, copy and read (§3.3).
 const messageRuntimeRead = `// ---- the read ---------------------------------------------------------------
 
+/// The reader's id-table distinctness bound and open-addressing probe capacity
+/// (docs/SPEC-TABLES.md §3).
+const ID_TABLE_PROBE_BOUND: usize = 4096;
+const ID_TABLE_PROBE_SLOTS: usize = 8192;
+
 /// The announcement's byte count and the copy that hands it out (§3.3): both
 /// are the constant, never a walk. Nothing here allocates.
 pub fn announce_measure() -> usize {
@@ -263,14 +268,35 @@ fn announce_read_once(
         report.damaged = true;
         return false;
     }
+    // "THE DISTINCTNESS CHECK IS BOUNDED WORK, and the bound is a format
+    // fact" (§3): the announcement is an ordinary form-1 FILE, so a reader
+    // refuses an id table over 4096 whatever the buffer would hold, before any
+    // distinctness work.
+    if trailer_count > ID_TABLE_PROBE_BOUND as u64 {
+        report.damaged = true;
+        return false;
+    }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
-    // "a table carrying one id twice" is the whole wire malformed (§3.3).
-    for i in 0..trailer_count {
-        for j in 0..i {
-            if read_u64(data, end + (i as usize) * 8) == read_u64(data, end + (j as usize) * 8) {
+    // "a table carrying one id twice" is the whole wire malformed (§3.3),
+    // proved with the open-addressing probe over a fixed 8192-slot stack table
+    // rather than a pairwise scan (§3).
+    let mut probe_slots = [0u64; ID_TABLE_PROBE_SLOTS];
+    let mut probe_used = [0u64; ID_TABLE_PROBE_SLOTS / 64];
+    for i in 0..trailer_count as usize {
+        let id = read_u64(data, end + i * 8);
+        let mut h = ((id.wrapping_mul(0x9e3779b97f4a7c15) >> 51) as usize) & (ID_TABLE_PROBE_SLOTS - 1);
+        loop {
+            let bit = 1u64 << (h & 63);
+            if (probe_used[h >> 6] & bit) == 0 {
+                probe_used[h >> 6] |= bit;
+                probe_slots[h] = id;
+                break;
+            }
+            if probe_slots[h] == id {
                 report.damaged = true;
                 return false;
             }
+            h = (h + 1) & (ID_TABLE_PROBE_SLOTS - 1);
         }
     }
     let body = &data[1..end];
