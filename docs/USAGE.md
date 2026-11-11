@@ -4477,7 +4477,7 @@ import 'GraphdemoWire.dart';
 
 final report = TableWireReport();
 final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
-if (report.malformed || report.refused) {
+if (report.refused) {
   // drop it: report.reason names why (wire_damaged, unknown_form)
 } else {
   for (var node = scene.head; node != null; node = node.next) {
