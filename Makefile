@@ -6646,20 +6646,27 @@ build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tab
 # and fu2.bin back, so the file every port diffs against is held to the same
 # values this test states. A corpus the writer produces and no reader checks is
 # a golden nobody has read.
-tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
-                  build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan \
-                  build/schema_test_fixedform_hostile_bytes build/schema_test_fixedform_hostile_bytes_asan \
-                  build/fixedform-corpus/.stamp
+#
+# IN TWO HALVES, the plain binaries and their sanitized twins, so the
+# pull-request gate can run each half as a job of its own inside the per-commit
+# two-minute rule; tables-fixedform is both, as it always was.
+tables-fixedform: tables-fixedform-plain tables-fixedform-asan
+
+tables-fixedform-plain: build/schema_test_fixedform build/schema_test_fixedform_runcopy \
+                        build/schema_test_fixedform_hostile_bytes build/fixedform-corpus/.stamp
 	./build/schema_test_fixedform build/fixedform-corpus
-	./build/schema_test_fixedform_asan build/fixedform-corpus
 	./build/schema_test_fixedform_runcopy
-	./build/schema_test_fixedform_runcopy_asan
 	./build/schema_test_fixedform_hostile_bytes
+
+tables-fixedform-asan: build/schema_test_fixedform_asan build/schema_test_fixedform_runcopy_asan \
+                       build/schema_test_fixedform_hostile_bytes_asan build/fixedform-corpus/.stamp
+	./build/schema_test_fixedform_asan build/fixedform-corpus
+	./build/schema_test_fixedform_runcopy_asan
 	./build/schema_test_fixedform_hostile_bytes_asan
 
 test: tables-fixedform
 
-.PHONY: tables-fixedform
+.PHONY: tables-fixedform tables-fixedform-plain tables-fixedform-asan
 
 # THE C++ LEG'S FIELD-EVOLUTION ROWS (cpp/E8, cpp/R19). The OLD file is built
 # in Go from the same IR the emitter lays down (fixedroadmap_t18_test.go), so
