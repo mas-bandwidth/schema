@@ -14,7 +14,7 @@ func TestElixirVariableReadHasNoPlaceholderClauses(t *testing.T) {
 	t.Parallel()
 	u := unitFrom(t, `package probe
 
-table Corpus
+table Corpus | forms = "wire"
 {
     names  [..4]string(16)
     values []int32
@@ -45,6 +45,9 @@ table Corpus
 	}
 	if src == "" {
 		t.Fatal("generated no variable-form read side")
+	}
+	if strings.Contains(src, "defp utf8_prefix(") {
+		t.Error("the generated unit keeps the JSON-only UTF-8 prefix helper without a caller")
 	}
 
 	if strings.Contains(read, "utf8_prefix") {
