@@ -117,6 +117,15 @@ use std::rc::Rc;
 /// header is the form byte alone. Nothing is aligned and nothing is padded.
 pub const TABLE_WIRE_FORM: u8 = 1;
 
+/// A table type that can reach a value of its own type through a pointer field
+/// takes every pointer it owns out of the value, one at a time, and pushes it
+/// on the caller's work list (docs/SPEC-TABLES.md §3.1, §4). Its Drop walks
+/// that list, so destroying a chain costs no stack per node.
+#[allow(dead_code)]
+pub(crate) trait TableDropUnlink {
+    fn table_unlink(&mut self, work: &mut Vec<Rc<dyn TableDropUnlink>>);
+}
+
 `)
 	b.WriteString(tableReportRust)
 	b.WriteString(`
