@@ -23,11 +23,12 @@ import (
 // TEXT READ COUNTS A MISSING REQUIRED FIELD AS THE BINARY READ DOES (§2.3):
 // J.FromJson refuses with one named reason and no value every read that
 // crosses a meaning boundary (malformed, missing_required, blob_shared,
-// clamped, kind_mismatch), while unknown, widened and duplicate alone are
-// counted and the read succeeds; J.fromJsonWalk keeps the recovered value
-// with the counters, and answers no value on a malformed text or a missing
-// required field. Every answer is compared with schema-go's generated
-// <T>FromJSON and <T>FromJSONTolerant over the same unit and the same text,
+// out_of_range, kind_mismatch, duplicate), while unknown and widened alone
+// are counted and the read succeeds. The verdict — the whole value or a
+// refusal — is the cross-language contract; why a read refused is
+// per-language diagnostic detail and is not compared (§6.5,
+// docs/rulings.json refusal-verdict-only). Every answer is compared with
+// schema-go's generated <T>FromJSON over the same unit and the same text,
 // never with a hand-typed expectation.
 const jsonStrictSchema = `package probe
 table Current
@@ -74,16 +75,18 @@ var jsonStrictCases = []jsonStrictCase{
 	{"nested-missing", "Outer", `{"id":1,"inner":{}}`},
 	{"nested-present", "Outer", `{"id":1,"inner":{"id":2}}`},
 	{"plain-clean", "Plain", `{"n":3,"s":"ab","f":1.5}`},
-	{"plain-clamped", "Plain", `{"n":11}`},
-	{"plain-string-clamped", "Plain", `{"s":"abcdefg"}`},
+	{"plain-out-of-range", "Plain", `{"n":11}`},
+	{"plain-string-out-of-range", "Plain", `{"s":"abcdefg"}`},
 	{"plain-kind", "Plain", `{"n":"x"}`},
 	{"plain-unknown", "Plain", `{"zz":1}`},
 	{"plain-duplicate", "Plain", `{"n":1,"n":2}`},
 	{"plain-malformed", "Plain", `{"n":`},
 }
 
-// jsonStrictGoOracle runs the generated Go reads over every case and returns
-// one "<strict>|<tolerant>" answer per case.
+// jsonStrictGoOracle runs the generated Go strict read over every case and
+// returns one "read" or "refused" verdict per case. A refusal outside the
+// strict contract's typed reasons answers "refused(<err>)", which never
+// matches the leg's verdict.
 func jsonStrictGoOracle(t *testing.T, u *ir.Unit) map[string]string {
 	t.Helper()
 	files, err := golang.Generate(u)
@@ -104,31 +107,27 @@ import (
 	"testing"
 )
 
-func jsonStrictClass(ok bool, err error) string {
+func jsonStrictVerdict(ok bool, err error) string {
 	if ok && err == nil {
-		return "ok"
+		return "read"
 	}
 	var m TableMissingRequired
 	if errors.As(err, &m) {
-		return "missing_required: " + m.Fields
+		return "refused"
 	}
-	for _, r := range []TableRefuseReason{TableRefuseMalformed, TableRefuseBlobShared, TableRefuseClamped, TableRefuseKindMismatch, TableRefuseNonFiniteFloat} {
+	for _, r := range []TableRefuseReason{TableRefuseMalformed, TableRefuseBlobShared, TableRefuseOutOfRange, TableRefuseKindMismatch, TableRefuseNonFiniteFloat} {
 		if errors.Is(err, r) {
-			return r.Error()
+			return "refused"
 		}
 	}
-	return fmt.Sprintf("other(%v)", err)
-}
-
-func jsonStrictTolerant(ok bool, r *TableReport) string {
-	return fmt.Sprintf("%t,%d,%d,%d,%d,%d,%t", ok, r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.MissingRequired, r.Malformed)
+	return fmt.Sprintf("refused(%v)", err)
 }
 
 func TestJSONStrictOracle(t *testing.T) {
 `)
 	for _, c := range jsonStrictCases {
-		fmt.Fprintf(&b, "\t{ var v, w %sBuilder; if !v.Init() || !w.Init() { t.Fatal(\"builder\") }; var r, tr TableReport; ok := %sFromJSON(&v, []byte(%q), &r); tok := %sFromJSONTolerant(&w, []byte(%q), &tr); fmt.Printf(\"@%s|%%s|%%s\\n\", jsonStrictClass(ok, r.Err()), jsonStrictTolerant(tok, &tr)); v.Shutdown(); w.Shutdown() }\n",
-			c.root, c.root, c.text, c.root, c.text, c.name)
+		fmt.Fprintf(&b, "\t{ var v %sBuilder; if !v.Init() { t.Fatal(\"builder\") }; var r TableReport; ok := %sFromJSON(&v, []byte(%q), &r); fmt.Printf(\"@%s|%%s\\n\", jsonStrictVerdict(ok, r.Err())); v.Shutdown() }\n",
+			c.root, c.root, c.text, c.name)
 	}
 	b.WriteString("}\n")
 	dir := t.TempDir()
@@ -161,9 +160,10 @@ func jsonStrictAnswers(out string) map[string]string {
 	return got
 }
 
-// jsonStrictLuau runs both Luau reads over every case under the pinned
+// jsonStrictLuau runs the Luau strict read over every case under the pinned
 // interpreter, with the emitted JSON runtime passed through patch (the
-// identity for the gate, a sabotage for its control).
+// identity for the gate, a sabotage for its control). It prints the verdict
+// only: why a read refused is the leg's own diagnostic detail.
 func jsonStrictLuau(t *testing.T, u *ir.Unit, patch func(string) string) map[string]string {
 	t.Helper()
 	g := requiredFiles(t, u)
@@ -179,13 +179,6 @@ func jsonStrictLuau(t *testing.T, u *ir.Unit, patch func(string) string) map[str
 	b.WriteString(jsonModules(g))
 	b.WriteString(`local json = require("./schema_json")
 local inputs = require("./inputs")
-local function tolerant(ok, r)
-	return string.format("%s,%d,%d,%d,%d,%d,%s", tostring(ok), r.unknown, r.kindMismatch, r.clamped,
-		r.duplicate, r.missingRequired or 0, tostring(r.malformed))
-end
-local function fresh()
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-end
 local cases = {
 `)
 	for _, c := range jsonStrictCases {
@@ -195,13 +188,8 @@ local cases = {
 	b.WriteString(`}
 for _, c in cases do
 	local name, root = c[1], c[2]
-	local r = fresh()
-	local v = json.FromJson(root, inputs[name], r)
-	local strict = "ok"
-	if v == nil then strict = r.reason or "nil reason" end
-	local tr = fresh()
-	local w = json.fromJsonWalk(root, inputs[name], tr)
-	print("@" .. name .. "|" .. strict .. "|" .. tolerant(w ~= nil, tr))
+	local v = json.FromJson(root, inputs[name], {})
+	print("@" .. name .. "|" .. (v ~= nil and "read" or "refused"))
 end
 `)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(b.String()), 0o644); err != nil {
@@ -240,7 +228,8 @@ func jsonStrictUnit(t *testing.T) *ir.Unit {
 	return u
 }
 
-// TestLuauJsonPlainReadIsStrict holds both reads to schema-go's on every case.
+// TestLuauJsonPlainReadIsStrict holds the Luau strict read to schema-go's
+// verdict on every case.
 func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
@@ -248,11 +237,11 @@ func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 	want := jsonStrictGoOracle(t, u)
 	got := jsonStrictLuau(t, u, func(s string) string { return s })
 	if bad := jsonStrictMismatches(t, want, got); len(bad) > 0 {
-		t.Fatalf("the Luau text reads disagree with schema-go on %v", bad)
+		t.Fatalf("the Luau text read disagrees with schema-go on %v", bad)
 	}
 	refused := 0
 	for _, c := range jsonStrictCases {
-		if !strings.HasPrefix(want[c.name], "ok|") {
+		if want[c.name] != "read" {
 			refused++
 		}
 	}
@@ -265,8 +254,10 @@ func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 // TestLuauJsonStrictNegativeControl plants each rule's sabotage in a scratch
 // copy of the emitted runtime and requires the comparison to go red on
 // exactly that rule's cases: the plain name made tolerant reds the cases only
-// the strict read refuses, and the required-field close removed reds the
-// cases that leave a demanded field out.
+// the strict read refuses (a kind mismatch, a value past its range, or a
+// repeated key, which the strict read refuses as damage), and the
+// required-field close removed reds the cases that leave a demanded field
+// out.
 func TestLuauJsonStrictNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter and the Go toolchain")
@@ -280,7 +271,7 @@ func TestLuauJsonStrictNegativeControl(t *testing.T) {
 			"plain name tolerant",
 			"  for _, k in STRICT do\n",
 			"  for _, k in ({} :: { { string } }) do\n",
-			[]string{"exact-wrong-type", "plain-clamped", "plain-kind", "plain-string-clamped"},
+			[]string{"exact-wrong-type", "plain-duplicate", "plain-kind", "plain-out-of-range", "plain-string-out-of-range"},
 		},
 		{
 			"required close removed",
