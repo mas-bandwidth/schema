@@ -204,7 +204,21 @@ public final class MixedEntityFixed {
             v.weapon = (byte) (q);
         }
         v.damage = TableFixed.get64(b, at + 41);
-        v.moving = b[at + 49] != 0;
-        v.firing = b[at + 50] != 0;
+        {
+            long q = (b[at + 49] & 0xFF);
+            if (q > 1L) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+                return;
+            }
+            v.moving = q != 0;
+        }
+        {
+            long q = (b[at + 50] & 0xFF);
+            if (q > 1L) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+                return;
+            }
+            v.firing = q != 0;
+        }
     }
 }

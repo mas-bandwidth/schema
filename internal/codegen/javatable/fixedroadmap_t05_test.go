@@ -140,36 +140,37 @@ func t05C10(t *testing.T) {
 		"C10 an ordinal past the top variant refuses as outOfRange")
 }
 
-// t05C12 is C12 "bool byte != 0": ALGORITHM §4.5, "a bool ... lands as `byte !=
-// 0`, normalised to the language's own true. 0x02 is not a bool a reader stores
-// verbatim". The emitted scatter writes the field from `!= 0`.
+// t05C12 is C12 "bool byte != 0": ALGORITHM §4.5 and SPEC-TABLES §3.4: a bool
+// lands only a source byte of 0 or 1, and any other byte refuses the whole
+// load as wireDamaged. The emitted scatter holds the byte against 1 before it
+// lands the value.
 func t05C12(t *testing.T) {
 	files := t05Files(t, "VNEW_hostile_bool.schema")
 	t05Has(t, files, "HbbFixed.java",
-		"v.flag = b[at + 0] != 0;",
-		"C12 a bool byte lands as `byte != 0`")
+		"long q = (b[at + 0] & 0xFF); if (q > 1L) { r.refuse(TableFixed.Reason.wireDamaged); return; } v.flag = q != 0;",
+		"C12 a bool byte other than 0 or 1 refuses as wireDamaged")
 }
 
 // t05C13 is C13 "present flag byte != 0": the same rule for an optional's
-// present flag, which rides as one byte and lands by the same `!= 0`.
+// present flag, which rides as one byte and holds the same 0/1 range.
 func t05C13(t *testing.T) {
 	files := t05Files(t, "VNEW_hostile_bool.schema")
 	t05Has(t, files, "HbbFixed.java",
-		"v.linkPresent = b[at + 1] != 0;",
-		"C13 a present flag byte lands as `byte != 0`")
+		"long q = (b[at + 1] & 0xFF); if (q > 1L) { r.refuse(TableFixed.Reason.wireDamaged); return; } v.linkPresent = q != 0;",
+		"C13 a present flag byte other than 0 or 1 refuses as wireDamaged")
 }
 
-// t05R17 is R17 "a bool or present byte that is not 0/1 normalises and counts
-// nothing", asserted on the VALUE and the COUNTERS a real read lands, never on
-// the source text. ALGORITHM §4.5: "a bool ... lands as `byte != 0`, normalised
-// to the language's own true. 0x02 is not a bool a reader stores verbatim".
-// The leg's own OLD writer saves one Hbb record; the scalar `flag` byte, the
-// optional's present byte and one `flags` element are forged to 0x02 at the
-// body offsets §2 and §3 fix (the 20-byte header, the layout of LE(4, b+16)
-// bytes, the record's u64 hash, then the body IN DECLARED ORDER); and both
-// readers take the forged file: the OLD build by identity and the NEW build
-// through a plan COMPILED from the OLD layout. Each must land exactly what it
-// lands from the unforged file — `true` — and move no counter.
+// t05R17 is R17 "a bool or present byte that is not 0/1 is wire damage",
+// asserted on the verdict a real read lands, never on the source text.
+// SPEC-TABLES §3.4 and §4: a bool or present byte is 0 or 1, and any other
+// byte is damage, so the whole load refuses wireDamaged. The leg's own OLD
+// writer saves one Hbb record; the scalar `flag` byte, the optional's present
+// byte and one `flags` element are each forged to 0x02 IN TURN at the body
+// offsets §2 and §3 fix (the 20-byte header, the layout of LE(4, b+16) bytes,
+// the record's u64 hash, then the body IN DECLARED ORDER); and both readers
+// take each forged file: the OLD build by identity and the NEW build through a
+// plan COMPILED from the OLD layout. Each must refuse the whole load by name,
+// before any value is handed back.
 func t05R17(t *testing.T) {
 	pkgOld := javaPackageOf(versioningSchemaUnit(t, "VOLD_hostile_bool.schema"))
 	if pkgOld == "" {
@@ -201,37 +202,27 @@ func t05R17(t *testing.T) {
 		binary.LittleEndian.Uint32(raw[body+6:]) != 1 || binary.LittleEndian.Uint32(raw[body+18:]) != 2 {
 		t.Fatalf("R17: the saved record is not the declared-order body this test forges (body at %d of %d): % x", body, len(raw), raw[min(body, len(raw)):])
 	}
-	forged := append([]byte(nil), raw...)
-	forged[body] = 0x02    // flag
-	forged[body+1] = 0x02  // link's present byte
-	forged[body+13] = 0x02 // flags[3]
-	path := filepath.Join(t.TempDir(), "hostile_bool.bin")
-	if err := os.WriteFile(path, forged, 0o644); err != nil {
-		t.Fatal(err)
+	forged := []struct {
+		what string
+		at   int
+	}{
+		{"the scalar flag byte", body},
+		{"the optional's present byte", body + 1},
+		{"a flags element", body + 13},
 	}
-	for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
-		want := runProbe(t, classes, probe, clean)
-		got := runProbe(t, classes, probe, path)
-		if got.n != 1 || got.refused || got.damaged {
-			t.Fatalf("R17 %s: the forged 0x02 bytes must read, never damage: %+v", probe, got)
+	dir := t.TempDir()
+	for _, f := range forged {
+		wrong := append([]byte(nil), raw...)
+		wrong[f.at] = 0x02
+		path := filepath.Join(dir, "hostile_bool.bin")
+		if err := os.WriteFile(path, wrong, 0o644); err != nil {
+			t.Fatal(err)
 		}
-		// NORMALISES: 0x02 lands as the language's own true.
-		for _, k := range []string{"flag", "linkPresent"} {
-			if got.value[k] != "true" {
-				t.Errorf("R17 %s: %s landed %q from a 0x02 byte, want true — a bool lands as `byte != 0`", probe, k, got.value[k])
+		for _, probe := range []string{"Probe_refuses", "Probe_reads"} {
+			got := runProbe(t, classes, probe, path)
+			if got.n != -1 || !got.refused || got.reason != "wireDamaged" {
+				t.Errorf("R17 %s: %s of 0x02 must refuse the whole load as wireDamaged: %+v", probe, f.what, got)
 			}
-		}
-		// ... and exactly as the lawful 0x01 lands: every field of the record.
-		for k, v := range want.value {
-			if got.value[k] != v {
-				t.Errorf("R17 %s: %s landed %q from the forged file, want %q as from the lawful one", probe, k, got.value[k], v)
-			}
-		}
-		// COUNTS NOTHING: a non-0/1 bool or present byte is no clamp and no
-		// damage, so every counter stands at zero.
-		if got.widened != 0 || got.unknown != 0 {
-			t.Errorf("R17 %s: a 0x02 bool or present byte moved a counter: widened=%d unknown=%d, want all 0",
-				probe, got.widened, got.unknown)
 		}
 	}
 }

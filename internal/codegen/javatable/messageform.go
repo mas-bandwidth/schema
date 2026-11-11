@@ -1029,7 +1029,13 @@ public final class TableMessage {
             case 12: {
                 long n = r.get(TableVocabulary.bitCount(s.max));
                 if (r.err || !r.align()) { return false; }
-                return r.skipBits(n * 8L);
+                int start = r.atByte();
+                if (!r.skipBits(n * 8L)) { return false; }
+                // A SKIPPED STRING IS HELD TO THE TEXT RULE (docs/SPEC-TABLES.md
+                // §3.3, §4): an unknown payload is not exempt from the
+                // well-formed UTF-8 and no-zero-byte conditions a named read
+                // applies, so the skip refuses it as damage.
+                return utf8Valid(r.buf, start, (int) n);
             }
             case 31: {
                 if (!r.align()) { return false; }

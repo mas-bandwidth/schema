@@ -380,7 +380,14 @@ public final class BenchMixedFixed {
             v.drift = Double.longBitsToDouble(fbits);
         }
         v.wideKey = new UInt128(TableFixed.get64(b, at + 1197), TableFixed.get64(b, at + 1189));
-        v.flux = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
+        {
+            Int128 q = new Int128(TableFixed.get64(b, at + 1213), TableFixed.get64(b, at + 1205));
+            if (q.compareTo(new Int128(0xfffffff000000000L, 0L)) < 0
+                    || q.compareTo(new Int128(0x1000000000L, 0L)) > 0) {
+                r.refuse(TableFixed.Reason.outOfRange);
+            }
+            v.flux = q;
+        }
         {
             long q = TableFixed.get16(b, at + 1221);
             if (q < 0L) {
@@ -397,7 +404,14 @@ public final class BenchMixedFixed {
             v.crcHint = (int) (16777215L);
             r.refuse(TableFixed.Reason.outOfRange);
         } // bits(24) clamps to 2^N - 1
-        v.hasExtra = b[at + 1227] != 0;
+        {
+            long q = (b[at + 1227] & 0xFF);
+            if (q > 1L) {
+                r.refuse(TableFixed.Reason.wireDamaged);
+                return;
+            }
+            v.hasExtra = q != 0;
+        }
         {
             long q = TableFixed.get32(b, at + 1228);
             if (q < 0L) {

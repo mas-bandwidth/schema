@@ -515,6 +515,11 @@ public final class TableFixed {
          * non_finite_float on every wire.
          */
         nonFiniteFloat,
+        /**
+         * A BOOL OR PRESENT BYTE OTHER THAN 0 OR 1 (docs/SPEC-TABLES.md §3.4): the wire named a
+         * value this form cannot name, so the read refuses whole. Spelled wire_damaged.
+         */
+        wireDamaged,
         outOfRange,
         countOverBound,
         lengthOverBound
