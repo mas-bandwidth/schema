@@ -132,9 +132,9 @@ func (g *tableGen) emitMessageReadPayload(f *ir.Field, expr, ind string) {
 }
 
 // emitMessageReadTextFrom reads a `string(N)` or a `bytes(N)`: the length at
-// the SENDER's own width, the ALIGN, then the bytes; or a `wstring(N)`: the
-// length, no align, sixteen bits a unit. A payload longer than this reader's
-// bound keeps what fits and counts `out_of_range`, which is not damage.
+// the SENDER's own width, the ALIGN, then the bytes. A payload longer than
+// this reader's bound keeps what fits and counts `out_of_range`, which is
+// not damage.
 //
 // A kind 12 payload takes §3's ONE CONTENT RULE through the runtime's own
 // TableUtf8Valid and TableUtf8Clamp, which is what the VARIABLE form reads one
