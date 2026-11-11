@@ -268,9 +268,6 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 	}
 }
 
-//go:fix inline
-func boolPtr(v bool) *bool { return new(v) }
-
 func boolDigit(v bool) string {
 	if v {
 		return "1"
