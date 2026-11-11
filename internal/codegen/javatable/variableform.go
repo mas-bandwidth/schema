@@ -4757,7 +4757,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
-		fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
+		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
 		fmt.Fprintf(b, "        if (in.bad) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
@@ -4825,16 +4825,17 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {\n")
+	fmt.Fprintf(b, "    public static Value readJsonPointer(TableJson.In in, long targetTypeId, int depth) {\n")
 	b.WriteString("        if (in.peek() == 'n') { in.lit(\"null\"); return null; }\n")
+	b.WriteString("        if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; return null; }\n")
 	b.WriteString("        if (in.peek() != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("        int start = in.p;\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        in.space();\n")
-	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }\n")
+	b.WriteString("        if (in.peek() == '}') { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        String key = in.scanString();\n")
 	b.WriteString("        if (in.bad || key == null) return null;\n")
-	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v); return v; }\n")
+	b.WriteString("        if (!\"&node\".equals(key)) { in.p = start; Value v = new Value(); jsonReadFields(in, v, depth + 1); return v; }\n")
 	b.WriteString("        if (in.peek() != ':') { in.bad = true; return null; }\n")
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        long labelId = in.scanLabel();\n")
@@ -4854,7 +4855,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            Value child = new Value();\n")
 	b.WriteString("            TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);\n")
 	b.WriteString("            in.labels.put(labelId, entry);\n")
-	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child);\n")
+	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child, depth + 1);\n")
 	b.WriteString("            entry.open = false;\n")
 	b.WriteString("            return child;\n")
 	b.WriteString("        } else {\n")
@@ -4862,22 +4863,23 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
-	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v) {\n")
+	fmt.Fprintf(b, "    static void jsonReadFields(TableJson.In in, Value v, int depth) {\n")
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; return; }\n")
 	if st.JsonArray && len(st.Fields) == 1 {
 		b.WriteString("        in.space();\n")
 		fmt.Fprintf(b, "        if (in.peek() != '[') { if (in.rep != null && in.rep.reason == null) { in.rep.reason = \"json_root_not_array: %s\"; } in.bad = true; return; }\n", st.DeclaredName())
 		fmt.Fprintf(b, "        v.%s.clear();\n", varMember(st.Fields[0]))
-		readJsonFieldValue(b, u, st, st.Fields[0])
+		readJsonFieldValue(b, u, st, st.Fields[0], "depth")
 		b.WriteString("    }\n\n")
 	} else {
 		b.WriteString("        in.space();\n")
 		b.WriteString("        if (in.peek() != '{') { in.bad = true; return; }\n")
 		b.WriteString("        in.p++;\n")
-		b.WriteString("        jsonReadFieldsBody(in, v);\n")
+		b.WriteString("        jsonReadFieldsBody(in, v, depth);\n")
 		b.WriteString("    }\n\n")
 	}
 
-	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v) {\n")
+	fmt.Fprintf(b, "    static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {\n")
 	// A REPEATED FIELD KEY IS A DUPLICATE KEY (docs/SPEC-TABLES.md §16.2): the
 	// last occurrence wins whole, and the repeat is counted BEFORE the value's
 	// shape is judged, so a repeat the walk then refuses is still a repeat.
@@ -4921,7 +4923,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			}
 			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
 		}
-		readJsonFieldValue(b, u, st, f)
+		readJsonFieldValue(b, u, st, f, "depth")
 		b.WriteString("                }\n")
 		b.WriteString("            } else ")
 	}
@@ -5071,7 +5073,7 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
-func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (in.peek() == '[') {\n")
 	b.WriteString("                    in.p++;\n")
@@ -5136,7 +5138,7 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			if un := variableUnion(f); un != nil {
 				// §16.2: an element of the wrong JSON shape is skipped and
 				// counted kind_mismatch, exactly as the field gate does.
-				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in)); }\n", m, un.Name, m, un.Name)
+				fmt.Fprintf(b, "                        if (ec != '{') { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); } else { v.%s.add(%sVariable.readJson(in, %s)); }\n", m, un.Name, m, un.Name, depth+" + 1")
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Enum:
@@ -5319,7 +5321,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	}
 }
 
-func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
+func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	if variableWide(f) && f.Array == ir.ArrayNone && !f.Type.Optional {
 		writeVariableWideJsonRead(b, f, "v."+varMember(f), false)
 		return
@@ -5329,11 +5331,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	if un := variableUnion(f); un != nil && f.Array == ir.ArrayNone && !f.Type.Optional {
-		fmt.Fprintf(b, "                v.%s=%sVariable.readJson(in);\n", varMember(f), un.Name)
+		fmt.Fprintf(b, "                v.%s=%sVariable.readJson(in, %s);\n", varMember(f), un.Name, depth)
 		return
 	}
 	if f.KeyEnum != "" && !f.Type.Optional {
-		readJsonKeyedValue(b, u, st, f)
+		readJsonKeyedValue(b, u, st, f, depth)
 		return
 	}
 	if f.Type.Optional {
@@ -5345,12 +5347,12 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		if f.Array != ir.ArrayNone {
 			fmt.Fprintf(b, "                if(selected)v.%s.clear();\n", m)
 		}
-		readJsonFieldValue(b, u, st, &one)
+		readJsonFieldValue(b, u, st, &one, depth)
 		fmt.Fprintf(b, "                if(!in.bad)v.%sPresent=true;}\n", m)
 		return
 	}
 	if f.IsMap() {
-		readJsonMapValue(b, u, st, f)
+		readJsonMapValue(b, u, st, f, depth)
 		return
 	}
 	m := varMember(f)
@@ -5363,7 +5365,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        int ec = in.peek();\n")
 		b.WriteString("                        if (ec == ']') { in.p++; break; }\n")
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
-		fmt.Fprintf(b, "                        %sVariable.Value elem = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", target.Name, target.Name, target.Name)
+		fmt.Fprintf(b, "                        %sVariable.Value elem = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID, %s);\n", target.Name, target.Name, target.Name, depth+" + 1")
 		fmt.Fprintf(b, "                        v.%s.add(elem);\n", m)
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -5477,7 +5479,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			elemOpen = "'['"
 		}
 		fmt.Fprintf(b, "                        } else if (ec != %s) { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); v.%s.add(new %sVariable.Value()); }\n", elemOpen, m, target.Name)
-		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e); v.%s.add(e); }\n", target.Name, target.Name, target.Name, m)
+		fmt.Fprintf(b, "                        else { %sVariable.Value e = new %sVariable.Value(); %sVariable.jsonReadFields(in, e, %s); v.%s.add(e); }\n", target.Name, target.Name, target.Name, depth+" + 2", m)
 		b.WriteString("                        idx++;\n")
 		b.WriteString("                        ec = in.peek();\n")
 		b.WriteString("                        if (ec == ',') { in.p++; continue; }\n")
@@ -5486,7 +5488,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                    }\n")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case isScalarArray(f):
-		readJsonArrayValue(b, u, st, f)
+		readJsonArrayValue(b, u, st, f, depth)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
 		fmt.Fprintf(b, "                if (in.peek() == 'n') { in.lit(\"null\"); v.%s = null; }\n", m)
 		fmt.Fprintf(b, "                else if (in.peek() == '\"') { v.%s = in.scanStored(); }\n", m)
@@ -5499,7 +5501,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Pointer && isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID);\n", m, target.Name, target.Name)
+		fmt.Fprintf(b, "                v.%s = %sVariable.readJsonPointer(in, %sVariable.TYPE_ID, %s);\n", m, target.Name, target.Name, depth)
 	case isStruct(f):
 		target := f.Type.Ref.(*ir.Struct)
 		elemOpen := "'{'"
@@ -5507,7 +5509,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			elemOpen = "'['"
 		}
 		fmt.Fprintf(b, "                if (in.peek() == %s) {\n", elemOpen)
-		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s);\n", target.Name, m)
+		fmt.Fprintf(b, "                    %sVariable.jsonReadFields(in, v.%s, %s);\n", target.Name, m, depth+" + 1")
 		b.WriteString("                } else { in.skipValue(); in.rep.refuse(\"kind_mismatch\"); }\n")
 	case f.Type.Kind == ir.TBytes:
 		fmt.Fprintf(b, "                if(in.peek()=='\"'){String text=in.scanString();if(text!=null){try {byte[] bytes=java.util.Base64.getDecoder().decode(text);int keep=Math.min(bytes.length,%d);v.%s=java.util.Arrays.copyOf(bytes,keep);if(bytes.length>keep)in.rep.refuse(\"out_of_range\");}catch(IllegalArgumentException invalid){in.rep.refuse(\"kind_mismatch\");}}}else {in.skipValue();in.rep.refuse(\"kind_mismatch\");}\n", f.Type.Size, m)
