@@ -145,14 +145,14 @@ static partial class Program
         // load refuses before it writes, whatever room it is given
         {
             byte[] sharedBlob=ReadGolden("blob_shared");
-            Check(Blobdemo.Schema.CatalogLoadMeasure(sharedBlob)<0,"blob_shared region measure refuses the shared blob");
+            Check(Blobdemo.Schema.CatalogLoadMeasure(sharedBlob,out var sharedReason)==-1 && sharedReason==Blobdemo.TableRefuseReason.blob_shared,"blob_shared region measure refuses the shared blob by name");
             long room=64L*1024+(long)sharedBlob.Length*16;
             byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)room,64);
             try
             {
                 new Span<byte>(region,(int)room).Fill(0xa5);
                 Blobdemo.TableReport report=new Blobdemo.TableReport();
-                Check((IntPtr)Blobdemo.Schema.CatalogLoad((IntPtr)region,room,sharedBlob,report)==IntPtr.Zero && report.Refused && region[0]==0xa5,
+                Check((IntPtr)Blobdemo.Schema.CatalogLoad((IntPtr)region,room,sharedBlob,report)==IntPtr.Zero && report.Refused && report.Reason=="blob_shared" && region[0]==0xa5,
                     "blob_shared region load refuses the shared blob before it writes");
             }
             finally { NativeMemory.AlignedFree(region); }
