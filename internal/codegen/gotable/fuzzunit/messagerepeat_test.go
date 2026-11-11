@@ -154,7 +154,7 @@ func TestGeneratedMessageRepeatNegativeControl(t *testing.T) {
 	for _, c := range []struct {
 		file, from, to, run string
 	}{
-		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif slices.Contains(seen, entry.ID) {", "\t\tif false && slices.Contains(seen, entry.ID) {", "^TestGeneratedMessageRefusesRepeatedFieldId$"},
+		{"internal/codegen/gotable/fuzzunit/RangesTableMessage.go", "\t\tif tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {", "\t\tif false && tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {", "^TestGeneratedMessageRefusesRepeatedFieldId$"},
 		{"internal/codegen/gotable/fuzzunit/KeyedTableMessage.go", "if slices.Contains(seenKey, id) {", "if false && slices.Contains(seenKey, id) {", "^TestGeneratedMessageRefusesRepeatedKeyedSlot$"},
 	} {
 		out, failed := slowtest.RunSabotaged(t, "../../../..", "./internal/codegen/gotable/fuzzunit", c.run,

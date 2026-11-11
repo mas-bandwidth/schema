@@ -2051,9 +2051,13 @@ type TableMessageShape struct {
 	QMin, QDelta  float32
 	QCount        uint32
 }
+
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
 type TableMessageEntry struct {
-	ID             uint64
-	Shape, Element TableMessageShape
+	ID                                   uint64
+	Shape, Element                       TableMessageShape
+	bodyFirst, bodySeenAt, bodySeenBelow uint64
 }
 
 // Storage belongs to the caller and is resolved once for one connection direction.
@@ -2064,6 +2068,7 @@ type TableVocabulary struct {
 	Announced, Refused bool
 	MaxBytes           int64
 	Strict             bool
+	bodyClock          uint64
 }
 type TableMessageReader struct {
 	Bits       TableBitReader

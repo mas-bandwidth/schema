@@ -304,6 +304,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 	if v.RefBits == 0 {
 		v.RefBits = 1
 	}
+	tableMessageBodyFirst(v)
 	v.Announced = true
 	return true
 }

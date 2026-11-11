@@ -63,9 +63,11 @@ const goMessageCoreTypes = `
 type TableBitWriter struct { Buffer []byte; Bits int64; Measuring, Overflow bool }
 type TableBitReader struct { Buffer []byte; Offset int64 }
 type TableMessageShape struct { Kind, Packing uint8; Bits int64; Base [2]uint64; Min,Max int64; QMin,QDelta float32; QCount uint32 }
-type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape }
+// An entry also keeps, in the caller's storage, the first slot announcing its
+// id and when and at which nesting levels a body read last named it.
+type TableMessageEntry struct { Id uint64; Shape,Element TableMessageShape; bodyFirst,bodySeenAt,bodySeenBelow uint64 }
 // Storage belongs to the caller and is resolved once for one connection direction.
-type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool }
+type TableVocabulary struct { Entries []TableMessageEntry; Count,RefBits int64; BuildVersion uint64; Announced,Refused bool; MaxBytes int64; Strict bool; bodyClock uint64 }
 type TableMessageReader struct { Bits TableBitReader; Vocabulary *TableVocabulary; Report TableReport; IndexBits int64 }
 `
 
@@ -180,6 +182,19 @@ func (r *TableBitReader) Align()bool {v,ok:=r.Get((-r.Offset)&7);return ok&&v==0
 func tableMessageBits(n uint64)int64 {var count int64;for n!=0 {count++;n>>=1};return count}
 
 func (v *TableVocabulary) Init(storage []TableMessageEntry){*v=TableVocabulary{Entries:storage,MaxBytes:64*1024}}
+// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), and the
+// check is one test of the entry, in the caller's storage, whatever the
+// vocabulary's size. Each body read takes the next tick of the vocabulary's
+// clock and keeps it in starts[depth], an array the generated read declares
+// at the unit's deepest nesting. An entry keeps the tick of its last naming
+// (above seven bits holding that body's level) and a bit for each shallower
+// level whose body had named it: a level's mark still stands when that level's
+// open body began at or before the last naming, and the levels whose bodies
+// were opened since are dropped as the entry is named again. Two slots
+// announcing one id are one entry, the first.
+func tableMessageBodyOpen(v *TableVocabulary,starts []uint64,depth int){v.bodyClock++;starts[depth]=v.bodyClock}
+func tableMessageBodyFirst(v *TableVocabulary){for i := range v.Count {for j := range i {if v.Entries[j].ID==v.Entries[i].ID{v.Entries[i].bodyFirst=uint64(j+1);break}}}}
+func tableMessageBodyRepeat(v *TableVocabulary,starts []uint64,depth int,ref uint64)bool{e:=&v.Entries[ref-1];if e.bodyFirst!=0{e=&v.Entries[e.bodyFirst-1]};at,last,below:=e.bodySeenAt>>7,int(e.bodySeenAt&127),e.bodySeenBelow;if starts[depth]<=at {if last==depth||below>>uint(depth)&1!=0{return true};below&=1<<uint(depth)-1}else{kept,hi:=0,depth;for kept<hi {mid:=(kept+hi)/2;if starts[mid]<=at{kept=mid+1}else{hi=mid}};if last<kept{below|=1<<uint(last)};below&=1<<uint(kept)-1};e.bodySeenBelow=below;e.bodySeenAt=v.bodyClock<<7|uint64(depth);return false}
 func (v *TableVocabulary) Entry(ref uint64)(TableMessageEntry,bool){if ref==0||ref>uint64(v.Count){return TableMessageEntry{},false};return v.Entries[ref-1],true}
 func (v *TableVocabulary) Name(ref uint64)(uint64,bool){e,ok:=v.Entry(ref);return e.ID,ok&&e.Shape.Kind==0&&e.ID<0xfffffffffffffffd}
 func tableMessageNameSlot(id uint64)uint64 {for i:=range tableMessageEntries {e:=&tableMessageEntries[i];if e.ID==id&&e.Shape.Kind==0{return uint64(i+1)}};return 0}
@@ -200,7 +215,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  src:=TableReader{Buffer:words,Report:report};count:=int64(0);nodeSeen:=false
  for src.Offset<int64(len(words)){if count>=int64(len(v.Entries)){return tableMessageRefuse(report,"vocabulary_too_large")};began:=src.Offset;e,ok:=tableMessageEntryRead(&src);if !ok||e.ID==0xfffffffffffffffd||e.ID==0xfffffffffffffffe||e.ID==0xffffffffffffffff&&nodeSeen{report.Refuse(TableRefuseWireDamaged,"");return false};if e.ID==0xffffffffffffffff{nodeSeen=true};for i := range count {o:=v.Entries[i].Shape;if o.Max-o.Min==src.Offset-began&&o.Min>=0&&o.Max<=int64(len(words)) {same:=true;for j:=o.Min;j<o.Max;j++ {if words[j]!=words[began+j-o.Min]{same=false;break}};if same{report.Refuse(TableRefuseWireDamaged,"");return false}}};e.Shape.Min=began;e.Shape.Max=src.Offset;v.Entries[count]=e;count++}
  src.Offset=0;for i := range count {e,ok:=tableMessageEntryRead(&src);if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};v.Entries[i]=e}
- v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};v.Announced=true;return true
+ v.Count=count;v.RefBits=tableMessageBits(uint64(count));if v.RefBits==0{v.RefBits=1};tableMessageBodyFirst(v);v.Announced=true;return true
 }
 // THE SHAPE IS THE DECLARED ONE, the bytes the announcement spells, and never
 // the resolved entry: a resolved quantized entry keeps §4.3's derivation and

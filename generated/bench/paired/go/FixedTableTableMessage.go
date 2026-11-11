@@ -10,10 +10,7 @@
 
 package bench
 
-import (
-	"slices"
-	"unsafe"
-)
+import "unsafe"
 
 func FixedTableSaveMessageBody(w *TableMessageWriter, value *FixedTable) bool {
 	{
@@ -83,9 +80,12 @@ func FixedTableSaveMessages(values []*FixedTable, buffer []byte, report *TableRe
 	return 2 + w.Bits/8
 }
 func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
+	var starts [3]uint64
+	return tableMessageBodyFixedTable(r, value, starts[:], 0)
+}
+func tableMessageBodyFixedTable(r *TableMessageReader, value *FixedTable, starts []uint64, depth int) bool {
+	tableMessageBodyOpen(r.Vocabulary, starts, depth)
 	FixedTableReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -100,11 +100,10 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
+		if tableMessageBodyRepeat(r.Vocabulary, starts, depth, ref) {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7ce4fd9430e80cea:
 			{
@@ -117,7 +116,7 @@ func FixedTableLoadMessageBody(r *TableMessageReader, value *FixedTable) bool {
 						return false
 					}
 				}
-				if !BenchMixedLoadMessageBody(r, &value.Value) {
+				if !tableMessageBodyBenchMixed(r, &value.Value, starts, depth+1) {
 					return false
 				}
 				if widened {
