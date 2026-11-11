@@ -400,6 +400,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       w.u8(15);
       return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
     case "bool":
+      if (typeof val !== "boolean") { return false; }
       if (val !== fd.def) { TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); }
       return true;
     case "int": case "flags":
@@ -504,7 +505,10 @@ function TableVariableWriteElement(fd, w, ids, nodes, val, retain, path, i) {
   if (fd.plain) { const b = TableVariableUtf8Encode(val.value); w.leb(b.length); w.raw(b); return true; }
   const e = fd.e;
   switch (e.s) {
-    case "bool": w.u8(val ? 1 : 0); return true;
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      w.u8(val ? 1 : 0);
+      return true;
     case "int": case "flags":
       if (!TableVariableIntegerValid(e, val)) { return false; }
       TableVariableWriteInt(w, e.kw, val);

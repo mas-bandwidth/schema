@@ -263,7 +263,11 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
     }
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
-    case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
+    case "bool":
+      if (typeof val !== "boolean") { return false; }
+      TableVariableHeader(w, ids, fd, 1);
+      w.u8(val ? 1 : 0);
+      return true;
     case "int": case "flags":
       if (!TableVariableIntegerValid(fd, val)) { return false; }
       TableVariableHeader(w, ids, fd, fd.k);
@@ -423,7 +427,10 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
   }
   const f = arm.f, x = val.value;
   switch (f.s) {
-    case "bool": w.u8(x ? 1 : 0); return true;
+    case "bool":
+      if (typeof x !== "boolean") { return false; }
+      w.u8(x ? 1 : 0);
+      return true;
     case "int": case "flags":
       if (!TableVariableIntegerValid(f, x)) { return false; }
       TableVariableWriteInt(w, f.kw, x);

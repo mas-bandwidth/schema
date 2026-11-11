@@ -22,12 +22,16 @@ union Pick
 {
     number int32
     text   string(4)
+    truth  bool
 }
 
 table Inner
 {
     ranged int32 | min = -5, max = 5
     nib    bits(6)
+    enabled bool
+    mandatory bool | required
+    truthy  [..2]bool
     wide   uint64
     ival int32
     list   [..3]int32
@@ -56,6 +60,9 @@ function innerLow() {
   const v = new m.Inner();
   v.ranged = -5;
   v.nib = 0;
+  v.enabled = false;
+  v.mandatory = false;
+  v.truthy = [];
   v.wide = 0n;
   v.ival = -2147483648;
   v.list = [];
@@ -63,7 +70,7 @@ function innerLow() {
   v.label = "";
   v.blob = new Uint8Array([]);
   v.note = "";
-  v.choice = { arm: "number", value: -2147483648 };
+  v.choice = { arm: "truth", value: false };
   v.ratio = 0;
   v.mask = 0n;
   v.scores = new Map();
@@ -74,6 +81,9 @@ function innerHigh() {
   const v = new m.Inner();
   v.ranged = 5;
   v.nib = 63;
+  v.enabled = true;
+  v.mandatory = true;
+  v.truthy = [false, true];
   v.wide = 18446744073709551615n;
   v.ival = 2147483647;
   v.list = [1, 2, 3];
@@ -81,7 +91,7 @@ function innerHigh() {
   v.label = "abcd";
   v.blob = new Uint8Array([1, 2, 3, 4]);
   v.note = "abcd";
-  v.choice = { arm: "text", value: "abcd" };
+  v.choice = { arm: "truth", value: true };
   v.ratio = 10;
   v.mask = 3n;
   v.scores = new Map([[1, 2], [3, 4]]);
@@ -94,6 +104,9 @@ function invalidCases() {
     ["ranged below min", at("ranged", -6)],
     ["ranged above max", at("ranged", 6)],
     ["bits past width", at("nib", 64)],
+    ["bool as a string", at("enabled", "true")],
+    ["required bool as a string", at("mandatory", "true")],
+    ["array bool as a string", at("truthy", [true, "false"])],
     ["uint64 as a Number", at("wide", 5)],
     ["uint64 above its width", at("wide", 18446744073709551616n)],
     ["int32 fractional", at("ival", 1.5)],
@@ -111,6 +124,7 @@ function invalidCases() {
     ["*string with a zero", at("note", "\u0000")],
     ["*string not text", at("note", 5)],
     ["union tag outside its arms", at("choice", { arm: "missing", value: 1 })],
+    ["union bool as a string", at("choice", { arm: "truth", value: "true" })],
     ["compressed float below its range", at("ratio", -0.5)],
     ["compressed float above its range", at("ratio", 10.5)],
     ["flags as a Number", at("mask", 1)],
