@@ -211,6 +211,24 @@
         "AGENTS.md alone — no `CLAUDE.md`, no pointer, no symlink"
       ],
       "source": "recorded in docs/CONTRIBUTING.md; the maintainer's ruling that AGENTS.md stands alone."
+    },
+    {
+      "id": "fixed-dead-bytes-are-zero",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: every dead byte in a fixed record is zero on write and refused if non-zero on read"
+      ],
+      "source": "the owner's ruling of 2026-11-10, recorded in docs/SPEC-TABLES.md §3.4 and §13.10 and docs/FIXED-FORM-ALGORITHM.md §3.1, §4.1, §4.5, §4.6, §5.3 and §5.4. The dead bytes are an absent optional's payload, a counted array's element slots past its live count, a string(N)'s or bytes(N)'s bytes past its used length, and an inactive union arm. The check is the CHECK pass of §5.3 step 11, over every record and before any record lands; the verdict is the contract and the reason is the per-language diagnostic. This ruling makes nothing not-applicable.",
+      "supersedes": [
+        "SPEC-TABLES.md §3.4 size-table rows for `[Min..Max]T`, `string(N)`, `bytes(N)`, a UNION and `?T`: \"UNSPECIFIED on read\" / \"IGNORED on read\" / \"never a refusal\"",
+        "SPEC-TABLES.md §3.4 the slack rule's \"UNSPECIFIED ON READ, AND NOT A REFUSAL\" and its deliberate exception to \"refuse what no writer produces\" (§13.10)",
+        "SPEC-TABLES.md §13.10 \"What it keeps on purpose, as an exception. Non-zero slack in a fixed record is unread and not refused\"",
+        "FIXED-FORM-ALGORITHM.md §3.1 \"Slack is UNSPECIFIED on read and not a refusal\"",
+        "FIXED-FORM-ALGORITHM.md §4.1's op table, which had no `present` op, and §4.5's count and text rows, which refused without saying which bytes are dead",
+        "FIXED-FORM-ALGORITHM.md §4.6's bounds pass, which walked live data \"and never slack\"",
+        "FIXED-FORM-ALGORITHM.md §5.3 step 11 and its LIVE paragraph, which read the used extent only",
+        "FIXED-FORM-ALGORITHM.md §5.4's CHECK row \"over LIVE data only\""
+      ]
     }
   ]
 }
