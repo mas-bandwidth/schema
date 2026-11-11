@@ -17,6 +17,7 @@ import (
 )
 
 func TestKeyedElementWideningElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir keyed scalar elements widen once per field at incoming width")
 	u := unitFrom(t, `package keyedwiden
  enum Slot { A, B }
@@ -104,6 +105,7 @@ end
 }
 
 func TestPinnedKeyedElementWideningElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir keyed element widening replays the enumerated corpus failure")
 	paths, e := filepath.Glob("../../../tables/examples/*.schema")
 	if e != nil || len(paths) == 0 {

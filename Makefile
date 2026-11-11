@@ -1173,7 +1173,7 @@ tables-cook-fuzz-negative-control:
 		{ echo "NEGATIVE CONTROL: the cook-check sabotage did not apply"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/cook-fuzz-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cook-fuzz-control/overlay.json
-	@if SEED=$(SEED) N=$(N) go test -count=1 -overlay=build/cook-fuzz-control/overlay.json \
+	@if SCHEMA_SLOW=1 SEED=$(SEED) N=$(N) go test -count=1 -overlay=build/cook-fuzz-control/overlay.json \
 			-run 'TestCookCheck' ./internal/tablecook/ > build/cook-fuzz-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the cook battery stayed green with the directory scan removed"; \
 		exit 1; \
@@ -2798,7 +2798,7 @@ check-wstring-refusal-negative-control:
 	@sed 's|c.errf(f.Type.Pos, wstringRefusalMsg, fix)|_, _ = wstringRefusalMsg, fix // SABOTAGED: the wstring refusal is removed|' \
 		internal/check/check.go > build/wstring-refusal-negative/check.gotext
 	@printf '{"Replace":{"%s/internal/check/check.go":"%s/build/wstring-refusal-negative/check.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/wstring-refusal-negative/overlay.json
-	@if go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/wstring-refusal-negative/overlay.json ./compiler -run '^TestWstringKind33Retired$$' > build/wstring-refusal-negative/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: TestWstringKind33Retired stayed green with the wstring refusal removed"; cat build/wstring-refusal-negative/log; exit 1; \
 	fi
 	@grep -q 'wstring' build/wstring-refusal-negative/log || \
@@ -3804,7 +3804,7 @@ tables-maps-builder-cap-negative-control: bin/schema build/tables-generated/.sta
 	@grep -Fq '!report.damaged' build/map-builder-cap.log
 	go run ./tools/sabotage -name map-builder-count-oracle -out build/map-builder-oracle.gotext internal/tablewire/decode.go
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/map-builder-oracle.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/map-builder-oracle.json
-	@if go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
+	@if SCHEMA_SLOW=1 go test -overlay=build/map-builder-oracle.json ./internal/tablewire -run '^TestMapBuilderCountCap$$' -count=1 > build/map-builder-oracle.log 2>&1; then echo 'map builder oracle control stayed green'; exit 1; fi
 	@grep -Fq 'must refuse count_over_extent_cap' build/map-builder-oracle.log
 
 # THE WRITER EMITS INSERTION ORDER instead of sorted. The instance built OUT OF
@@ -4408,7 +4408,7 @@ tables-lists-cook-check-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the cook-check list sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/list-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-cook-check-control/overlay.json
-	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckListSlot' ./internal/tablecook/ > build/list-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping cook-check's element-array clause left its test GREEN"; exit 1; \
 	fi
@@ -4425,7 +4425,7 @@ tables-lists-cook-check-negative-control:
 .PHONY: tables-maps-cook-check-negative-control
 tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-control
 	@rm -rf build/map-cook-check-control && mkdir -p build/map-cook-check-control
-	@if go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/shared.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the shared containment clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4438,7 +4438,7 @@ tables-maps-cook-check-negative-control: tables-lists-cook-check-negative-contro
 		{ echo "NEGATIVE CONTROL FAILED: the ascending sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/check.go":"%s/build/map-cook-check-control/check.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-cook-check-control/overlay.json
-	@if go test -count=1 -overlay=build/map-cook-check-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/map-cook-check-control/overlay.json \
 			-run 'TestCookCheckMapSlot' ./internal/tablecook/ > build/map-cook-check-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: dropping the keys' ascending clause left the map-slot test GREEN"; exit 1; \
 	fi
@@ -4463,7 +4463,8 @@ build/schema_test_listcook: build/tables-generated/.stamp test/tables/listcook_m
 .PHONY: tables-lists-tool-cook
 tables-lists-tool-cook: build/schema_test_listcook
 	@rm -rf build/list-tool-cook && mkdir -p build/list-tool-cook
-	SCHEMA_LIST_TOOL_COOK_DIR=$(CURDIR)/build/list-tool-cook go test -count=1 \
+	SCHEMA_LIST_TOOL_COOK_DIR=$(CURDIR)/build/list-tool-cook sh test/slowgate/proof tables-lists-tool-cook \
+		'TestTheToolCooksAndUncooksAList TestAListRidesInItsHolderNodeExtent TestTheToolWritesTheReferencesListCook' -count=1 \
 		-run 'TestTheToolCooksAndUncooksAList|TestAListRidesInItsHolderNodeExtent|TestTheToolWritesTheReferencesListCook' \
 		./internal/tablecook/
 	./build/schema_test_listcook build/list-tool-cook
@@ -4486,7 +4487,7 @@ tables-lists-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the carve sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/list-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/list-tool-cook-control/overlay.json
-	@if go test -count=1 -overlay=build/list-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/list-tool-cook-control/overlay.json \
 			-run 'TestAListRidesInItsHolderNodeExtent' ./internal/tablecook/ > build/list-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an unaligned element array left the tool's cook GREEN"; exit 1; \
 	fi
@@ -4502,7 +4503,8 @@ tables-lists-tool-cook-negative-control:
 # these bytes by the conformance cook-write rows.
 .PHONY: tables-maps-tool-cook tables-maps-tool-cook-negative-control
 tables-maps-tool-cook:
-	go test -count=1 -run 'TestTheToolCooksAndUncooksAMap|TestAMapRidesInItsHolderNodeExtent' ./internal/tablecook/
+	sh test/slowgate/proof tables-maps-tool-cook 'TestTheToolCooksAndUncooksAMap TestAMapRidesInItsHolderNodeExtent' \
+		-count=1 -run 'TestTheToolCooksAndUncooksAMap|TestAMapRidesInItsHolderNodeExtent' ./internal/tablecook/
 
 # ITS NEGATIVE CONTROL: the carve writes a map's entries in DESCENDING order,
 # and the tool's own cook-check must refuse the cook on the keys.
@@ -4514,7 +4516,7 @@ tables-maps-tool-cook-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the descending sabotage did not apply once"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablecook/extent.go":"%s/build/map-tool-cook-control/extent.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/map-tool-cook-control/overlay.json
-	@if go test -count=1 -overlay=build/map-tool-cook-control/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/map-tool-cook-control/overlay.json \
 			-run 'TestTheToolCooksAndUncooksAMap' ./internal/tablecook/ > build/map-tool-cook-control/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: descending entries left the tool's map cook GREEN"; exit 1; \
 	fi
@@ -4585,7 +4587,7 @@ tables-tool-cook-node-align-negative-control:
 			{ echo "NEGATIVE CONTROL FAILED: the $$half sabotage did not apply once"; exit 1; }; \
 		printf '{"Replace":{"%s/ir/tablelist.go":"%s/build/node-align-control/%s.go.txt"}}\n' \
 			"$(CURDIR)" "$(CURDIR)" "$$half" > build/node-align-control/$$half.json; \
-		if go test -count=1 -overlay=build/node-align-control/$$half.json \
+		if SCHEMA_SLOW=1 go test -count=1 -overlay=build/node-align-control/$$half.json \
 				-run 'TestCookWriteFixturesAreTheToolsBytes' ./test/conformance/harness/ > build/node-align-control/$$half.log 2>&1; then \
 			echo "NEGATIVE CONTROL FAILED: the $$half half taken away left the tool's cook of widelist_wide GREEN"; exit 1; \
 		fi; \
@@ -5470,7 +5472,7 @@ tables-wire-fuzz-discard-negative-control:
 		{ echo "NEGATIVE CONTROL: the discard sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/test/conformance/harness/wirefuzz.go":"%s/$(DISCARD_NC)/wirefuzz.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(DISCARD_NC)/overlay.json
-	@if go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(DISCARD_NC)/overlay.json -run '^TestWireVerdictComparesOnlyAcceptanceAndAcceptedValues$$' \
 			./test/conformance/harness > $(DISCARD_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: refused answers are compared whole and the gate stayed green"; \
 		cat $(DISCARD_NC)/log; exit 1; \
@@ -5596,7 +5598,7 @@ tables-engine-cycle-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
 	@sed '/case markOpen:/{n;s/return false/continue/;}' test/conformance/harness/strictcheck.go > $(ENGINE_CYCLE_NC)/strictcheck.go.txt && printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_NC)/wirecheck.go.txt","%s/test/conformance/harness/strictcheck.go":"%s/$(ENGINE_CYCLE_NC)/strictcheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
 			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
 		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
@@ -5621,7 +5623,7 @@ tables-engine-cycle-linear-negative-control:
 		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/tablewire/wirecheck.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/wirecheck.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
-	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
 			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
 		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
@@ -5864,7 +5866,7 @@ define message_form_control
 	@go run ./tools/sabotage -name $(1) -out build/message-nc/$(1).gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/message-nc/$(1).gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/message-nc/$(1)-overlay.json
-	@if go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/message-nc/$(1)-overlay.json \
 			./test/conformance/harness -run '^$(3)$$' > build/message-nc/$(1).log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage landed and $(3) stayed green"; \
 		cat build/message-nc/$(1).log; exit 1; \
@@ -5878,31 +5880,31 @@ endef
 
 # one line a row: the sabotage, the engine file, the harness test
 MESSAGE_FORM_CONTROLS := \
-	message-tail-without-node-table:ir/tablewire.go:TestTheTailIsUnconditional \
+	message-closure-announces-node-table:internal/tablewire/messageclosure.go:TestTheVocabularyIsTheMessageClosure \
 	message-order-reversed:ir/tablewire.go:TestTheAnnouncementIsTheUnitsOwn \
-	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheTwoFormsRoundTrip \
-	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheCostRows \
-	message-align-between-bodies:internal/tablewire/messageencode.go:TestTheBatch \
+	message-slot-off-by-one:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
+	message-count-sixteen-bits:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
+	message-align-between-bodies:internal/tablewire/messageencode.go:TestDamageIsTerminal \
 	message-no-batch-bound:internal/tablewire/messageencode.go:TestTheFiveAnswers \
-	message-string-no-align:internal/tablewire/messageencode.go:TestTheCostRows \
+	message-string-no-align:internal/tablewire/messageencode.go:TestTheShapesOneRowAKind \
 	message-reference-past-entries:internal/tablewire/messagedecode.go:TestAReferenceAtAndAboveTheEntryCount \
-	message-read-on-after-damage:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
+	message-damage-keeps-earlier-bodies:internal/tablewire/messagedecode.go:TestDamageIsTerminal \
 	message-no-pad-check:internal/tablewire/messagedecode.go:TestThePadAndWhatFollowsIt \
 	message-no-capacity-refusal:internal/tablewire/messagedecode.go:TestTheFiveAnswers \
 	message-any-sort-names:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-any-sort-arms:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
-	message-offset-past-max-is-damage:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
-	message-clamp-drops-surplus:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
+	message-offset-past-max-clamps:internal/tablewire/messagedecode.go:TestARangedOffsetAboveTheSendersMax \
+	message-count-over-bound-clamps:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-skip-string-no-align:internal/tablewire/messagedecode.go:TestTheShapesOneRowAKind \
 	message-reader-own-width:internal/tablewire/messagedecode.go:TestARangeThatMoved \
 	message-reads-own-vocabulary:internal/tablewire/messagedecode.go:TestPerDirectionIndependence \
 	message-second-announcement-accepted:internal/tablewire/message.go:TestTheMessageFormRefusesByName \
-	message-strict-checks-relaxed:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
+	message-announcement-field-twice-accepted:internal/tablewire/wirecheck.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-no-entry-bound:internal/tablewire/message.go:TestTheTwoBounds \
 	message-no-byte-bound:internal/tablewire/message.go:TestTheTwoBounds \
-	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheThreeReservedIdsWhereTheyDoNotBelong \
-	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidth \
-	message-list-count-sixteen:ir/tablemessage.go:TestTheCountsTheDataDecide \
+	message-reserved-in-vocabulary-accepted:internal/tablewire/message.go:TestTheReservedIdsInAnAnnouncement \
+	message-mask-sixty-four:ir/tablemessage.go:TestTheMasksWidthOnAMessage \
+	message-list-count-sixteen:ir/tablemessage.go:TestAHostileShape \
 	message-bits-unbounded:ir/tablemessage.go:TestAHostileShape \
 	message-reference-eight-bits:ir/tablemessage.go:TestAWideVocabulary \
 	message-base-zigzag-unsigned:ir/tablemessage.go:TestTheBasesTwoEncodings \
@@ -5911,26 +5913,32 @@ MESSAGE_FORM_CONTROLS := \
 	message-refusal-not-terminal:internal/tablewire/message.go:TestARefusedFirstAnnouncement \
 	message-width-above-kind:ir/tablemessage.go:TestTheSixFindings \
 	message-count-not-offset:internal/tablewire/messageencode.go:TestTheBasesTwoEncodings \
-	message-surplus-lands-on-zero:internal/tablewire/messagedecode.go:TestAnOverLongArrayOfNonFixedElements \
 	message-wide-reads-raw:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-narrow-before-clamp:internal/tablewire/messagedecode.go:TestTheSixFindings \
 	message-max-above-int32:ir/tablemessage.go:TestAHostileShape \
 	message-quantized-index-above-count:internal/tablewire/messagedecode.go:TestTheQuantizedIndexAcrossTheForms \
-	message-surplus-walked:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount \
-	message-strict-check-refuses:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
+	message-count-over-bound-clamps-zero-width:internal/tablewire/messagedecode.go:TestAZeroWidthElementUnderAWideCount \
+	message-strict-check-ignored:internal/tablewire/message.go:TestTheAnnouncementsTwoStrictChecksAndItsTolerance \
 	message-duplicate-entry-accepted:internal/tablewire/message.go:TestAHostileShape \
 	message-array-of-text-refused:ir/tablemessage.go:TestAHostileShape \
 	message-skipped-variant-unresolved:internal/tablewire/messagedecode.go:TestAReferenceOfTheWrongSort \
 	message-text-accepts-ill-formed:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp \
-	message-text-clamp-off-boundary:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
+	message-text-over-bound-kept:internal/tablewire/messagedecode.go:TestTheMessageFormsTextContentRuleAndClamp
+
+# One phony target a row, so the rows run in parallel (each is its own
+# go test under its own overlay and log) and -k reports every row that does
+# not go red rather than stopping at the first.
+MESSAGE_FORM_ROWS := $(foreach row,$(MESSAGE_FORM_CONTROLS),message-form-row/$(firstword $(subst :, ,$(row))))
+message_form_row = $(subst :, ,$(filter $(1):%,$(MESSAGE_FORM_CONTROLS)))
 
 .PHONY: tables-message-form-negative-control
 tables-message-form-negative-control: tables-message-form-emitter-negative-control tables-message-form-count-negative-control tables-message-form-text-negative-control
-	@for row in $(MESSAGE_FORM_CONTROLS); do \
-		name=$${row%%:*}; rest=$${row#*:}; file=$${rest%%:*}; test=$${rest#*:}; \
-		$(MAKE) --no-print-directory tables-message-form-one-negative-control \
-			SABOTAGE=$$name SABOTAGE_FILE=$$file SABOTAGE_TEST=$$test || exit 1; \
-	done
+	@$(MAKE) --no-print-directory -k -j4 $(MESSAGE_FORM_ROWS)
+
+.PHONY: $(MESSAGE_FORM_ROWS)
+$(MESSAGE_FORM_ROWS): message-form-row/%:
+	@$(MAKE) --no-print-directory tables-message-form-one-negative-control \
+		SABOTAGE=$* SABOTAGE_FILE=$(word 2,$(call message_form_row,$*)) SABOTAGE_TEST=$(word 3,$(call message_form_row,$*))
 
 .PHONY: tables-message-form-one-negative-control
 tables-message-form-one-negative-control:
@@ -6566,10 +6574,7 @@ FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
 VLISTS_INCLUDES = -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was
 # ==== END rowan/cpp-versioning-lists ====
 
-build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
-                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+FIXEDFORM_INCLUDES = -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
@@ -6578,31 +6583,35 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/fg1 \
 	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
 	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) -I$(SERIALIZE)
+FIXEDFORM_ASAN_FLAGS = -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+
+# ONE OBJECT PER TRANSLATION UNIT, for the plain binary and its sanitized twin
+# alike: the three sources compile side by side under `make -j` rather than one
+# after another inside a single compiler command (the sanitized build of the
+# three in one command was 193 s on four threads). The flags and include path
+# are the ones the single command gave every unit.
+FIXEDFORM_UNITS := fixedform_main versioning_lists versioning_numbers
+
+build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+
+build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+
+build/schema_test_fixedform: $(FIXEDFORM_UNITS:%=build/fixedform-objs/%.o)
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $^ -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
 # fixed record carries no lengths and no terminators, so every offset the
 # reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
 # leaves the buffer" is a claim only a sanitizer can hold.
-build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
-                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
+build/schema_test_fixedform_asan: $(FIXEDFORM_UNITS:%=build/fixedform-objs-asan/%.o)
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-	    -fno-omit-frame-pointer -g \
-	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
-	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
-	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
-	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -Ibuild/tables-generated/fh1 -Ibuild/tables-generated/fh2 \
-	    -Ibuild/tables-generated/fg1 \
-	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
-	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $^ -o $@
 
 # THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
 # fixtures above check the VALUES a read produces; this one checks the single
@@ -6645,20 +6654,27 @@ build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tab
 # and fu2.bin back, so the file every port diffs against is held to the same
 # values this test states. A corpus the writer produces and no reader checks is
 # a golden nobody has read.
-tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
-                  build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan \
-                  build/schema_test_fixedform_hostile_bytes build/schema_test_fixedform_hostile_bytes_asan \
-                  build/fixedform-corpus/.stamp
+#
+# IN TWO HALVES, the plain binaries and their sanitized twins, so the
+# pull-request gate can run each half as a job of its own inside the per-commit
+# two-minute rule; tables-fixedform is both, as it always was.
+tables-fixedform: tables-fixedform-plain tables-fixedform-asan
+
+tables-fixedform-plain: build/schema_test_fixedform build/schema_test_fixedform_runcopy \
+                        build/schema_test_fixedform_hostile_bytes build/fixedform-corpus/.stamp
 	./build/schema_test_fixedform build/fixedform-corpus
-	./build/schema_test_fixedform_asan build/fixedform-corpus
 	./build/schema_test_fixedform_runcopy
-	./build/schema_test_fixedform_runcopy_asan
 	./build/schema_test_fixedform_hostile_bytes
+
+tables-fixedform-asan: build/schema_test_fixedform_asan build/schema_test_fixedform_runcopy_asan \
+                       build/schema_test_fixedform_hostile_bytes_asan build/fixedform-corpus/.stamp
+	./build/schema_test_fixedform_asan build/fixedform-corpus
+	./build/schema_test_fixedform_runcopy_asan
 	./build/schema_test_fixedform_hostile_bytes_asan
 
 test: tables-fixedform
 
-.PHONY: tables-fixedform
+.PHONY: tables-fixedform tables-fixedform-plain tables-fixedform-asan
 
 # THE C++ LEG'S FIELD-EVOLUTION ROWS (cpp/E8, cpp/R19). The OLD file is built
 # in Go from the same IR the emitter lays down (fixedroadmap_t18_test.go), so
@@ -7488,11 +7504,14 @@ tables-go-checked-cook:
 #
 # Each row of ci-full.yml's pins matrix rewrites one family of committed pins
 # under testdata/ and diffs testdata/ against HEAD. `make conformance-pin
-# update-goldens` remains the single-command maintainer entry point; the five
+# update-goldens` remains the single-command maintainer entry point; the eight
 # targets below partition the same writers across parallel fleet rows without
 # update-goldens' duplicate closing `go test ./...` (already run by go-test),
 # so every row finishes well inside the 2-minute per-commit cap:
-#   - pins-source:            testdata/golden/ (pure-Go + C++, C and C# table sources)
+#   - pins-source-cpp:        testdata/golden/tables/ from the C++ table writer
+#   - pins-source-c:          testdata/golden/tables/*-c/ from the C table writer
+#   - pins-source-cs:         testdata/golden/tables/*-cs/ from the C# table writer
+#   - pins-source-goldens:    testdata/golden/ (pure-Go + C++, C and C# sources)
 #   - pins-wire-packet:       testdata/wire/*.bin, *.bits, packet-defaults/, bench_*.bin
 #   - pins-wire-tables:       testdata/wire/tables/ from test/tables/main.cpp
 #   - pins-wire-tables-forms: testdata/wire/tables/ (block/maps/lists/arms/retain)
@@ -7563,29 +7582,55 @@ PINS_SOURCE_CPP_DIRS := examples pointers block blockhome messages stream blobs 
 PINS_SOURCE_C_DIRS   := examples block pointers
 PINS_SOURCE_CS_DIRS  := examples block blockhome
 
-.PHONY: pins-source
-pins-source: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
-pins-source: export PINS_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
-pins-source: export PINS_CS_GENERATE = $(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
-pins-source: bin/schema
-	@mkdir -p testdata/golden build/tables-generated build/tables-generated-c build/tables-generated-cs
+# THE SOURCE FAMILY IS ITSELF FOUR ROWS. The three table writers copy their own
+# generated files into testdata/golden/tables/ and need no Go test: the bytes
+# they copy are the compiler's own output, and the row's `git diff` against
+# HEAD is what proves they are still the committed pins. The fourth row rewrites
+# and verifies the corpus pins through the golden tests. It runs only the
+# `TestGolden*` set it rewrites: the rest of internal/goldens (including
+# TestGeneratedTextNamesNoMachine, which emits every target for every unit) is
+# not a pin writer and already runs per commit in go-test's unit-rest row.
+.PHONY: pins-source-cpp
+pins-source-cpp: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
+pins-source-cpp: bin/schema
+	@mkdir -p testdata/golden build/tables-generated
 	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_SOURCE_CPP_DIRS),cpp-source)
-	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
-	$(call pins_generate_dirs,PINS_CS_GENERATE,$(PINS_SOURCE_CS_DIRS),cs-source)
 	@for d in $(PINS_SOURCE_CPP_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d; \
 		cp build/tables-generated/$$d/*Table.h build/tables-generated/$$d/*Table.cpp testdata/golden/tables/$$d/ 2>/dev/null || true; \
 	done
+
+.PHONY: pins-source-c
+pins-source-c: export PINS_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
+pins-source-c: bin/schema
+	@mkdir -p testdata/golden build/tables-generated-c
+	$(call pins_generate_dirs,PINS_C_GENERATE,$(PINS_SOURCE_C_DIRS),c-source)
 	@for d in $(PINS_SOURCE_C_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-c; \
 		cp build/tables-generated-c/$$d/*Table.h build/tables-generated-c/$$d/*Table.c build/tables-generated-c/$$d/*View.h build/tables-generated-c/$$d/*View.c testdata/golden/tables/$$d-c/; \
 	done
+
+.PHONY: pins-source-cs
+pins-source-cs: export PINS_CS_GENERATE = $(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
+pins-source-cs: bin/schema
+	@mkdir -p testdata/golden build/tables-generated-cs
+	$(call pins_generate_dirs,PINS_CS_GENERATE,$(PINS_SOURCE_CS_DIRS),cs-source)
 	@for d in $(PINS_SOURCE_CS_DIRS); do \
 		mkdir -p testdata/golden/tables/$$d-cs; \
 		cp build/tables-generated-cs/$$d/*Table.cs testdata/golden/tables/$$d-cs/; \
 	done
-	go test ./internal/goldens -update -run 'TestGolden'
-	go test ./internal/goldens -count=1
+
+.PHONY: pins-source-goldens
+pins-source-goldens: bin/schema
+	@mkdir -p testdata/golden
+	go test ./internal/goldens -update -run '^TestGolden'
+	go test ./internal/goldens -count=1 -run '^TestGolden'
+
+.PHONY: pins-source
+pins-source: pins-source-cpp pins-source-c pins-source-cs pins-source-goldens
+# The writer rows and the golden row touch the same table pins, so the local
+# aggregate keeps them serial; ci-full.yml runs each row in its own checkout.
+.NOTPARALLEL: pins-source
 
 .PHONY: pins-wire-packet
 pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table

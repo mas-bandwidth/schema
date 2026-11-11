@@ -1230,9 +1230,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	align := ir.TableRegionAlign(g.unit)
 	rootSize := (ir.RecordLayout(g.unit, st).Size + align - 1) & -align
-	// A fixed-class root needs no variable region: even on a wire whose framing
-	// is damaged or refused before any field decodes, a non-variable read starts
-	// at its declared defaults and answers that root (docs/SPEC-TABLES.md §3, §4).
+	// A fixed-class root's measure answers its declared-default region on a wire
+	// whose framing is damaged or refused before any field decodes; the load
+	// still refuses the read (docs/SPEC-TABLES.md §3, §4).
 	refused := "-1"
 	if !g.variable[st.Name] {
 		refused = fmt.Sprintf("%d", rootSize+16)

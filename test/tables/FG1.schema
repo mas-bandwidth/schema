@@ -11,8 +11,8 @@
 //        pair (owed 7); this file is the identity-plan fixture the reference
 //        PR carries, under a name that does not collide with that pair.
 //
-//   C11  an enum with `| max = K` HEADROOM is NOT in this schema: the compiler
-//        refuses the construct in a table closure by name.
+//   C11  an enum with `| max = K` is NOT in this schema: an enum takes no
+//        headroom, wherever it is declared (SPEC §4.2).
 package tblfg1
 
 enum Tier
