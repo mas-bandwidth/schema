@@ -55,7 +55,9 @@ const (
 	// -5: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -1161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	goOneTableLineBudget = 10007
+	// +26: the text writer refuses a count or length outside its bound and a
+	// ranged float off its range (SPEC.md §5.1 rows 3, 4 and 10, SPEC-TABLES §16.3)
+	goOneTableLineBudget = 10033
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -93,7 +95,9 @@ const (
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	goExamplesLineBudget = 60097
+	// +26: the text writer refuses a count or length outside its bound and a
+	// ranged float off its range (SPEC.md §5.1 rows 3, 4 and 10, SPEC-TABLES §16.3)
+	goExamplesLineBudget = 60123
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

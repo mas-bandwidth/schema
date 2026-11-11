@@ -16025,6 +16025,13 @@ written as something else.
   names** — refused by the NAME, not by a bound, so a vocabulary that
   disagrees with its own extent cannot slip through as a placeholder.
 - **A union tag outside its arm range.**
+- **A counted array's count past its `Max` or below its `Min` (or negative)**
+  — SPEC.md §5.1 row 3, held per leg as `docs/rulings.json` `write-refusal`
+  lists.
+- **A `string(N)` or `bytes(N)` length past `N` (or negative)** — SPEC.md
+  §5.1 row 4, held per leg as `docs/rulings.json` `write-refusal` lists.
+- **A compressed or ranged float off its range** — SPEC.md §5.1 row 10, held
+  per leg as `docs/rulings.json` `write-refusal` lists.
 - **A graph nested past 128** (§16.2): the writer carries the reader's depth
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
