@@ -456,6 +456,7 @@ func emitDescriptor(m *Module, st *ir.Struct) {
 //	                  (§8.1), an array's declared minimum, whether it is a []T
 //	                  (§2.9), whether it is a counted [..N]T or [A..B]T
 //	signed width bits an integer's signedness, its kind's byte width, bits(N)'s N
+//	flagbits          a flags mask's wire bit count (§3.3)
 //	lo hi             a declared integer range (§4), null when none
 //	f32               a float32 field
 //	def               the declared default in storage (null for a table or array)
@@ -550,10 +551,10 @@ func fieldDesc(u *ir.Unit, f *ir.Field, ordinal int) string {
 	return render(d, fieldKeys)
 }
 
-var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax", "sw"}
+var elemKeys = []string{"kind", "shape", "bound", "signed", "width", "bits", "flagbits", "lo", "hi", "f32", "def", "table", "variants", "textlist", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax", "sw"}
 
 var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shape", "bound", "min", "list", "counted",
-	"signed", "width", "bits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
+	"signed", "width", "bits", "flagbits", "lo", "hi", "f32", "def", "table", "variants", "keyvariants", "elem",
 	"optional", "required", "deprecated", "textlist", "unbounded", "nf", "qcount", "qmin", "qdelta", "qbits", "fmin", "fmax", "fb", "eb", "sw", "fcount"}
 
 // baseDesc is the facts of the field's VALUE type, which an array's element
@@ -561,7 +562,7 @@ var fieldKeys = []string{"name", "member", "key", "id", "ordinal", "kind", "shap
 func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 	d := map[string]string{
 		"kind": fmt.Sprint(ir.TableWireScalarKind(f)), "bound": "0", "min": "0", "list": "false", "counted": "false",
-		"signed": "false", "width": "0", "bits": "0", "lo": "null", "hi": "null", "f32": "false",
+		"signed": "false", "width": "0", "bits": "0", "flagbits": "0", "lo": "null", "hi": "null", "f32": "false",
 		"def": "null", "table": "null", "variants": "null", "keyvariants": "null", "elem": "null",
 		"entry": "null", "textlist": "0", "unbounded": "false", "nf": "null",
 		"qcount": "0", "qmin": "0.0", "qdelta": "0.0", "qbits": "0",
@@ -593,6 +594,7 @@ func baseDesc(u *ir.Unit, f *ir.Field) map[string]string {
 	case isFlags(f):
 		d["shape"] = `"flags"`
 		d["width"] = "8"
+		d["flagbits"] = fmt.Sprint(f.Type.Ref.(*ir.Flags).WireBits)
 		d["def"] = scalarDefault(f)
 	case f.Type.Kind == ir.TString:
 		d["shape"] = `"str"`
