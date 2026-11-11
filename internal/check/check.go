@@ -1622,8 +1622,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		minN := int64(1)
 		what := "bytes"
 		k := ir.TBytes
-		switch f.Type.Kind {
-		case ast.ScalarString:
+		if f.Type.Kind == ast.ScalarString {
 			minN = 2
 			what = "string"
 			k = ir.TString
