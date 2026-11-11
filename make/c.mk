@@ -156,9 +156,29 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
+# $(call tables_generate_side_by_side,<VAR>) runs each line of the exported
+# variable <VAR> -- a generate macro's expansion -- as its own process, all
+# of them at once, and fails when any fails. Every line of the C macros writes
+# an --out directory no other line writes; one after another they were most
+# of the conformance (c) job on a busy runner.
+define tables_generate_side_by_side
+	@awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' | { \
+		pids=''; fail=0; \
+		while IFS= read -r line; do \
+			line=$$(printf '%s' "$$line" | sed 's/^[[:space:]]*//'); \
+			[ -n "$$line" ] || continue; \
+			echo "$$line"; \
+			sh -c "$$line" & pids="$$pids $$!"; \
+		done; \
+		for p in $$pids; do wait "$$p" || fail=1; done; \
+		[ "$$fail" = 0 ]; \
+	}
+endef
+
+build/tables-generated-c/.stamp: export TABLES_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
 build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-c
-	$(call tables_generate_c,./bin/schema,build/tables-generated-c)
+	$(call tables_generate_side_by_side,TABLES_C_GENERATE)
 	@touch $@
 
 # -Werror on purpose: generated headers are included by the CONSUMER's
@@ -1705,8 +1725,9 @@ define tables_generate_c_collections
 	$(1) generate --lang c --out $(2)/arms tables/arms
 endef
 
+build/tables-generated-c/collections.stamp: export TABLES_C_COLLECTIONS_GENERATE = $(call tables_generate_c_collections,./bin/schema,build/tables-generated-c)
 build/tables-generated-c/collections.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema) $(wildcard tables/arms/*.schema)
-	$(call tables_generate_c_collections,./bin/schema,build/tables-generated-c)
+	$(call tables_generate_side_by_side,TABLES_C_COLLECTIONS_GENERATE)
 	@touch $@
 
 build/c-collections-maps: build/tables-generated-c/collections.stamp test/c-tables/collections_maps.c test/c-tables/collections.h
