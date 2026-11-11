@@ -1802,7 +1802,7 @@ union Value
   so there is nothing for a port to guess: it rides the packet wire as its
   tag alone (the wire bullet below), and a `type` body takes it. `check` is
   target-neutral and accepts it, as it accepts every construct some target
-  carries. **C, C++, C#, Rust, Java, JavaScript, Dart, Elixir and Go carry payload-free arms on the packet wire.**
+  carries. **Every packet target carries payload-free arms on the packet wire.**
   C and C++ emit no member for such an arm; selecting it sets the tag alone.
   If no arm has a payload, their generated struct holds only its tag, with no
   empty storage union. The table side is C++ only (SPEC-TABLES.md §11, §15).
@@ -2043,7 +2043,7 @@ Pong may both name a field `sequence` because they are separate types;
   all, and a generated struct that spells one differently in the original packet targets is
   the layout identity SPEC-TABLES.md §20.3 asserts against. The wire half is
   not the hard part and the conversion rules are: an `f32` to `f16` narrowing
-  rounds, and a rounding rule is a conformance surface in nine languages
+  rounds, and a rounding rule is a conformance surface in every packet target
   before it is a feature. **The spelling a program uses today is `bits(16)`
   with the conversion in application code**, which costs the same sixteen bits
   on both wires, says exactly what it stores, and leaves the rounding where
@@ -2151,8 +2151,7 @@ named `timestamp`.
 in a packet `type` — a field, an arm, an array element — is REFUSED BY NAME,
 the diagnostic naming the construct and saying the table wire carries it and
 the packet wire does not yet. No packet wire spells it, no `MaxBits` term
-exists for it, and it takes its own card before any of the nine packet
-targets emits one. In a table body an array of timestamps, an optional one, a
+exists for it, and it takes its own card before any packet target emits one. In a table body an array of timestamps, an optional one, a
 map value and a union arm are each refused by name as a named follow-on.
 Every adopter today writes the same time convention by hand, an `int64` of
 nanoseconds with `0` as the zero time and a hand-written range check; the
