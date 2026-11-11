@@ -113,13 +113,6 @@ var openDisagreements = []disagreement{
 			"which leg moves; this is not yet a defect in either leg",
 		markers: []string{"kTableFixedPresentDefaults", "defaults = nullptr", ", defaults )", "payload_dst", "payload_size", "second_half"},
 	},
-	{
-		name: "BYTE ORDER: on a big-endian host every multi-byte fixed element lands from the little-endian wire in native order, " +
-			"by element width (docs/FIXED-FORM-ALGORITHM.md: every integer on the wire is little-endian; the C leg's entry elem column, " +
-			"TableFixedGetLe / TableFixedCopyLe / TableFixedStoreNative, and copies coalesced only at equal widths). " +
-			"The C++ leg copies in host order and its plan carries no elem column; the C++ leg is the one to change",
-		markers: []string{"TableFixedGetLe", "TableFixedCopyLe", "TableFixedStoreNative", "TableFixedBigEndianHost", "e.elem", "uint8_t elem;"},
-	},
 }
 
 // nameDisagreements returns the open disagreements the leftover shows, each

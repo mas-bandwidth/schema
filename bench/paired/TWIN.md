@@ -174,12 +174,14 @@ A rule one leg carries and the other lacks is not spelling, so the map never
 strips it. Its lines stay in the leftover, and `openDisagreements` in
 `tools/fixedtwin/main.go` names the rule at the head of the failure. Each one
 also says which leg is behind, or that no leg is behind yet. A disagreement leaves the list when the lagging
-leg carries the rule and the gate goes green over it.
+leg carries the rule and the gate goes green over it. The byte-order rule
+(each multi-byte element lands from the little-endian wire in native order,
+by element width) left the list when the C++ leg took the `elem` column and
+the little-endian moves the C leg spells.
 
 | rule | spec | lagging leg |
 |---|---|---|
 | what an absent optional's payload (or an inactive arm's) lands: C++ lands the declared defaults (`kTableFixedPresentDefaults`); the Go engine and the C leg land the bytes the record carries | SPEC-TABLES §3.4 ("IGNORED on read, never a refusal") settles neither; it awaits the pending standard change on dead bytes in a fixed record | none yet: the standard change decides which leg moves |
-| on a big-endian host each multi-byte element lands from the little-endian wire in native order, by element width; copies coalesce only at equal widths | FIXED-FORM-ALGORITHM.md "Every integer is little-endian" and the storage image rule (§4); the C leg's `elem` column and `TableFixedGetLe` / `TableFixedCopyLe` / `TableFixedStoreNative` | C++ (host-order copies, no `elem` column; the plan rows differ for this reason) |
 
 ## Paired rows
 
