@@ -1869,7 +1869,7 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 | 7 | **Wide kinds** — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path | docs/SPEC-TABLES.md §15 |
 | 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | §1 |
 | 9 | **The Envelope tag** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy; it now refuses `out_of_range` | §4.6 |
-| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | §4.5 |
+| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | §4.1, §5.2 |
 | 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound refused where §3.4 says otherwise. The ruling: the length REFUSES BY NAME (`length_over_bound`), and the CONTENT refuses by name as the packet reader does (`text_ill_formed`) | §4.5 |
 | 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | §4.1 |
 | 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | §3.1, §4.3 |

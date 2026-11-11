@@ -62,6 +62,12 @@ func TestSpecFixedAlgorithmStatusCurrent(t *testing.T) {
 				"in flight",
 			},
 		},
+		{
+			row:    "fix 10: the bytes(N) row is stated in §4.1 and §5.2",
+			text:   specSection(t, page, "**The `bytes(N)` row swap**", "| 11 |"),
+			wants:  []string{"§4.1", "§5.2"},
+			stales: []string{"§4.5"},
+		},
 	}
 
 	// the page wraps at a fixed width, so a sentence is matched with its line
