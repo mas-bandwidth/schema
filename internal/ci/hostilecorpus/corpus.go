@@ -159,7 +159,7 @@ func validateInput(input string) error {
 	if !filepath.IsLocal(rel) {
 		return fmt.Errorf("input %q is not a local path under inputs/", input)
 	}
-	for _, segment := range strings.Split(rel, "/") {
+	for segment := range strings.SplitSeq(rel, "/") {
 		if segment == "" || segment == "." || segment == ".." {
 			return fmt.Errorf("input %q has an empty, \".\" or \"..\" segment", input)
 		}
