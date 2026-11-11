@@ -18,19 +18,27 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
+const (
+	csTextVerdictOk = iota
+	csTextVerdictRefused
+	csTextVerdictDamaged
+)
+
 type csTextVerdictCase struct {
-	Name string
-	Text string
-	Want bool
+	Name    string
+	Text    string
+	Want    bool
+	Verdict int
 }
 
 var csTextVerdictCases = []csTextVerdictCase{
-	{"good", "{\"value\":7,\"count\":3}\n", true},
-	{"repeated-key", "{\"value\":1,\"value\":2}\n", false},
-	{"trailing-rubbish", "{\"value\":1} x\n", false},
-	{"empty-text", "", false},
-	{"leading-zero", "{\"value\":01}\n", false},
-	{"out-of-range", "{\"value\":101}\n", false},
+	{"good", "{\"value\":7,\"count\":3}\n", true, csTextVerdictOk},
+	{"repeated-key", "{\"value\":1,\"value\":2}\n", false, csTextVerdictDamaged},
+	{"trailing-rubbish", "{\"value\":1} x\n", false, csTextVerdictDamaged},
+	{"empty-text", "", false, csTextVerdictDamaged},
+	{"leading-zero", "{\"value\":01}\n", false, csTextVerdictDamaged},
+	{"kind-mismatch", "{\"value\":\"x\"}\n", false, csTextVerdictRefused},
+	{"out-of-range", "{\"value\":101}\n", false, csTextVerdictRefused},
 }
 
 const csTextVerdictSchema = `package probe
@@ -46,6 +54,7 @@ type csTextVerdictLine struct {
 	Phase   string
 	OK      bool
 	Verdict int
+	Refused bool
 }
 
 func csTextVerdictGenerate(t *testing.T) map[string][]byte {
@@ -110,7 +119,7 @@ public static class TextVerdictProbe
     {
         var value = new Probe.Root();
         bool ok = Probe.Schema.RootFromJson(value, c.Text, report);
-        Console.WriteLine(c.Name + "|" + phase + "|" + (ok ? "true" : "false") + "|" + ((int)report.Verdict));
+        Console.WriteLine(c.Name + "|" + phase + "|" + (ok ? "true" : "false") + "|" + ((int)report.Verdict) + "|" + (report.Refused ? "true" : "false"));
     }
 }
 `)
@@ -167,14 +176,14 @@ func csTextVerdictRun(t *testing.T, files map[string][]byte) []csTextVerdictLine
 			continue
 		}
 		parts := strings.Split(raw, "|")
-		if len(parts) != 4 {
-			t.Fatalf("probe line %q is not name|phase|ok|verdict", raw)
+		if len(parts) != 5 {
+			t.Fatalf("probe line %q is not name|phase|ok|verdict|refused", raw)
 		}
 		verdict, err := strconv.Atoi(parts[3])
 		if err != nil {
 			t.Fatalf("probe line %q has no verdict: %v", raw, err)
 		}
-		lines = append(lines, csTextVerdictLine{Name: parts[0], Phase: parts[1], OK: parts[2] == "true", Verdict: verdict})
+		lines = append(lines, csTextVerdictLine{Name: parts[0], Phase: parts[1], OK: parts[2] == "true", Verdict: verdict, Refused: parts[4] == "true"})
 	}
 	return lines
 }
@@ -196,11 +205,11 @@ func csTextVerdictFailures(lines []csTextVerdictLine) []string {
 			if line.OK != c.Want {
 				fails = append(fails, fmt.Sprintf("%s: FromJson returned %t, want %t", key, line.OK, c.Want))
 			}
-			if c.Want && line.Verdict != 0 {
-				fails = append(fails, fmt.Sprintf("%s: FromJson returned true with Verdict %d, want Ok (0)", key, line.Verdict))
+			if line.Verdict != c.Verdict {
+				fails = append(fails, fmt.Sprintf("%s: the report's Verdict is %d, want %d", key, line.Verdict, c.Verdict))
 			}
-			if !c.Want && line.Verdict == 0 {
-				fails = append(fails, key+": FromJson returned false with Verdict Ok")
+			if wantRefused := c.Verdict == csTextVerdictRefused; line.Refused != wantRefused {
+				fails = append(fails, fmt.Sprintf("%s: the report's Refused is %t, want %t", key, line.Refused, wantRefused))
 			}
 		}
 	}
