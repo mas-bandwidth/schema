@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -61,6 +62,17 @@ func TestHeldGraphVectorsAnswerTheEngine(t *testing.T) {
 	vectors := map[string]framingVector{}
 	for _, v := range framingVectors {
 		vectors[v.name] = v
+	}
+	// A held graph script without a verdict here would let the graph rule go
+	// untested, so every one of them must be in the table above.
+	listed := map[string]bool{}
+	for _, tc := range heldGraphVectors {
+		listed[tc.name] = true
+	}
+	for _, v := range framingVectors {
+		if v.held && strings.HasPrefix(v.name, "graph_") && !listed[v.name] {
+			t.Errorf("%s: a held graph script with no verdict in heldGraphVectors", v.name)
+		}
 	}
 	for _, tc := range heldGraphVectors {
 		tc := tc
