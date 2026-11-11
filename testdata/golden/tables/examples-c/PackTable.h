@@ -8069,6 +8069,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_gunner_settings_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_gunner_settings_fixed_layout ) ) ) / ( 8 + 33 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_gunner_settings_fixed_layout ) + count * ( 8 + 33 );
 }
 
@@ -8372,6 +8373,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_ship_entry_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ship_entry_fixed_layout ) ) ) / ( 8 + 98 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_ship_entry_fixed_layout ) + count * ( 8 + 98 );
 }
 
@@ -8664,6 +8666,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_global_settings_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_global_settings_fixed_layout ) ) ) / ( 8 + 69 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_global_settings_fixed_layout ) + count * ( 8 + 69 );
 }
 
@@ -9126,6 +9129,7 @@ static SCHEMA_UNUSED const int32_t tabledemo_pack_config_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_pack_config_fixed_layout ) ) ) / ( 8 + 677 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( tabledemo_pack_config_fixed_layout ) + count * ( 8 + 677 );
 }
 

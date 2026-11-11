@@ -14745,15 +14745,16 @@ it does rather than a list of its own:
 
   | hook | where it fires | default | NDEBUG |
   |---|---|---|---|
-  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message | `assert`, from `<assert.h>` | removed, as `assert` is |
+  | `schema_assert( condition )` | the keyed accessor's refusal (§2.4), with its message; the fixed form's measure count and write-side bounds (§3.4), whenever the unit has a fixed form | `assert`, from `<assert.h>` | removed, as `assert` is |
   | `schema_fatal()` | after the assert, on the path that cannot continue | `abort`, from `<stdlib.h>` | kept |
   | `schema_allocate( bytes )` | the default allocator pair: ZEROED bytes, NULL on failure | `calloc`, from `<stdlib.h>` | — |
   | `schema_release( pointer )` | the default allocator pair | `free` | — |
 
-  A unit whose closure declares no keyed array emits no assert hook and
-  no fatal hook; one that declares no pointer emits no allocator hook in its
-  `Table.h`. The block header emits the allocator hook, because
-  `TableBlockDefaultAllocator()` lands in it (§19.1). Define `schema_fatal`
+  A unit whose closure declares neither a keyed array nor a fixed form emits
+  no assert hook; one that declares no keyed array emits no fatal hook either.
+  One that declares no pointer emits no allocator hook in its `Table.h`. The
+  block header emits the allocator hook, because `TableBlockDefaultAllocator()`
+  lands in it (§19.1). Define `schema_fatal`
   and `schema_allocate` and no generated header includes `<stdlib.h>`.
 
 - **A `TableAllocator` per structure, on top of the default.** It is the

@@ -5221,6 +5221,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_padded_row_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_row_fixed_layout ) ) ) / ( 8 + 50 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_row_fixed_layout ) + count * ( 8 + 50 );
 }
 
@@ -6692,6 +6693,7 @@ static SCHEMA_UNUSED const int32_t blockdemo_padded_frame_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_frame_fixed_layout ) ) ) / ( 8 + 3229 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( blockdemo_padded_frame_fixed_layout ) + count * ( 8 + 3229 );
 }
 

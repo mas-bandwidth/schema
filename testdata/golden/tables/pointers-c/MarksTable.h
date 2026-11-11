@@ -5912,6 +5912,7 @@ static SCHEMA_UNUSED const int32_t graphdemo_tally_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t graphdemo_tally_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( graphdemo_tally_fixed_layout ) ) ) / ( 8 + 4 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( graphdemo_tally_fixed_layout ) + count * ( 8 + 4 );
 }
 

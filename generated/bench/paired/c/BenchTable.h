@@ -18,7 +18,7 @@
 #if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
-#include <assert.h> /* the fixed form's write-side bounds, in a debug build */
+#include <assert.h> /* the fixed form's count checks, in a debug build */
 
 #include "Bench.h"
 

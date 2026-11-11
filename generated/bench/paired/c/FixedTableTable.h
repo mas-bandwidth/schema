@@ -18,7 +18,7 @@
 #if SCHEMA_RUNTIME_VERSION != 0xd1887bcfafab63acULL
 #error "SchemaRuntime.h: this header was generated against a different SchemaRuntime.h than the one already included in this translation unit; regenerate every schema unit in it with one compiler"
 #endif
-#include <assert.h> /* the fixed form's write-side bounds, in a debug build */
+#include <assert.h> /* the fixed form's count checks, in a debug build */
 
 #include "FixedTable.h"
 
@@ -4328,6 +4328,7 @@ static SCHEMA_UNUSED const int32_t bench_fixed_table_fixed_floor = 0;
    then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_measure( int64_t count )
 {
+    schema_assert( count >= 0 && count <= ( INT64_MAX - ( BENCH_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( bench_fixed_table_fixed_layout ) ) ) / ( 8 + 1236 ) ); /* a count below zero and a file past int64_t stop before the multiply (§3.4) */
     return BENCH_K_TABLE_FIXED_HEADER_BYTES + 4 + (int64_t) sizeof( bench_fixed_table_fixed_layout ) + count * ( 8 + 1236 );
 }
 
