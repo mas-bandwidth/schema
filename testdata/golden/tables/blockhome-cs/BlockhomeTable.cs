@@ -1248,9 +1248,9 @@ namespace Blockhome
             {
                 if (f.TextList)
                 {
-                    object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
-                    if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
-                    return WriteField(ref o,child,text,depth);
+                    object child = f.GetChild(owner, index); TableFieldInfo text = f.Table.Fields[0];
+                    if (text.Optional && !text.GetPresent(child)) { o.Text("null"); return true; }
+                    return WriteField(ref o, child, text, depth);
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
@@ -1358,11 +1358,11 @@ namespace Blockhome
 
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
-                if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
+                if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -1646,13 +1646,13 @@ namespace Blockhome
                     if (c == '}') { input.Pos++; return true; }
                     input.TextField = mapField;
                     scoped ReadOnlySpan<byte> actual; int used;
-                    if(key.Unbounded)
+                    if (key.Unbounded)
                     {
-                        if(!DecodedStringBody(text,ref input,out actual)){return false;}
-                        if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
-                        used=actual.Length;
+                        if (!DecodedStringBody(text, ref input, out actual)) { return false; }
+                        if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
+                        used = actual.Length;
                     }
-                    else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
+                    else { if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual = spelling.Slice(0, used); }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     object entry = f.Table.Create();
@@ -1660,7 +1660,7 @@ namespace Blockhome
                     if (key.Kind == 12)
                     {
                         if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
-                        else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                        else { if (key.Unbounded) { key.EnsureCount(entry, used); } actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
                     }
                     else
                     {
@@ -2303,12 +2303,12 @@ namespace Blockhome
             // place one scalar at one storage slot
             static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
             {
-                if(f.TextList)
+                if (f.TextList)
                 {
-                    object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
-                    if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
-                    if(field.Optional){field.SetPresent(child,true);}
-                    return ReadField(text,ref input,child,field,depth);
+                    object child = f.GetChild(owner, index); TableFieldInfo field = f.Table.Fields[0]; f.Table.Reset(child);
+                    if (field.Optional && ValueShape(text, ref input) == 'z') { return Literal(text, ref input, "null"); }
+                    if (field.Optional) { field.SetPresent(child, true); }
+                    return ReadField(text, ref input, child, field, depth);
                 }
                 if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
                 if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -2605,9 +2605,9 @@ namespace Blockhome
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
                 if (f.Unbounded)
                 {
-                    if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
-                    if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
-                    f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
+                    if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+                    if (!TableWire.TextValid(body)) { return RefuseText(ref input, "text_holds_zero"); }
+                    f.EnsureCount(value, body.Length); body.CopyTo(f.GetBuffer(value)); f.SetCount(value, body.Length); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
@@ -2781,10 +2781,11 @@ namespace Blockhome
                         {
                             if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                             if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
-                            if(f.TextTotal>0){
-                                object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
-                                int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
+                            if (f.TextTotal > 0)
+                            {
+                                object child = f.GetChild(value, placed); TableFieldInfo element = f.Table.Fields[0];
+                                int length = element.Optional && !element.GetPresent(child) ? 0 : Count(child, element);
+                                if (!TableWire.TextTotalKeep(f, length, ref textSpent, input.Report)) { return false; }
                             }
                             placed++;
                         }
@@ -3460,7 +3461,12 @@ namespace Blockhome
                             if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
                             return true;
                         case 15: return Union(buf, ref off);
-                        case 12: case 31: case 32: case 13: case 14: case 16:
+                        case 12:
+                        case 31:
+                        case 32:
+                        case 13:
+                        case 14:
+                        case 16:
                             if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                             off += (int)n;
                             return Content(buf.Slice(off - (int)n, (int)n), kind);
@@ -3478,21 +3484,25 @@ namespace Blockhome
                         case 12: return TextValid(b) || Damage();
                         case 31: return true;
                         case 32: return b.Length == 0 || Damage();
-                        case 13: case 14: case 16:
-                        {
-                            // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
-                            if (Depth >= 128) { return Damage(); }
-                            Depth++;
-                            bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
-                            Depth--;
-                            return good;
-                        }
-                        case 17: case 30: case 15:
-                        {
-                            int end = 0;
-                            if (!Payload(b, ref end, kind)) { return false; }
-                            return end == b.Length || Damage();
-                        }
+                        case 13:
+                        case 14:
+                        case 16:
+                            {
+                                // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
+                                if (Depth >= 128) { return Damage(); }
+                                Depth++;
+                                bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
+                                Depth--;
+                                return good;
+                            }
+                        case 17:
+                        case 30:
+                        case 15:
+                            {
+                                int end = 0;
+                                if (!Payload(b, ref end, kind)) { return false; }
+                                return end == b.Length || Damage();
+                            }
                     }
                     return Damage();
                 }
@@ -3870,7 +3880,7 @@ namespace Blockhome
             }
             static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
             {
-                if(f.Unbounded){Reader text=r;if(framed&&!r.Slice(out text)){r.Offset=r.Buffer.Length;return true;}if(text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);}if(!framed){r.Offset=r.Buffer.Length;}return true;}
+                if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
                 if (f.IsArray)
                 {
                     Reader a = r;
@@ -3890,7 +3900,7 @@ namespace Blockhome
                         Reader source = a;
                         if (f.KeyId != null)
                         { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                        if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if(f.Table.Fields[0].Unbounded && text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);} }
+                        if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if (f.Table.Fields[0].Unbounded && text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } }
                         else if (f.Kind == 13)
                         {
                             Reader element = source;
@@ -4638,11 +4648,11 @@ namespace Blockhome
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
                 if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
-                if(f.Unbounded)
+                if (f.Unbounded)
                 {
-                    if(live==0){w.Put(at,0,8);return true;}
-                    extent=Align(extent,8);long start=extentAt+extent;extent+=Align(9L+live,8);
-                    w.Put(at,unchecked((ulong)(start-at)),8);w.Put(start,(uint)live,4);w.Raw(start+8,f.GetBuffer(value).AsSpan(0,live));return true;
+                    if (live == 0) { w.Put(at, 0, 8); return true; }
+                    extent = Align(extent, 8); long start = extentAt + extent; extent += Align(9L + live, 8);
+                    w.Put(at, unchecked((ulong)(start - at)), 8); w.Put(start, (uint)live, 4); w.Raw(start + 8, f.GetBuffer(value).AsSpan(0, live)); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
@@ -4735,7 +4745,7 @@ namespace Blockhome
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
-                if(f.Unbounded){int length=f.GetCount(value);if(length<0||length>f.GetBuffer(value).Length){return false;}if(length>0){at=Align(at,8)+Align(9L+length,8);}return true;}
+                if (f.Unbounded) { int length = f.GetCount(value); if (length < 0 || length > f.GetBuffer(value).Length) { return false; } if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
                     int count = f.GetCount(value); if (count < 0) { return false; }
@@ -4887,7 +4897,7 @@ namespace Blockhome
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
                 if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
-                if (f.TextTotal>0 && !TextFits(value,f)) { return false; }
+                if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
                 {
@@ -4998,7 +5008,8 @@ namespace Blockhome
                 if (f.TextList && f.Kind == 12)
                 {
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0]; int count = Count(child, text);
-                    if (framed) { w.Var((ulong)count); } w.Raw(text.GetBuffer(child).AsSpan(0,count)); return;
+                    if (framed) { w.Var((ulong)count); }
+                    w.Raw(text.GetBuffer(child).AsSpan(0, count)); return;
                 }
                 if (f.Kind == 13)
                 {
@@ -5323,7 +5334,7 @@ namespace Blockhome
                 {
                     Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
-                    return ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
+                    return ReadText(text.Buffer, f.GetChild(value, index), f.Table.Fields[0], report);
                 }
                 if (kind == 17)
                 {
@@ -5488,7 +5499,7 @@ namespace Blockhome
                 if (!TextValid(text)) { return Damage(report); }
                 int keep = text.Length;
                 if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-                if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
+                if (value != null) { if (f.Unbounded) { f.EnsureCount(value, keep); } text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
                 return true;
             }
             internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
@@ -5558,10 +5569,11 @@ namespace Blockhome
                         {
                             if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
                             if (!ReadElement(ref array, value, f, i, elementKind, report, true)) { break; }
-                            if(f.TextTotal>0){
-                                object child=f.GetChild(value,i);TableFieldInfo text=f.Table.Fields[0];
-                                int length=text.Optional&&!text.GetPresent(child)?0:Count(child,text);
-                                if(!TextTotalKeep(f,length,ref textSpent,report)){ResetElement(value,f,i);break;}
+                            if (f.TextTotal > 0)
+                            {
+                                object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
+                                int length = text.Optional && !text.GetPresent(child) ? 0 : Count(child, text);
+                                if (!TextTotalKeep(f, length, ref textSpent, report)) { ResetElement(value, f, i); break; }
                             }
                             decoded++;
                         }
@@ -5754,34 +5766,38 @@ namespace Blockhome
         {
             internal static bool TextFits(object value, TableFieldInfo field, int extra = 0)
             {
-                if(field.TextTotal==0){return true;}long spent=extra;
-                TableFieldInfo text=field.Table.Fields[0];int count=Count(value,field);
-                for(int i=0;i<count;i++){object child=field.GetChild(value,i);if(!text.Optional||text.GetPresent(child)){int length=Count(child,text);if(length<0){return false;}spent+=length;if(spent>field.TextTotal){return false;}}}
-                return spent<=field.TextTotal;
+                if (field.TextTotal == 0) { return true; }
+                long spent = extra;
+                TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
+                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+                return spent <= field.TextTotal;
             }
             internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
             {
-                if(field.TextTotal==0){return true;}spent+=length;
-                if(spent<=field.TextTotal){return true;}TextTotalRefuse(report,field);return false;
+                if (field.TextTotal == 0) { return true; }
+                spent += length;
+                if (spent <= field.TextTotal) { return true; }
+                TextTotalRefuse(report, field); return false;
             }
             public static ReadOnlySpan<byte> TextAt(object value, TableFieldInfo field, int index, out bool present)
             {
-                present=false;
-                if(value==null||index<0||index>=Count(value,field)){return default;}
-                object child=field.GetChild(value,index);TableFieldInfo text=field.Table.Fields[0];
-                if(text.Optional&&!text.GetPresent(child)){return default;}
-                present=true;return text.GetBuffer(child).AsSpan(0,Count(child,text));
+                present = false;
+                if (value == null || index < 0 || index >= Count(value, field)) { return default; }
+                object child = field.GetChild(value, index); TableFieldInfo text = field.Table.Fields[0];
+                if (text.Optional && !text.GetPresent(child)) { return default; }
+                present = true; return text.GetBuffer(child).AsSpan(0, Count(child, text));
             }
             public static bool TextAppend(object value, TableFieldInfo field, ReadOnlySpan<byte> bytes, bool present)
             {
-                if(value==null){return false;}
-                TableFieldInfo text=field.Table.Fields[0];int count=Count(value,field);
-                if(count<0||count>=field.ArrayBound||!present&&!text.Optional||present&&(bytes.Length>text.ArrayBound||!TextValid(bytes))){return false;}
-                if(!TextFits(value,field,present?bytes.Length:0)){return false;}
-                if(field.Dynamic){field.EnsureCount(value,count+1);}
-                object child=field.GetChild(value,count);field.Table.Reset(child);
-                if(present){if(text.Unbounded){text.EnsureCount(child,bytes.Length);}bytes.CopyTo(text.GetBuffer(child));text.SetCount(child,bytes.Length);}
-                if(text.Optional){text.SetPresent(child,present);}field.SetCount(value,count+1);return true;
+                if (value == null) { return false; }
+                TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
+                if (count < 0 || count >= field.ArrayBound || !present && !text.Optional || present && (bytes.Length > text.ArrayBound || !TextValid(bytes))) { return false; }
+                if (!TextFits(value, field, present ? bytes.Length : 0)) { return false; }
+                if (field.Dynamic) { field.EnsureCount(value, count + 1); }
+                object child = field.GetChild(value, count); field.Table.Reset(child);
+                if (present) { if (text.Unbounded) { text.EnsureCount(child, bytes.Length); } bytes.CopyTo(text.GetBuffer(child)); text.SetCount(child, bytes.Length); }
+                if (text.Optional) { text.SetPresent(child, present); }
+                field.SetCount(value, count + 1); return true;
             }
         }
 
