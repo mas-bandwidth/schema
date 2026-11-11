@@ -66,6 +66,59 @@ local readLeb = function(b, state) {
   }
   state.bad=true; state.at=start; return 0;
 };
+// THE 128-BIT VALUE IS TWO 64-BIT LANES [lo, hi], the low half first
+// (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS): these are the wrapping
+// lane operations the message form needs, composed from 32-bit halves so no
+// SQInteger sum overflows.
+local MIN64 = 0x8000000000000000;
+local ucmp64 = function(x, y) {
+  local ax = x ^ MIN64, ay = y ^ MIN64;
+  if (ax < ay) return -1;
+  if (ax > ay) return 1;
+  return 0;
+};
+local sub64 = function(a, b) {
+  local lo = (a & 0xffffffff) - (b & 0xffffffff);
+  local borrow = lo < 0 ? 1 : 0;
+  local hi = ((a >>> 32) - (b >>> 32) - borrow) & 0xffffffff;
+  return (hi << 32) | (lo & 0xffffffff);
+};
+local add64 = function(a, b) {
+  local lo = (a & 0xffffffff) + (b & 0xffffffff);
+  local hi = ((a >>> 32) + (b >>> 32) + (lo >>> 32)) & 0xffffffff;
+  return (hi << 32) | (lo & 0xffffffff);
+};
+local u128sub = function(a, b) {
+  local lo = sub64(a[0], b[0]);
+  local br = ucmp64(a[0], b[0]) < 0 ? 1 : 0;
+  return [lo, sub64(sub64(a[1], b[1]), br)];
+};
+local u128add = function(a, b) {
+  local lo = add64(a[0], b[0]);
+  local carry = ucmp64(a[0], lo) > 0 ? 1 : 0;
+  return [lo, add64(add64(a[1], b[1]), carry)];
+};
+local u128cmp = function(a, b) {
+  local h = ucmp64(a[1], b[1]);
+  if (h != 0) return h;
+  return ucmp64(a[0], b[0]);
+};
+local i128cmp = function(a, b) {
+  if (a[1] < b[1]) return -1;
+  if (a[1] > b[1]) return 1;
+  return ucmp64(a[0], b[0]);
+};
+local bitLen64 = function(x) {
+  if (x == 0) return 0;
+  if (x < 0) return 64;
+  local n = 0;
+  while (x > 0) { n++; x = x >>> 1; }
+  return n;
+};
+local bitLen128 = function(x) {
+  if (x[1] != 0) return 64 + bitLen64(x[1]);
+  return bitLen64(x[0]);
+};
 local messageNarrowF32, messageWidenF32, f32;
 local parseShape;
 parseShape = function(b, state, kind) {
@@ -77,7 +130,7 @@ parseShape = function(b, state, kind) {
     if(state.at>=state.end){state.bad=true;return s;}
     s.Packing=b[state.at]&0xff;state.at++;
     if(s.Packing==0)return s;
-    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits<0||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>>1)^(-(raw&1))):raw;}return s;}
+    if(s.Packing==1&&kind!=10){local bits=readLeb(b,state);if(state.bad||bits<0||bits>s.Bits){state.bad=true;return s;}s.Bits=bits;if(kind>=18){if(state.at+16>state.end){state.bad=true;return s;}if(kind==18||kind==19||kind==24||kind==29)s.Base=[readU64(b,state.at),readU64(b,state.at+8)];else s.Base=readU64(b,state.at);state.at+=16;}else{local raw=readLeb(b,state);if(state.bad)return s;s.Base=(kind>=2&&kind<=5)?((raw>>>1)^(-(raw&1))):raw;}return s;}
     if(s.Packing==2&&kind==10){
       if(state.at+12>state.end){state.bad=true;return s;}
       local lo=messageWidenF32(readU32(b,state.at)),hi=messageWidenF32(readU32(b,state.at+4)),res=messageWidenF32(readU32(b,state.at+8));state.at+=12;
@@ -196,9 +249,22 @@ local newWriter = function(buffer, measuring) {
   return { b = buffer, bits = 0, measuring = measuring, bad = false,
     owner = null, field = null, reason = null };
 };
-local put = function(w, value, n) {
-  if (n < 0 || n > 64) { w.bad = true; return; }
+local put, get;
+put = function(w, value, n) {
+  if (n < 0 || n > 128) { w.bad = true; return; }
   if (n == 0) return;
+  if (n > 64) {
+    // A 128-BIT VALUE IS ITS TWO 64-BIT LANES, low half first
+    if (typeof value != "array") { w.bad = true; return; }
+    put(w, value[0], 64);
+    put(w, value[1], n - 64);
+    return;
+  }
+  if (typeof value == "array") {
+    // A RANGED 128-BIT OFFSET THAT FITS 64 BITS STILL ARRIVES AS THE PAIR
+    if (value[1] != 0) { w.bad = true; return; }
+    value = value[0];
+  }
   local start = w.bits; w.bits += n;
   if (w.measuring) return;
   if (w.bits > w.b.len() * 8) { w.bad = true; return; }
@@ -209,8 +275,14 @@ local put = function(w, value, n) {
     else w.b[at] = (w.b[at] & (~mask)) & 0xff;
   }
 };
-local get = function(r, n) {
-  if (n < 0 || n > 64 || r.bits + n > r.b.len() * 8) { r.bad = true; return 0; }
+get = function(r, n) {
+  if (n < 0 || n > 128 || r.bits + n > r.b.len() * 8) { r.bad = true; return n > 64 ? [0, 0] : 0; }
+  if (n > 64) {
+    // A 128-BIT VALUE IS ITS TWO 64-BIT LANES, low half first
+    local lo = get(r, 64);
+    local hi = get(r, n - 64);
+    return [lo, hi];
+  }
   local value = 0;
   for (local i = 0; i < n; i++) {
     local at = (r.bits + i) / 8, bit = (r.bits + i) % 8;
@@ -391,7 +463,10 @@ local findSlot = function(T, id) {
 local numberBits = function(fd) {
   if (fd.shape == "bool") return 1;
   if (fd.shape == "flags") return fd.flagbits;
-  if (fd.lo != null && fd.hi != null) return bitCount(fd.hi - fd.lo);
+  if (fd.lo != null && fd.hi != null) {
+    if (typeof fd.lo == "array") return bitLen128(u128sub(fd.hi, fd.lo));
+    return bitCount(fd.hi - fd.lo);
+  }
   if (fd.bits > 0) return fd.bits;
   return fd.width * 8;
 };
@@ -506,7 +581,10 @@ local writeScalar = function(T, w, fd, value) {
   }
   if (fd.shape == "int" && !intAdmits(fd, value)) { refuseValue(w); return; }
   local raw = value;
-  if (fd.shape == "int" && fd.lo != null) raw = value - fd.lo;
+  if (fd.shape == "int" && fd.lo != null) {
+    if (typeof fd.lo == "array") raw = u128sub(value, fd.lo);
+    else raw = value - fd.lo;
+  }
   put(w, raw, bits);
 };
 
@@ -543,14 +621,31 @@ local readScalar = function(r, T, v, fd, shape) {
   }
   local bits = shape.Bits, x = get(r, bits);
   if (r.bad) return 0;
-  if (shape.Packing == 1) x += shape.Base;
+  local wideField = fd.width == 16;
+  // A RANGED 128-BIT OFFSET THAT FITS 64 BITS STILL ARRIVES AS THE PAIR
+  if (wideField && typeof x != "array") x = [x, 0];
+  if (shape.Packing == 1) {
+    if (typeof shape.Base == "array") {
+      if (typeof x != "array") x = [x, 0];
+      x = u128add(x, shape.Base);
+    } else if (typeof x == "array") {
+      // a narrower peer's base is one lane; carry it into the low half
+      x = u128add(x, [shape.Base, (fd.signed && shape.Base < 0) ? 0xffffffffffffffff : 0]);
+    } else x += shape.Base;
+  }
   else {
     if (shape.Kind>=2 && shape.Kind<=5) {local sw=8<<(shape.Kind-2);if(sw<64 && (x&(1<<(sw-1)))!=0)x-=(1<<sw);}
   }
+  // A NARROWER PEER WIDENED INTO A 128-BIT DECLARATION is extended to the
+  // declaration's signedness, exactly as the Go engine's sixteen-byte widening
+  if (wideField && typeof x != "array") x = [x, (fd.signed && x < 0) ? 0xffffffffffffffff : 0];
   // A VALUE OUTSIDE THE READER'S RANGE REFUSES out_of_range (docs/SPEC-TABLES.md
   // §3.3, §6.5): never a clamp
   if (fd.shape == "int" && fd.lo != null && fd.hi != null) {
-    if (fd.kind == 9) {
+    if (typeof fd.lo == "array") {
+      local cmp = fd.signed ? i128cmp : u128cmp;
+      if (cmp(x, fd.lo) < 0 || cmp(x, fd.hi) > 0) { refuseRead(r, "out_of_range"); return [0, 0]; }
+    } else if (fd.kind == 9) {
       local MIN = 0x8000000000000000;
       if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, "out_of_range"); return 0; }
     } else if (x < fd.lo || x > fd.hi) { refuseRead(r, "out_of_range"); return 0; }
