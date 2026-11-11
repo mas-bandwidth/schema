@@ -3596,10 +3596,11 @@ fresh value is recorded.
 
 **THE DEFAULT IS A WIRE FACT, and every entry carries one.** "No default
 declared" is not the absence of a fact — it is the fact that a fresh record
-holds zero in that slot (SPEC §5). A deprecated slot holds the default, an
-absent field on the id-table wire reads back as it, and a reader handed an
-older writer's record fills the missing field from it. Move it and every one of
-those records means something else.
+holds zero in that slot (SPEC §5). An absent field on the id-table wire reads
+back as the default, and a reader handed an older writer's record fills the
+missing field from it: the default is what a reader lands where the record does
+not supply the field. Move it and every one of those records means something
+else.
 
 **A VALUE LIST IS A NUMBERING.** In a fixed record an enum rides as its dense
 ordinal, a `flags` variant is its bit position, and a union's tag is its arm's
@@ -7974,9 +7975,12 @@ still an entry in the layout, still a constant size in the record and still a
 slot in the reader's storage. A deprecated ENUM VARIANT is the same promise one
 level in: §2.15 fixes its ordinal in place, makes deprecating it a widening,
 and has every plan yield the field's declared default when it meets that
-ordinal. **THE WRITER EMITS THE DECLARED DEFAULT INTO IT AND THE READER YIELDS
-THE DECLARED DEFAULT OUT OF IT**, whatever the record carries there; nothing
-counts, because nothing was lost. Removing the field
+ordinal. **THE WRITER STORES WHAT THE VALUE HOLDS AND THE READER LANDS THE
+STORED VALUE**, like any other field: the reader checks it as it checks any
+field of its kind, and the writer refuses what any field of its kind would
+refuse. Nothing counts, because nothing was lost. The declared default applies
+only where the record does not supply the field — an older layout without it,
+read through the lineage. Removing the field
 outright is the edit that moves every byte behind it — which the hash catches
 and the plan compiler absorbs, at the cost of a plan per peer — and keeping the
 slot is what makes the deprecation cost nothing at all. The marker and the
@@ -19855,7 +19859,7 @@ widening.
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. In the VARIABLE FORM, a field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it. In the FIXED FORM, §3.4 takes precedence: the writer emits the deprecated field’s declared default into its retained slot and the reader yields that default whatever the record carries. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+A field the reader added: its declared default. A field the reader deprecated is read into its slot by every plan, identity included, and ignored by the application; no counter moves for it, in either form. A narrower integer or float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
 take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
@@ -19995,7 +19999,7 @@ terminator. A field in an `if` group whose guard is FALSE is elided whatever
 its storage holds (§3). **A `| deprecated` FIELD IS WRITTEN AS HELD on this
 form**, under the same elision as any field, because a file is never
 clobbered: a value an older build wrote is carried, not reset (§2.10). The
-fixed form is the other way, and §22.6 says so.
+fixed form writes it as held too, and §22.6 says so.
 
 | the field | elided when | when written |
 |---|---|---|
@@ -20208,15 +20212,12 @@ There is no padding between fields (§3.4), so slack is the only byte a value
 does not decide, and it is pinned to zero. A writer stores the LIVE extent
 only: a counted array writes `count` elements and never an unused slot's
 storage, and an absent optional writes its flag `0` and skips the payload store
-(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` SLOT
-CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE** (§3.4): whatever the value holds,
-a deprecated field is written as its type's reset value would write it (a
-scalar its declared default or zero, a text its default, a counted array its
-empty count, an optional absent, a nested type its own default body), and a
-deprecated union arm of a `type` or `table` is that type's default body, an
-arm of any other shape the template's zeros, because an arm takes no specified
-default. Go copies the owner's default body and the C++ writer writes the
-field from the owner's reset value. **THE INTEGRITY TRAILER IS PER FILE** when
+(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` SLOT IS
+WRITTEN AS HELD, LIKE ANY FIELD** (§3.4): the writer stores what the value
+holds and refuses what any field of its kind would refuse, and the reader lands
+the stored value and checks it as it checks any field of its kind. The declared
+default applies only where the record does not supply the field, read through
+the lineage (§21.2). **THE INTEGRITY TRAILER IS PER FILE** when
 the root declares `integrity` (§2.14): the little-endian CRC-32C of every byte
 before it, header, layout and every record, after the last record. The lineage
 and the plans (§21.5) are compile-time data in the generated code and never
