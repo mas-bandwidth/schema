@@ -223,7 +223,7 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 			privateDeclarations := rootedTopLevelDeclarations(t, got, [][2]string{{tc.privateGoRoot, tc.privateGoRoot}}, privateSynthetic)
 			var missing []string
 			for key, name := range upperDeclarations {
-				if !privateDeclarations[key] {
+				if _, ok := privateDeclarations[key]; !ok {
 					missing = append(missing, name)
 				}
 			}
@@ -249,7 +249,7 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 		privateDeclarations := rootedTopLevelDeclarations(t, got, [][2]string{{"fixedlower", "fixedlower"}}, syntheticTableRoots(private))
 		var missing []string
 		for key, name := range upperDeclarations {
-			if !privateDeclarations[key] {
+			if _, ok := privateDeclarations[key]; !ok {
 				missing = append(missing, name)
 			}
 		}
