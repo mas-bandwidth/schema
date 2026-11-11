@@ -4709,7 +4709,7 @@ export class BenchMixed {
     this.world_time = 0n;
     this.frame_tick = 0n;
     this.server_time = 0;
-    this.entities = Array.from({ length: 1 }, () => new MixedEntity());
+    this.entities = [];
     this.stats = [];
     this.game_event = null;
     this.loadout = Array.from({ length: 4 }, () => 0);
@@ -4844,7 +4844,7 @@ const TableVariableCodecs = {
       { n: "world_time", key: "world_time", id: 0x3eee6b51be54fc85n, o: 6, s: "int", js: "n", k: 5, big: true, kw: 8, lo: -1000000000000n, hi: 1000000000000n, bits: 0, bmax: 0, frac: 0, tlo: -1000000000000n, thi: 1000000000000n, dlo: -9223372036854775808n, dhi: 9223372036854775807n, def: 0n },
       { n: "frame_tick", key: "frame_tick", id: 0x7bbc035f7b6d0112n, o: 7, s: "int", js: "n", k: 9, big: true, kw: 8, lo: null, hi: null, bits: 48, bmax: 281474976710655n, frac: 0, tlo: 0n, thi: 281474976710655n, dlo: 0n, dhi: 18446744073709551615n, def: 0n },
       { n: "server_time", key: "server_time", id: 0x3c460475f9be69c6n, o: 8, s: "int", js: "n", k: 22, big: false, kw: 4, lo: 0, hi: 16776960, bits: 0, bmax: 0, frac: 8, tlo: 0n, thi: 16776960n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, min: 1, ek: 13, esz: 64, eal: 8, e: { s: "tab", js: "o", t: "MixedEntity" } },
+      { n: "entities", key: "entities", id: 0x935d0fb07bb3822an, o: 9, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 8, ek: 13, esz: 64, eal: 8, e: { s: "tab", js: "o", t: "MixedEntity" } },
       { n: "stats", key: "stats", id: 0xee639cad45b1994cn, o: 10, k: 14, s: "arr", js: "a", list: false, fixed: false, bound: 80, ek: 13, esz: 8, eal: 4, e: { s: "tab", js: "o", t: "MixedStat" } },
       { n: "game_event", key: "game_event", id: 0x2e35dc5321aa5790n, o: 11, k: 15, s: "union", js: "o", un: "MixedEvent" },
       { n: "loadout", key: "loadout", id: 0x5759ce7586bbb5a3n, o: 12, k: 14, s: "arr", js: "a", list: false, fixed: true, bound: 4, ek: 6, esz: 1, eal: 1, e: { s: "int", js: "n", k: 6, big: false, kw: 1, lo: null, hi: null, bits: 0, bmax: 0, frac: 0, tlo: null, thi: null, dlo: 0n, dhi: 255n, def: 0 } },
