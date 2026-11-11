@@ -155,6 +155,10 @@ What the generator holds:
   (`unsafe readonly struct`, function-pointer allocators), and the projects
   that compile them set `AllowUnsafeBlocks`. The managed `*Table.cs` classes
   stay safe code.
+- **Checked builds.** The generated table sources compile and behave the same
+  under a checked build (`CheckForOverflowUnderflow`): valid data reads, saves
+  and round-trips identically, because every intentional narrowing is written as
+  an explicit `unchecked` reinterpretation.
 - **Contracts.** Read-side validation returns `false`; write-side contracts are
   `Debug.Assert`, so they compile out of a release build as serialize.cs's own
   `WriteStream` does. The packet units' small fixed bodies carry

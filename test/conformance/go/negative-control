@@ -60,16 +60,24 @@ write-refusal)
     ;;
 write-refusal-fixed)
     # the fixed writer's ranged-scalar check removed from a copy of the
-    # generated Go: the write-refusal-fixed rows must go red while the
-    # variable writer and the message form stay green
+    # generated Go: the write-refusal-fixed rows and the write-refusal rows
+    # written through a fixed root's own form must go red while the message
+    # form and the wire surface stay green
     source=$(grep -l '^func WeaponConfigFixedCheckBody(' build/tables-generated-go/examples/*.go)
     sed '/^func WeaponConfigFixedCheckBody(/,/^}/ s/if value.Penetration < 0 || value.Penetration > 10 {/if false { \/\/ SABOTAGED: fixed range check removed/' "$source" > "$out/source.gotext"
     ;;
 write-refusal-message)
     # the message writer's ranged-int refusal taken out of the generated
-    # backenddemo StorePurchase message body
+    # backenddemo StorePurchase message body. The scalar's low argument is
+    # floored in the copy because the Quantity shape's base (Base[0] = 1)
+    # still refuses quantity 0 with its own underflow, which would hide the
+    # removed range check and leave mref_range_low green. The floor does not
+    # touch the value, so the measured and saved lengths agree and the lawful
+    # message rows stay green.
     source=$(grep -l '^func StorePurchaseSaveMessageBody(' build/tables-generated-go/backend/*.go)
-    sed '/^func StorePurchaseSaveMessageBody(/,/^}/ s/if value.Quantity < 1 || value.Quantity > 99 {/if false { \/\/ SABOTAGED: a ranged int writes unchecked/' "$source" > "$out/source.gotext"
+    sed -e '/^func StorePurchaseSaveMessageBody(/,/^}/ s/if value.Quantity < 1 || value.Quantity > 99 {/if false { \/\/ SABOTAGED: a ranged int writes unchecked/' \
+        -e '/^func StorePurchaseSaveMessageBody(/,/^}/ s/uint64(value.Quantity), uint64(0)/uint64(max(value.Quantity, 1)), uint64(0)/' \
+        "$source" > "$out/source.gotext"
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
@@ -182,7 +190,7 @@ else
         grep -q 'message       pass' "$out/log"
     elif [ "$mode" = write-refusal-fixed ]; then
         grep -q 'go / write-refusal-fixed: fref_range_high' "$out/log"
-        grep -q '^write-refusal pass' "$out/log"
+        grep -q '^write-refusal FAIL' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = write-refusal-message ]; then
         grep -q 'go / write-refusal-message: mref_range_high' "$out/log"

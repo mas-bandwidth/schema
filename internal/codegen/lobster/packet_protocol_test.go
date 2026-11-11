@@ -16,10 +16,10 @@ func TestLobsterPacketProtocolID(t *testing.T)                { runPacketProtoco
 func TestLobsterPacketProtocolIDNegativeControl(t *testing.T) { runPacketProtocolID(t, true) }
 func runPacketProtocolID(t *testing.T, sabotage bool) {
 	t.Helper()
-	const id uint64 = 0xeb26c970fde3fd71
+	const id uint64 = 0xf35accd0582cdd84
 	for path, anchor := range map[string]string{
-		"generated/go/Constants.go": "const ProtocolID uint64 = 0xeb26c970fde3fd71",
-		"generated/cpp/Constants.h": "inline constexpr uint64_t ProtocolId = 0xeb26c970fde3fd71ull",
+		"generated/go/Constants.go": "const ProtocolID uint64 = 0xf35accd0582cdd84",
+		"generated/cpp/Constants.h": "inline constexpr uint64_t ProtocolId = 0xf35accd0582cdd84ull",
 	} {
 		b, err := os.ReadFile(filepath.Join("..", "..", "..", path))
 		if err != nil {

@@ -149,6 +149,7 @@ func deadCHeader(t *testing.T, src string) (string, map[string][]byte) {
 }
 
 func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
+	t.Parallel()
 	with, files := deadCHeader(t, deadCF64Src)
 	if strings.Contains(with, "table_wire_widen_f32") {
 		t.Error("the NaN-payload surgery table_wire_widen_f32 is still emitted")
@@ -179,6 +180,7 @@ func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 }
 
 func TestCTableBlobRuntimeFollowsTheCensus(t *testing.T) {
+	t.Parallel()
 	with, files := deadCHeader(t, deadCBlobSrc)
 	for _, sym := range append(append([]string{}, deadCBlobSymbols...), deadCBlobFloor...) {
 		if !strings.Contains(with, sym) {
