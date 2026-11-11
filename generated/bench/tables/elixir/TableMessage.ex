@@ -946,10 +946,18 @@ defmodule Benchtable.TableMessage do
 
   defp encode_float(_shape, _value, _acc), do: :error
 
+  # A text writes only what its entry announces, in every build (docs/SPEC.md
+  # §5.1 rows 4 and 8): well-formed UTF-8, no zero byte, and at most the
+  # entry's max bytes, so its length fits the count and frames what follows.
+  # Anything else refuses the batch and nothing is written.
   defp encode_string(shape, value, acc) do
-    n = byte_size(value)
-    acc2 = put_bits(acc, n, bit_length(shape.max))
-    {:ok, put_bytes(align_write(acc2), value)}
+    if is_binary(value) and byte_size(value) <= shape.max and String.valid?(value) and
+         :binary.match(value, <<0>>) == :nomatch do
+      acc2 = put_bits(acc, byte_size(value), bit_length(shape.max))
+      {:ok, put_bytes(align_write(acc2), value)}
+    else
+      :error
+    end
   end
 
   defp encode_array(vocab, shape, elem, value, acc) do
