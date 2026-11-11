@@ -4477,7 +4477,7 @@ import 'GraphdemoWire.dart';
 
 final report = TableWireReport();
 final scene = sceneWireLoad(bytes, report); // never throws on hostile bytes
-if (report.malformed || report.refused) {
+if (report.refused) {
   // drop it: report.reason names why (wire_damaged, unknown_form)
 } else {
   for (var node = scene.head; node != null; node = node.next) {
@@ -4582,7 +4582,7 @@ func main() {
     if !loaded.Init() { panic("builder allocation failed") }
     defer loaded.Shutdown()
     var report graphdemo.TableReport
-    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Malformed {
+    if !graphdemo.SceneLoadBuilder(&loaded, wire, &report) || report.Err() != nil {
         panic("load failed")
     }
     if !loaded.Lock() { panic("packing failed") }
