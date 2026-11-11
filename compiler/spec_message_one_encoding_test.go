@@ -136,7 +136,7 @@ func TestSpecMessageFormHasOneEncoding(t *testing.T) {
 	manifest := string(manifestData)
 	for _, f := range files {
 		named, verdicted := false, false
-		for _, line := range strings.Split(manifest, "\n") {
+		for line := range strings.SplitSeq(manifest, "\n") {
 			if !strings.Contains(line, "`"+f.name+"`") {
 				continue
 			}

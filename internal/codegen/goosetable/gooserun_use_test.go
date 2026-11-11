@@ -98,8 +98,8 @@ func checkGooserunUse(files map[string][]byte) []string {
 // enclosingFunction names the innermost function declaration holding the
 // inspected node, or the file's package when the call sits at package level.
 func enclosingFunction(stack []ast.Node) string {
-	for i := len(stack) - 1; i >= 0; i-- {
-		if fn, ok := stack[i].(*ast.FuncDecl); ok {
+	for _, s := range slices.Backward(stack) {
+		if fn, ok := s.(*ast.FuncDecl); ok {
 			return fn.Name.Name
 		}
 	}
