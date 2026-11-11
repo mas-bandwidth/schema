@@ -102,7 +102,8 @@ const (
 	// -153: the same, across every fixed root in the examples (WideBlob has no file form; a fixed Measure checks the value as its Save does)
 	// +17: canonical base64 checks in Go JSON reads (§16.2), re-measured at the merged head
 	// +112: the message body repeat check marks the named entry per nesting level in the caller's storage (SPEC-TABLES §3.3)
-	goExamplesLineBudget = 60168
+	// +39: the strict read and the text read return the measure's refusal before the builder, and a small text decodes into a stack buffer so a refusal allocates nothing.
+	goExamplesLineBudget = 60207
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
