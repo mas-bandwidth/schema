@@ -180,18 +180,18 @@ type Instance struct {
 type Model struct {
 	Unit *ir.Unit
 
-	variable map[string]bool // the derived mode of every table (§2.2), on first use
+	variable map[string]bool // the derived mode of every table (§2.2)
 }
 
-// NewModel binds a checked unit for the text and wire walks.
-func NewModel(u *ir.Unit) *Model { return &Model{Unit: u} }
+// NewModel binds a checked unit for the text and wire walks. The table mode
+// map is derived once here, so the Model is safe to share across goroutines.
+func NewModel(u *ir.Unit) *Model {
+	return &Model{Unit: u, variable: ir.VariableTables(u)}
+}
 
 // IsVariable reports whether a table derives the VARIABLE-LENGTH mode
 // (docs/SPEC-TABLES.md §2.2): a pointer somewhere in its by-value closure.
 func (m *Model) IsVariable(name string) bool {
-	if m.variable == nil {
-		m.variable = ir.VariableTables(m.Unit)
-	}
 	return m.variable[name]
 }
 

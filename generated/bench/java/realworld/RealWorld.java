@@ -1135,7 +1135,10 @@ public final class RealWorld {
     // padding). Hostile bytes never throw. No slack past the payload is required.
     public static int readRealPacketBits(
             RealPacket value, byte[] data, int bitOffset, int numBits) {
-        if (bitOffset < 0 || numBits > (long) data.length * 8) {
+        if (bitOffset < 0
+                || numBits < 0
+                || bitOffset > numBits
+                || numBits > (long) data.length * 8) {
             return -1; // the payload cannot exceed the buffer behind data
         }
         // the final 64-bit window, assembled once so every load stays inside
@@ -1145,7 +1148,7 @@ public final class RealWorld {
         int bitsRead = bitOffset;
         long v;
         long lo;
-        if (bitsRead + 291 > numBits) {
+        if ((long) bitsRead + 291 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1fffffL;
@@ -1220,7 +1223,7 @@ public final class RealWorld {
         bitsRead += 1;
         value.f012Bool = v != 0;
         if (value.f012Bool) {
-            if (bitsRead + 88 > numBits) {
+            if ((long) bitsRead + 88 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1260,7 +1263,7 @@ public final class RealWorld {
             value.f016Fixed = 0;
             value.f017Uint = 0;
         }
-        if (bitsRead + 476 > numBits) {
+        if ((long) bitsRead + 476 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x7ffL;
@@ -1395,7 +1398,7 @@ public final class RealWorld {
         bitsRead += 1;
         value.f043Bool = v != 0;
         if (value.f043Bool) {
-            if (bitsRead + 81 > numBits) {
+            if ((long) bitsRead + 81 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1425,7 +1428,7 @@ public final class RealWorld {
             value.f046Uint = 0;
             value.f047Int = 0;
         }
-        if (bitsRead + 81 > numBits) {
+        if ((long) bitsRead + 81 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1448,7 +1451,7 @@ public final class RealWorld {
         bitsRead += 1;
         value.f050Bool = v != 0;
         if (value.f050Bool) {
-            if (bitsRead + 47 > numBits) {
+            if ((long) bitsRead + 47 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
@@ -1478,7 +1481,7 @@ public final class RealWorld {
             value.f053F32 = 0.0f;
             value.f054Int = 0;
         }
-        if (bitsRead + 290 > numBits) {
+        if ((long) bitsRead + 290 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
@@ -1595,7 +1598,7 @@ public final class RealWorld {
         bitsRead += 1;
         value.f074Bool = v != 0;
         if (value.f074Bool) {
-            if (bitsRead + 100 > numBits) {
+            if ((long) bitsRead + 100 > numBits) {
                 return -1;
             }
             v = peekBits(data, bitsRead, tailBase, tailWord) & 0xffffffffL;
@@ -1633,7 +1636,7 @@ public final class RealWorld {
             value.f078Bits = 0;
             value.f079Uint = 0;
         }
-        if (bitsRead + 356 > numBits) {
+        if ((long) bitsRead + 356 > numBits) {
             return -1;
         }
         v = peekBits(data, bitsRead, tailBase, tailWord) & 0x1L;
