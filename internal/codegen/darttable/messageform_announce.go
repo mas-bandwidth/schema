@@ -88,6 +88,14 @@ class TableVocabulary {
   bool announced = false;
   bool attempted = false;
 
+  /// THE BODY'S SEEN SLOTS (docs/SPEC-TABLES.md §3.3, §4): one bitset over
+  /// this vocabulary's announced entries per body nesting level, sized ONCE
+  /// from the announced entry count and cleared by the body that uses it. A
+  /// field or a keyed slot met twice in one body is damage, and a nested body
+  /// keeps its own level so its fields do not shadow its host's.
+  Uint8List seen = Uint8List(0);
+  static const int seenBodyLevels = 129;
+
   /// "THE ONE-ANNOUNCEMENT WORK BUDGET" (§3.3): the caller declares the bound
   /// the payload length and the entry count are held to.
   int maxEntries;
@@ -355,6 +363,8 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   }
   vocabulary.count = seen;
   vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
+  final stride = seen == 0 ? 1 : (seen + 7) >> 3;
+  vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
   vocabulary.announced = true;
   return true;
 }

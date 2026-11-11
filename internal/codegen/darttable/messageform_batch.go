@@ -231,10 +231,23 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	g.gen.cur = st
 	g.emitFn("bool", lower+"LoadMessageBody", []string{"TableMessageReader r", st.Name + " value"})
 	g.pf("  init%s(value);\n", capitalize(st.Name))
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3, §4),
+	// known or unknown: this body's own seen level starts clear.
+	g.pf("  r.seenReset();\n")
 	g.pf("  while (true) {\n")
 	g.pf("    final ref = r.bits.get(tableMessageRefBits);\n")
 	g.pf("    if (r.bits.failed) { r.report.Damage(); return false; }\n")
 	g.pf("    if (ref == 0) return true;\n")
+	// THE RESOLVED REFERENCE IS RECORDED ONCE PER BODY when this reader has an
+	// announced vocabulary, which every batch read has. A body function driven
+	// on its own keeps the per-slot dispatch below without a resolution.
+	g.pf("    if (r.vocabulary.announced) {\n")
+	g.pf("      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n")
+	g.pf("      final named = r.vocabulary.entries[ref - 1].id;\n")
+	g.pf("      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }\n")
+	g.pf("      if (r.seenHas(ref)) { r.report.Damage(); return false; }\n")
+	g.pf("      r.seenAdd(ref);\n")
+	g.pf("    }\n")
 	g.pf("    switch (ref) {\n")
 	for _, f := range st.Fields {
 		entry := ir.TableFieldEntry(f)
@@ -249,25 +262,19 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	// `unknown`, its payload is stepped over by the announcement's own kind and
 	// shape, and the body keeps reading, exactly as the Go reference's body
 	// walk does (internal/tablewire/messagedecode.go: `Unknown++`, `skip(entry)`,
-	// `continue`). A reference ABOVE the announced vocabulary names no entry
-	// and is damage, which is terminal for the batch.
+	// `continue`). The reference was resolved, reserved-checked and recorded
+	// above, so an unknown entry met twice is the same damage as a known one.
 	g.pf("        if (ref > r.vocabulary.count) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
-	// A RESERVED ID IN A BODY IS MALFORMED (docs/SPEC-TABLES.md §3.1, §3.3),
-	// and the rule outranks the unknown-slot rule: the Go reference body walk
-	// (internal/tablewire/messagedecode.go body, the `case
-	// ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId,
-	// ir.TableNodeWireId` arm) sets `Malformed` and stops BEFORE it counts an
-	// unknown, so a reference naming the node table (or either trailer id) is
-	// damage here and counts nothing.
+	g.pf("          r.report.Damage();\n          return false;\n")
+	g.pf("        }\n")
 	g.pf("        final named = r.vocabulary.entries[ref - 1].id;\n")
-	g.pf("        if (named == TableVocabulary.buildVersionWireId ||\n")
-	g.pf("            named == TableVocabulary.vocabularyWireId ||\n")
-	g.pf("            named == TableVocabulary.nodeWireId) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	g.pf("        if (tableMessageReservedId(named)) {\n")
+	g.pf("          r.report.Damage();\n          return false;\n")
+	g.pf("        }\n")
 	g.pf("        r.report.unknown++;\n")
 	g.pf("        if (!TableMessageShape.skipEntry(r, r.vocabulary.entries[ref - 1])) {\n")
-	g.pf("          r.report.Damage();\n          return false;\n        }\n")
+	g.pf("          r.report.Damage();\n          return false;\n")
+	g.pf("        }\n")
 	g.pf("        break;\n")
 	g.pf("    }\n  }\n}\n\n")
 }
@@ -549,6 +556,8 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 		g.pf("%s  %sLength = kept;\n", ind, expr)
 		g.pf("%s  %s.setRange(0, kept, r.bits.buffer, start);\n", ind, expr)
 		g.pf("%s}\n", ind)
+	case f.KeyEnum != "":
+		g.emitMessageReadKeyed(f, entry, expr, ind)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		aind := ind
@@ -619,7 +628,7 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 	case f.Type.Kind == ir.TNamed:
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sif (!%sLoadMessageBody(r, %s)) return false;\n", ind, lowerFirst(r.Name), expr)
+			g.emitMessageReadNested(r, expr, ind)
 		case *ir.Union:
 			g.emitMessageReadUnion(r, expr, ind)
 		case *ir.Enum:
@@ -630,10 +639,63 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, entry ir.TableVocabulary
 	}
 }
 
+// emitMessageReadKeyed reads an enum-keyed array (docs/SPEC-TABLES.md §3.2,
+// §3.3): the present-slot count, then a key reference and an element a slot.
+// A keyed slot twice in one keyed body is damage, so the key references take
+// their own seen level, as the Go reference's `seenKey` does
+// (internal/codegen/gotable/messageread.go).
+func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
+	shape := entry.Shape
+	bad := "r.report.Damage(); return false"
+	elem := messageElementField(f)
+	g.pf("%s{\n", ind)
+	g.pf("%s  final slots = r.bits.get(%d);\n", ind, ir.TableMessageCountBits(shape))
+	g.pf("%s  if (r.bits.failed) { %s; }\n", ind, bad)
+	g.pf("%s  r.seenDepth++;\n", ind)
+	g.pf("%s  r.seenReset();\n", ind)
+	g.pf("%s  for (var i = 0; i < slots; i++) {\n", ind)
+	g.pf("%s    final keyRef = r.bits.get(tableMessageRefBits);\n", ind)
+	g.pf("%s    if (r.bits.failed || keyRef == 0 || keyRef > r.vocabulary.count) { %s; }\n", ind, bad)
+	g.pf("%s    final key = r.vocabulary.entries[keyRef - 1];\n", ind)
+	g.pf("%s    if (tableMessageReservedId(key.id) || key.kind != 0) { %s; }\n", ind, bad)
+	g.pf("%s    if (r.seenHas(keyRef)) { %s; }\n", ind, bad)
+	g.pf("%s    r.seenAdd(keyRef);\n", ind)
+	g.pf("%s    var at = 0;\n", ind)
+	for i := range f.KeyEnumRef.Variants {
+		kw := "if"
+		if i > 0 {
+			kw = "else if"
+		}
+		g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+	}
+	g.pf("%s    if (at == 0) {\n", ind)
+	g.pf("%s      r.report.unknown++;\n", ind)
+	g.emitMessageDropElement(elem, entry, ind+"      ")
+	g.pf("%s    } else {\n", ind)
+	g.emitMessageReadElement(elem, entry, expr+"[at - 1]", ind+"      ")
+	g.pf("%s    }\n", ind)
+	g.pf("%s  }\n", ind)
+	g.pf("%s  r.seenDepth--;\n", ind)
+	g.pf("%s}\n", ind)
+}
+
+// emitMessageReadNested reads one nested body at its own seen level
+// (docs/SPEC-TABLES.md §3.3, §4): the host body's seen bits are untouched and
+// the nested body's own level starts clear, as the Go reference's per-call
+// `seen` buffer does (internal/codegen/gotable/messageread.go).
+func (g *fixedModule) emitMessageReadNested(st *ir.Struct, expr, ind string) {
+	g.pf("%s{\n", ind)
+	g.pf("%s  r.seenDepth++;\n", ind)
+	g.pf("%s  final ok = %sLoadMessageBody(r, %s);\n", ind, lowerFirst(st.Name), expr)
+	g.pf("%s  r.seenDepth--;\n", ind)
+	g.pf("%s  if (!ok) return false;\n", ind)
+	g.pf("%s}\n", ind)
+}
+
 func (g *fixedModule) emitMessageReadElement(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string) {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			g.pf("%sif (!%sLoadMessageBody(r, %s)) return false;\n", ind, lowerFirst(r.Name), expr)
+			g.emitMessageReadNested(r, expr, ind)
 			return
 		}
 	}
@@ -969,9 +1031,10 @@ func (g *fixedModule) emitMessageDropElement(f *ir.Field, entry ir.TableVocabula
 		g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 		return
 	}
-	// the scalar sink is written and never read: the bits are what is kept
+	// a TYPED sink, so a ranged scalar's base and its clamps compile exactly
+	// as they do on a declared field, and nothing is written back
 	g.pf("%s    // ignore: unused_local_variable\n", ind)
-	g.pf("%s    Object? t;\n", ind)
+	g.pf("%s    %s t = %s;\n", ind, fixedScalarType(elem.Type), g.gen.fixedZeroFor(elem))
 	g.emitMessageReadElement(elem, entry, "t", ind+"  ")
 }
 
@@ -1061,6 +1124,32 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+
+  /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
+  /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the
+  /// announced vocabulary; a body clears its own level only, so a host body's
+  /// fields survive a nested body's read.
+  Uint8List seen = Uint8List(0);
+  int seenStride = 0;
+  int seenDepth = 0;
+
+  void seenReset() {
+    if (seenStride == 0) return;
+    final at = seenDepth * seenStride;
+    seen.fillRange(at, at + seenStride, 0);
+  }
+
+  bool seenHas(int ref) {
+    if (seenStride == 0) return false;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
+  }
+
+  void seenAdd(int ref) {
+    if (seenStride == 0) return;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    seen[bit >> 3] |= 1 << (bit & 7);
+  }
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
@@ -1080,6 +1169,13 @@ int tableMessageBatchOpen(
   r.bits = TableBitReader(Uint8List.sublistView(data, 2));
   r.vocabulary = vocabulary;
   r.report = report;
+  final stride = vocabulary.count == 0 ? 1 : (vocabulary.count + 7) >> 3;
+  if (vocabulary.seen.length < stride * TableVocabulary.seenBodyLevels) {
+    vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
+  }
+  r.seen = vocabulary.seen;
+  r.seenStride = stride;
+  r.seenDepth = 0;
   return data[1] + 1;
 }
 

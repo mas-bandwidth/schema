@@ -152,6 +152,12 @@ void main() {
 // the shared runtime, the root library carries the batch verbs, and the probe
 // imports both, so a defect in either is a compile error, never a green.
 func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) {
+	return runBatchProbeWith(t, u, root, body, nil)
+}
+
+// runBatchProbeWith is runBatchProbe with an in-memory edit of the emitted
+// source, the lever a negative control takes without writing a generated copy.
+func runBatchProbeWith(t *testing.T, u *ir.Unit, root, body string, edit func(map[string][]byte)) (string, error) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
@@ -164,6 +170,9 @@ func runBatchProbe(t *testing.T, u *ir.Unit, root, body string) (string, error) 
 		t.Fatalf("generate table: %v", err)
 	}
 	maps.Copy(files, tables)
+	if edit != nil {
+		edit(files)
+	}
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
