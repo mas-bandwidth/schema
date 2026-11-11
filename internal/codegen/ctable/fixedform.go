@@ -177,8 +177,14 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	/* THE STORAGE BOUND, in the same order (docs/SPEC.md §5.1): the save asks
+	   it of every record before anything else, in every build. */
+	for _, st := range own {
+		g.emitFixedFitsFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
+		g.emitFixedWriteCheck(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -684,11 +690,25 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if fixedFitsNeeded(st, map[string]bool{}) {
+		// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+		// (docs/SPEC.md §5.1), FIRST: every later pass walks the counts and
+		// lengths this one bounds. One line, the comment leading, for
+		// formatCompactCFunctions.
+		g.pf("    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !%s( values + k ) ) { return -1; } }\n", g.sym(st.Name, "fixed_fits"))
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): the whole batch is checked before one byte is written
 		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 		g.pf("        if ( !%s( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */\n    }\n", g.sym(st.Name, "fixed_finite_body"))
+	}
+	if ir.TableFixedClampNeeded(st) {
+		// THE WRITER'S CONTRACT (docs/SPEC.md §5.1), debug-only: NDEBUG
+		// removes schema_assert and the loop's work with it. One line, the
+		// comment leading, which is the line a negative control removes.
+		g.wroteAssert = true
+		g.pf("    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( %s( values + k ) ); }\n", g.sym(st.Name, "fixed_write_check"))
 	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
@@ -1002,7 +1022,7 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
-	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * out_of_range, int32_t * damaged )\n{\n",
+	g.pf("static SCHEMA_UNUSED %s void %s( const %s * value, int32_t * out_of_range, int32_t * damaged )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_clamp_body"), st.Name)
 	g.pf("    (void) value; (void) out_of_range; (void) damaged;\n")
 	for _, f := range st.Fields {

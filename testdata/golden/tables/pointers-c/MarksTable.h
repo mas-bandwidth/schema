@@ -5426,6 +5426,7 @@ static SCHEMA_UNUSED int graphdemo_tally_save_body( graphdemo_table_writer_t * w
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->hits == 0 ) )
         {
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->hits >= 0 && value->hits <= 10000 );
             graphdemo_table_writer_id_at( w, 19, 0x732dfbcc9b0cf0bbull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
@@ -5437,6 +5438,7 @@ static SCHEMA_UNUSED int graphdemo_tally_save_body( graphdemo_table_writer_t * w
         if ( !( value->hits == 0 ) )
         {
             graphdemo_table_writer_header_at( w, 19, 0x732dfbcc9b0cf0bbull, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->hits >= 0 && value->hits <= 10000 );
             graphdemo_table_writer_put32( w, (uint32_t) ( value->hits ) );
         }
     }
@@ -5570,6 +5572,7 @@ static SCHEMA_UNUSED int graphdemo_tally_save_message_body(graphdemo_table_bit_w
  { /* hits */
  if(!(value->hits == 0)) {
   graphdemo_table_bit_put(w,6,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->hits >= 0 && value->hits <= 10000 );
   graphdemo_table_bit_put(w,(uint64_t)(value->hits)-UINT64_C(0),14);
  }
  }
@@ -5684,6 +5687,7 @@ static SCHEMA_UNUSED int graphdemo_tally_load_messages(graphdemo_tally_t * value
 static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label_( graphdemo_table_writer_t * w, const graphdemo_marker_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 8 ) { return 0; }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -5809,7 +5813,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_f
 }
 
 /* Tally's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_clamp_body_( graphdemo_tally_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_clamp_body_( const graphdemo_tally_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     (*out_of_range) += (int) ( value->hits < 0 ) | (int) ( value->hits > 10000 );
@@ -5834,6 +5838,16 @@ static SCHEMA_UNUSED int schema_graphdemo_tally_fixed_clamp_( graphdemo_tally_t 
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_GRAPHDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* Tally's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_graphdemo_tally_fixed_write_check_( const graphdemo_tally_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_graphdemo_tally_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- Tally, the fixed form ---- */
@@ -5922,6 +5936,7 @@ static SCHEMA_UNUSED int64_t graphdemo_tally_fixed_save( const graphdemo_tally_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_graphdemo_tally_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_tally_fixed_hash );
@@ -6086,6 +6101,7 @@ static SCHEMA_UNUSED int graphdemo_tally_save_body_retain( graphdemo_table_write
         {
             graphdemo_table_retain_writer_id( w, 0x732dfbcc9b0cf0bbull , retention);
             graphdemo_table_writer_put8( w, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->hits >= 0 && value->hits <= 10000 );
             graphdemo_table_writer_put32( w, (uint32_t) ( value->hits ) );
         }
     }
@@ -6233,6 +6249,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_wire_label__retain( graphdemo_t
 
     if ( value->label_length < 0 || value->label_length > 8 ) { return 0;
     }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( graphdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

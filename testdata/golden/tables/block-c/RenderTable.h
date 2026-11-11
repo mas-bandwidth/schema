@@ -12798,7 +12798,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_finite_body_( c
 }
 
 /* RenderShip's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( const blockdemo_render_ship_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->ship_type > 3u ) { (*out_of_range)++; }
@@ -12806,14 +12806,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderTurret's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( blockdemo_render_turret_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( const blockdemo_render_turret_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
 }
 
 /* RenderMissile's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( blockdemo_render_missile_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( const blockdemo_render_missile_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->missile_type > 2u ) { (*out_of_range)++; }
@@ -12821,7 +12821,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderDynamicProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( blockdemo_render_dynamic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( const blockdemo_render_dynamic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
@@ -12829,7 +12829,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderStaticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( blockdemo_render_static_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( const blockdemo_render_static_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
@@ -12837,7 +12837,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderCosmeticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( blockdemo_render_cosmetic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( const blockdemo_render_cosmetic_prop_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { (*out_of_range)++; }
@@ -12845,7 +12845,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderLaser's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( blockdemo_render_laser_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( const blockdemo_render_laser_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->laser_type > 2u ) { (*out_of_range)++; }
@@ -12853,7 +12853,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderExplosion's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( blockdemo_render_explosion_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( const blockdemo_render_explosion_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->explosion_type > 2u ) { (*out_of_range)++; }
@@ -13155,6 +13155,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_clamp_( blockdemo_re
     return 0;
 }
 
+/* RenderShip's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_ship_fixed_write_check_( const blockdemo_render_ship_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_ship_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderShip, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13308,6 +13318,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_fixed_save( const blockdemo_r
     {
         if ( !schema_blockdemo_render_ship_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_ship_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_ship_fixed_hash );
@@ -13490,6 +13501,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_clamp_( blockdemo_
     return 0;
 }
 
+/* RenderTurret's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_turret_fixed_write_check_( const blockdemo_render_turret_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_turret_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderTurret, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13624,6 +13645,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_fixed_save( const blockdemo
     {
         if ( !schema_blockdemo_render_turret_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_turret_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_turret_fixed_hash );
@@ -13806,6 +13828,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_clamp_( blockdemo
     return 0;
 }
 
+/* RenderMissile's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_missile_fixed_write_check_( const blockdemo_render_missile_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_missile_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderMissile, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -13946,6 +13978,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_fixed_save( const blockdem
     {
         if ( !schema_blockdemo_render_missile_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_missile_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_missile_fixed_hash );
@@ -14128,6 +14161,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_clamp_( bloc
     return 0;
 }
 
+/* RenderDynamicProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_dynamic_prop_fixed_write_check_( const blockdemo_render_dynamic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderDynamicProp, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -14270,6 +14313,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_fixed_save( const blo
     {
         if ( !schema_blockdemo_render_dynamic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_dynamic_prop_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_dynamic_prop_fixed_hash );
@@ -14452,6 +14496,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_clamp_( block
     return 0;
 }
 
+/* RenderStaticProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_static_prop_fixed_write_check_( const blockdemo_render_static_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderStaticProp, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -14594,6 +14648,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_fixed_save( const bloc
     {
         if ( !schema_blockdemo_render_static_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_static_prop_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_static_prop_fixed_hash );
@@ -14776,6 +14831,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_clamp_( blo
     return 0;
 }
 
+/* RenderCosmeticProp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_cosmetic_prop_fixed_write_check_( const blockdemo_render_cosmetic_prop_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderCosmeticProp, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -14921,6 +14986,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_fixed_save( const bl
     {
         if ( !schema_blockdemo_render_cosmetic_prop_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_cosmetic_prop_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_cosmetic_prop_fixed_hash );
@@ -15103,6 +15169,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_clamp_( blockdemo_r
     return 0;
 }
 
+/* RenderLaser's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_laser_fixed_write_check_( const blockdemo_render_laser_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_laser_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderLaser, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -15237,6 +15313,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_fixed_save( const blockdemo_
     {
         if ( !schema_blockdemo_render_laser_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_laser_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_laser_fixed_hash );
@@ -15419,6 +15496,16 @@ static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_clamp_( blockde
     return 0;
 }
 
+/* RenderExplosion's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_render_explosion_fixed_write_check_( const blockdemo_render_explosion_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- RenderExplosion, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -15559,6 +15646,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_save( const blockd
     {
         if ( !schema_blockdemo_render_explosion_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_render_explosion_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_render_explosion_fixed_hash );

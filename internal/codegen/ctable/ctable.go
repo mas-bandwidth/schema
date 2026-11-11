@@ -168,6 +168,10 @@ type tableGen struct {
 	fixedTable string
 	fixedLoop  int
 	includes   map[string]bool // referenced files -> #include "<base>Table.h"
+	// wroteAssert is a writer in this file carrying a write-contract
+	// schema_assert (docs/SPEC.md §5.1), which brings in <assert.h> and the
+	// assert hook for a file that has no other use for them.
+	wroteAssert bool
 }
 
 func (g *tableGen) canProbe(st *ir.Struct) bool {
@@ -1038,6 +1042,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// counted array's live count, debug-only, with no abort behind them —
 		// so this unit takes <assert.h> and not <stdlib.h>.
 		h.WriteString("#include <assert.h> /* the fixed form's write-side bounds, in a debug build */\n")
+	} else if g.wroteAssert {
+		// THE WRITE CONTRACT'S ASSERTS (docs/SPEC.md §5.1): debug-only,
+		// nothing after them, so the assert and not <stdlib.h>.
+		h.WriteString("#include <assert.h> /* the writers' declared-value asserts, in a debug build */\n")
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {
@@ -1054,6 +1062,13 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	}
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
+	if g.wroteAssert && !g.anyKeyed && !ir.TableFixedHasWriteBound(u) {
+		// A unit whose primitives carry no assert hook, and a writer here that
+		// asserts: the hook goes in this header, outside the per-package
+		// guard, since the package's other headers may not be in this
+		// translation unit (#ifndef-guarded).
+		h.WriteString(tableFixedAssertHook)
+	}
 	h.WriteString(tableRefuseRuntime)
 	if g.anyVariable {
 		h.WriteString("\n")

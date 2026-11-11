@@ -69,11 +69,15 @@ func TestCOneSidedIntegerRange(t *testing.T) {
     CHECK(r4.refused && r4.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE);
 
     fixed_one_sided_reset(&w);
+    fn = fixed_one_sided_fixed_save(&w, 1, fixed_buf, (int64_t)sizeof(fixed_buf));
+    CHECK(fn > 0);
+    /* THE WRITER REFUSES A VALUE OFF ITS DECLARATION (docs/SPEC.md §5.1), so
+       the reader's input is stored by the record's own store over a record
+       saved at the declared defaults */
     w.a = -12345;
     w.b = 999;
     w.c = -128;
-    fn = fixed_one_sided_fixed_save(&w, 1, fixed_buf, (int64_t)sizeof(fixed_buf));
-    CHECK(fn > 0);
+    schema_probe_fixed_one_sided_fixed_write_body_(fixed_buf + kTableFixedHeaderBytes + 4 + (int64_t)sizeof(fixed_one_sided_fixed_layout) + 8, &w);
     memset(&r2, 0, sizeof(r2));
     CHECK(fixed_one_sided_fixed_load(&loaded, 1, fixed_buf, fn, NULL, 0, NULL, &r2) < 0);
     CHECK(loaded.a == defaults.a && loaded.b == defaults.b && loaded.c == defaults.c);

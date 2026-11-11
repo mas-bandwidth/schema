@@ -3531,6 +3531,7 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_message_body(blockdemo_tabl
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_wire_label_( blockdemo_table_writer_t * w, const blockdemo_padded_row_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 15 ) { return 0; }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
     blockdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -4078,6 +4079,7 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_message_body(blockdemo_table_
  if(value->label_length != 0) {
   blockdemo_table_bit_put(w,9,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>15) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
   blockdemo_table_bit_put(w,(uint64_t)value->label_length,4);
   blockdemo_table_bit_align_write(w);
   blockdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -5055,7 +5057,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_finite_body_( const
 }
 
 /* PaddedRow's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_row_fixed_clamp_body_( blockdemo_padded_row_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_row_fixed_clamp_body_( const blockdemo_padded_row_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     if ( !blockdemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) )
@@ -5065,7 +5067,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
 }
 
 /* PaddedFrame's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_frame_fixed_clamp_body_( blockdemo_padded_frame_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_frame_fixed_clamp_body_( const blockdemo_padded_frame_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     {
@@ -5075,6 +5077,30 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
             schema_blockdemo_padded_row_fixed_clamp_body_( &value->rows[i], out_of_range, damaged );
         }
     }
+}
+
+/* PaddedRow's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_fixed_fits_( const blockdemo_padded_row_t * value )
+{
+    if ( value->label_length < 0 || value->label_length > 15 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* PaddedFrame's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_fits_( const blockdemo_padded_frame_t * value )
+{
+    if ( value->rows_count < 0 || value->rows_count > 64 ) { return 0; } /* the count indexes the storage (§3.4) */
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->rows_count; ++i )
+        {
+            if ( !schema_blockdemo_padded_row_fixed_fits_( &value->rows[i] ) ) { return 0; }
+        }
+    }
+    if ( value->blob_length < 0 || value->blob_length > 12 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -5096,6 +5122,16 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_row_fixed_clamp_( blockdemo_pad
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* PaddedRow's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_row_fixed_write_check_( const blockdemo_padded_row_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_padded_row_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- PaddedRow, the fixed form ---- */
@@ -5231,10 +5267,12 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_row_fixed_save( const blockdemo_pa
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_blockdemo_padded_row_fixed_fits_( values + k ) ) { return -1; } }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_padded_row_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_padded_row_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_padded_row_fixed_hash );
@@ -5415,6 +5453,16 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_clamp_( blockdemo_p
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BLOCKDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* PaddedFrame's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_blockdemo_padded_frame_fixed_write_check_( const blockdemo_padded_frame_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_padded_frame_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- PaddedFrame, the fixed form ---- */
@@ -6702,10 +6750,12 @@ static SCHEMA_UNUSED int64_t blockdemo_padded_frame_fixed_save( const blockdemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_blockdemo_padded_frame_fixed_fits_( values + k ) ) { return -1; } }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_blockdemo_padded_frame_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_blockdemo_padded_frame_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BLOCKDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BLOCKDEMO_K_TABLE_FIXED_FORM;
     blockdemo_table_fixed_put64( buffer + BLOCKDEMO_K_TABLE_FIXED_HASH_AT, blockdemo_padded_frame_fixed_hash );

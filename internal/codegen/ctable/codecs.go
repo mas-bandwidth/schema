@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -440,13 +441,13 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): the measure and the save share this body, so both refuse it
 		g.pf("%sif ( !table_float_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
-		if f.Required && f.HasFloatRange {
+		if f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		}
 		g.pf("%stable_writer_put32( w, table_float_to_bits( %s ) );\n", ind, expr)
 	case tkF64:
 		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
-		if f.Required && f.HasFloatRange {
+		if f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
 		}
 		g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
@@ -465,10 +466,60 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 				mask := (uint64(1) << f.Type.Width) - 1
 				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
 			}
+		} else {
+			g.emitRangeAssert(f, expr, ind, width, "a write")
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
+}
+
+// emitRangeAssert is the WRITE CONTRACT's debug-only refusal of an integer
+// outside its declaration (docs/SPEC.md §5.1 rows 1 and 2): a ranged value
+// off its min or max, or a bits(N) value wider than N. It is schema_assert,
+// so NDEBUG removes it and a release write pays nothing; the measure shares
+// the body, so it stops there too. A | required field refuses the same value
+// in every build, so the caller gives it none. An end that sits on the
+// storage width's own limit is one no value can pass, and is left out as the
+// read leaves it out. `writer` names the writer in the line's comment, which
+// is what lets a negative control remove one writer's check.
+func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int, writer string) {
+	var conds []string
+	if lo, hi, ok := ir.TableRawRange(f); ok && width != 16 {
+		low, high := tableClampEnds(f, width)
+		if low {
+			conds = append(conds, fmt.Sprintf("%s >= %s", expr, tableIntLit(lo, f.Type.Signed, width)))
+		}
+		if high {
+			conds = append(conds, fmt.Sprintf("%s <= %s", expr, tableIntLit(hi, f.Type.Signed, width)))
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		conds = append(conds, fmt.Sprintf("(uint64_t)( %s ) <= 0x%xull", expr, (uint64(1)<<f.Type.Width)-1))
+	}
+	if len(conds) == 0 {
+		return
+	}
+	g.writerAssert(ind, strings.Join(conds, " && "), writer+" keeps the declared bounds (SPEC.md §5.1)")
+}
+
+// emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
+// (docs/SPEC.md §5.1 row 8): a string's used bytes that are not well-formed
+// UTF-8 or hold a zero byte, the binary reader's own rule (table_wire_utf8).
+func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
+	if f.Type.Kind != ir.TString || f.Type.Blob() {
+		return
+	}
+	g.writerAssert(ind, fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s )", value, length), writer+" keeps well-formed text (SPEC.md §5.1)")
+}
+
+// writerAssert emits one write-contract assert on ONE line, the comment
+// LEADING it: the compact message and retention functions break a line after
+// every `;` (formatCompactCFunctions), and the comment is the line a negative
+// control finds.
+func (g *tableGen) writerAssert(ind, cond, note string) {
+	g.wroteAssert = true
+	g.pf("%s/* %s */ schema_assert( %s );\n", ind, note, cond)
 }
 
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named

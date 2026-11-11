@@ -2,6 +2,12 @@
    §3.4). This translation unit is the ONLY one that names tblfx1's types; see
    fixedform.h for why there is more than one. */
 
+/* A CASE HERE PLANTS a value its declaration does not admit, through the
+   fixed writer, for the READER to refuse (docs/SPEC.md §5.1). The writer's
+   debug-only contract assert would stop the plant, so this file routes
+   schema_assert, the hook a caller defines before the headers, to nothing. */
+#define schema_assert( condition ) ( (void) 0 )
+
 #include <stdio.h>
 #include <string.h>
 

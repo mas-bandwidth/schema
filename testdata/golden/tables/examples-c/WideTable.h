@@ -5304,6 +5304,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label_( tabledemo_table_writer_t * w, const tabledemo_wide_blob_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 70000 ) { return 0; }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -5592,6 +5593,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_b
  if(value->label_length != 0) {
   tabledemo_table_bit_put(w,101,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>70000) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->label_length,17);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -5784,6 +5786,7 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label__retain( tabledem
 
     if ( value->label_length < 0 || value->label_length > 70000 ) { return 0;
     }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

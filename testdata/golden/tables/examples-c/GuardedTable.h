@@ -5328,6 +5328,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tablede
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note_( tabledemo_table_writer_t * w, const tabledemo_patrol_t * value )
 {
     if ( value->note_length < 0 || value->note_length > 8 ) { return 0; }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->note, (uint64_t) value->note_length ) );
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -5369,6 +5370,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body( tabledemo_table_writer_t * 
         if ( !( value->target_id == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 103, 0xb7bc9ac015a25050ull, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->target_id >= 0 && value->target_id <= 1000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->target_id ) );
         }
     }
@@ -5584,6 +5586,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_note__retain( tabledemo_ta
 
     if ( value->note_length < 0 || value->note_length > 8 ) { return 0;
     }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->note, (uint64_t) value->note_length ) );
     tabledemo_table_writer_raw( w, value->note, value->note_length );
     return !w->overflow;
 }
@@ -5637,6 +5640,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body_retain( tabledemo_table_writ
         {
             tabledemo_table_retain_writer_id( w, 0xb7bc9ac015a25050ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->target_id >= 0 && value->target_id <= 1000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->target_id ) );
         }
     }

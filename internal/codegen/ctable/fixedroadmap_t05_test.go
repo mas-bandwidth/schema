@@ -343,7 +343,7 @@ int main(void)
 		// clause 1 (refuse by name), clause 2 (bytes, clamp in bytes),
 		// clause 3 (slack not judged), and clauses 1+2 together (the clamp and
 		// the refusal on the SAME record, the counter staying zero)
-		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
+		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", cProbePlantsPastTheWriter+`
 #include "ProbeTable.h"
 #include <stdio.h>
 #include <string.h>

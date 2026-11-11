@@ -5323,6 +5323,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body( tabledemo_table_wri
         if ( !( value->count == 1 ) )
         {
             tabledemo_table_writer_header_at( w, 97, 0xb1e5e28e4479a274ull, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->count >= 0 && value->count <= 100 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }
@@ -5482,6 +5483,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_message_body(tabledemo_ta
  { /* count */
  if(!(value->count == 1)) {
   tabledemo_table_bit_put(w,2,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->count >= 0 && value->count <= 100 );
   tabledemo_table_bit_put(w,(uint64_t)(value->count)-UINT64_C(0),7);
  }
  }
@@ -5637,11 +5639,19 @@ static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_finite_body_( con
 }
 
 /* ArchiveConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive_config_fixed_clamp_body_( tabledemo_archive_config_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive_config_fixed_clamp_body_( const tabledemo_archive_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     schema_tabledemo_root_config_fixed_clamp_body_( &value->root, out_of_range, damaged );
     (*out_of_range) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
+}
+
+/* ArchiveConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_fits_( const tabledemo_archive_config_t * value )
+{
+    if ( !schema_tabledemo_root_config_fixed_fits_( &value->root ) ) { return 0; }
+    return 1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -5663,6 +5673,16 @@ static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_clamp_( tabledemo
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* ArchiveConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_write_check_( const tabledemo_archive_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_archive_config_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- ArchiveConfig, the fixed form ---- */
@@ -6346,10 +6366,12 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_tabledemo_archive_config_fixed_fits_( values + k ) ) { return -1; } }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_archive_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_tabledemo_archive_config_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_archive_config_fixed_hash );
@@ -6555,6 +6577,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body_retain( tabledemo_ta
         {
             tabledemo_table_retain_writer_id( w, 0xb1e5e28e4479a274ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->count >= 0 && value->count <= 100 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }

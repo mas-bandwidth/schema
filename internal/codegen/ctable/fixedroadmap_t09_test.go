@@ -591,10 +591,18 @@ int main(void)
 					}
 					t.Skipf("named as not run: the sibling serialize.c runtime is not staged at %s, so the generated header's 128-bit storage type does not resolve; stage the checkout to run this row", ser)
 				}
-				runCGenerated(t, tc.schema, tc.main, append(identityCCFlags(t), "-I", ser)...)
+				runCGenerated(t, tc.schema, cProbePlantsPastTheWriter+tc.main, append(identityCCFlags(t), "-I", ser)...)
 				return
 			}
-			runCGenerated(t, tc.schema, tc.main, identityCCFlags(t)...)
+			runCGenerated(t, tc.schema, cProbePlantsPastTheWriter+tc.main, identityCCFlags(t)...)
 		})
 	}
 }
+
+// cProbePlantsPastTheWriter leads a probe that PLANTS, through the fixed
+// writer, a value its declaration does not admit, for the READER to refuse:
+// the writer's debug-only contract assert (docs/SPEC.md §5.1) would stop the
+// plant, so the probe routes schema_assert, the hook a caller defines before
+// the headers, to nothing. What the probe checks is the read; the write
+// contract is held by the conformance write-refusal surfaces.
+const cProbePlantsPastTheWriter = "#define schema_assert( condition ) ( (void) 0 ) /* the probe plants past the writer's contract (docs/SPEC.md §5.1) */\n"

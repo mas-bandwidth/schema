@@ -73,6 +73,10 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 			}
 			g.pf("%s}\n", ind)
 		} else {
+			// A RANGED INTEGER OR A bits(N) VALUE OFF ITS DECLARATION IS
+			// REFUSED (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §22.6), never
+			// masked, wrapped or clamped into the width; debug-only.
+			g.emitRangeAssert(f, expr, ind, tableKindWidth(int(kind)), "a message write")
 			g.pf("%stable_bit_put(w,(uint64_t)(%s)-UINT64_C(%d),%d);\n", ind, expr, lo, bits)
 		}
 	}
@@ -82,6 +86,7 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
+		g.emitTextAssert(f, expr, count, ind, "a message write")
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)

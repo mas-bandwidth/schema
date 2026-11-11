@@ -5420,6 +5420,7 @@ static SCHEMA_UNUSED int tabledemo_score_board_load_message_body(tabledemo_table
 static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner_( tabledemo_table_writer_t * w, const tabledemo_team_config_t * value )
 {
     if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0; }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) );
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }
@@ -5432,6 +5433,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body( tabledemo_table_writer
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 120, 0xceec99e2d65db674ull, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->spawn_count ) );
         }
     }
@@ -5608,6 +5610,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_message_body(tabledemo_table
   return 1;
   }
   tabledemo_table_bit_put(w,92,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 );
   tabledemo_table_bit_put(w,(uint64_t)(value->spawn_count)-UINT64_C(0),7);
  }
  }
@@ -5619,6 +5622,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_message_body(tabledemo_table
   }
   tabledemo_table_bit_put(w,93,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->banner_length<0 || value->banner_length>16) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->banner_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->banner,value->banner_length);
@@ -7484,8 +7488,10 @@ static SCHEMA_UNUSED int schema_tabledemo_score_board_wire_per_team_( tabledemo_
             tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
             w = outer; tabledemo_table_writer_rewind(&probe); tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
         }
     }
@@ -7698,6 +7704,7 @@ static SCHEMA_UNUSED int tabledemo_score_board_save_message_body(tabledemo_table
      break;
      default: return 0;
     }
+    /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
     tabledemo_table_bit_put(w,(uint64_t)(value->per_team[i])-UINT64_C(0),17);
    } }
  }
@@ -8020,7 +8027,7 @@ static SCHEMA_UNUSED int schema_tabledemo_keyed_config_fixed_finite_body_( const
 }
 
 /* TeamConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( tabledemo_team_config_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( const tabledemo_team_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     (*out_of_range) += (int) ( value->spawn_count < 0 ) | (int) ( value->spawn_count > 64 );
@@ -8031,7 +8038,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_co
 }
 
 /* ScoreBoard's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( tabledemo_score_board_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( const tabledemo_score_board_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     {
@@ -8044,7 +8051,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
 }
 
 /* KeyedConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( tabledemo_keyed_config_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( const tabledemo_keyed_config_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     {
@@ -8055,6 +8062,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
         }
     }
     schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, out_of_range, damaged );
+}
+
+/* TeamConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_team_config_fixed_fits_( const tabledemo_team_config_t * value )
+{
+    if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0; } /* the length indexes the storage (§3.4) */
+    return 1;
+}
+
+/* KeyedConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_keyed_config_fixed_fits_( const tabledemo_keyed_config_t * value )
+{
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( !schema_tabledemo_team_config_fixed_fits_( &value->teams[i] ) ) { return 0; }
+        }
+    }
+    return 1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -8076,6 +8105,16 @@ static SCHEMA_UNUSED int schema_tabledemo_team_config_fixed_clamp_( tabledemo_te
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* TeamConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_team_config_fixed_write_check_( const tabledemo_team_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_team_config_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- TeamConfig, the fixed form ---- */
@@ -8168,6 +8207,8 @@ static SCHEMA_UNUSED int64_t tabledemo_team_config_fixed_save( const tabledemo_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_tabledemo_team_config_fixed_fits_( values + k ) ) { return -1; } }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_tabledemo_team_config_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_team_config_fixed_hash );
@@ -9120,6 +9161,16 @@ static SCHEMA_UNUSED int schema_tabledemo_keyed_config_fixed_clamp_( tabledemo_k
     return 0;
 }
 
+/* KeyedConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_keyed_config_fixed_write_check_( const tabledemo_keyed_config_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_keyed_config_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* ---- KeyedConfig, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -9356,10 +9407,12 @@ static SCHEMA_UNUSED int64_t tabledemo_keyed_config_fixed_save( const tabledemo_
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_tabledemo_keyed_config_fixed_fits_( values + k ) ) { return -1; } }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_keyed_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_tabledemo_keyed_config_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_keyed_config_fixed_hash );
@@ -9539,6 +9592,7 @@ static SCHEMA_UNUSED int schema_tabledemo_team_config_wire_banner__retain( table
 
     if ( value->banner_length < 0 || value->banner_length > 16 ) { return 0;
     }
+    /* a write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) );
     tabledemo_table_writer_raw( w, value->banner, value->banner_length );
     return !w->overflow;
 }
@@ -9558,6 +9612,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body_retain( tabledemo_table
             }
             tabledemo_table_retain_writer_id( w, 0xceec99e2d65db674ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->spawn_count ) );
         }
     }
@@ -10881,10 +10936,12 @@ static SCHEMA_UNUSED int schema_tabledemo_score_board_wire_per_team__retain( tab
             tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w , retention);
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
             w = outer;
             tabledemo_table_retain_rewind(&probe, retention);
             tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
         }
     }

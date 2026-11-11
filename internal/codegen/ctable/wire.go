@@ -726,6 +726,8 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		if st.IsTextListElem() {
 			g.pf("    if ( !table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s_length ) ) { return 0; }\n", expr, expr)
+		} else {
+			g.emitTextAssert(f, expr, expr+"_length", "    ", "a write")
 		}
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
@@ -827,12 +829,26 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 			condition = "( " + guard + " ) && " + condition
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
-		// the save's finite rule, on the measure's own path (§3.3)
-		switch ir.TableWireScalarKind(f) {
+		// the save's finite and range rules, on the measure's own path (§3.3,
+		// docs/SPEC.md §5.1)
+		switch kind := ir.TableWireScalarKind(f); kind {
 		case tkF32:
 			g.pf("            if ( !table_float_finite( value->%s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", f.Name)
+			if f.HasFloatRange {
+				g.pf("            if ( value->%s < %s || value->%s > %s ) { return 0; }\n", f.Name, formatFloat(f.FMin, true), f.Name, formatFloat(f.FMax, true))
+			}
 		case tkF64:
 			g.pf("            if ( !table_double_finite( value->%s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", f.Name)
+			if f.HasFloatRange {
+				g.pf("            if ( value->%s < %s || value->%s > %s ) { return 0; }\n", f.Name, formatFloat(f.FMin, false), f.Name, formatFloat(f.FMax, false))
+			}
+		case tkBool:
+		default:
+			if tableKindWidth(kind) == 16 {
+				// a 128-bit value is a lane struct on this leg: no operator compare
+				break
+			}
+			g.emitRangeAssert(f, "value->"+f.Name, "            ", int(g.intBytes(st.Name, f.Name, int64(tableKindWidth(kind)))), "a write")
 		}
 		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
 		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))

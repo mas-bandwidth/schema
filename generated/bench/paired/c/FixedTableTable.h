@@ -3753,10 +3753,18 @@ static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_finite_body_( const benc
 }
 
 /* FixedTable's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( bench_fixed_table_t * value, int32_t * out_of_range, int32_t * damaged )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( const bench_fixed_table_t * value, int32_t * out_of_range, int32_t * damaged )
 {
     (void) value; (void) out_of_range; (void) damaged;
     schema_bench_bench_mixed_fixed_clamp_body_( &value->value, out_of_range, damaged );
+}
+
+/* FixedTable's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_fits_( const bench_fixed_table_t * value )
+{
+    if ( !schema_bench_bench_mixed_fixed_fits_( &value->value ) ) { return 0; }
+    return 1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -3778,6 +3786,16 @@ static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_clamp_( bench_fixed_tabl
     if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_BENCH_TABLE_TEXT_ILL_FORMED; return -1; }
     if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
     return 0;
+}
+
+/* FixedTable's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_write_check_( const bench_fixed_table_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_fixed_table_fixed_clamp_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- FixedTable, the fixed form ---- */
@@ -4338,10 +4356,12 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_save( const bench_fixed_tab
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { if ( !schema_bench_fixed_table_fixed_fits_( values + k ) ) { return -1; } }
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_bench_fixed_table_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) { schema_assert( schema_bench_fixed_table_fixed_write_check_( values + k ) ); }
     memset( buffer, 0, (size_t) BENCH_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCH_K_TABLE_FIXED_FORM;
     bench_table_fixed_put64( buffer + BENCH_K_TABLE_FIXED_HASH_AT, bench_fixed_table_fixed_hash );
