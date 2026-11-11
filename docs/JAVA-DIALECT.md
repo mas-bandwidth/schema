@@ -158,10 +158,12 @@ failure in their tree and not only in ours.
   every integer of at most 32 bits in `int` — uint8, uint16 and uint32, int8,
   int16 and int32, and `bits(N <= 32)` alike, so uint32 and int8 both store
   `int` — and 33 to 64 bits in `long`, wider integers as `Int128`/`UInt128`.
-  Where such storage is wider than the kind, the type does not bound it: the
-  save writes the kind's low bits and the load reads them back at the kind's
-  width, so a value outside the kind's range is truncated on save rather than
-  refused.
+  Where such storage is wider than the kind, the type does not bound the
+  value: the writer's checks hold the range the schema declares. A required
+  field's declared bounds are checked on save (`buildGraph` fails, so `save`
+  returns null), and a load clamps a wire value past them and reports
+  `out_of_range`; a field with no such bound takes no save check, and the save
+  writes only the kind's low bits.
 - **The packet codecs compose** (SPEC §6.1): `write<Name>Bits(value, data,
   bitOffset)` and `read<Name>Bits(value, data, bitOffset, numBits)` return
   the bit position after the value (`-1` on a refused read); `write<Name>` and
@@ -175,15 +177,16 @@ failure in their tree and not only in ours.
   `TableBlockInfo.java`, ...), so a runtime type's home is its name and never
   a file order. A schema file that spells a runtime type's name is refused by
   name (`checkNames`), never overwritten.
-- **Self-contained.** The generated code uses only JDK packages: `java.lang`,
-  `java.lang.invoke`, `java.lang.reflect`, `java.math`, `java.nio` (including
-  `java.nio.charset`) and `java.util` (including `java.util.function`); it
-  names no serialize runtime package and no third-party JSON library. The
-  `tables-java-standalone` gate scans the generated `<Table>Block.java`,
-  `<Table>Cook.java` and `<Table>Row.java` sources — refusing below 12
-  Block/Cook files — for `Serialize`, `com.fasterxml`, `com.google.gson` and
-  `org.json`; the JSON readers are emitted in `TableJson.java` and
-  `TableVariable.java` over the descriptors, not imported.
+- **Self-contained.** The generated sources name only these JDK packages:
+  `java.lang`, `java.lang.invoke`, `java.lang.reflect`, `java.math`, `java.nio`
+  (including `java.nio.charset`) and `java.util` (including
+  `java.util.function`). The `tables-java-standalone` gate holds that the
+  generated `<Table>Block.java`, `<Table>Cook.java` and `<Table>Row.java`
+  sources name no serialize runtime package and no third-party JSON library:
+  it scans them — refusing below 12 Block/Cook files — for `Serialize`,
+  `com.fasterxml`, `com.google.gson` and `org.json`. The JSON readers are
+  emitted in `TableJson.java` and `TableVariable.java` over the descriptors,
+  not imported.
 
 ## The gates, and how to run each
 
