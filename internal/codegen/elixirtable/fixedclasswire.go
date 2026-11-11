@@ -364,8 +364,29 @@ func fixedClassHelpers(u *ir.Unit) string {
 			unionFrom = fixedClassUnionFromNoVoid
 		}
 	}
-	return fixedClassAtoms(u) + fixedClassHelperHead + unionTo + unionFrom + fixedClassHelperTail
+	atoms, tail := fixedClassAtoms(u), fixedClassHelperTail
+	if atoms == "" {
+		// no declared name at all: every name is refused, and an empty
+		// attribute would be a type warning at its lookup
+		if strings.Count(tail, fixedClassEnumFromName) != 1 {
+			panic("elixirtable: fixed-class enum name clause not found exactly once")
+		}
+		tail = strings.Replace(tail, fixedClassEnumFromName, fixedClassEnumFromNoName, 1)
+	}
+	return atoms + fixedClassHelperHead + unionTo + unionFrom + tail
 }
+
+const fixedClassEnumFromName = `  defp fixed_class_enum_from_table(f, value) when is_binary(value) do
+    case Map.fetch(Map.get(f, :by_name, %{}), value) do
+      {:ok, _id} -> Map.fetch!(@fixed_class_atoms, value)
+      :error -> raise ArgumentError, "not a variant name: #{inspect(value)}"
+    end
+  end
+`
+
+const fixedClassEnumFromNoName = `  defp fixed_class_enum_from_table(_f, value) when is_binary(value),
+    do: raise(ArgumentError, "not a variant name: #{inspect(value)}")
+`
 
 // fixedClassAtoms is every enum variant and union arm name the unit declares,
 // mapped at generation time to the atom the fixed form's value carries. A
@@ -384,6 +405,9 @@ func fixedClassAtoms(u *ir.Unit) string {
 				atoms[v.Name] = elixir.EnumAtom(v.Name)
 			}
 		}
+	}
+	if len(atoms) == 0 {
+		return ""
 	}
 	names := make([]string, 0, len(atoms))
 	for name := range atoms {
