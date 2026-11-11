@@ -961,15 +961,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("same-repo PR into main did not select self-hosted %s (err=%v)", wantKey, err))
 		}
 	}
-	if ok, _ := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainUnlabeled); ok {
-		errs = append(errs, "ci-full.yml:go-test ran on unlabeled pull_request")
-	}
-
-	sameRepoMainLabeled := sameRepoMainUnlabeled
-	sameRepoMainLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", sameRepoMainLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled same-repo PR did not select ci-full.yml:go-test (err=%v)", err))
-	}
 
 	// 4. Stream-to-dev PR (sprint/schema-* -> dev): automatically covered by
 	// ci-fast.yml, ci-full.yml, Dart strict-analyze and Elixir hostile-corpus.
@@ -1019,14 +1010,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-full.yml:%s (err=%v)", job, err))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", streamToDevPR); ok {
-		errs = append(errs, "unlabeled stream-to-dev PR ran ci-full.yml:go-test (would serialize full CI on stream PRs)")
-	}
-	streamToDevLabeled := streamToDevPR
-	streamToDevLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", streamToDevLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled stream-to-dev PR did not select ci-full.yml:go-test (err=%v)", err))
-	}
 	for _, wantKey := range []string{
 		"ci-full.yml:pins",
 		"schema-cs-runs-hostile-corpus.yml:corpus",
@@ -1069,14 +1052,61 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-full.yml:%s (err=%v)", job, err))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", unnamedBase); ok {
-		errs = append(errs, "unlabeled PR into an unnamed base ran ci-full.yml:go-test")
+
+	// A PULL REQUEST RUNS WHAT MAIN RUNS. Every job a push to main runs also
+	// runs on an unlabelled same-repository pull request into main, and a
+	// ci-full.yml job on one into any base: a pull request that ran less than
+	// main could go green and then redden main, which is how main stayed red
+	// from 2026-10-31 while ci-full.yml held all but three of its jobs behind
+	// a `full-ci` label.
+	pushMain := ciEvent{
+		Name:     "push",
+		Branch:   "main",
+		Repo:     repo,
+		PlanPkgs: planPkgs,
+		PlanLegs: planLegs,
 	}
-	unnamedLabeled := unnamedBase
-	unnamedLabeled.Labels = []string{"full-ci"}
-	if ok, err := jobSelectsSelfHosted(wfs["ci-full.yml"], "go-test", unnamedLabeled); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("labeled PR into an unnamed base did not select ci-full.yml:go-test (err=%v)", err))
+	// Workflows that run on a push to main and build and test nothing.
+	pushOnly := map[string]string{
+		"promotion-tag.yml": "tags the merge commit main-<hash>; no build, no test",
 	}
+	var wfNames []string
+	for name := range wfs {
+		wfNames = append(wfNames, name)
+	}
+	sort.Strings(wfNames)
+	for _, wfName := range wfNames {
+		if _, ok := pushOnly[wfName]; ok {
+			continue
+		}
+		var jobNames []string
+		for j := range yamlJobs(wfs[wfName]) {
+			jobNames = append(jobNames, j)
+		}
+		sort.Strings(jobNames)
+		for _, job := range jobNames {
+			onMain, err := jobRunsInWorkflow(wfs[wfName], job, pushMain)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("%s:%s eval error on a push to main: %v", wfName, job, err))
+				continue
+			}
+			if !onMain {
+				continue
+			}
+			prs := []ciEvent{sameRepoMainUnlabeled}
+			if wfName == "ci-full.yml" {
+				// ci-full.yml runs whatever the base is; the per-language
+				// workflows still name their bases, main among them
+				prs = append(prs, streamToDevPR, unnamedBase)
+			}
+			for _, pr := range prs {
+				if ok, err := jobRunsInWorkflow(wfs[wfName], job, pr); err != nil || !ok {
+					errs = append(errs, fmt.Sprintf("%s:%s runs on a push to main but not on a same-repo pull request into %s (err=%v)", wfName, job, pr.Branch, err))
+				}
+			}
+		}
+	}
+
 	forkUnnamed := unnamedBase
 	forkUnnamed.HeadRepo = forkRepo
 	forkUnnamed.Labels = []string{"full-ci"}
@@ -1389,11 +1419,25 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 			wantErr:   "ci-full.yml:pins admits fork PR",
 		},
 		{
-			name:      "drop ci-full labeled go-test same-repo PR guard",
+			name:      "drop ci-full go-test same-repo PR guard",
 			workflow:  "ci-full.yml",
-			oldSubstr: "if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))",
-			newSubstr: "if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')",
-			wantErr:   "ci-full.yml:go-test admits fork PR (base=main, labels=[full-ci])",
+			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    name: go-test (",
+			newSubstr: "    name: go-test (",
+			wantErr:   "ci-full.yml:go-test admits fork PR (base=main, labels=[])",
+		},
+		{
+			name:      "put ci-full go-test back behind the full-ci label",
+			workflow:  "ci-full.yml",
+			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    name: go-test (",
+			newSubstr: "    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))\n    name: go-test (",
+			wantErr:   "ci-full.yml:go-test runs on a push to main but not on a same-repo pull request into main",
+		},
+		{
+			name:      "put ci-full negative controls behind a push-only gate",
+			workflow:  "ci-full.yml",
+			oldSubstr: "    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n    name: negative controls (",
+			newSubstr: "    if: github.event_name != 'pull_request'\n    name: negative controls (",
+			wantErr:   "ci-full.yml:negative-controls runs on a push to main but not on a same-repo pull request into dev",
 		},
 		{
 			name:      "restore a named-base filter on ci-fast pull_request",
@@ -1405,8 +1449,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "restore a named-base filter on ci-full pull_request",
 			workflow:  "ci-full.yml",
-			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
-			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n    # A pull request runs this file only when it carries the `full-ci` label —\n",
+			oldSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    # A pull request runs every job a push to main runs (fleet jobs only when\n",
+			newSubstr: "  # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main\n  pull_request:\n    branches: [ main, dev, fixed-table-form ]\n    # A pull request runs every job a push to main runs (fleet jobs only when\n",
 			wantErr:   "PR into an unnamed base did not run ci-full.yml:pins",
 		},
 		{

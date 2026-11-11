@@ -132,13 +132,8 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 			t.Fatalf("ci-full.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
 	}
-	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", ev); err != nil || ok {
-		t.Fatalf("unlabeled ci-full.yml go-test ran on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
-	}
-	labeled := ev
-	labeled.Labels = []string{"full-ci"}
-	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", labeled); err != nil || !ok {
-		t.Fatalf("labeled ci-full.yml go-test did not run on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
+	if ok, err := jobRunsInWorkflow(wfs["ci-full.yml"], "go-test", ev); err != nil || !ok {
+		t.Fatalf("ci-full.yml go-test did not run on an unlabelled pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
 	}
 	fork := ev
 	fork.HeadRepo = "fork/schema"
