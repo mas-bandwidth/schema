@@ -127,6 +127,41 @@ func TestElixirSaveMessagesRefusesScalarOffShape(t *testing.T) {
 	elem.array = true
 	rows = append(rows, elem)
 
+	probeScalarOffShape(t, u, rows)
+
+	// A SIGNED WIDE BASE IS TWO'S COMPLEMENT (docs/SPEC-TABLES.md §3.3): a
+	// ranged int128 or signed fixed-point announces its base as sixteen bytes,
+	// and a base below zero is the lower bound the writer and the reader hold
+	// the value to, never a value near 2^128.
+	u = messageLoadUnit(t, root, []string{"tables/scalars"})
+	vocab = tablewire.MessageVocabulary(u)
+	rows = nil
+	for _, k := range []struct {
+		what string
+		kind func(k uint8) bool
+	}{
+		{"ranged signed fixed-point below zero", func(k uint8) bool { return k >= ir.TableKindFixed8 && k <= ir.TableKindFixed128 }},
+		{"ranged int128 below zero", func(k uint8) bool { return k == ir.TableKindI128 }},
+	} {
+		n := len(rows)
+		for i, e := range vocab {
+			if k.kind(e.Kind) && e.Shape.Packing == ir.TableMessageRanged && e.Shape.Base != nil &&
+				e.Shape.Base.Sign() < 0 && e.Shape.Bits > 0 {
+				rows = append(rows, ranged(k.what, i+1, e))
+			}
+		}
+		if len(rows) == n {
+			t.Fatalf("the unit announces no %s", k.what)
+		}
+	}
+	probeScalarOffShape(t, u, rows)
+}
+
+// probeScalarOffShape runs each row against the unit's generated
+// TableMessage: every refused value is refused by save_messages, and every
+// kept value writes and reads back equal.
+func probeScalarOffShape(t *testing.T, u *ir.Unit, rows []scalarOffShapeRow) {
+	t.Helper()
 	var body strings.Builder
 	body.WriteString(`    vocab =
       case M.announce_read(M.announce()) do

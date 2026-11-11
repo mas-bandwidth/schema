@@ -1168,7 +1168,12 @@ const messageRuntimeBody = `  defstruct announced: false,
                   if kind >= 18 do
                     case rest2 do
                       <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest3}
+                        # A signed kind's sixteen-byte base is two's complement
+                        # (docs/SPEC-TABLES.md §3.3): int128 and the signed
+                        # fixed-point widths announce a base below zero.
+                        base = hi <<< 64 ||| lo
+                        base = if kind in [18, 20, 21, 22, 23, 24], do: sign_extend(base, 128), else: base
+                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
 
                       _ ->
                         :error
