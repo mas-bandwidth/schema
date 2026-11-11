@@ -502,6 +502,15 @@ const fixedClassHelperHead = `  # A fixed root's Table value is the Table API's 
     }
   end
 
+  # A refusal names its reason in the report (docs/SPEC-TABLES.md §4.2): the
+  # fixed form's own word when it gave one, the refusal's name otherwise.
+  defp fixed_class_refused(reason, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = report -> %{report | reason: Atom.to_string(reason)}
+      report -> report
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -799,7 +808,7 @@ func fixedRootLoadClauses(name, call string) string {
 	var b strings.Builder
 	b.WriteString(exLoadFormHead(name))
 	b.WriteString("    report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}\n")
-	b.WriteString("    {:error, :previous_form, fixed_class_report(report)}\n")
+	b.WriteString("    {:error, :previous_form, fixed_class_refused(:previous_form, report)}\n")
 	b.WriteString("  end\n\n")
 	b.WriteString(exLoadDataHead(name))
 	b.WriteString(exLoadCase(call))
@@ -807,9 +816,9 @@ func fixedRootLoadClauses(name, call string) string {
 	b.WriteString("        {:ok, fixed_class_to_table(" + fmt.Sprintf("%q", name) + ", value), fixed_class_report(report)}\n")
 	// a clause that breaks breaks every clause of its case, each set off by
 	// a blank line, as the formatter keeps them
-	b.WriteString("\n      {:ok, [], report} ->\n        {:error, :truncated, fixed_class_report(report)}\n")
-	b.WriteString("\n      {:error, reason, report} ->\n        {:error, reason, fixed_class_report(report)}\n")
-	b.WriteString("\n      {:ok, _values, report} ->\n        {:error, :batch_too_large, fixed_class_report(report)}\n")
+	b.WriteString("\n      {:ok, [], report} ->\n        {:error, :truncated, fixed_class_refused(:truncated, report)}\n")
+	b.WriteString("\n      {:error, reason, report} ->\n        {:error, reason, fixed_class_refused(reason, report)}\n")
+	b.WriteString("\n      {:ok, _values, report} ->\n        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}\n")
 	b.WriteString("    end\n")
 	b.WriteString("  end\n\n")
 	return b.String()

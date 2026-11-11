@@ -1394,6 +1394,15 @@ defmodule Benchtable.Table do
     }
   end
 
+  # A refusal names its reason in the report (docs/SPEC-TABLES.md §4.2): the
+  # fixed form's own word when it gave one, the refusal's name otherwise.
+  defp fixed_class_refused(reason, report) do
+    case fixed_class_report(report) do
+      %{reason: ""} = report -> %{report | reason: Atom.to_string(reason)}
+      report -> report
+    end
+  end
+
   defp fixed_class_snake(name) do
     name
     |> String.replace(~r/([A-Z]+)([A-Z][a-z])/, "\\1_\\2")
@@ -2712,7 +2721,7 @@ defmodule Benchtable.Table do
 
   def load("TableEntity", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableEntity", data) when is_binary(data) do
@@ -2721,19 +2730,19 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableEntity", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refused(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
   def load("TableStat", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableStat", data) when is_binary(data) do
@@ -2742,19 +2751,19 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableStat", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refused(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
   def load("TableMixed", <<1, _::binary>>) do
     report = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, layout_hash: 0}
-    {:error, :previous_form, fixed_class_report(report)}
+    {:error, :previous_form, fixed_class_refused(:previous_form, report)}
   end
 
   def load("TableMixed", data) when is_binary(data) do
@@ -2763,13 +2772,13 @@ defmodule Benchtable.Table do
         {:ok, fixed_class_to_table("TableMixed", value), fixed_class_report(report)}
 
       {:ok, [], report} ->
-        {:error, :truncated, fixed_class_report(report)}
+        {:error, :truncated, fixed_class_refused(:truncated, report)}
 
       {:error, reason, report} ->
-        {:error, reason, fixed_class_report(report)}
+        {:error, reason, fixed_class_refused(reason, report)}
 
       {:ok, _values, report} ->
-        {:error, :batch_too_large, fixed_class_report(report)}
+        {:error, :batch_too_large, fixed_class_refused(:batch_too_large, report)}
     end
   end
 
