@@ -1323,7 +1323,8 @@ final class TableWireReader {
         return p.$2;
       case 30:
         final p = _wireLeb(buf, off);
-        return p == null ? -1 : p.$2;
+        if (p == null || p.$1 > entryCount) return -1;
+        return p.$2;
       case 15:
         final arm = _wireLeb(buf, off);
         if (arm == null || arm.$1 > entryCount) return -1;
