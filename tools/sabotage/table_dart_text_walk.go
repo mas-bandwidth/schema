@@ -21,12 +21,23 @@ func init() {
 
 // THE DART LEG'S ZERO RULE CONTROL (docs/SPEC-TABLES.md §16.3, text_holds_zero):
 // take the refusal out of _jsonText, the one helper every text-storage read
-// goes through, so a decoded U+0000 is stored as text again. Exactly the two
-// carried hostile rows (str-zero-escape-value, str-zero-escape-map-key) go red;
-// the skipped unknown-key zero and every other surface stay green.
+// goes through, so a decoded U+0000 is stored as text again. The surrogate
+// check after it goes too: its validator (_wideValid) also turns a NUL away,
+// so with it left in the zero is still refused, under another name, and no
+// verdict moves. The conformance text is UTF-8 bytes, which cannot carry a raw
+// lone surrogate, so that check reaches no row here. Exactly the four carried
+// zero rows (str-zero-escape-value, str-zero-escape-map-key,
+// str-zero-byte-bounded, str-zero-byte-bounded-nested) go red; the skipped
+// unknown-key zero and every other surface stay green.
 func init() {
 	sabotages["table-dart-text-zero"] = []edit{{
-		old: "  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n  return s;",
+		old: "  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n" +
+			"  // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC\n" +
+			"  // §16.3): the parser refuses one spelled as an escape, and this refuses one\n" +
+			"  // a caller's String carries raw. The zero rule answers first: _wideValid\n" +
+			"  // turns a NUL away too, and would name it a surrogate.\n" +
+			"  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n" +
+			"  return s;",
 		new: "  return s; // SABOTAGED: text_holds_zero removed",
 	}}
 }

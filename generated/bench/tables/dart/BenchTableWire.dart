@@ -5297,11 +5297,12 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // U+0000 refuses the read, because no wire carries a zero in text. A string
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
+  if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
   // a lone or inverted surrogate is not text (string_lone_surrogate, SPEC
   // §16.3): the parser refuses one spelled as an escape, and this refuses one
-  // a caller's String carries raw
+  // a caller's String carries raw. The zero rule answers first: _wideValid
+  // turns a NUL away too, and would name it a surrogate.
   if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');
-  if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
   return s;
 }
 

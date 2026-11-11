@@ -18,9 +18,10 @@
 # zero: the ZERO RULE (docs/SPEC-TABLES.md §16.3, text_holds_zero) is taken
 # out of _jsonText, the one helper every text-storage read goes through
 # (tools/sabotage table-dart-text-zero), the same way. The matrix must go red on
-# `dart / json-hostile` and on exactly the two carried rows,
-# str-zero-escape-value and str-zero-escape-map-key; the skipped unknown-key
-# zero, json-read and every other surface stay green.
+# `dart / json-hostile` and on exactly the four carried zero rows,
+# str-zero-escape-value, str-zero-escape-map-key, str-zero-byte-bounded and
+# str-zero-byte-bounded-nested; the skipped unknown-key zero, json-read and
+# every other surface stay green.
 #
 # wire: the counted list's `widened` count is taken out of the WIRE emitter
 # (internal/codegen/darttable/wireform.go, tools/sabotage table-dart-wire-widen)
@@ -202,9 +203,9 @@ if [ "$mode" = framing ]; then
     [ "$rows" = "frame_entries_4097 " ] || { cat "$out/log"; echo "framing control turned red on '$rows', want frame_entries_4097" >&2; exit 1; }
 fi
 if [ "$mode" = zero ]; then
-    rows=$(grep '^  dart / json-hostile' "$out/log" | grep -Eo 'str-zero-escape-[a-z-]+' | sort -u | tr '\n' ' ')
-    if [ "$rows" != "str-zero-escape-map-key str-zero-escape-value " ]; then
-        cat "$out/log"; echo "zero control turned red: '$rows', want exactly the two carried zero rows" >&2; exit 1
+    rows=$(grep '^  dart / json-hostile: ' "$out/log" | sed 's/^  dart \/ json-hostile: \([^:]*\):.*/\1/' | sort -u | tr '\n' ' ')
+    if [ "$rows" != "str-zero-byte-bounded str-zero-byte-bounded-nested str-zero-escape-map-key str-zero-escape-value " ]; then
+        cat "$out/log"; echo "zero control turned red: '$rows', want exactly the four carried zero rows" >&2; exit 1
     fi
 fi
 if [ "$mode" = block ]; then
