@@ -70,6 +70,7 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	refBits := ir.TableMessageRefBits(len(vocab))
 
 	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", javaByteArrayLiteral(tablewire.Announce(u)), 1)
+	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
 		messageRuntimeClass + ".java":      javaFile(u, "the MESSAGE FORM's batch bit stream and vocabulary walk (docs/SPEC-TABLES.md §3.3), form byte 2", tableMessageBatchSurface),
@@ -118,6 +119,10 @@ public final class TableVocabulary {
     // ` + "`announceMeasure`" + ` as a constant byte array and its length (§3.3).
     static final byte[] tableAnnouncement = %%ANNOUNCEMENT%%;
 
+    // THE UNIT'S OWN BUILD VERSION is the fact a strict announcement compares
+    // the peer's against (docs/SPEC-TABLES.md §3.3).
+    private static final long tableBuildVersion = %%BUILDVERSION%%;
+
     public static int announceMeasure() {
         return tableAnnouncement.length;
     }
@@ -162,6 +167,10 @@ public final class TableVocabulary {
         public String reason;
         public int unknown;
         public int widened;
+        // The peer's and the unit's own build versions a strict announcement
+        // refusal carries (docs/SPEC-TABLES.md §3.3).
+        public long buildVersionRemote;
+        public long buildVersionOwn;
 
         public void zero() {
             damaged = false;
@@ -169,6 +178,8 @@ public final class TableVocabulary {
             reason = null;
             unknown = 0;
             widened = 0;
+            buildVersionRemote = 0;
+            buildVersionOwn = 0;
         }
 
         public void refuse(String why) {
@@ -185,6 +196,7 @@ public final class TableVocabulary {
     public long buildVersion;
     public boolean announced;
     public boolean refused;
+    public boolean strict;
     public int maxEntries = 4096;
     public int maxBytes = 65536;
 
@@ -195,6 +207,7 @@ public final class TableVocabulary {
         this.buildVersion = 0;
         this.announced = false;
         this.refused = false;
+        this.strict = false;
         this.maxEntries = capacity;
         this.maxBytes = 65536;
     }
@@ -325,6 +338,17 @@ public final class TableVocabulary {
         // an announcement rather than that this endpoint declined to announce (§3.3).
         if (versionCount != 1 || vocabCount != 1) {
             report.damaged = true;
+            return false;
+        }
+        // "STRICT MODE IS OPT-IN, and the default is unchanged." With 'strict'
+        // set, an announcement whose build version is not the unit's own is
+        // refused by name, sets no vocabulary, keeps the peer's build version,
+        // moves no counter, is never damage, and is terminal like every
+        // refused first announcement (§3.3).
+        if (v.strict && v.buildVersion != tableBuildVersion) {
+            report.buildVersionRemote = v.buildVersion;
+            report.buildVersionOwn = tableBuildVersion;
+            report.refuse("build_version_mismatch");
             return false;
         }
         // Resolve the vocabulary once: every entry an id, a kind and a shape.
