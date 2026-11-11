@@ -10138,6 +10138,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntrySaveBody( TableWriter & w, TableIds & 
 MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRosterEntry & value )
 {
     SquadRosterEntryReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10155,6 +10156,16 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10337,6 +10348,7 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     SquadReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10354,6 +10366,16 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10779,6 +10801,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     DepthReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10796,6 +10819,16 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13753,6 +13786,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13770,6 +13804,16 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13960,6 +14004,7 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13977,6 +14022,16 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -14407,6 +14462,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -14424,6 +14480,16 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

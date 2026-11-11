@@ -6046,6 +6046,7 @@ inline int64_t PaddedRowSave( const PaddedRow & value, uint8_t * buffer, int64_t
 BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & value )
 {
     PaddedRowReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -6063,6 +6064,16 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowLoadBody( TableReader & r, PaddedRow & valu
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -7524,6 +7535,7 @@ inline int64_t PaddedFrameSave( const PaddedFrame & value, uint8_t * buffer, int
 BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & value )
 {
     PaddedFrameReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -7541,6 +7553,16 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameLoadBody( TableReader & r, PaddedFrame & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

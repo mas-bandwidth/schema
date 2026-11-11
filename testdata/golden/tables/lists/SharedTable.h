@@ -9684,6 +9684,7 @@ inline int64_t PhotoSave( const Photo & value, uint8_t * buffer, int64_t capacit
 LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
 {
     PhotoReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9701,6 +9702,16 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBody( TableReader & r, Photo & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10323,6 +10334,7 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
     (void) nodes;
     if ( nodes.refused ) { return false; }
     AlbumReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10340,6 +10352,16 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12445,6 +12467,7 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12462,6 +12485,16 @@ LISTDEMO_TABLE_INLINE bool PhotoLoadBodyRetain( TableReader & r, Photo & value, 
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -12688,6 +12721,7 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -12705,6 +12739,16 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

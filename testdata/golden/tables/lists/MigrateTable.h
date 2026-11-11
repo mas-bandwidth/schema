@@ -9667,6 +9667,7 @@ inline int64_t UnitSave( const Unit & value, uint8_t * buffer, int64_t capacity 
 LISTDEMO_TABLE_INLINE bool UnitLoadBody( TableReader & r, Unit & value )
 {
     UnitReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -9684,6 +9685,16 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBody( TableReader & r, Unit & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10196,6 +10207,7 @@ inline int64_t BoundedSave( const Bounded & value, uint8_t * buffer, int64_t cap
 LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
 {
     BoundedReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10213,6 +10225,16 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -10887,6 +10909,7 @@ inline bool UnboundedLoadBody( TableReader & r, const TableNodeMap & nodes, Unbo
     (void) nodes;
     if ( nodes.refused ) { return false; }
     UnboundedReset( value ); // prefill declared defaults in place, then overlay
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -10904,6 +10927,16 @@ inline bool UnboundedLoadBody( TableReader & r, const TableNodeMap & nodes, Unbo
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13146,6 +13179,7 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBodyRetain( TableReader & r, Unit & value, Ta
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13163,6 +13197,16 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBodyRetain( TableReader & r, Unit & value, Ta
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13304,6 +13348,7 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13321,6 +13366,16 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {
@@ -13574,6 +13629,7 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
     // whatever an earlier occurrence of it left is discarded before the
     // winning one is read. The discard moves neither counter.
     TableRetainDiscardBody( retain, path );
+    uint8_t seen_ref[kTableProbeBound / 8] = {};
     for ( ;; )
     {
         uint64_t field_ref = 0;
@@ -13591,6 +13647,16 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
             r.report->damaged = true;
             return false;
         } // a reference ABOVE the entry count
+        if ( field_ref <= (uint64_t) kTableProbeBound )
+        {
+            const uint8_t bit = (uint8_t) ( 1u << ( ( field_ref - 1 ) & 7 ) );
+            if ( seen_ref[( field_ref - 1 ) >> 3] & bit )
+            {
+                r.report->damaged = true;
+                return false;
+            } // the same field id twice in one body
+            seen_ref[( field_ref - 1 ) >> 3] |= bit;
+        }
         const uint64_t field_id = r.ids->at( field_ref );
         if ( !r.has( 1 ) )
         {

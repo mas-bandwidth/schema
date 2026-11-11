@@ -618,8 +618,8 @@ static void capacities()
 // ---- RECORD LIFETIME (docs/SPEC-TABLES.md §6.6) ----
 //
 // A body carrying `inner { future = 7 }` and then `inner { hits = 2 }`: the
-// second occurrence resets the first, the save carries `hits = 2` and no
-// `future`, retain_lost is 0, and retained is unchanged by the discard.
+// same field id twice in one body is damage (§4), so the retaining load is
+// refused whole and the first occurrence's retained record never survives.
 static void record_lifetime()
 {
     WireBuilder b;
@@ -641,28 +641,8 @@ static void record_lifetime()
 
     Loaded l;
     l.load( wire, n );
-    CHECK( l.root != NULL );
-    CHECK( whole( l.report ) );
-    CHECK( l.root->inner.hits == 2 );
-    CHECK( l.report.unknown == 1 );
-    CHECK( l.report.retained == 1 );    // counted when its bytes were kept
-    CHECK( l.report.retain_lost == 0 ); // and a reset is the writer's act, not a loss
-    CHECK( l.retain.count == 0 );       // the record went with the occurrence that carried it
-
-    tblrt1::TableReport save_report;
-    uint8_t out[ 4096 ];
-    const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
-    const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
-    CHECK( w == m && w > 0 );
-    CHECK( save_report.retain_lost == 0 );
-
-    Region back;
-    back.size( tblrt2::NodeLoadMeasure( out, w ) );
-    tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
-    CHECK( reread != NULL );
-    CHECK( reread->inner.hits == 2 );
-    CHECK( reread->inner.future == 0 ); // and `7` was never resurrected beside it
+    CHECK( l.root == NULL );   // `inner` twice in one body is damage
+    CHECK( l.report.damaged ); // so no record outlives the read
 }
 
 // ---- THE RESOLVING WALK'S VERDICT (docs/SPEC-TABLES.md §6.6) ----
@@ -697,15 +677,12 @@ static void damaged_inner_structure()
     CHECK( l.report.retain_lost == 1 );
 }
 
-// ---- A SECOND OCCURRENCE REPLACES ONLY WHAT IT CARRIES (§6.6) ----
+// ---- A SECOND OCCURRENCE IS DAMAGE, WHATEVER IT CARRIES (§4, §6.6) ----
 //
-// A discard taken at the FIELD is right only where a second occurrence
-// replaces the first WHOLE. An ENUM-KEYED ARRAY never does: it overwrites the
-// slots it carries and leaves every other slot standing. A LIST's repeat can
-// be INERT, replacing nothing at all.
-//
-// CONTROL: discard at the field on either of these and the records under the
-// slots the writer never touched die, with no counter moving to say so.
+// An enum-keyed array written twice with disjoint slots, and a list written
+// twice with the second occurrence inert: the same field id twice in one body
+// refuses the retaining load whole, and no record from either occurrence
+// survives it.
 static void disjoint_occurrences()
 {
     // the two Slot variant ids, as the wire names them (§3.2)
@@ -736,28 +713,8 @@ static void disjoint_occurrences()
 
     Loaded l;
     l.load( wire, n );
-    CHECK( l.root != NULL );
-    CHECK( whole( l.report ) );
-    CHECK( l.root->banks.slots[0].hits == 4 );
-    CHECK( l.root->banks.slots[1].hits == 5 ); // both slots landed, from different occurrences
-    CHECK( l.report.retained == 2 );
-    CHECK( l.report.retain_lost == 0 );
-    CHECK( l.retain.count == 2 ); // and NEITHER record went with the other slot's occurrence
-
-    tblrt1::TableReport save_report;
-    uint8_t out[ 4096 ];
-    const int64_t m = tblrt1::NodeMeasureRetain( l.root, &l.retain );
-    const int64_t w = tblrt1::NodeSaveRetain( l.root, &l.retain, out, m, &save_report );
-    CHECK( w == m && w > 0 );
-    CHECK( save_report.retain_lost == 0 );
-
-    Region back;
-    back.size( tblrt2::NodeLoadMeasure( out, w ) );
-    tblrt2::TableReport read_report;
-    const tblrt2::Node * reread = tblrt2::NodeLoad( back.base, back.bytes, out, w, &read_report );
-    CHECK( reread != NULL && whole( read_report ) );
-    CHECK( reread->banks.slots[0].future == 41 );
-    CHECK( reread->banks.slots[1].future == 42 );
+    CHECK( l.root == NULL );   // `banks` twice in one body is damage (§4)
+    CHECK( l.report.damaged ); // so no slot's record outlives the read
 
     // `list` twice, the second occurrence INERT: a body too short for its own
     // header keeps the value the field has (§4), so it replaces nothing and
@@ -783,21 +740,8 @@ static void disjoint_occurrences()
 
     Loaded l2;
     l2.load( inert, in );
-    CHECK( l2.root != NULL );
-    CHECK( whole( l2.report ) );
-    CHECK( l2.report.retained == 1 );
-    CHECK( l2.report.retain_lost == 0 );
-    CHECK( l2.retain.count == 1 ); // the inert repeat replaced nothing, and took nothing
-
-    tblrt1::TableReport inert_save;
-    uint8_t inert_out[ 4096 ];
-    const int64_t im = tblrt1::NodeMeasureRetain( l2.root, &l2.retain );
-    const int64_t iw = tblrt1::NodeSaveRetain( l2.root, &l2.retain, inert_out, im, &inert_save );
-    CHECK( iw == im && iw > 0 );
-    CHECK( inert_save.retain_lost == 0 );
-    uint8_t inert_plain[ 4096 ];
-    const int64_t ip = tblrt1::NodeSave( l2.root, inert_plain, sizeof( inert_plain ) );
-    CHECK( ip > 0 && iw > ip ); // the record rode
+    CHECK( l2.root == NULL );   // `list` twice in one body is damage (§4)
+    CHECK( l2.report.damaged );
 }
 
 // ---- THE WALK IS ONE PASS EACH WAY (docs/SPEC-TABLES.md §6.6) ----
