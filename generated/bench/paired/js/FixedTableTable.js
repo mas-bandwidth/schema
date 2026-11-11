@@ -558,7 +558,7 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
   TableMessageResetReport(report);
   const [r, count] = tableMessageBatchOpen(vocabulary, data, report);
   if (count < 0) { return -1; }
-  if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return count; }
+  if (count > values.length) { TableMessageRefuse(report, "batch_too_large"); return 0; }
   for (let i = 0; i < count; i++) {
     if (!FixedTableLoadMessageBody(r, values[i])) {
       // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
