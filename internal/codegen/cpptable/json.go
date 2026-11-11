@@ -2618,15 +2618,14 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
 
 // Scan one JSON string into a caller buffer. Bytes are appended ONE CODE
 // POINT AT A TIME — an escape's encoding, or a UTF-8 sequence read whole —
-// so a string longer than the field is out_of_range AT A CODE POINT BOUNDARY and
-// never cut through a multi-byte character. Clamping is counted, never
-// fatal, exactly as it is on the wire (§4). A NULL destination scans past a
-// string without keeping it.
+// so a string longer than the field is refused as length_over_bound without
+// cutting through a multi-byte character (§4, §16.2). A NULL destination scans
+// past a string without keeping it.
 //
-// A CALLER THAT TAKES oor_out OWNS THE COUNTER. The value paths leave it
-// NULL, and the clamp is a value's clamp, counted here. A MAP KEY takes it,
-// because a key never clamps: a key this buffer could not hold whole is not a
-// shorter key, and its entry drops instead (§2.8).
+// A CALLER THAT TAKES oor_out OWNS THE OVERFLOW. Value paths leave it NULL,
+// so a bounded value reports length_over_bound here. A MAP KEY takes it,
+// because a key this buffer could not hold whole is never truncated into a
+// different key; the enclosing map handles the overflow under its key rule (§2.8).
 inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
     bool * oor_out = NULL, bool text = false )
 {
@@ -2671,7 +2670,7 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
     else if ( oor_flag )
     {
         in.report->refused = true;
-        in.report->refuse_reason = out_of_range;
+        in.report->refuse_reason = length_over_bound;
     }
     if ( length != NULL ) { *length = placed; }
     return true;
@@ -4283,11 +4282,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             }
         }
         char shape = TableJsonElementShape( f );
-        // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a repeated
-        // key like any other, last-wins and counted (§16.2). Tracked the way
-        // a table's own field keys are — a bounded, allocation-free bitmask;
-        // a vocabulary wider than this still reads, its repeats simply stop
-        // being counted.
+        // A variant name is a key: repeating it refuses the whole read as
+        // malformed (§16.2). Track resolved slots in a bounded, allocation-free
+        // bitmask; the key-spelling set below also catches repeats with no slot.
         uint64_t seen[8] = {};
         // A repeated KEY refuses, the resolved slot or none (docs/SPEC-TABLES.md
         // §16.2): a key that names no slot -- an unknown variant, or "None" -- is
