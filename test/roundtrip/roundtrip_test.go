@@ -159,6 +159,9 @@ func judge(check string, facts map[string]string, s sample, out string) (ok bool
 		}
 		return true, ""
 	}
+	if v, present := facts["probe"]; present {
+		return false, "probe: " + v, true
+	}
 	if v, present := facts["fromjson"]; present && v != "ok" {
 		return false, "fromjson: " + v, true
 	}

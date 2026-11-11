@@ -6,6 +6,9 @@
 // one. The gate's samples (nested_test.go) put every bounded
 // array at its declared maximum and rotate the arms so each arm kind sits at
 // every element position.
+// The roots are Holder, not Box: the Rust leg keeps a table named after a
+// std prelude type off its variable wire by name (§11), and this unit is here
+// for the nested shape in every leg.
 package roundtripnested
 
 enum Side { Left, Right }
@@ -28,7 +31,7 @@ fixed table Row
     xs [..2]int16
 }
 
-fixed table Box
+fixed table Holder
 {
     arms [..4]Arm
     pair [2]Arm
@@ -40,7 +43,7 @@ table OpenRow
     xs [..2]int16
 }
 
-table OpenBox
+table OpenHolder
 {
     arms [..4]Arm
     pair [2]Arm
