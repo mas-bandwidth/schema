@@ -103,7 +103,6 @@ holds a value to its width.
 | an enum `E` | `int` | the default variant's number, else `0` |
 | a `flags` set `F` | `int`: the uint64 mask | `0`, or the default mask |
 | `string(N)` | `str` | `""`, or the default |
-| `wstring(N)` | `str`, at most N UTF-16 code units | `""` (a `wstring` takes no default) |
 | `bytes(N)` | `bytes` on read; `bytes`, `bytearray` or a byte-format `memoryview` on write | `b""`, or the default |
 | `[N]T` | `list` of exactly N | each element at its default |
 | `[..N]T`, `[A..N]T` | `list`; its length is the count, in [A, N] | A elements at their defaults (SPEC §4.6) |
@@ -182,9 +181,6 @@ Each table class also carries its **descriptor**, the table as data
   `InvalidValue`, and a read of an encoded surrogate refuses as `Refused`
   (`invalid_utf8`). A packet `string(N)` refuses an embedded NUL, and its bound
   is N bytes of UTF-8, not N characters.
-- **Wide text** (`wstring(N)`) is `str` whose UTF-16 encoding is at most N code
-  units. A write refuses a lone surrogate and an interior zero code unit (SPEC
-  §4.12), and a read refuses both.
 - **Bytes.** A read returns `bytes`, which the caller owns, never a view that
   pins the input buffer. A write accepts `bytes`, `bytearray`, or a
   `memoryview` whose format is `"B"`; any other `memoryview` is refused rather

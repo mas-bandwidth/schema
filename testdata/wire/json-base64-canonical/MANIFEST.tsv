@@ -1,0 +1,13 @@
+# JSON bytes(N) canonical-base64 vectors (docs/SPEC-TABLES.md §16.2, §16.8;
+# docs/rulings.json json-base64-canonical). The table is Chunk in
+# tables/stream/Stream.schema; its data field is bytes(8), and every JSON text
+# here holds two bytes, AB, in that field.
+#
+# Columns: name, schema, root, json file, verdict, recommended reason.
+# "read" is the canonical spelling of AB; the other three are refused. A reason
+# of "-" means the verdict is the contract and the name is per-language detail
+# (docs/rulings.json refusal-verdict-only).
+canonical-two-bytes-read	tables/stream/Stream.schema	Chunk	canonical-two-bytes-read.json	read	-
+padded-bits-set-refused	tables/stream/Stream.schema	Chunk	padded-bits-set-refused.json	refused	base64_not_canonical
+unpadded-refused	tables/stream/Stream.schema	Chunk	unpadded-refused.json	refused	base64_not_canonical
+not-base64-refused	tables/stream/Stream.schema	Chunk	not-base64-refused.json	refused	-

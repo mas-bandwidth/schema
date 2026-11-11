@@ -52,7 +52,7 @@ func tableRetainRegionSource() string {
 	s = tableReplace(s, "{ report.Unknown++; return true; }", "{ report.Unknown++; if (value.Store != null) { report.RetainLost++; } return true; }")
 	s = tableReplace(s, "{ report.Unknown++; continue; }", "{ report.Unknown++; if (value.Store != null) { report.RetainLost++; } continue; }")
 	s = tableReplace(s, "else { report.Unknown++; if (value.Store != null) { report.RetainLost++; } }", "else { report.Unknown++; report.RetainLost++; }")
-	s = tableReplace(s, "long dataBytes, string reason)", "long dataBytes, string reason, TableRetain* retain)")
+	s = tableReplace(s, "long dataBytes, string reason, bool wireNonFinite)", "long dataBytes, string reason, bool wireNonFinite, TableRetain* retain)")
 	s = tableReplace(s, "RetainPut(directory, 0, 8);", `retain->Used = 0; retain->IdUsed = 0; retain->Count = 0;
         retain->Base = data; retain->Directory = directory; retain->DirectoryCount = count + 1L;
         RetainPut(directory, 0, 8);`)
