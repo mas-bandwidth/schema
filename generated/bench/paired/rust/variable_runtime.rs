@@ -465,6 +465,11 @@ pub struct TableNodeReader {
     pub stubs: Vec<Option<Rc<dyn Any>>>,
     pub stub_index: HashMap<usize, usize>,
     pub decoded: Vec<Option<Rc<dyn Any>>>,
+    /// Pointer targets found while walking fields this declaration cannot name.
+    /// Node zero is the root; node k + 1 is record k.
+    pub wire_edges: Vec<Vec<usize>>,
+    pub wire_edge_owner: usize,
+    pub wire_blob_names: Vec<usize>,
 }
 
 /// THE PLAIN WALK'S NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth):
@@ -494,7 +499,7 @@ impl TableNodeReader {
     /// not well-formed text is malformed and its slots read null.
     #[allow(clippy::too_many_arguments)]
     pub fn scan(wire: &[u8], end: usize, ids: &[u64], root_type: u64, placeable: &[u64], bytes_edge: bool, string_edge: bool, retaining: bool, retain_capacity: usize, report: &mut TableReport) -> Option<TableNodeReader> {
-        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };
+        let mut reader = TableNodeReader { good: true, count_refused: false, root_type, retaining, retain_capacity, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() };
         let mut seen_node_table = false;
         let mut off = 1usize;
         while off < end {
@@ -589,6 +594,8 @@ impl TableNodeReader {
             report.damaged = true;
             reader.recs.clear();
         }
+        reader.wire_edges.resize(reader.slots.len() + 1, Vec::new());
+        reader.wire_blob_names.resize(reader.slots.len(), 0);
         Some(reader)
     }
 
@@ -697,15 +704,6 @@ impl TableNodeReader {
         let mut reached = vec![false; n];
         let mut stack = vec![0usize];
         reached[0] = true;
-        for k in 0..self.slots.len() {
-            if matches!(self.slots[k], TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building)
-                && self.blob_named.get(k).copied().unwrap_or(false)
-                && k + 1 < n
-            {
-                reached[k + 1] = true;
-                stack.push(k + 1);
-            }
-        }
         while let Some(u) = stack.pop() {
             for &t in &edges[u] {
                 if t < n && !reached[t] {
@@ -715,23 +713,15 @@ impl TableNodeReader {
             }
         }
         for k in 0..self.slots.len() {
-            match self.slots[k] {
-                TableNodeSlot::Table(_) | TableNodeSlot::Built(_, _) | TableNodeSlot::Building => {
-                    if k + 1 >= n || !reached[k + 1] {
-                        return true;
-                    }
-                }
-                TableNodeSlot::Bytes(_) | TableNodeSlot::Text(_) | TableNodeSlot::Null => {
-                    if !self.blob_named.get(k).copied().unwrap_or(false) {
-                        return true;
-                    }
-                }
+            if k + 1 >= n || !reached[k + 1] {
+                return true;
             }
         }
         false
     }
 
     fn note_unknown_pointer(&mut self, index: u64, report: &mut TableReport) {
+        self.note_pointer_edge(index, report);
         if !self.good || index == 0 { return; }
         if index == 1 { report.damaged = true; return; }
         if index - 2 >= self.slots.len() as u64 { report.damaged = true; return; }
@@ -743,6 +733,26 @@ impl TableNodeReader {
                 self.blob_named.resize(self.slots.len(), false);
             }
             self.blob_named[k] = true;
+        }
+    }
+
+    fn note_pointer_edge(&mut self, index: u64, report: &mut TableReport) {
+        if !self.good || index == 0 { return; }
+        let target = (index - 1) as usize;
+        if target >= self.wire_edges.len() {
+            report.damaged = true;
+            return;
+        }
+        let owner = self.wire_edge_owner;
+        if owner < self.wire_edges.len() {
+            self.wire_edges[owner].push(target);
+        }
+        if target > 0 {
+            let k = target - 1;
+            if k < self.recs.len() && matches!(self.recs[k].0, BYTES_TYPE_ID | STRING_TYPE_ID) {
+                self.wire_blob_names[k] += 1;
+                if self.wire_blob_names[k] > 1 { report.damaged = true; }
+            }
         }
     }
 
@@ -874,6 +884,7 @@ impl TableNodeReader {
     }
 
     pub fn node_slot(&mut self, index: u64, want: u64, report: &mut TableReport) -> Option<usize> {
+        self.note_pointer_edge(index, report);
         if !self.good || index == 0 {
             return None;
         }
@@ -940,6 +951,7 @@ impl TableNodeReader {
     /// Resolve a *bytes slot (§2.5, §3.1): the ONE blob every slot naming the
     /// record shares; a *string record or a table record is a kind mismatch.
     pub fn bytes_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<[u8]>> {
+        self.note_pointer_edge(index, report);
         let b = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Bytes(b) => b.clone(),
@@ -951,6 +963,7 @@ impl TableNodeReader {
 
     /// Resolve a *string slot (§2.5, §3.1), the same way.
     pub fn text_slot(&mut self, index: u64, report: &mut TableReport) -> Option<Rc<str>> {
+        self.note_pointer_edge(index, report);
         let s = match self.blob_record(index, report)? {
             TableNodeSlot::Null => return None,
             TableNodeSlot::Text(s) => s.clone(),
