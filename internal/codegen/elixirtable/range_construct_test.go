@@ -20,6 +20,7 @@ import (
 // Input wire is generated with no declared range, so an out-of-range reader
 // must refuse the whole load; in-range rows still read whole.
 func TestOneSidedRangeConstructElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir one-sided range native boundaries")
 	base := "../../../testdata/conformance/feature-witnesses/one-sided-range/"
 	schema, err := os.ReadFile(base + "Probe.schema")
@@ -195,6 +196,7 @@ Probe.check(message_size==byte_size(message),field<>" message measure")
 }
 
 func TestOneSidedRangeClosureElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir one-sided ranges in optional and array slots")
 	const schema = `package probe
  enum Key { A, B }
