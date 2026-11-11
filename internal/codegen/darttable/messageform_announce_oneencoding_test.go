@@ -73,7 +73,7 @@ func checkAnnounceOneEncoding(t *testing.T, runtime string) error {
 		err := vocabulary.AnnounceRead(c.wire, &report)
 		if c.accept {
 			if err != nil || !vocabulary.Announced() {
-				return fmt.Errorf("Go refused the valid announcement: %v", err)
+				return fmt.Errorf("Go refused the valid announcement: %w", err)
 			}
 			continue
 		}
@@ -113,7 +113,7 @@ func checkAnnounceOneEncoding(t *testing.T, runtime string) error {
 
 	out, err := runAnnounceProbeRuntime(t, u, runtime, body.String())
 	if err != nil {
-		return fmt.Errorf("the emitted Dart announcement read: %v\n%s", err, out)
+		return fmt.Errorf("the emitted Dart announcement read: %w\n%s", err, out)
 	}
 	return nil
 }
