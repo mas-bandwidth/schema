@@ -107,6 +107,21 @@ func (c *checker) errf(pos ast.Pos, format string, args ...any) {
 	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
 }
 
+// oneHeaderPath reports whether v is exactly one header path: non-empty and
+// holding no control byte, double quote or backslash, so the generated
+// `#include "<v>"` is one directive (SPEC §4.2 Native type mapping).
+func oneHeaderPath(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if b := v[i]; b < 0x20 || b == 0x7F || b == '"' || b == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
 // Unit checks the files against every supported language's reserved words
 // (SPEC §4.6: whatever target is generated) and lowers them to IR. Files may
 // arrive in any order; the unit is processed in sorted-basename order, so
@@ -1109,6 +1124,10 @@ func (c *checker) resolveBodies() {
 						lit, ok := a.Value.(*ast.StringLit)
 						if !ok {
 							c.errf(a.Pos, `cpp_include takes a quoted header path, e.g. cpp_include = "core_vector.h" (SPEC §4.2 Native type mapping)`)
+							continue
+						}
+						if !oneHeaderPath(lit.Value) {
+							c.errf(a.Pos, `cpp_include takes one non-empty header path, holding no control byte, double quote or backslash, so the generated #include "<value>" is exactly one directive (SPEC §4.2 Native type mapping)`)
 							continue
 						}
 						st.CppInclude = lit.Value
