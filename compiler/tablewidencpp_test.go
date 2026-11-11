@@ -207,30 +207,38 @@ var (
 // predicate every unit owns.
 func widenBothWays(t *testing.T, src string, want widenHelper, absent []string) {
 	t.Helper()
-	with, files := deadCppHeader(t, src)
-	if !strings.Contains(with, want.def) {
-		t.Errorf("a unit that declares the kind must define %s", want.symbol)
-	}
-	if !strings.Contains(with, want.call) {
-		t.Errorf("%s must be CALLED by the unit that carries it; no %q in the header", want.symbol, want.call)
-	}
-	for _, sym := range absent {
-		if strings.Contains(with, sym) {
-			t.Errorf("this unit declares no kind that reaches %s and must carry none of it", sym)
+	// The unit and its nearest neighbour compile side by side, each in a
+	// parallel subtest of its own: one after the other they were a minute on
+	// a busy runner.
+	t.Run("with", func(t *testing.T) {
+		t.Parallel()
+		with, files := deadCppHeader(t, src)
+		if !strings.Contains(with, want.def) {
+			t.Errorf("a unit that declares the kind must define %s", want.symbol)
 		}
-	}
-	deadCppCompile(t, files)
-
-	without, base := deadCppHeader(t, widenNoneSrc)
-	if strings.Contains(without, want.symbol) {
-		t.Errorf("the nearest neighbour reaches no %s call site and must carry none of it", want.symbol)
-	}
-	// the ladder predicate is EVERY unit's: a kind comparison is what every
-	// reader does, and it is named by the walks
-	if !strings.Contains(without, "inline bool TableKindWidens") {
-		t.Error("TableKindWidens is every unit's and left one")
-	}
-	deadCppCompile(t, base)
+		if !strings.Contains(with, want.call) {
+			t.Errorf("%s must be CALLED by the unit that carries it; no %q in the header", want.symbol, want.call)
+		}
+		for _, sym := range absent {
+			if strings.Contains(with, sym) {
+				t.Errorf("this unit declares no kind that reaches %s and must carry none of it", sym)
+			}
+		}
+		deadCppCompile(t, files)
+	})
+	t.Run("without", func(t *testing.T) {
+		t.Parallel()
+		without, base := deadCppHeader(t, widenNoneSrc)
+		if strings.Contains(without, want.symbol) {
+			t.Errorf("the nearest neighbour reaches no %s call site and must carry none of it", want.symbol)
+		}
+		// the ladder predicate is EVERY unit's: a kind comparison is what every
+		// reader does, and it is named by the walks
+		if !strings.Contains(without, "inline bool TableKindWidens") {
+			t.Error("TableKindWidens is every unit's and left one")
+		}
+		deadCppCompile(t, base)
+	})
 }
 
 func TestCppTableWidenSignedFollowsTheCensus(t *testing.T) {
