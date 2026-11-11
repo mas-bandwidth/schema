@@ -248,6 +248,7 @@ var catalog = []Entry{
 	e("test/packet-defaults", "packet default-value gates", "make test", "make test"),
 	e("test/packet-finite", "packet finite-float gates", "make test-go, make test-dart, make test-elixir, make test-lua, make test-luau", "make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau"),
 	e("test/packet-text", "packet UTF-8 gates", "make test", "make test"),
+	e("test/packet-write-text", "packet text write contract fixtures", "go test -run TestSpecPacketWriteChecksText ./compiler/", "go test -run TestSpecPacketWriteChecksText ./compiler/"),
 	e("test/packet-void", "packet void-arm gates", "make test", "make test"),
 	e("test/proof", "3.0.0 proof snapshot (internal gate)", "make proof", "make proof-write"),
 	e("test/rust", "Rust packet tests", "make test-rust", "make test-rust"),

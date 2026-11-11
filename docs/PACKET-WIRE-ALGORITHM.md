@@ -505,8 +505,8 @@ slip is a correctness bug, not a size regression.
 
 **Writes assume trusted data. Reads face untrusted bytes.** There is no exception to the tier
 split (SPEC §5). A counted array's count and a union's tag are writer contracts like every
-other range: debug-only where the language has the idiom, every-build only in Go and Elixir.
-The read refuses the same numbers in every build, in all nine.
+other range: debug-only where the language has the idiom, refusal in every build
+where it does not. The read refuses the same numbers in every build in every packet target.
 
 Packet `Write` checks row 8 (§5.1): the used bytes of `string(N)` have no zero
 byte and are well-formed UTF-8. Each packet target uses its own write mechanism:

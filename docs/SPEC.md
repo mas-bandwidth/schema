@@ -2236,18 +2236,16 @@ reader on the other end refuses it (§4).
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
 section name — ranges, counts, bounds, wire constants, reserved bits, enum
 values, union tags, UTF-8 in `string(N)` — runs
-in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
+in EVERY BUILD MODE in every packet target, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
-The generated write code's job is to make misuse impossible by construction —
-bounds come from the schema. Packet `Write` holds row 8 (§5.1): a zero byte or
-used bytes that are not well-formed UTF-8 are checked by the leg's own
-mechanism. C, C++, C#, Rust, Java and Dart use a debug-only assert; Go,
-JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose use a refusal in every build.
+The packet `Write` contract includes row 8 (§5.1): a zero byte or used bytes
+that are not well-formed UTF-8. Each leg checks writes by its own mechanism.
+C, C++, C#, Rust, Java and Dart use a debug-only assert; Go, JavaScript,
+Elixir, Lua, Luau, Squirrel, MOO and Goose use a refusal in every build.
 The reader independently refuses the same ill-formed text in every build
-(§4.7). Ranges are trusted
-inputs everywhere: generated code never feeds attacker-influenced values as
-min/max.
+(§4.7). Ranges are trusted inputs everywhere: generated code never feeds
+attacker-influenced values as min/max.
 
 **Read failure leaves the output object in an unspecified state**; callers
 use it only on success. **Read success fully initializes it**: fields in
