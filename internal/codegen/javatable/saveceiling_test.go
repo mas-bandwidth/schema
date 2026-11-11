@@ -16,8 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -36,6 +37,7 @@ import (
 // A fixed root that has a file form is written by <Root>Fixed, which carries
 // no text reader; its plain save is outside this test.
 func TestJavaSaveAgreesWithTheEngineAtEveryExampleRoot(t *testing.T) {
+	slowtest.Gate(t, "javac and java (it runs the generated save over every example root)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
@@ -49,6 +51,7 @@ func TestJavaSaveAgreesWithTheEngineAtEveryExampleRoot(t *testing.T) {
 // ceiling answer bytes again (a lone form-1 byte in place of the refusal) and
 // requires the test above to see it: every sample of that root turns red.
 func TestJavaSaveCeilingNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "javac and java (it runs a sabotaged save over every example root)")
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	u := unitFromDir(t, filepath.Join(repo, "tables", "examples"))
