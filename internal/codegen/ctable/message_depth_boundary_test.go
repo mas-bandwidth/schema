@@ -32,10 +32,17 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// The message closure of this unit holds four field entries, so the announcement
+// carries four and every generated runtime reads its references in three bits:
+// the depth boundary below is encoded at that width. A shorter closure would
+// make the generated readers one-bit and the probe would no longer fit.
 const depthBoundarySchema = `package depthprobe
 
 fixed table Root {
 	a int32
+	b int32
+	c int32
+	d int32
 }
 `
 
@@ -147,8 +154,8 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	t.Helper()
 	u := depthBoundaryUnit(t)
 	st := u.Tables["Root"]
-	if st == nil || len(st.Fields) != 1 {
-		t.Fatalf("expected Root table with 1 field, got %+v", st)
+	if st == nil || len(st.Fields) != 4 {
+		t.Fatalf("expected Root table with 4 fields, got %+v", st)
 	}
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
@@ -288,16 +295,16 @@ static void check_case(const char * name, const TableVocabulary * vocab, const u
         if (ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);
         } else {
-            printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d unknown=%d a0=%d a1=%d\n",
-                name, ok, (long long)count, rep.refused, rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
+            printf("FAIL %s: ok=%d count=%lld damage_reason=%d refused=%d unknown=%d a0=%d a1=%d\n",
+                name, ok, (long long)count, rep.damage_reason, rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
             failed = 1;
         }
     } else {
         if (!ok && count == 0 && rep.refused) {
             printf("PASS %s\n", name);
         } else {
-            printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
-                name, ok, (long long)count, rep.refused, rep.refused, (int)values[0].a, (int)values[1].a);
+            printf("FAIL %s: ok=%d count=%lld damage_reason=%d refused=%d a0=%d a1=%d\n",
+                name, ok, (long long)count, rep.damage_reason, rep.refused, (int)values[0].a, (int)values[1].a);
             failed = 1;
         }
     }
@@ -395,19 +402,19 @@ static void check_case(const char * name, const TableVocabulary & vocab, const u
     memset(&rep, 0, sizeof(rep));
     bool ok = RootLoadMessages(values, &count, vocab, wire, len, &rep);
     if (expect_ok) {
-        if (ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
+        if (ok && count == 2 && !rep.refused && !rep.damaged && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99) {
             printf("PASS %s\n", name);
         } else {
-            printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d unknown=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.refused, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
+            printf("FAIL %s: ok=%d count=%lld damaged=%d refused=%d unknown=%d a0=%d a1=%d\n",
+                name, (int)ok, (long long)count, (int)rep.damaged, (int)rep.refused, (int)rep.unknown, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     } else {
-        if (!ok && count == 0 && rep.refused) {
+        if (!ok && count == 0 && rep.damaged && !rep.refused) {
             printf("PASS %s\n", name);
         } else {
-            printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",
-                name, (int)ok, (long long)count, (int)rep.refused, (int)rep.refused, (int)values[0].a, (int)values[1].a);
+            printf("FAIL %s: ok=%d count=%lld damaged=%d refused=%d a0=%d a1=%d\n",
+                name, (int)ok, (long long)count, (int)rep.damaged, (int)rep.refused, (int)values[0].a, (int)values[1].a);
             failed = true;
         }
     }
@@ -512,13 +519,13 @@ static class Program
         var verdict = Schema.RootLoadMessages(values, wire, vocab, rep, out int count);
         if (expectOK)
         {
-            if (verdict == Schema.TableWire.Verdict.Ok && count == 2 && !rep.Malformed && !rep.Refused && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99)
+            if (verdict == Schema.TableWire.Verdict.Ok && count == 2 && !rep.Refused && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99)
                 Console.WriteLine("PASS " + name);
             else { Console.WriteLine("FAIL " + name); failed = true; }
         }
         else
         {
-            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && rep.Malformed && !rep.Refused)
+            if (verdict == Schema.TableWire.Verdict.Damaged && count == 0 && !rep.Refused)
                 Console.WriteLine("PASS " + name);
             else { Console.WriteLine("FAIL " + name); failed = true; }
         }
@@ -747,14 +754,14 @@ func TestProbe(t *testing.T) {
 		var rep TableReport
 		n, ok := RootLoadMessages(values[:], &vocab, wire, &rep)
 		if expectOK {
-			if ok && n == 2 && !rep.Malformed && rep.Reason == "" && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99 {
+			if ok && n == 2 && !rep.Refused() && rep.Unknown == 1 && values[0].A == 42 && values[1].A == 99 {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Println("FAIL " + name)
 				failed = true
 			}
 		} else {
-			if !ok && n == 0 && rep.Malformed && rep.Reason == "" {
+			if !ok && n == 0 && rep.Refused() && rep.Refusal == TableRefuseWireDamaged {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Println("FAIL " + name)
@@ -848,11 +855,11 @@ func runAllRuntimesJava(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
         TableVocabulary.Report rep = new TableVocabulary.Report();
         int count = RootMessage.loadMessages(values, values.length, vocab, wire, rep);
         if (expectOK) {
-            if (!rep.refused && count == 2 && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99)
+            if (!rep.refused && !rep.damaged && count == 2 && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99)
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         } else {
-            if (count == 0 && rep.refused)
+            if (count == 0 && rep.damaged && !rep.refused)
                 System.out.println("PASS " + name);
             else { System.out.println("FAIL " + name); failed = true; }
         }
@@ -930,13 +937,13 @@ function checkCase(name, wire, expectOK) {
   const values = [v0, v1];
   const rep = {};
   const count = m.RootLoadMessages(values, vocab, wire, rep);
-  const ok = rep.Verdict === 0 && !rep.Malformed && !rep.Refused;
+  const ok = rep.Verdict === 0 && !rep.Damaged && rep.Reason === "";
   if (expectOK) {
     if (ok && count === 2 && rep.Unknown === 1 && values[0].a === 42 && values[1].a === 99)
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   } else {
-    if (!ok && count === 0 && rep.Malformed && !rep.Refused)
+    if (!ok && count === 0 && rep.Damaged && rep.Verdict === 0)
       console.log("PASS " + name);
     else { console.log("FAIL " + name); failed = true; }
   }
@@ -989,18 +996,18 @@ func runAllRuntimesRust(t *testing.T, u *ir.Unit, ann []byte, cases []depthBound
 	}
 	main.WriteString(`
 fn check_case(name: &str, vocab: &TableVocabulary, wire: &[u8], expect_ok: bool, failed: &mut bool) {
-    let mut values = [RootRow { a: -7 }, RootRow { a: -7 }];
+    let mut values = [RootRow { a: -7, ..RootRow::default() }, RootRow { a: -7, ..RootRow::default() }];
     let mut rep = TableReport::default();
     let (count, ok) = root_load_messages(&mut values, vocab, wire, &mut rep);
     if expect_ok {
-        if ok && count == 2 && !rep.refused && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99 {
+        if ok && count == 2 && !rep.refused && !rep.damaged && rep.unknown == 1 && values[0].a == 42 && values[1].a == 99 {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}");
             *failed = true;
         }
     } else {
-        if !ok && count == 0 && rep.refused {
+        if !ok && count == 0 && rep.damaged && !rep.refused {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}");

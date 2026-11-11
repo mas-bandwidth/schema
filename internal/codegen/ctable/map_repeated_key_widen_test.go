@@ -1,5 +1,6 @@
-// Repeated map entry keys on the wire: the final occurrence determines key
-// validity and value (docs/SPEC-TABLES.md §2.8, §3).
+// Repeated map entry keys on the wire: the strict read refuses the whole load
+// (docs/SPEC-TABLES.md §2.8, §3, §4). A changed key kind is kind_mismatch;
+// a repeated key is wire_damaged. There is no last-wins and no partial map.
 package ctable
 
 import (
@@ -9,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCMapRepeatedKeyLastKindWins(t *testing.T) {
+func TestCMapRepeatedKeyStrictRefusal(t *testing.T) {
 	t.Parallel()
 	vec, err := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin")
 	if err != nil {
@@ -104,7 +105,7 @@ int main( void )
         simple_builder_shutdown( &b );
     }
 
-    /* 2. bad_then_widened: key appears first as tkString (12, "x"), then as tkU8 (6, 7), value as tkI32 (4, 42) */
+    /* 2. bad_then_widened: the key appears first as tkString (12, "x"), then as tkU8 (6, 7); the strict read refuses the bad key kind whole */
     {
         uint8_t wire[64];
         int pos = 0;
@@ -138,11 +139,11 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_KIND_MISMATCH );
         free( region );
     }
 
-    /* 3. widened_then_bad: key appears first as tkU8 (6, 7), then as tkString (12, "x") -> map cleared! */
+    /* 3. widened_then_bad: the first u8 key is a legal widening, but the second key changes kind: the read refuses whole */
     {
         uint8_t wire[64];
         int pos = 0;
@@ -173,11 +174,11 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_KIND_MISMATCH );
         free( region );
     }
 
-    /* 4. bad_then_exact: key appears first as tkString (12, "x"), then as tkU32 (8, 9) -> entry kept! */
+    /* 4. bad_then_exact: a later exact-kind key does not salvage an earlier kind change: the read refuses whole */
     {
         uint8_t wire[64];
         int pos = 0;
@@ -208,7 +209,47 @@ int main( void )
         region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
         root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
         CHECK( root == NULL );
-        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_DUPLICATE_KEY );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_KIND_MISMATCH );
+        free( region );
+    }
+
+    /* 5. duplicate_equal: the same u32 key twice. No writer emits a repeat and
+       the strict read refuses the whole load wire_damaged (SPEC §2.8, §4):
+       the map is never half built and the later value never replaces the first. */
+    {
+        uint8_t wire[64];
+        int pos = 0;
+        TableReport rep = { 0 };
+        int64_t rbytes;
+        uint8_t * region;
+        const Simple * root;
+
+        wire[pos++] = 1; /* form */
+        wire[pos++] = 1; /* ref=1 (items) */
+        wire[pos++] = 14; /* kind=array */
+        wire[pos++] = 30; /* L = 2 + (1 + 13) + (1 + 13) */
+        wire[pos++] = 13; /* elem_kind = table */
+        wire[pos++] = 2;  /* count = 2 */
+        wire[pos++] = 13; /* entry L = 13 */
+        wire[pos++] = 2; wire[pos++] = 8; wire[pos++] = 7; wire[pos++] = 0; wire[pos++] = 0; wire[pos++] = 0;
+        wire[pos++] = 3; wire[pos++] = 4; wire[pos++] = 42; wire[pos++] = 0; wire[pos++] = 0; wire[pos++] = 0;
+        wire[pos++] = 0;
+        wire[pos++] = 13; /* entry L = 13 */
+        wire[pos++] = 2; wire[pos++] = 8; wire[pos++] = 7; wire[pos++] = 0; wire[pos++] = 0; wire[pos++] = 0;
+        wire[pos++] = 3; wire[pos++] = 4; wire[pos++] = 43; wire[pos++] = 0; wire[pos++] = 0; wire[pos++] = 0;
+        wire[pos++] = 0;
+        wire[pos++] = 0; /* root end */
+        put_u64_le( wire + pos, id_items ); pos += 8;
+        put_u64_le( wire + pos, id_key );   pos += 8;
+        put_u64_le( wire + pos, id_val );   pos += 8;
+        put_u64_le( wire + pos, 3 );        pos += 8;
+
+        rbytes = simple_load_measure( wire, pos );
+        CHECK( rbytes > 0 );
+        region = (uint8_t *) calloc( 1, (size_t) rbytes + 64 );
+        root = simple_load( (uint8_t *) ( ( (uintptr_t) region + 63u ) & ~(uintptr_t) 63u ), rbytes, wire, pos, &rep );
+        CHECK( root == NULL );
+        CHECK( rep.refused == 1 && rep.refuse_reason == SCHEMA_TABLE_REFUSE_WIRE_DAMAGED );
         free( region );
     }
 
