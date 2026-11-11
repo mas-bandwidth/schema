@@ -96,10 +96,10 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 	}
 	model := tabletext.NewModel(u)
 	type result struct {
-		OK                                                 bool
-		Unknown, KindMismatch, Widened, Clamped, Duplicate int
-		Malformed, Refused                                 bool
-		Canon, Wire, Reason                                string
+		OK                  bool
+		Unknown, Widened    int
+		Refused             bool
+		Canon, Wire, Reason string
 	}
 	want := make([]result, len(inputs))
 	dir := t.TempDir()
@@ -166,14 +166,14 @@ class CarryProbe {
     if (Schema.RootSave(value, bytes) != bytes.Length) throw new Exception("wire write size");
     wire = Convert.ToHexString(bytes).ToLowerInvariant();
     var back = new Root(); var read = new TableReport();
-    if (!Schema.RootLoad(back, bytes, read) || read.Malformed || read.Refused || read.Clamped != 0 || read.Duplicate != 0 || read.Unknown != 0 || read.KindMismatch != 0 || read.Widened != 0) throw new Exception("canonical wire load");
+    if (!Schema.RootLoad(back, bytes, read) || read.Refused || read.Unknown != 0 || read.Widened != 0) throw new Exception("canonical wire load");
     byte[] again = new byte[Schema.RootMeasure(back)];
     if (Schema.RootSave(back, again) != again.Length || !bytes.AsSpan().SequenceEqual(again)) throw new Exception("wire changed on load/save");
     byte[] backText = new byte[Schema.RootToJsonMeasure(back)];
     long backN = Schema.RootToJson(back, backText);
     if (backN < 0 || Encoding.UTF8.GetString(backText, 0, (int)backN).TrimEnd('\n') != canon) throw new Exception("wire lost value or presence");
    }
-   Console.WriteLine(JsonSerializer.Serialize(new { OK=ok, report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, report.Malformed, report.Refused, report.Reason, Canon=canon, Wire=wire }));
+   Console.WriteLine(JsonSerializer.Serialize(new { OK=ok, report.Unknown, report.Widened, report.Refused, report.Reason, Canon=canon, Wire=wire }));
   }
  }
 }`
