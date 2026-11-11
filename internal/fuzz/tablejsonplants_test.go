@@ -365,7 +365,7 @@ func TestJsonPlantsProbe(t *testing.T) {
 				}
 			}
 
-			// Whenever RootFromJSON returns true (accepted or tolerantly clamped/skipped),
+			// Whenever RootFromJSON returns true (accepted, unknown fields skipped),
 			// the resulting value must measure, save, and write JSON that reads back equal.
 			if ok {
 				m, mreason := RootMeasureReason(&pv)
