@@ -25,9 +25,9 @@ func TestGoTableOpenDistinctnessIsBounded(t *testing.T) {
 	for _, want := range []string{
 		"if n > 4096 {",
 		"if n < 8",
-		"var seen [8192]uint64",
-		"var used [8192]uint8",
-		"seen[slot] == id",
+		"var ids [4096]uint64",
+		"slices.SortFunc(ids[:n]",
+		"ids[i-1] == ids[i]",
 		"for i := 0; i < len(r.Ids); i += 8 {",
 	} {
 		if !strings.Contains(body, want) {
@@ -159,7 +159,7 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 	}
 	ok, report = loadIds(over)
 	if !ok || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Verdict != TableOpenOk {
-		t.Fatalf("257 distinct pairwise fallback: %+v", report)
+		t.Fatalf("257 distinct wide path: %+v", report)
 	}
 	over[256] = 1
 	ok, report = loadIds(over)

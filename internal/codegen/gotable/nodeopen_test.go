@@ -137,13 +137,18 @@ func TestNodeTableInTheBodyWalk(t *testing.T) {
 // runGeneratedTables builds only the table surfaces, so the unit needs no
 // sibling serialize.go checkout: the wire, fixed and text forms this test reads
 // are the compiler's own table packages.
-func runGeneratedTables(t *testing.T, schema, testSource string) {
+func runGeneratedTables(t *testing.T, schema, testSource string, edits ...func(map[string][]byte)) {
 	t.Helper()
 	slowtest.Gate(t, "the Go toolchain (it builds and runs the generated unit)")
 	u := unitFrom(t, schema)
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, edit := range edits {
+		if edit != nil {
+			edit(files)
+		}
 	}
 	dir := t.TempDir()
 	files["go.mod"] = []byte("module probe\n\ngo 1.26\n")
