@@ -80,6 +80,7 @@ func deadCppHeader(t *testing.T, src string) (string, map[string][]byte) {
 }
 
 func TestCppTableBlobThunksFollowTheCensus(t *testing.T) {
+	t.Parallel()
 	with, files := deadCppHeader(t, deadCppBlobSrc)
 	for _, sym := range deadCppBlobSymbols {
 		if !strings.Contains(with, sym) {

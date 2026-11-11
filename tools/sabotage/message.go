@@ -10,12 +10,20 @@ func init() {
 	maps.Copy(sabotages, messageSabotages)
 }
 
+// countOverBoundClamps takes the strict read's count_over_bound refusal out of
+// the message array read and clamps to the bound in its place.
+var countOverBoundClamps = []edit{{
+	old: "\tif kept > bound {\n\t\td.refuse(ReasonCountOverBound)\n\t\treturn false\n\t}\n",
+	new: "\tif kept > bound {\n\t\tkept = bound // SABOTAGED: an over-long array clamps to the bound\n\t}\n",
+}}
+
 var messageSabotages = map[string][]edit{
-	// THE TAIL IS UNCONDITIONAL: a unit with no pointer announces the
-	// node-table id all the same. Take it out and every slot after it moves.
-	"message-tail-without-node-table": {{
-		old: "\tname(TableNodeWireId)\n",
-		new: "\t// SABOTAGED: the tail's node-table id is gone\n",
+	// THE ANNOUNCEMENT CARRIES THE MESSAGE CLOSURE AND NOTHING ELSE: no body
+	// of the message form can carry the reserved node-table id, so it takes
+	// no slot. Keep it and the vocabulary grows a slot no body can name.
+	"message-closure-announces-node-table": {{
+		old: "\t\tif keep[e.Key()] || (names[e.Id] && e.Kind == 0) {\n",
+		new: "\t\tif keep[e.Key()] || (names[e.Id] && e.Kind == 0) || e.Id == ir.TableNodeWireId { // SABOTAGED: the node-table id takes a slot\n",
 	}},
 
 	// THE ORDER IS THE COOK PROJECTION'S, and the committed announcement pins
@@ -64,10 +72,13 @@ var messageSabotages = map[string][]edit{
 		new: "\tif ref == 0 {\n\t\treturn ir.TableVocabularyEntry{}, false\n\t}\n\tif ref > uint64(len(d.v.entries)) {\n\t\treturn ir.TableVocabularyEntry{}, true // SABOTAGED: a reference past E resolves to nothing\n\t}\n",
 	}},
 
-	// DAMAGE IS TERMINAL FOR THE BATCH: read on after it instead.
-	"message-read-on-after-damage": {{
-		old: "\t\tif !d.body(insts[i]) {\n\t\t\treturn i, false, nil\n\t\t}\n",
-		new: "\t\tif !d.body(insts[i]) {\n\t\t\tcontinue // SABOTAGED: the next body is read after damage\n\t\t}\n",
+	// DAMAGE DISCARDS THE WHOLE BATCH (§4, §6.5): no body is delivered, the
+	// ones before the damage included. The strict read replaced the rule
+	// that stopped at the damage and kept the bodies read before it; keep
+	// them again and the batch reads short instead of refusing.
+	"message-damage-keeps-earlier-bodies": {{
+		old: "\t\tif fail.err != nil {\n\t\t\treturn 0, fail.err\n\t\t}\n\t\tif !ok {\n\t\t\treturn 0, damage(\"a body that cannot be read\")\n\t\t}\n",
+		new: "\t\tif fail.err != nil || !ok {\n\t\t\treturn i, nil // SABOTAGED: damage keeps the bodies before it\n\t\t}\n",
 	}},
 
 	// THE PAD IS VERIFIED ZERO AND NOTHING FOLLOWS IT.
@@ -79,7 +90,7 @@ var messageSabotages = map[string][]edit{
 	// M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME with nothing
 	// decoded: decode what fits instead.
 	"message-no-capacity-refusal": {{
-		old: "\tif count > len(insts) {\n\t\treport.Refused = true\n\t\treturn count, false, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}\n\t}\n",
+		old: "\tif count > len(insts) {\n\t\treturn count, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}\n\t}\n",
 		new: "\tif count > len(insts) {\n\t\tcount = len(insts) // SABOTAGED: what fits is decoded and the rest dropped\n\t}\n",
 	}},
 
@@ -95,19 +106,21 @@ var messageSabotages = map[string][]edit{
 		new: "\tif !named || reserved(entry.Id) { // SABOTAGED: any sort frames an arm\n",
 	}},
 
-	// A RANGED OFFSET ABOVE THE SENDER'S MAX RECONSTRUCTS AND CLAMPS, and is
-	// not damage.
-	"message-offset-past-max-is-damage": {{
-		old: "\t\t\t} else if value > hi {\n\t\t\t\tvalue = hi\n\t\t\t\td.report.Clamped++\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
-		new: "\t\t\t} else if value > hi {\n\t\t\t\td.report.Malformed = true // SABOTAGED: a value past the bound is damage\n\t\t\t\treturn false\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
+	// A RANGED OFFSET ABOVE THE READER'S MAX REFUSES (§6.5): the strict read
+	// never clamps. Clamp it to the bound and read on instead, which is the
+	// rule this row held before the strict read replaced it.
+	"message-offset-past-max-clamps": {{
+		old: "\t\t\t} else if value > hi {\n\t\t\t\tvalue = hi\n\t\t\t\td.refuse(ReasonOutOfRange)\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
+		new: "\t\t\t} else if value > hi {\n\t\t\t\tvalue = hi // SABOTAGED: a value past the bound clamps and reads\n\t\t\t}\n\t\t} else {\n\t\t\t// the bounds are read whole: an unsigned range reaches 2^64 - 1\n",
 	}},
 
-	// AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS: stop at the bound
-	// instead and the next field lands on the wrong bit.
-	"message-clamp-drops-surplus": {{
-		old: "\tfor i := uint64(0); i < walk; i++ {\n\t\t// an element past this build's bound is read into a sink and dropped\n",
-		new: "\tfor i := uint64(0); i < kept; i++ { // SABOTAGED: the surplus is not walked\n\t\t// an element past this build's bound is read into a sink and dropped\n",
-	}},
+	// A COUNT PAST THE READER'S BOUND REFUSES count_over_bound before any
+	// element is read (§6.5): the strict read replaced the clamp that walked
+	// the surplus into a sink. Clamp to the bound and read on instead. Two
+	// rows hold it: an over-long array of walked elements, and a zero-width
+	// element under a count of 2^31 + 1, whose surplus is arithmetic.
+	"message-count-over-bound-clamps":            countOverBoundClamps,
+	"message-count-over-bound-clamps-zero-width": countOverBoundClamps,
 
 	// A SKIPPED STRING ALIGNS BEFORE ITS BYTES exactly as a read one does.
 	"message-skip-string-no-align": {{
@@ -124,8 +137,8 @@ var messageSabotages = map[string][]edit{
 	// THE VOCABULARY IS PER CONNECTION AND PER DIRECTION: a reader that
 	// resolves against its own unit's is wrong whenever the peers differ.
 	"message-reads-own-vocabulary": {{
-		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}\n",
-		new: "\t\town := &Vocabulary{entries: ir.TableVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits()}\n",
+		old: "\t\td := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits(), fail: fail}\n",
+		new: "\t\town := &Vocabulary{entries: MessageVocabulary(m.Unit), announced: true} // SABOTAGED: the reader's own vocabulary\n\t\td := &bitDecoder{m: m, v: own, report: report, r: r, refBits: own.RefBits(), fail: fail}\n",
 	}},
 
 	// A SECOND ANNOUNCEMENT IS REFUSED BY NAME and sets nothing.
@@ -134,10 +147,15 @@ var messageSabotages = map[string][]edit{
 		new: "\tif false { // SABOTAGED: a second announcement is accepted\n",
 	}},
 
-	// THE BUILD VERSION IS PRESENT EXACTLY ONCE, and so is the vocabulary.
-	"message-strict-checks-relaxed": {{
-		old: "seenVersion == 1 && seenVocabulary == 1",
-		new: "seenVersion >= 1 && seenVocabulary >= 1 /* SABOTAGED: twice is fine */",
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE, in an announcement as in any
+	// file (§6.5): the announcement's body is checked whole before its two
+	// fields are read, and that check is what refuses a build version or a
+	// vocabulary present twice before the exactly-once count sees them. It
+	// alone stands behind an UNKNOWN field present twice; take it out and
+	// that announcement sets a vocabulary.
+	"message-announcement-field-twice-accepted": {{
+		old: "\t\tif seen[id] {\n\t\t\treturn c.damage(\"the same field id twice in one body\")\n\t\t}\n",
+		new: "\t\t// SABOTAGED: the same field id twice in one body is accepted\n",
 	}},
 
 	// THE ENTRY BOUND IS CHECKED BEFORE AN ENTRY IS TOUCHED.
@@ -192,8 +210,8 @@ var messageEmitterSabotages = map[string][]edit{
 	// THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS: every emitted slot
 	// off by one writes a legal body that names another field.
 	"message-emitter-slot-off-by-one": {{
-		old: "func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] }",
-		new: "func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] + 1 } // SABOTAGED: every emitted slot off by one",
+		old: "\treturn slot\n}\n\n// msgMeasureCall",
+		new: "\treturn slot + 1 // SABOTAGED: every emitted slot off by one\n}\n\n// msgMeasureCall",
 	}},
 	// THE COUNT IS EIGHT BITS: spend sixteen and every pinned batch moves.
 	"message-emitter-count-sixteen-bits": {{
@@ -252,13 +270,6 @@ var messageRoundTwoSabotages = map[string][]edit{
 		new: "\t\tw.put(uint64(count), bits) // SABOTAGED: the count, not its offset\n",
 	}},
 
-	// A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1): land
-	// it on element zero instead.
-	"message-surplus-lands-on-zero": {{
-		old: "\t\tvar sink tabletext.Cell\n\t\tcell := &sink\n\t\tif i < kept {\n\t\t\tcell = &fv.Elems[i]\n\t\t}\n",
-		new: "\t\tcell := &fv.Elems[0] // SABOTAGED: a surplus element overwrites element zero\n\t\tif i < kept {\n\t\t\tcell = &fv.Elems[i]\n\t\t}\n",
-	}},
-
 	// A RANGED 128-BIT VALUE READS AT ITS ANNOUNCED WIDTH (M2): read the raw
 	// sixteen bytes instead.
 	"message-wide-reads-raw": {{
@@ -266,8 +277,8 @@ var messageRoundTwoSabotages = map[string][]edit{
 		new: "\t\tif false { // SABOTAGED: a ranged 128-bit value reads raw\n\t\t\toffset, ok := d.r.getBig(width)\n",
 	}},
 
-	// THE BOUND APPLIES WHILE THE VALUE IS WIDE (M6): narrow first and 263
-	// becomes 7, which clamps to 200 rather than 250.
+	// THE BOUND APPLIES WHILE THE VALUE IS WIDE (M6): narrow first and 260
+	// read by a [0, 10] becomes 4, which reads where the wide value refuses.
 	"message-narrow-before-clamp": {{
 		old: "\t\t\tu, ulo, uhi := uint64(value), f.IntMin.Uint64(), f.IntMax.Uint64()\n",
 		new: "\t\t\tu, ulo, uhi := uint64(value)&(uint64(1)<<uint(f.Type.Width)-1), f.IntMin.Uint64(), f.IntMax.Uint64() // SABOTAGED: narrowed before the clamp\n",
@@ -295,23 +306,17 @@ var messageColdReadSabotages = map[string][]edit{
 	// it: take the refusal out and the dequantize clamps it instead, which is
 	// the ranged offset's rule reaching a kind it does not govern.
 	"message-quantized-index-above-count": {{
-		old: "\t\tcount, _, derived := ir.TableMessageQuantization(shape)\n\t\tif !derived || index > uint64(count) {\n\t\t\td.report.Malformed = true\n\t\t\treturn false\n\t\t}\n",
+		old: "\t\tcount, _, derived := ir.TableMessageQuantization(shape)\n\t\tif !derived || index > uint64(count) {\n\t\t\td.damage()\n\t\t\treturn false\n\t\t}\n",
 		new: "\t\t// SABOTAGED: an index above the step count is clamped, never rejected\n",
 	}},
 
-	// THE SURPLUS OF A FIXED-WIDTH ELEMENT IS ARITHMETIC: walk it instead and
-	// a zero-width element under a count of 2^31 is two billion iterations
-	// bought with six bytes of wire.
-	"message-surplus-walked": {{
-		old: "\twalk := n\n\tif run >= 0 && walk > kept {\n\t\twalk = kept\n\t}\n",
-		new: "\twalk := n // SABOTAGED: the surplus is walked, element by element\n",
-	}},
-
-	// A FAILED STRICT CHECK IS DAMAGE: report the refusal a body from a peer
-	// that never announced gets, and the announcement's own damage is gone.
-	"message-strict-check-refuses": {{
-		old: "\tif !read {\n\t\treport.Malformed = true\n\t\treturn nil\n\t}\n",
-		new: "\tif !read { // SABOTAGED: a failed strict check is a refusal, not damage\n\t\treport.Refused = true\n\t\treturn &MessageRefusal{Reason: ReasonNoVocabulary}\n\t}\n",
+	// A FAILED STRICT CHECK REFUSES THE ANNOUNCEMENT and sets no vocabulary.
+	// Which reason it names is not the contract (docs/rulings.json,
+	// refusal-verdict-only), so the blade takes the refusal itself out: an
+	// announcement missing its build version or its vocabulary is accepted.
+	"message-strict-check-ignored": {{
+		old: "\tif !read {\n\t\treturn damage(\"an announcement without its build version and vocabulary\")\n\t}\n",
+		new: "\tif false && !read { // SABOTAGED: a failed strict check is ignored\n\t\treturn damage(\"an announcement without its build version and vocabulary\")\n\t}\n",
 	}},
 
 	// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE: drop the scan and a
@@ -340,8 +345,8 @@ var messageColdReadSabotages = map[string][]edit{
 	// read: narrow to int32 first and a count of 2^31 + 1 is negative, which
 	// passes the signed test against the bound and lands in caller storage.
 	"message-emitter-narrow-count-before-clamp": {{
-		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; } else { kept%s = (int32_t) n%s; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
-		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
+		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\\n%[1]s    {\\n%[1]s        kept%[4]s = %[5]d;\\n%[1]s        report->refused = true;\\n%[1]s        report->refuse_reason = out_of_range;\\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\\n%[1]s    }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
+		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%[1]s    if ( kept%[2]s > %[3]d )\\n%[1]s    {\\n%[1]s        kept%[2]s = %[3]d;\\n%[1]s        report->refused = true;\\n%[1]s        report->refuse_reason = out_of_range;\\n%[1]s    }\\n\", ind, sfx, f.ArrayBound)\n",
 	}},
 }
 
@@ -351,10 +356,10 @@ func init() {
 
 // THE MESSAGE FORM'S ONE CONTENT RULE AND ITS CLAMP (docs/SPEC-TABLES.md §3.3,
 // schema#620): a kind 12 payload that is not well-formed UTF-8, or that
-// carries a zero byte, is DAMAGE and terminal for the batch, and a clamp cuts
-// at a code point boundary. Both engines read one rule through one pair of
-// functions, so there are four blades: the refusal and the clamp, in the Go
-// oracle and in the C++ emitter. Each names the row
+// carries a zero byte, is DAMAGE and terminal for the batch, and a payload
+// past the reader's bound refuses (the strict read replaced the clamp). The
+// blades are the content rule and the bound in the Go oracle, and the content
+// rule (and the retired clamp) in the C++ emitter. Each names the row
 // TestTheMessageFormsTextContentRuleAndClamp and test/tables/message_text_main.cpp
 // hold.
 var messageTextSabotages = map[string][]edit{
@@ -366,19 +371,20 @@ var messageTextSabotages = map[string][]edit{
 		new: "\tif false && !textValid(raw) { // SABOTAGED: the kind 12 content rule is gone\n",
 	}},
 
-	// A CLAMP CUTS AT A CODE POINT BOUNDARY: take the cut off the boundary and
-	// the oracle keeps the first bytes of a code point whose last byte did not
-	// fit, which is storage no wire could have delivered.
-	"message-text-clamp-off-boundary": {{
-		old: "\t\tif f.Type.Kind == ir.TString {\n\t\t\t// A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §3.3): the last whole\n\t\t\t// code point that fits within the bound\n\t\t\tkeep = textBoundary(raw, bound)\n\t\t}\n",
-		new: "\t\t// SABOTAGED: the clamp cuts at the bound, not at a code point boundary\n",
+	// A PAYLOAD PAST THE READER'S BOUND REFUSES length_over_bound and no
+	// prefix of it is kept (§6.5): the strict read replaced the clamp that cut
+	// at a code point boundary. Take the refusal out and the oracle keeps an
+	// over-long payload whole.
+	"message-text-over-bound-kept": {{
+		old: "\tif len(raw) > int(f.Type.Size) {\n\t\td.refuse(ReasonLengthOverBound)\n\t\treturn false\n\t}\n",
+		new: "\t// SABOTAGED: a payload past the bound is kept\n",
 	}},
 
 	// AND THE SAME TWO IN THE C++ EMITTER, which is the one the reference
 	// reads with. The content rule first: the emitted reader stops calling
 	// TableUtf8Valid and stores whatever arrived.
 	"message-emitter-text-accepts-ill-formed": {{
-		old: "\t\tg.pf(\"%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->damaged = true; return false; }\\n\", ind, sfx, sfx)\n",
+		old: "\t\tg.pf(\"%[1]s    if ( !TableUtf8Valid( text%[2]s, n%[3]s ) )\\n%[1]s    {\\n%[1]s        report->damaged = true;\\n%[1]s        return false;\\n%[1]s    }\\n\", ind, sfx, sfx)\n",
 		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
 	}},
 

@@ -16,6 +16,7 @@ import (
 )
 
 func TestMapKeyAdmissionElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir map key scan precedes value decode and preserves last-key semantics")
 	u := unitFrom(t, `package keyscan
  table Root {
@@ -133,6 +134,7 @@ end
 }
 
 func TestPinnedMapKeyKindElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir map key mismatch remains clean after independent wire discovery")
 	paths, e := filepath.Glob("../../../tables/maps/*.schema")
 	if e != nil || len(paths) == 0 {
@@ -166,6 +168,7 @@ IO.puts("MAP_KEY_PIN_OK")
 }
 
 func TestPinnedMapDuplicateCounterElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir equal default map keys count duplicates after unknown key fields")
 	paths, e := filepath.Glob("../../../tables/maps/*.schema")
 	if e != nil || len(paths) == 0 {

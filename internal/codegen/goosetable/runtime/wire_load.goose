@@ -2,11 +2,11 @@
 // §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the strict read
 // of form 1, ported decision for decision from the Go reference engine
 // (internal/tablewire decode.go, decodenodes.go, nodetable.go). Any reader
-// reads any data and the differences are REPORTED, never fatal: unknown ids
-// are skipped by their length and counted, a kind that grew is widened and
-// counted, out-of-range values clamp and count, a repeated map key counts
-// repeated, and a form byte this reader does not carry is refused. Damage
-// anywhere discards the whole load; no partial root is returned (§4).
+// reads any data, and every difference refuses the read: unknown ids are
+// skipped by their length and counted and a kind that grew is widened and
+// counted, while an out-of-range value, a repeated map key, a kind it cannot
+// land, a form byte it does not carry, a non-finite float or damage anywhere
+// refuses the whole load with the engine's reason; no partial root is returned (§4, §6.5).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
