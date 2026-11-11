@@ -2241,8 +2241,10 @@ face untrusted bytes; writers do not.
 The generated
 write code's job is to
 make misuse impossible by construction — bounds come from the schema. Every
-write-side contract
-asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
+write-side contract is checked by the leg's own mechanism (§5.1): a debug-only
+assert in an assert leg (C, C++, C#, Rust, Java, Dart), a refusal in every
+build in the others; what a build whose check is compiled out writes is
+unspecified, and the reader refuses it (above). Text
 well-formedness is not one of them. UTF-8 in `string(N)` is a READ-side
 refusal in every target (§4.7), so the
 guarantee rests on the reader rather than on a write-side check some
@@ -2312,7 +2314,7 @@ correct writes are the programmer's responsibility, and the assert is how the
 leg tells them they got it wrong. An assert leg's release build carries no
 write-side check and no write-side refusal, and none is a defect. Reads are the
 library's responsibility, because they arrive from the network, and every read
-check runs in every build in every leg (§4). Glenn, 2026-11-10: "in languages
+check runs in every leg, in every build (§4). Glenn, 2026-11-10: "in languages
 that have assert, we rely on assert to prompt the user they fucked up. when we
 don't have asserts, we have to do some checks in release depending on the
 language."
@@ -2339,7 +2341,10 @@ language."
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert.
+row is the debug assert. As a fact of today's code, C++, C, C#, Rust, Java and
+Dart also refuse a count or length past the storage it indexes in a release
+build, before the first byte, held by the `write-refusal-storage-release-<lang>`
+gates.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
 success, never after failure: a writer that refuses returns its refusal
@@ -2373,15 +2378,15 @@ read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
 and the message form refuses a mask above its declared width rather than
 truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
-finite value off its range, and no writer quantizes one into it
-(docs/plans/strict-only.md, decision 8).
+finite value off its range, and no writer quantizes one into it in the build
+where its check is active (docs/plans/strict-only.md, decision 8).
 **One rule holds in every leg on top of the table.** A count or a length that
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
-reader refuses one as `text_ill_formed`: a writer never produces bytes its own
-reader refuses.
+reader refuses one as `text_ill_formed`: in the build where its check is
+active, a writer never produces bytes its own reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
 |---|---|---|---|
