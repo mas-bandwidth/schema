@@ -41,7 +41,7 @@ type dartTextNumberLinearCase struct {
 	token string
 }
 
-// dartTextNumberLinearCases builds the same six shapes at any digit run.
+// dartTextNumberLinearCases builds the same shapes at any digit run.
 func dartTextNumberLinearCases(long, floatLen int) []dartTextNumberLinearCase {
 	nines := strings.Repeat("9", long)
 	return []dartTextNumberLinearCase{
@@ -51,6 +51,15 @@ func dartTextNumberLinearCases(long, floatLen int) []dartTextNumberLinearCase {
 		{"leading-zeros", "g", "0." + strings.Repeat("0", long-2) + "1"},
 		{"zeros-after-point", "g", "1." + strings.Repeat("0", long-1)},
 		{"float-long-token", "f", "0." + strings.Repeat("0", floatLen-2) + "1"},
+		// a comment is layout between tokens (§16.2): a slash right after a
+		// number opens one, and a slash that opens none is refused
+		{"uint64-block-comment", "u", "7/*c*/"},
+		{"uint64-line-comment", "u", "7//c\n"},
+		{"fixed-block-comment", "g", "1.5/**/"},
+		{"float-line-comment", "f", "2e3//c\n"},
+		{"long-block-comment", "u", nines + "/*c*/"},
+		{"lone-slash", "u", "7/"},
+		{"slash-not-comment", "u", "7/c"},
 	}
 }
 
@@ -78,7 +87,14 @@ import 'ProbeWire.dart' as w;
 void main(List<String> args) {
   for (final path in args) {
     final r = w.TableTextReport();
-    final v = w.rootFromJson(File(path).readAsStringSync(), r);
+    final w.Root v;
+    try {
+      v = w.rootFromJson(File(path).readAsStringSync(), r);
+    } on FormatException {
+      // a text that is not JSON in this dialect throws: malformed
+      print("1 0 malformed");
+      continue;
+    }
     final hex = w.rootWireSave(v).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     print('${r.refused ? 1 : 0} ${r.reason == 'kind_mismatch' ? 1 : 0} $hex');
   }
@@ -116,6 +132,10 @@ func dartTextNumberLinearOracle(t *testing.T, cases []dartTextNumberLinearCase) 
 		refused, kind := "0", "0"
 		if !ok {
 			refused = "1"
+		}
+		if strings.HasPrefix(rep.Reason, "malformed") {
+			want = append(want, "1 0 malformed")
+			continue
 		}
 		if strings.HasPrefix(rep.Reason, "kind_mismatch") {
 			kind = "1"
