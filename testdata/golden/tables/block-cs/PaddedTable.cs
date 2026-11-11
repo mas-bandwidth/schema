@@ -554,11 +554,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void PaddedRowFixedClamp(PaddedRow value, TableReport report)
+        public static bool PaddedRowFixedClamp(PaddedRow value, TableReport report)
         {
             int clamped = 0;
             PaddedRowFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- PaddedRow, the fixed form ----
@@ -1115,6 +1116,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]); }
                 PaddedRowFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, PaddedRowFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = PaddedRowFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -1130,12 +1132,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                PaddedRowFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!PaddedRowFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);
@@ -1179,11 +1185,12 @@ namespace Blockdemo
         // past the enum's top value. Straight-line, after the run, over STORAGE,
         // so the identity plan and a plan compiled from a stranger's layout are
         // held to the same numbers by the same pass. Every clamp COUNTS.
-        public static void PaddedFrameFixedClamp(PaddedFrame value, TableReport report)
+        public static bool PaddedFrameFixedClamp(PaddedFrame value, TableReport report)
         {
             int clamped = 0;
             PaddedFrameFixedClampBody(value, ref clamped);
             if (clamped != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+            return clamped == 0;
         }
 
         // ---- PaddedFrame, the fixed form ----
@@ -5053,6 +5060,7 @@ namespace Blockdemo
                 if (fillCount < 0) { TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]); }
                 PaddedFrameFixedFillRun(fillBuf.AsSpan(0, fillCount), values[k]);
                 int forgedOrdinal = 0;
+                bool refused = false;
                 // Specialized per-table twin of TableFixedWire.Run(entries, PaddedFrameFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.
                 string run_why = PaddedFrameFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
@@ -5068,12 +5076,16 @@ namespace Blockdemo
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                PaddedFrameFixedClamp(values[k], report);
-                if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
-                if (report != null && report.Refused)
+                if (!PaddedFrameFixedClamp(values[k], report)) { refused = true; }
+                if (forgedOrdinal != 0)
+                {
+                    if (report != null && !report.Refused) { report.Refused = true; report.Reason = "out_of_range"; }
+                    refused = true;
+                }
+                if (refused)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    report.Verdict = TableWire.Verdict.Refused;
+                    if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 at = at.Slice((int)record_bytes);

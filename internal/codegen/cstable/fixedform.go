@@ -1964,7 +1964,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("// THE WRITER'S OWN BOUNDS per lineage entry, as one delegate array the\n")
 		g.pf("// load indexes by pick: null for the identity entry and for entries that\n")
 		g.pf("// bound nothing.\n")
-		g.pf("public static readonly System.Action<%s, TableReport>[] %sFixedClampKnown = new System.Action<%s, TableReport>[] {\n", name, name, name)
+		g.pf("public static readonly System.Func<%s, TableReport, bool>[] %sFixedClampKnown = new System.Func<%s, TableReport, bool>[] {\n", name, name, name)
 		for i, rows := range entryBounds {
 			if len(rows) == 0 {
 				g.pf("    null,\n")
@@ -2085,7 +2085,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
 		g.pf("    // pass, so a value forged past what the writer could have written lands\n")
 		g.pf("    // the writer's bound and counts, never this reader's wider own.\n")
-		g.pf("    System.Action<%s, TableReport> writerClamp = null;\n", name)
+		g.pf("    System.Func<%s, TableReport, bool> writerClamp = null;\n", name)
 	}
 	// THE IDENTITY LANE IS AN INDEX COMPARISON (§5.3): the reader's own entry is
 	// the LAST lineage entry (§5.2 appends the current layout last), so the lane
@@ -2151,6 +2151,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// in the used units comes back as the name text_ill_formed, and the load
 	// refuses BY NAME — not malformed, and nothing decoded past it.
 	g.pf("        int forgedOrdinal = 0;\n")
+	g.pf("        bool refused = false;\n")
 	g.pf("        // Specialized per-table twin of TableFixedWire.Run(entries, %sFixedSlots, ...): one compiled loop per plan, no delegate call per plan entry.\n", name)
 	g.pf("        string run_why = %sFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);\n", name)
 	g.pf("        if (run_why != null)\n        {\n")
@@ -2173,18 +2174,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
 	// emits no pass and this line is not written at all.
 	if hasWriterBounds {
-		g.pf("        writerClamp?.Invoke(values[k], report);\n")
+		g.pf("        if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }\n")
 	}
 	if ir.TableFixedClampNeeded(st) {
-		g.pf("        %sFixedClamp(values[k], report);\n", name)
+		g.pf("        if (!%sFixedClamp(values[k], report)) { refused = true; }\n", name)
 	}
 	// THE FORGED ORDINAL'S CLAMP IS THE BOUNDS STEP'S TOO (§5.4): the ordinal
 	// op lands `None` and moves nothing, recording the forge in the per-record
 	// lane; the count reaches the report here, beside the storage pass's own.
-	g.pf("        if (forgedOrdinal != 0 && report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
-	g.pf("        if (report != null && report.Refused)\n        {\n")
+	g.pf("        if (forgedOrdinal != 0)\n        {\n")
+	g.pf("            if (report != null && !report.Refused) { report.Refused = true; report.Reason = \"out_of_range\"; }\n")
+	g.pf("            refused = true;\n")
+	g.pf("        }\n")
+	g.pf("        if (refused)\n        {\n")
 	g.pf("            for (int j = 0; j <= k; ++j) { TableReset(values[j]); }\n")
-	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n")
+	g.pf("            if (report != null) { report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
