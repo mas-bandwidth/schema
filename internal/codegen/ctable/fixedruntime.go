@@ -642,11 +642,14 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
                never a value, so the reader overwrites them with the caller's
                own reset image. aux is the payload's storage offset and size
                its storage bytes. A flag byte past 1 is wire damage, as for a
-               bool (fix 2). */
+               bool (fix 2). THE COPY IS ONE PLAIN memcpy, not copy_run: it runs
+               only for an absent payload, off the hot path, and copy_run's
+               width branches hand the compiler a path whose size is past the
+               whole defaults image, which -Warray-bounds then names. */
             const uint8_t flag = (uint8_t) ( src[p->src] != 0 );
             if ( src[p->src] > 1 ) { (*damaged)++; }
             dst[p->dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }
             break;
         }
         default: break;

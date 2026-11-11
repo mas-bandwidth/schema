@@ -120,7 +120,7 @@ func TestCAndCppTwinHeadersAgreeNegativeControl(t *testing.T) {
 	absentFaults := []struct{ name, from, to string }{
 		{
 			"the C present-defaults entry stops copying the declared defaults",
-			"if ( flag == 0 && defaults != NULL ) { table_fixed_copy_run( dst + p->aux, defaults + p->aux, p->size ); }",
+			"if ( flag == 0 && defaults != NULL ) { memcpy( dst + p->aux, defaults + p->aux, p->size ); }",
 			"",
 		},
 		{

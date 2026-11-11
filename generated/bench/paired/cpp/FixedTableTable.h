@@ -4010,9 +4010,12 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // is 0 those bytes are slack and never a value, so the reader
             // overwrites them with the caller's own Reset image. Aux is the
             // payload's storage offset and Size its storage bytes.
+            // THE COPY IS ONE PLAIN memcpy, not TableFixedCopyRun: it runs only
+            // for an absent payload, off the hot path, and the C twin needs the
+            // plain copy so -Warray-bounds sees no path past the defaults image.
             const uint8_t flag = (uint8_t) ( src[p.src] != 0 );
             dst[p.dst] = flag;
-            if ( flag == 0 && defaults != NULL ) { TableFixedCopyRun( dst + p.aux, defaults + p.aux, p.size ); }
+            if ( flag == 0 && defaults != NULL ) { memcpy( dst + p.aux, defaults + p.aux, p.size ); }
             break;
         }
         default: break;

@@ -96,7 +96,11 @@ void fixed_v1_bounds( void )
         fixed_check( made > 0, "C live-count: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) TBLV1_K_TABLE_FIXED_BOOL ) { past_the_set++; }
+            /* TBLV1_K_TABLE_FIXED_PRESENT_DEFAULTS is the present flag plus an absent
+               payload's declared defaults, not a range op: the C++ reference
+               counts it out the same way. */
+            if ( compiled[i].op > (uint8_t) TBLV1_K_TABLE_FIXED_BOOL &&
+                 compiled[i].op != (uint8_t) TBLV1_K_TABLE_FIXED_PRESENT_DEFAULTS ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no range op either" );
 
