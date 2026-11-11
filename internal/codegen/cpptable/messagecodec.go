@@ -238,15 +238,13 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 		g.emitMessageKeyed(f, entry, pass)
 
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
-		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n",
-			name, name, f.Type.Size, messageBad(pass))
+		g.storageAssert("    ", "value."+name+"_length", f.Type.Size)
 		g.pf("    if ( value.%s_length > 0 )\n    {\n", name)
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageTextPayload(f, entry, "value."+name, fmt.Sprintf("value.%s_length", name), "        ", pass)
 		g.pf("    }\n")
 	case f.CountedOnWire():
-		g.pf("    if ( value.%s_count < 0 || value.%s_count > %d ) { return %s; } // storage invariant\n",
-			name, name, f.ArrayBound, messageBad(pass))
+		g.storageAssert("    ", "value."+name+"_count", f.ArrayBound)
 		g.pf("    if ( value.%s_count > 0 )\n    {\n", name)
 		g.emitMessageHeader(entry, pass, "        ")
 		g.emitMessageArray(f, entry, fmt.Sprintf("value.%s_count", name), "value."+name+"[%s]", "        ", pass)
@@ -516,7 +514,7 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry, expr, ind string, pass messagePass) {
 	switch {
 	case f.Type.Kind == ir.TString && !f.Type.TextUnbounded():
-		g.pf("%sif ( value.%s_length < 0 || value.%s_length > %d ) { return %s; } // storage invariant\n", ind, f.Name, f.Name, f.Type.Size, messageBad(pass))
+		g.storageAssert(ind, "value."+f.Name+"_length", f.Type.Size)
 		g.emitMessageTextPayload(f, entry, expr, "value."+f.Name+"_length", ind, pass)
 	case f.Array != ir.ArrayNone:
 		count := strconv.FormatInt(f.ArrayBound, 10)
@@ -577,12 +575,12 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	value, count := armValue(base, v), armCount(base, v)
 	switch {
 	case af.Type.Kind == ir.TString || af.Type.Kind == ir.TBytes:
-		g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.Type.Size, messageBad(pass))
+		g.storageAssert(ind, count, af.Type.Size)
 		g.emitMessageTextPayload(af, entry, value, count, ind, pass)
 	case af.Array != ir.ArrayNone:
 		n := strconv.FormatInt(af.ArrayBound, 10)
 		if af.Array == ir.ArrayCounted {
-			g.pf("%sif ( %s < 0 || %s > %d ) { return %s; } // storage invariant\n", ind, count, count, af.ArrayBound, messageBad(pass))
+			g.storageAssert(ind, count, af.ArrayBound)
 			n = count
 		}
 		g.emitMessageArray(af, entry, n, value+"[%s]", ind, pass)

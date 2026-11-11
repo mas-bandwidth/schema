@@ -101,6 +101,9 @@ type tableGen struct {
 	// anyList is the unit declaring at least one `[]T` (docs/SPEC-TABLES.md
 	// §2.9). It gates the list runtime and the builder's three the same way.
 	anyList bool
+	// storageAsserts is set once a write-side storage check is emitted
+	// (storageAssert): those are schema_assert, so the header takes the hook.
+	storageAsserts bool
 	// anyExtent is either: the unit carries the NODE EXTENT machinery both
 	// constructs share: the carve, the framing walk, the extent walks and the
 	// refusal reason (§2.8, §2.9, §6.5). A unit with neither carries none of it.
@@ -2124,8 +2127,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
-		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
+		// them. The variable and message writers' storage checks are the same
+		// debug-only schema_assert (docs/SPEC.md §5.1). A unit of plain
+		// scalars declares none of them and gets no hook.
+		if !anyKeyed && !anyList && !anyTextList && (ir.TableFixedHasWriteBound(u) || g.storageAsserts) {
 			h.WriteString(tableAssertHook)
 		}
 		if anyKeyed || anyList || anyTextList {
