@@ -150,6 +150,9 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkNativeMapping()
 	c.checkTargetNames()
 	c.assemble()
+	if len(c.errs) == 0 {
+		c.checkZeroBitPacketArrays()
+	}
 	c.checkSizes()
 	if len(c.errs) > 0 {
 		return nil, c.errs
@@ -4788,6 +4791,59 @@ func (c *checker) assemble() {
 		u.Files = append(u.Files, irf)
 	}
 	maps.Copy(u.DeclFile, c.declFile)
+}
+
+// checkZeroBitPacketArrays refuses a packet counted array whose ELEMENT
+// encodes in zero bits (SPEC §4.6): an empty type, a ranged integer or fixed
+// value with min = max, or a type all of whose fields cost nothing. The count
+// is the only thing that varies on such a field, so a hostile count would be
+// almost the whole wire cost while the reader still materializes the declared
+// bound in memory. A fixed [N]T is not refused: its extent is a compile-time
+// constant, so no value read from the wire chooses its size.
+func (c *checker) checkZeroBitPacketArrays() {
+	refuse := func(owner, arm string, f *ir.Field) {
+		if f.Array != ir.ArrayCounted {
+			return
+		}
+		elem := *f
+		elem.Array = ir.ArrayNone
+		if ir.MaxBitsField(&elem) != 0 {
+			return
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[owner]; ok {
+			pos = d.DeclPos()
+		}
+		where := fmt.Sprintf("field %s", f.Name)
+		if arm != "" {
+			where = fmt.Sprintf("union %s: arm %s", owner, arm)
+		}
+		c.errf(pos, "%s: a counted array whose element encodes in zero bits is refused — its count would be almost the whole cost on the wire while the reader still materializes the declared bound in memory; give the element a wire bit (an empty type, a min = max range and a type of zero-bit fields all cost none) (SPEC §4.6)", where)
+	}
+
+	names := make([]string, 0, len(c.unit.Structs))
+	for name := range c.unit.Structs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, f := range c.unit.Structs[name].Fields {
+			refuse(name, "", f)
+		}
+	}
+
+	unions := make([]string, 0, len(c.unit.Unions))
+	for name := range c.unit.Unions {
+		unions = append(unions, name)
+	}
+	sort.Strings(unions)
+	for _, name := range unions {
+		for _, v := range c.unit.Unions[name].Variants {
+			if v.F != nil {
+				refuse(name, v.Name, v.F)
+			}
+		}
+	}
 }
 
 // checkSizes refuses a unit whose derived sizes pass the caps [ir.CheckSizes]
