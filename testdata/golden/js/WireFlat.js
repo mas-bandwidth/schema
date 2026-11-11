@@ -2598,6 +2598,9 @@ export function ReadTestDataFlat(view, numBits, value) {
   s2 = br & 7;
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   br += 32;
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -2632,6 +2635,9 @@ export function ReadTestDataFlat(view, numBits, value) {
   out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
   v = out >>> 0;
   SC.setUint32(4, v, true);
+  if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.doubleValue = SC.getFloat64(0, true);
   br += 32;
   bi = br >>> 3;

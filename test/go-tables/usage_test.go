@@ -10,7 +10,6 @@ import (
 
 // Compile the page itself, so a renamed API or reordered argument cannot drift.
 func TestUsage(t *testing.T) {
-	t.Skip("docs/USAGE.md still documents the tolerant report fields; the page moves to the strict read in layer 5")
 	page, err := os.ReadFile("../../docs/USAGE.md")
 	if err != nil {
 		t.Fatal(err)
