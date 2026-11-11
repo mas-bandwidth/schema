@@ -547,7 +547,7 @@ public final class TableVocabulary {
             }
             if (s.packing == 1 && kind != 10) {
                 long bits = r.leb();
-                if (r.err || bits > (long) kindWidth(kind) * 8) {
+                if (r.err || Long.compareUnsigned(bits, (long) kindWidth(kind) * 8) > 0) {
                     return null;
                 }
                 s.bits = bits;
@@ -598,7 +598,7 @@ public final class TableVocabulary {
         }
         if (kind == 12) {
             long max = r.leb();
-            if (r.err || max > 0x7fffffffL) {
+            if (r.err || Long.compareUnsigned(max, 0x7fffffffL) > 0) {
                 return null;
             }
             s.max = max;
@@ -607,13 +607,13 @@ public final class TableVocabulary {
         if (kind == 14 || kind == 16) {
             if (kind == 14) {
                 long min = r.leb();
-                if (r.err || min > 0xffffffffL) {
+                if (r.err || Long.compareUnsigned(min, 0xffffffffL) > 0) {
                     return null;
                 }
                 s.min = min;
             }
             long max = r.leb();
-            if (r.err || max > 0xffffffffL || max < s.min) {
+            if (r.err || Long.compareUnsigned(max, 0xffffffffL) > 0 || Long.compareUnsigned(max, s.min) < 0) {
                 return null;
             }
             s.max = max;
