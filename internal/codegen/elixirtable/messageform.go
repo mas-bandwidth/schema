@@ -228,11 +228,12 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp encode_value(_vocab, 0, _shape, _elem, _value, acc), do: {:ok, acc}
   defp encode_value(_vocab, 32, _shape, _elem, _value, acc), do: {:ok, acc}
 
-  defp encode_value(_vocab, 1, _shape, _elem, value, acc), do: {:ok, put_bits(acc, value, 1)}
+  defp encode_value(_vocab, 1, _shape, _elem, value, acc) when value in [0, 1],
+    do: {:ok, put_bits(acc, value, 1)}
 
   defp encode_value(_vocab, kind, shape, _elem, value, acc)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
-       do: {:ok, encode_scalar(kind, shape, value, acc)}
+       do: encode_scalar(kind, shape, value, acc)
 
   defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
 
@@ -248,22 +249,50 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp encode_value(vocab, 15, _shape, _elem, value, acc), do: encode_union(vocab, value, acc)
 
-  defp encode_value(vocab, 30, _shape, _elem, value, acc),
-    do: {:ok, put_bits(acc, value, vocab.ref_bits)}
+  defp encode_value(vocab, 30, _shape, _elem, value, acc) do
+    if enum_ref?(vocab, value), do: {:ok, put_bits(acc, value, vocab.ref_bits)}, else: :error
+  end
 
   defp encode_value(_vocab, _kind, _shape, _elem, _value, _acc), do: :error
 
-  defp encode_scalar(kind, shape, value, acc) do
+  # A SCALAR THE SHAPE CANNOT CARRY IS REFUSED, NEVER MASKED (docs/SPEC.md §5.1,
+  # docs/SPEC-TABLES.md §3.3): a ranged value rides as value - base in its
+  # bits, so it must lie in [base, base + 2^bits - 1]; an unranged integer rides
+  # at its storage width, so it must lie in that width's signed or unsigned
+  # range, the same domain read_scalar returns.
+  defp encode_scalar(kind, shape, value, acc) when is_integer(value) do
     bits = scalar_bits(kind, shape)
 
     raw =
       case shape do
         %{packing: 1, base: base} -> value - base
-        _ -> mask_bits(value, bits)
+        _ -> if kind in [2, 3, 4, 5, 18, 36], do: value + (1 <<< (bits - 1)), else: value
       end
 
-    put_bits(acc, raw, bits)
+    if raw >= 0 and raw <= bit_mask(bits) do
+      {:ok, put_bits(acc, scalar_raw(shape, value, raw, bits), bits)}
+    else
+      :error
+    end
   end
+
+  defp encode_scalar(_kind, _shape, _value, _acc), do: :error
+
+  defp scalar_raw(%{packing: 1}, _value, raw, _bits), do: raw
+  defp scalar_raw(_shape, value, _raw, bits), do: mask_bits(value, bits)
+
+  # An enum value is the zero reference or a reference to a name entry: the
+  # references read_enum accepts and no other.
+  defp enum_ref?(_vocab, 0), do: true
+
+  defp enum_ref?(vocab, ref) when is_integer(ref) do
+    case entry_at(vocab, ref) do
+      {:ok, entry} -> entry.kind == 0 and entry.id < 0xFFFFFFFFFFFFFFFD
+      :error -> false
+    end
+  end
+
+  defp enum_ref?(_vocab, _ref), do: false
 
   defp encode_float(%{packing: 0}, value, acc),
     do: {:ok, put_bits(acc, f32_to_bits(value), 32)}
@@ -1151,7 +1180,12 @@ const messageRuntimeBody = `  defstruct announced: false,
                   if kind >= 18 do
                     case rest2 do
                       <<lo::little-unsigned-64, hi::little-unsigned-64, rest3::binary>> ->
-                        {:ok, %{kind: kind, packing: 1, bits: n, base: hi <<< 64 ||| lo}, rest3}
+                        # A signed kind's sixteen-byte base is two's complement
+                        # (docs/SPEC-TABLES.md §3.3): int128 and the signed
+                        # fixed-point widths announce a base below zero.
+                        base = hi <<< 64 ||| lo
+                        base = if kind in [18, 20, 21, 22, 23, 24], do: sign_extend(base, 128), else: base
+                        {:ok, %{kind: kind, packing: 1, bits: n, base: base}, rest3}
 
                       _ ->
                         :error
