@@ -541,7 +541,7 @@ public final class FixedTableVariable {
         TableJson.In in = new TableJson.In(text, report);
         in.byteOrderMark();
         Value v = new Value();
-        jsonReadFields(in, v);
+        jsonReadFields(in, v, 0);
         if (in.bad) {
             report.damaged = true;
         }
@@ -608,9 +608,13 @@ public final class FixedTableVariable {
         }
     }
 
-    public static Value readJsonPointer(TableJson.In in, long targetTypeId) {
+    public static Value readJsonPointer(TableJson.In in, long targetTypeId, int depth) {
         if (in.peek() == 'n') {
             in.lit("null");
+            return null;
+        }
+        if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+            in.bad = true;
             return null;
         }
         if (in.peek() != '{') {
@@ -624,7 +628,7 @@ public final class FixedTableVariable {
         if (in.peek() == '}') {
             in.p = start;
             Value v = new Value();
-            jsonReadFields(in, v);
+            jsonReadFields(in, v, depth + 1);
             return v;
         }
         String key = in.scanString();
@@ -632,7 +636,7 @@ public final class FixedTableVariable {
         if (!"&node".equals(key)) {
             in.p = start;
             Value v = new Value();
-            jsonReadFields(in, v);
+            jsonReadFields(in, v, depth + 1);
             return v;
         }
         if (in.peek() != ':') {
@@ -671,7 +675,7 @@ public final class FixedTableVariable {
             Value child = new Value();
             TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);
             in.labels.put(labelId, entry);
-            jsonReadFieldsBody(in, child);
+            jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
         } else {
@@ -680,17 +684,21 @@ public final class FixedTableVariable {
         }
     }
 
-    static void jsonReadFields(TableJson.In in, Value v) {
+    static void jsonReadFields(TableJson.In in, Value v, int depth) {
+        if (depth > TableJson.In.MAX_JSON_DEPTH) {
+            in.bad = true;
+            return;
+        }
         in.space();
         if (in.peek() != '{') {
             in.bad = true;
             return;
         }
         in.p++;
-        jsonReadFieldsBody(in, v);
+        jsonReadFieldsBody(in, v, depth);
     }
 
-    static void jsonReadFieldsBody(TableJson.In in, Value v) {
+    static void jsonReadFieldsBody(TableJson.In in, Value v, int depth) {
         boolean[] seenField = new boolean[1];
         while (true) {
             int c = in.peek();
@@ -729,7 +737,7 @@ public final class FixedTableVariable {
                         v.value = new BenchMixedVariable.Value();
                     }
                     if (in.peek() == '{') {
-                        BenchMixedVariable.jsonReadFields(in, v.value);
+                        BenchMixedVariable.jsonReadFields(in, v.value, depth + 1);
                     } else {
                         in.skipValue();
                         in.rep.refuse("kind_mismatch");

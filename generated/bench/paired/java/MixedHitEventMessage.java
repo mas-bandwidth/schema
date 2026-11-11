@@ -50,6 +50,16 @@ public final class MixedHitEventMessage {
     }
 
     public static boolean loadMessageBody(TableMessage.Reader r, MixedHitEventFixed.Value v) {
+        int seenFieldMark = r.seenMark();
+        try {
+            return loadMessageBodyFields(r, v, seenFieldMark);
+        } finally {
+            r.seenRollback(seenFieldMark);
+        }
+    }
+
+    private static boolean loadMessageBodyFields(
+            TableMessage.Reader r, MixedHitEventFixed.Value v, int seenFieldMark) {
         reset(v);
         while (true) {
             TableVocabulary.Entry entry = r.ref();
@@ -59,6 +69,10 @@ public final class MixedHitEventMessage {
             }
             if (entry == null) {
                 return true;
+            }
+            if (!r.seenAdd(seenFieldMark, entry.id)) {
+                r.report.damaged = true;
+                return false;
             }
             int idHi = (int) (entry.id >>> 32);
             int idLo = (int) entry.id;

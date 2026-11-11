@@ -269,6 +269,14 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
   if (val is int) {
     wide = BigInt.from(val);
   } else if (val is _JNum && val.integral) {
+    // a token whose magnitude a double rounds to infinity is past every
+    // integer storage domain: refuse it by value, never an Error, without
+    // materializing a BigInt from an arbitrarily long token
+    // (docs/SPEC-TABLES.md §16.2)
+    if (!val.d.isFinite) {
+      r.refuse('out_of_range');
+      return def;
+    }
     wide = BigInt.parse(val.token);
   } else {
     final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
@@ -714,7 +722,11 @@ String _jsonPrepare(String text, TableTextReport r) {
     if (c == 0x2c) {
       var j = i + 1;
       while (j < stripped.length && stripped[j] <= 0x20) j++;
-      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) continue;
+      if (j < stripped.length && (stripped[j] == 0x7d || stripped[j] == 0x5d)) {
+        var k = i - 1;
+        while (k >= 0 && stripped[k] <= 0x20) k--;
+        if (k >= 0 && stripped[k] != 0x7b && stripped[k] != 0x5b && stripped[k] != 0x2c && stripped[k] != 0x3a) continue;
+      }
     }
     clean.add(c);
   }
