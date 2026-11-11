@@ -441,6 +441,8 @@ func (g *tableGen) wireReadKeyed(f *ir.Field, kind int, ind string) {
 		g.pf("%s        if(elem.offset!=elem.size) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; %s(&%s); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 	} else {
 		g.wireScalarRead(f, dst, "elem", "elem_kind", ind+"        ", "r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; goto next_"+f.Name+";")
+		// The slot's L frames its element exactly (docs/SPEC-TABLES.md §4).
+		g.pf("%s        if ( elem.offset != elem.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
 	}
 	if kind != tkTable {
 		g.pf("%s        next_%s: ;\n", ind, f.Name)
