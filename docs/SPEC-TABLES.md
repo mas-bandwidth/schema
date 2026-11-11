@@ -16151,6 +16151,7 @@ The field reads from and writes to `"type"`. Two fields of one table whose
 keys collide are refused at compile time, naming both, as wire ids are
 (§5); `json` on a field no table closure reaches is refused (§11); and
 `json = ""` is refused at compile time, because an empty key names nothing.
+A `json` key containing `U+0000` is also refused at compile time, because the text reader refuses that key (§16.3).
 **The attribute changes no byte on the wire**: keys are the text's business,
 ids are the wire's, and a schema may add, change or remove a `json` key
 without touching a stored file.

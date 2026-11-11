@@ -28,6 +28,19 @@ func buildUnit(t *testing.T, src string) *ir.Unit {
 	return u
 }
 
+func TestJsonKeyCannotHoldZero(t *testing.T) {
+	bad := "package t\ntable Tab { a int32 | json = \"a\x00b\" }\n"
+	errs := checkerErrors(t, bad)
+	if len(errs) != 1 || !strings.Contains(errs[0], "U+0000") {
+		t.Fatalf("json key containing U+0000: want one named refusal, got %v", errs)
+	}
+
+	good := "package t\ntable Tab { a int32 | json = \"a\x01b\" }\n"
+	if got := ir.TableFieldJsonKey(buildUnit(t, good).Tables["Tab"].Fields[0]); got != "a\x01b" {
+		t.Fatalf("nearby valid json key = %q", got)
+	}
+}
+
 // TestTableRefusals is the tables extension of the break-the-language suite:
 // every way to misuse a table that the checker provably catches.
 func TestTableRefusals(t *testing.T) {
