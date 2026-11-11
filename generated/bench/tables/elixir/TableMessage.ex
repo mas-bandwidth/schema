@@ -179,8 +179,10 @@ defmodule Benchtable.TableMessage do
     size = byte_size(data)
     count = :binary.decode_unsigned(binary_part(data, size - 8, 8), :little)
 
+    # §3, THE DISTINCTNESS CHECK: an entry count above 4096 is malformed
+    # whatever the buffer would hold
     cond do
-      count > div(size - 9, 8) ->
+      count > 4096 or count > div(size - 9, 8) ->
         {:error, :malformed}
 
       true ->
