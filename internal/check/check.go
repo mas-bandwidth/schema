@@ -1002,31 +1002,14 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	// variants are known keeps compiling and spends nothing on the wire, and a
 	// field typed by it round-trips as None without the schema having to
 	// invent a placeholder variant to satisfy the compiler.
+	// An enum takes no | max (SPEC §4.2): its wire range is [0, variant
+	// count] and nothing widens it. The key is read only so the refusal can
+	// name the declaration and the wire rule, rather than falling through to
+	// the generic unknown-attribute diagnostic.
 	max := int64(len(variants))
-	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, map[string]bool{"max": true})
+	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, nil, "max")
 	for _, a := range valued {
-		v, ok := c.evalInt(a.Value)
-		if !ok {
-			// the bound never resolved (a cycle, an undefined name, a bad
-			// expression — all already reported). Mark the enum degraded so
-			// dependents do not inherit the fallback count and report a
-			// CASCADE error naming a max the author never wrote.
-			if c.failedEnum == nil {
-				c.failedEnum = map[string]bool{}
-			}
-			c.failedEnum[d.Name] = true
-			continue
-		}
-		if !v.IsInt64() || v.Int64() < max {
-			c.errf(a.Pos, "enum %s | max = %s is below its variant count %d (SPEC §4.6)", d.Name, v, max)
-			continue
-		}
-		if v.Int64() > math.MaxInt32 {
-			// the enum wire rides the 32-bit ranged call in every target
-			c.errf(a.Pos, "enum %s | max = %s exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
-			continue
-		}
-		max = v.Int64()
+		c.errf(a.Pos, "enum %s takes no | max — an enum's wire range is [0, variant count] and nothing widens it (SPEC §4.2)", d.Name)
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
 		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags, VariantDeprecated: deprecated}
@@ -3205,10 +3188,6 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	}
 	for _, name := range sortedKeys(enums) {
 		e := enums[name]
-		if e.Max > int64(len(e.Variants)) {
-			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (docs/SPEC-TABLES.md §5)",
-				name, e.Max, reachedBy[name], name)
-		}
 		seen := map[uint64]string{}
 		for i, v := range e.Variants {
 			// THE EFFECTIVE NAME: a variant renamed under `was` rides under

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2)
 defmodule Example.Weapon do
@@ -11,7 +11,23 @@ defmodule Example.Weapon do
   An unnamed value up to the declared max is the integer itself.
   """
 
-  @type t :: :none | :laser | :missile | :railgun | 4..15
+  @type t ::
+          :none
+          | :laser
+          | :missile
+          | :railgun
+          | :flak
+          | :beam
+          | :plasma
+          | :torpedo
+          | :mine
+          | :drone
+          | :swarm
+          | :pulse
+          | :lance
+          | :comet
+          | :quake
+          | :arc
 
   @doc "The wire value of a Weapon value; anything else raises ArgumentError."
   @spec to_int(t()) :: 0..15
@@ -19,7 +35,18 @@ defmodule Example.Weapon do
   def to_int(:laser), do: 1
   def to_int(:missile), do: 2
   def to_int(:railgun), do: 3
-  def to_int(v) when is_integer(v) and v > 3 and v <= 15, do: v
+  def to_int(:flak), do: 4
+  def to_int(:beam), do: 5
+  def to_int(:plasma), do: 6
+  def to_int(:torpedo), do: 7
+  def to_int(:mine), do: 8
+  def to_int(:drone), do: 9
+  def to_int(:swarm), do: 10
+  def to_int(:pulse), do: 11
+  def to_int(:lance), do: 12
+  def to_int(:comet), do: 13
+  def to_int(:quake), do: 14
+  def to_int(:arc), do: 15
 
   def to_int(v) do
     raise ArgumentError, "not a Weapon value: #{inspect(v)}"
@@ -31,7 +58,18 @@ defmodule Example.Weapon do
   def from_int(1), do: {:ok, :laser}
   def from_int(2), do: {:ok, :missile}
   def from_int(3), do: {:ok, :railgun}
-  def from_int(v) when is_integer(v) and v > 3 and v <= 15, do: {:ok, v}
+  def from_int(4), do: {:ok, :flak}
+  def from_int(5), do: {:ok, :beam}
+  def from_int(6), do: {:ok, :plasma}
+  def from_int(7), do: {:ok, :torpedo}
+  def from_int(8), do: {:ok, :mine}
+  def from_int(9), do: {:ok, :drone}
+  def from_int(10), do: {:ok, :swarm}
+  def from_int(11), do: {:ok, :pulse}
+  def from_int(12), do: {:ok, :lance}
+  def from_int(13), do: {:ok, :comet}
+  def from_int(14), do: {:ok, :quake}
+  def from_int(15), do: {:ok, :arc}
   def from_int(_), do: :error
 
   @doc "The exported extent: the highest wire-legal value (SPEC §4.2)."
@@ -416,6 +454,30 @@ defmodule Example.Wire do
       2 -> "Missile"
       :railgun -> "Railgun"
       3 -> "Railgun"
+      :flak -> "Flak"
+      4 -> "Flak"
+      :beam -> "Beam"
+      5 -> "Beam"
+      :plasma -> "Plasma"
+      6 -> "Plasma"
+      :torpedo -> "Torpedo"
+      7 -> "Torpedo"
+      :mine -> "Mine"
+      8 -> "Mine"
+      :drone -> "Drone"
+      9 -> "Drone"
+      :swarm -> "Swarm"
+      10 -> "Swarm"
+      :pulse -> "Pulse"
+      11 -> "Pulse"
+      :lance -> "Lance"
+      12 -> "Lance"
+      :comet -> "Comet"
+      13 -> "Comet"
+      :quake -> "Quake"
+      14 -> "Quake"
+      :arc -> "Arc"
+      15 -> "Arc"
       _ -> "???"
     end
   end

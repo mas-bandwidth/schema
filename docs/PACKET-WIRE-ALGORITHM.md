@@ -266,7 +266,7 @@ PUT_RANGED(w, value, min, max):
 | `float32` | the IEEE-754 bit pattern of a **finite** value as 32 bits; `-0` and subnormals bit exact. `ASSERT` finite on write; on read, test the raw bits and refuse a NaN or an infinity as `non_finite_float` before the field is written (SPEC.md §4.3, serialize format 2.0; which targets enforce it today is §4.3's backend status) |
 | `float64` | the IEEE-754 bit pattern of a **finite** value as 64 bits, low dword first; the same finite rule as `float32` |
 | compressed `float32 \| min, max, resolution` | see §2.5 |
-| an enum `E` | `PUT_RANGED(w, ordinal, 0, E.Max)` — `None = 0`, variants dense from 1, `Max` may exceed the variant count (`\| max = K` headroom; non-variant values are wire-legal) |
+| an enum `E` | `PUT_RANGED(w, ordinal, 0, E.Max)` — `None = 0`, variants dense from 1, `Max` IS the variant count; the wire range is `[0, variant count]` and every value names a variant |
 | a `flags` mask | `W` raw bits, `W` = variant count or the widened max. `ASSERT value < 2^W` when `W < 64` (a bit above the wire width is writer misuse, not silent truncation). Every pattern of `W` bits is legal |
 | a nested `type` | `WRITE` of that type, in place |
 | a `union` | §2.6 |
@@ -410,7 +410,7 @@ because the internal align contributes zero bits.
 | `fixed` / `ufixed` | read the offset in `bitlen(max-min)+F` bits (zero when `min == max`); if offset > raw span `REFUSE`; `raw := (min << F) + offset` |
 | `float32` / `float64` | 32 / 64 raw bits as the IEEE-754 pattern, no repair |
 | compressed `float32` | §3.4 |
-| an enum | `GET_RANGED(r, 0, E.Max)`; a value in headroom stands |
+| an enum | `GET_RANGED(r, 0, E.Max)`; the wire range is `[0, variant count]`, so every value names a variant |
 | a `flags` mask | `GET_VALUE(r, W)`; every pattern legal |
 | a nested `type` | `READ` of that type |
 | a `union` | §3.5 |
@@ -544,7 +544,7 @@ are the work.
 | `string(N)` length + align + bytes | `chat` | golden | | | | | | | | |
 | `string(N)` UTF-8 + interior null | `serialize/conformance/string.txt`, `packet-text` | | | | | | | | | |
 | `bytes(N)` | `serialize/conformance/bytes.txt`; `Block` in `Wire.schema` | | | | | | | | | |
-| enum with `\| max` headroom | `probearray` (`Weapon`) | golden | | | | | | | | |
+| enum, wire range `[0, Max]` | `probearray` (`Weapon`) | golden | | | | | | | | |
 | `flags` | `shipcreate_flags`, `ProbeFlags` | golden | | | | | | | | |
 | union tag + selected arm, None, void | `probecollider`, `packet-void`, `ArmDefaults` `0x51` | golden | | | | | | | | |
 | `int128` / `uint128` / `fixed` / `ufixed` | `ludicrous_state`, `fixed.txt` | golden | | | | | | | | |

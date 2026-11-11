@@ -2433,13 +2433,13 @@ Per `type`, per target:
    An enum's representation is the target's choice — an integer-backed named
    type in every target but Elixir (a Rust newtype, C#'s `enum E : uint`, Dart's
    `extension type const E(int _value) implements int`, which is erased to
-   the int and so costs nothing, holds every wire-legal value including `| max`
-   headroom as `E(n)`, and types the fields, union tags and table accessors
-   that store it). In Elixir a value is an ATOM (`:none` for 0, the variant's
-   snake_case otherwise, an unnamed `| max = K` headroom value the integer
-   itself) and `E.to_int/1` / `E.from_int/1` convert at the wire. Nothing
-   on the wire requires it: a wire value above max is refused on read (§4.2),
-   so no unnamed enum value is ever representable on the read side.
+   the int and so costs nothing, holds every wire-legal value in
+   `[0, variant count]` as `E(n)`, and types the fields, union tags and table
+   accessors that store it). In Elixir a value is an ATOM (`:none` for 0, the
+   variant's snake_case otherwise) and `E.to_int/1` / `E.from_int/1` convert
+   at the wire. An enum's wire range is `[0, variant count]` and nothing else:
+   a wire value above max is refused on read (§4.2), so no unnamed enum value
+   exists on the read side.
 
 2. **`Write(buffer, object) -> bytesWritten`** — straight-line write code in
    wire order. In Go, `Write<T>` returns `error` alone and the size written
@@ -3190,8 +3190,8 @@ Every row to date is settled, deferred with its design banked, or discarded.
 6. ~~A root/packet marker~~ — discarded.
 7. ~~Const expressions over enum counts~~ — settled: `E.Max` (§4.2);
    `const NumTeams = Team.Max`. `len(Team)` was declined: it has three
-   plausible meanings, and every one sizes enum-indexed tables wrong under
-   `max` headroom — the max is the true primitive.
+   plausible meanings, and every one sizes enum-indexed tables wrong — the
+   max is the true primitive.
 8. ~~Platform-conditional constants~~ — settled: constants are
    platform-uniform (§4.2); platform-varying tuning stays in application
    code.

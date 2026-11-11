@@ -9304,13 +9304,11 @@ values and a union's arms ride under their own name hashes (§3), so:
   rides by variant name exactly as a field-typed one does, so both rules
   above apply to it, and the diagnostic names the keying field as the edge
   that pulled it in.
-- **`| max = K` headroom on an enum in a table closure is refused**, key
-  enums included. A headroom value is reserved by number and named by
-  nothing, so it has no identity to ride under — and the table wire needs no headroom, because a
-  variant may be added anywhere. A stored value no variant names is
-  likewise refused on the way out: measure and save return failure rather
-  than writing `None` over it, exactly as they refuse an out-of-range union
-  tag.
+- **`| max = K` on an enum is refused**, key enums included: an enum's wire
+  range is `[0, variant count]` and nothing else (SPEC §4.2), so a table-wire
+  value always names a variant. A stored value no variant names is refused on
+  the way out: measure and save return failure rather than writing `None` over
+  it, exactly as they refuse an out-of-range union tag.
 - **Flags are the exception**: a mask is positional, and §4's append-at-the-
   end rule is the whole of its evolution story.
 
@@ -13333,9 +13331,8 @@ in build version (§20.5).
   union, whose name hashes collide, with both named (§5). An enum reaching
   the closure only as an ARRAY KEY is in scope, and the diagnostic names
   the keying field as the reaching edge (§2.4).
-- **`| max = K` headroom on an enum in a table closure** — a headroom value
-  has no name, and the table wire identifies a variant by name (§5). Key
-  enums are in scope on the same terms.
+- **`| max = K` on an enum** — an enum takes no headroom; its wire range is
+  `[0, variant count]` (SPEC §4.2). Key enums are in scope on the same terms.
 - Tables under a backend that carries none — **no target is in that state**
   (status, above): all nine carry the table wire, so a `table` declaration
   alone is refused by nobody. What a port refuses is a CONSTRUCT it lacks,
