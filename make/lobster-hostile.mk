@@ -20,9 +20,12 @@
 # verdict and makes the fixed read answer nothing, in a copy of the generated
 # units, so a clean wire of either form reads as damaged, and requires the
 # runner to go red naming the accepted wire case before the unplanted run is
-# green again.
+# green again. A second plant removes the packet reader's const check in a copy
+# of the packet unit, so a packet row the manifest refuses reads as accepted,
+# and requires the runner to go red naming that packet case.
 
 LOBSTER_HOSTILE_BUILD ?= build/lobster-hostile
+LOBSTER_HOSTILE_PACKET_PLANT ?= $(LOBSTER_HOSTILE_BUILD)-packet-plant
 
 .PHONY: schema-lobster-runs-hostile-corpus schema-lobster-runs-hostile-corpus-negative-control
 schema-lobster-runs-hostile-corpus: lobster-dist-present
@@ -45,5 +48,22 @@ schema-lobster-runs-hostile-corpus-negative-control: schema-lobster-runs-hostile
 	@grep -q '^FAIL wire-valid ' $(LOBSTER_HOSTILE_BUILD)-plant.log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming the accepted wire case'; \
 		  cat $(LOBSTER_HOSTILE_BUILD)-plant.log; exit 1; }
+	@rm -rf $(LOBSTER_HOSTILE_PACKET_PLANT) && cp -R $(LOBSTER_HOSTILE_BUILD) $(LOBSTER_HOSTILE_PACKET_PLANT)
+	@set -- $(LOBSTER_HOSTILE_PACKET_PLANT)/*/hostile.lobster; \
+	 if [ "$$#" -ne 1 ] || [ ! -f "$$1" ]; then \
+		echo 'NEGATIVE CONTROL FAILED: the packet unit module is missing'; exit 1; fi; \
+	 dst=$$1; src=$(LOBSTER_HOSTILE_BUILD)/$${dst#$(LOBSTER_HOSTILE_PACKET_PLANT)/}; \
+	 if [ ! -f "$$src" ]; then \
+		echo 'NEGATIVE CONTROL FAILED: the unplanted packet unit module is missing'; exit 1; fi; \
+	 sed -i.orig -e 's/^    if rv != 171: return stream\.fail(serialize_refusal_value_out_of_range).*/    if rv == 300: return stream.fail(serialize_refusal_value_out_of_range)/' "$$dst"; \
+	 if cmp -s "$$src" "$$dst"; then \
+		echo 'NEGATIVE CONTROL FAILED: the planted packet const-read bug did not apply'; exit 1; fi
+	@if go run ./test/conformance/lobster/hostile --units $(LOBSTER_HOSTILE_PACKET_PLANT) --no-generate \
+			> $(LOBSTER_HOSTILE_PACKET_PLANT).log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a packet reader that admits a wrong const left the corpus green'; \
+		cat $(LOBSTER_HOSTILE_PACKET_PLANT).log; exit 1; fi
+	@grep -q '^FAIL packet-const-wrong ' $(LOBSTER_HOSTILE_PACKET_PLANT).log || \
+		{ echo 'NEGATIVE CONTROL FAILED: the runner went red without naming the refused packet const case'; \
+		  cat $(LOBSTER_HOSTILE_PACKET_PLANT).log; exit 1; }
 	@$(MAKE) --no-print-directory schema-lobster-runs-hostile-corpus
-	@echo 'lobster hostile-corpus negative control: a load that calls a clean wire damaged reds the corpus; unplanted it is green'
+	@echo 'lobster hostile-corpus negative control: a load that calls a clean wire damaged and a packet reader that admits a wrong const red the corpus; unplanted it is green'
