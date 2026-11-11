@@ -3290,10 +3290,15 @@ defmodule Benchtable.Table do
           # body was read (directory_report), so this is never taken
           :null
 
+        :unknown ->
+          # a node whose type id this reader cannot name keeps its index, is
+          # counted unknown once by directory_report, and every pointer naming
+          # it reads null (§3.1); a target of a type it CANNOT name is this
+          # bullet, not the wrong-type refusal
+          :null
+
         _ ->
-          # a record this reader cannot name under a known pointer is a
-          # kind mismatch, not a null (§3.1, §4): the writer of a known
-          # pointer field names a record of the field's own type
+          # any other directory entry names no value for this pointer
           {:value, :wrong_type}
       end
     end
