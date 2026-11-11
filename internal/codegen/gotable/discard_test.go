@@ -92,7 +92,7 @@ func goBytes(b []byte) string {
 // defaults and the strict Load refuses; the region LoadTolerant and LoadRetain
 // hand back no root, with the retention store empty; the builder load answers
 // false with the builder's root at its defaults; a message batch that declares
-// one body more than it carries answers a count of 0 with every value reset,
+// more bodies than its bytes carry answers a count of 0 with every value reset,
 // as does one with a stray byte after its last body; and malformed text leaves
 // the value, fixed or variable, at its defaults. Red if any read hands back
 // what it decoded.
@@ -124,14 +124,15 @@ func TestDiscard(t *testing.T) {
 	var v Root
 	RootReset(&v)
 	var r TableReport
-	if RootFixedLoad([]Root{v}, fixed, make([]TableFixedEntry, 4096), &r) >= 0 {
+	vals := []Root{v}
+	if RootFixedLoad(vals, fixed, make([]TableFixedEntry, 4096), &r) >= 0 {
 		t.Fatalf("fixed: LoadTolerant answered true on damage")
 	}
 	if r.Err() == nil {
 		t.Fatalf("fixed: the report does not say malformed: %%+v", r)
 	}
-	if v.A != 0 || v.B != 0 || v.Inner.N != 0 {
-		t.Fatalf("fixed: a damaged load handed back a=%%d b=%%d n=%%d", v.A, v.B, v.Inner.N)
+	if got := vals[0]; got.A != 0 || got.B != 0 || got.Inner.N != 0 {
+		t.Fatalf("fixed: a damaged load handed back a=%%d b=%%d n=%%d", got.A, got.B, got.Inner.N)
 	}
 	var strict Root
 	var s TableReport
@@ -147,14 +148,28 @@ func TestDiscard(t *testing.T) {
 	if g.Err() == nil {
 		t.Fatalf("variable: the report does not say malformed: %%+v", g)
 	}
+	// The vector puts kind 37 on a field Inner declares as an int32: under the
+	// strict read that is a kind mismatch, which refuses the whole load
+	// (docs/SPEC-TABLES.md §4; docs/rulings.json strict-only-read). Every variable read
+	// of this leg names the same refusal for the same bytes.
+	damage := func(r TableReport) bool {
+		if r.Err() == nil {
+			return false
+		}
+		why := r.Refusal.Error()
+		return why == g.Refusal.Error() && (why == "wire_damaged" || why == "malformed" || why == "kind_mismatch")
+	}
+	if !damage(g) {
+		t.Fatalf("variable: the refusal is not a damage reason: %%+v", g)
+	}
 
 	retain := TableRetain{Bytes: make([]byte, 1<<12), Ids: make([]TableRetainID, 16)}
 	var rr TableReport
 	if GraphLoadRetain(aligned(1<<16), variable, &retain, &rr) != nil {
 		t.Fatalf("retain: LoadRetain handed back a root on damage")
 	}
-	if !(rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed") || retain.Used != 0 || retain.Count != 0 {
-		t.Fatalf("retain: malformed=%%v used=%%d count=%%d", (rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed"), retain.Used, retain.Count)
+	if !damage(rr) || retain.Used != 0 || retain.Count != 0 {
+		t.Fatalf("retain: refusal=%%v, the plain load's %%v; used=%%d count=%%d", rr.Refusal, g.Refusal, retain.Used, retain.Count)
 	}
 
 	var b GraphBuilder
@@ -166,7 +181,7 @@ func TestDiscard(t *testing.T) {
 	if GraphLoadBuilder(&b, variable, &br) {
 		t.Fatalf("builder: LoadBuilderTolerant answered true on damage")
 	}
-	if !(br.Refusal.Error() == "wire_damaged" || br.Refusal.Error() == "malformed") {
+	if !damage(br) {
 		t.Fatalf("builder: the report does not say malformed: %%+v", br)
 	}
 	if root := b.GetRoot(); root.A != 0 || root.B != 0 || root.Inner.N != 0 {
@@ -194,17 +209,20 @@ func TestDiscard(t *testing.T) {
 	if !AnnounceRead(&vocab, announcement, &arep) {
 		t.Fatalf("message: the announcement was refused: %%+v", arep)
 	}
-	decoded := make([]Root, 3)
+	decoded := make([]Root, 16)
 	var clean TableReport
 	if n, ok := RootLoadMessages(decoded, &vocab, batch, &clean); !ok || n != 2 || decoded[1].B != 8 {
 		t.Fatalf("message: the clean batch did not read: n=%%d ok=%%v %%+v", n, ok, clean)
 	}
 	short := append([]byte(nil), batch...)
-	short[1]++
+	// sixteen bodies declared, two carried: more than the final pad (seven bits
+	// at most) could hold as empty bodies. A count one past the bodies is not
+	// damage when the pad holds the zero reference an empty body is (§3.3).
+	short[1] = 15
 	var mr TableReport
 	n, ok := RootLoadMessages(decoded, &vocab, short, &mr)
 	if ok || n != 0 {
-		t.Fatalf("message: a batch that declares a missing body answered n=%%d ok=%%v", n, ok)
+		t.Fatalf("message: a batch that declares more bodies than it carries answered n=%%d ok=%%v", n, ok)
 	}
 	if !(mr.Refusal.Error() == "wire_damaged" || mr.Refusal.Error() == "malformed") || decoded[0].A != 0 || decoded[1].B != 0 {
 		t.Fatalf("message: a damaged batch handed back malformed=%%v first.a=%%d second.b=%%d", (mr.Refusal.Error() == "wire_damaged" || mr.Refusal.Error() == "malformed"), decoded[0].A, decoded[1].B)
