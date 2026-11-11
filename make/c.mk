@@ -221,9 +221,26 @@ C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
 
-build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+# THE DRIVER'S TRANSLATION UNITS COMPILE SIDE BY SIDE. One `$(CC) ... sources
+# -o driver` compiled every unit one after another; at -O2 that was 206 s on
+# four threads, past the per-commit two-minute rule on its own. Each unit is now
+# its own object, compiled with the same flags and include path the single
+# command gave it, so `make -j` runs as many at once as it is given, and the
+# objects are linked as before. The generated units are the corpus stamp's
+# output, which the empty rule below says.
+C_CONFORMANCE_OBJDIR := build/conformance-c-objs
+C_CONFORMANCE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_SOURCES:.c=.o))
+
+$(filter build/tables-generated-c/%,$(C_CONFORMANCE_SOURCES)): build/tables-generated-c/.stamp ;
+
+$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
+
+build/conformance-c: $(C_CONFORMANCE_OBJECTS)
 	@mkdir -p build
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_OBJECTS) -o $@ -lm
+
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
 # in its by-value closure must pay NOTHING for the pointer machinery — no
