@@ -2354,7 +2354,7 @@ across languages.
 |---|---|
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build |
 | C | 1–2 and 8 debug; 3–7 every build; 9 unchecked; 10 every build |
-| C# | 1–2 debug; 3–8 every build; 9 unchecked; 10 every build |
+| C# | 1–2 and 10 debug; 3–8 every build; 9 unchecked |
 | Rust | 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build |
 | Java | 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build |
 | Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |

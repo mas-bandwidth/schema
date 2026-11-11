@@ -2981,6 +2981,14 @@
       ]
     },
     {
+      "name": "write-refusal-storage-debug-cs",
+      "when": "pull-request",
+      "why": "The C# debug storage gate (docs/SPEC.md §5.1) requires assertions for an overlong counted array and string. Its control removes the generated assertions and requires both probes to turn red.",
+      "targets": [
+        "write-refusal-storage-debug-cs-negative-control"
+      ]
+    },
+    {
       "name": "write-refusal-storage-release-rust",
       "when": "pull-request",
       "why": "the Rust release storage gate (docs/SPEC.md §5.1): it generates a small table unit, runs its message writer in --release with debug assertions off, and requires a wstring length past its storage to be refused. The control strips the generated guard and requires that same release gate to go red. One small cargo build.",
