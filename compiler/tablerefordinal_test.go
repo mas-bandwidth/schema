@@ -44,6 +44,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -446,15 +447,18 @@ func TestCppTableRefOrdinalSharedId(t *testing.T) {
 	header := string(files["ProbeTable.h"])
 	const shared = "0x8ac625bb85ed202bull" // TableWireId( "alpha" )
 	call := "ids.ref_at( 5, " + shared + " )"
-	enumCall := "case Tag::alpha:\n            ref = " + call + ";\n            return true;"
-	if strings.Count(header, call) < 2 || strings.Count(header, enumCall) != 1 {
+	enumCall := regexp.MustCompile(`case Tag::alpha:\s+ref = ids\.ref_at\( 5, ` + regexp.QuoteMeta(shared) + ` \);\s+return true;`)
+	if strings.Count(header, call) < 2 || len(enumCall.FindAllStringIndex(header, -1)) != 1 {
 		t.Fatalf("the schema no longer gives one id both a field header and an enum variant: this test would prove nothing")
 	}
 	// Restore only the existing driver's shared key to its old generic path in
 	// this test-local header. The exactly-one check above prevents a stale
-	// replacement from silently dropping the generic-ref/ref_at coverage.
-	genericHeader := strings.Replace(header, enumCall,
-		"case Tag::alpha:\n            ref = ids.ref( "+shared+" );\n            return true;", 1)
+	// replacement from silently dropping the generic-ref/ref_at coverage. The
+	// case arm is matched on its tokens, not its line shape: the emitter may
+	// put the arm's statements on one line or several, as it does today.
+	genericHeader := enumCall.ReplaceAllStringFunc(header, func(string) string {
+		return "case Tag::alpha:\n            ref = ids.ref( " + shared + " );\n            return true;"
+	})
 	// the driver must live BESIDE the header: an #include "..." searches the
 	// including file's own directory first, and a driver written elsewhere
 	// would quietly compile against some other tree's copy
