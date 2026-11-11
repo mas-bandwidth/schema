@@ -235,9 +235,10 @@ public final class FixedTableFixed {
      * written, or -1 when the caller's buffer cannot hold them.
      */
     public static int save(Value[] values, int count, byte[] buffer) {
-        if (values == null || buffer == null || count < 0 || count > values.length) {
+        if (values == null || buffer == null || count < 0) {
             return -1;
         }
+        assert count <= values.length;
         final int need = measure(count);
         if (need < 0 || buffer.length < need) {
             return -1;

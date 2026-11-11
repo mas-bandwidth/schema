@@ -273,9 +273,7 @@ public final class TableCookWrite {
         }
         if (f.isArray) {
             int used = count(value, f, source);
-            if (used < 0 || used > f.arrayBound || (f.countOffset >= 0 && length(source) < used)) {
-                throw new IllegalArgumentException("array count");
-            }
+            assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);
             // a FIXED array's value may hold fewer than N elements: the slots
             // past it are value-initialized (§7.2) and reach no node
             used = Math.min(used, length(source));
@@ -738,18 +736,14 @@ public final class TableCookWrite {
                     /* variable bytes use their full length */
                 }
             }
-            if (used < 0 || used > f.arrayBound || used > bytes.length) {
-                throw new IllegalArgumentException("text length");
-            }
+            assert used >= 0 && used <= f.arrayBound && used <= bytes.length;
             if (out != null) {
                 System.arraycopy(bytes, 0, out, (int) dest, used);
             }
             put(out, order, at + f.countOffset, used, 4);
         } else if (f.isArray) {
             int used = count(source, f, v);
-            if (used < 0 || used > f.arrayBound || (f.countOffset >= 0 && length(v) < used)) {
-                throw new IllegalArgumentException("array count");
-            }
+            assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);
             if (f.countOffset >= 0) {
                 put(out, order, at + f.countOffset, used, 4);
             }

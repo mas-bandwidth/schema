@@ -1741,9 +1741,9 @@ func (g *messageGen) emitWriteBoundsCheck(f *ir.Field, owner string, indent int)
 	expr := owner + "." + name
 	switch {
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && f.Array == ir.ArrayNone && f.KeyEnum == "":
-		g.pf("%sif (%sLength < 0 || %sLength > %d) { return false; }\n", ind, expr, expr, f.Type.Size)
+		g.pf("%sassert %sLength >= 0 && %sLength <= %d;\n", ind, expr, expr, f.Type.Size)
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
-		g.pf("%sif (%sCount < %d || %sCount > %d) { return false; }\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
+		g.pf("%sassert %sCount >= %d && %sCount <= %d;\n", ind, expr, f.ArrayMin, expr, f.ArrayBound)
 	}
 }
 
@@ -2451,7 +2451,8 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            }\n")
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
-	g.pf("        if (values == null || count > values.length) { return -1; }\n")
+	g.pf("        if (values == null) { return -1; }\n")
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer w = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(w, values[i])) { return -1; }\n")
@@ -2480,10 +2481,11 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("            return -1;\n")
 	g.pf("        }\n")
 	if st.Integrity != "" {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 6) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 6) { return -1; }\n")
 	} else {
-		g.pf("        if (values == null || count > values.length || buffer == null || buffer.length < 2) { return -1; }\n")
+		g.pf("        if (values == null || buffer == null || buffer.length < 2) { return -1; }\n")
 	}
+	g.pf("        assert count <= values.length;\n")
 	g.pf("        TableMessage.Writer mw = new TableMessage.Writer(null, 2, true);\n")
 	g.pf("        for (int i = 0; i < count; i++) {\n")
 	g.pf("            if (values[i] == null || !saveMessageBody(mw, values[i])) { return -1; }\n")

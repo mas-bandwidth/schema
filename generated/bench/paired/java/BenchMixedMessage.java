@@ -110,14 +110,10 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.entitiesCount < 1 || v.entitiesCount > 8) {
-                return false;
-            }
+            assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
             if (v.entitiesCount > 0) {
                 w.put(10L, 7);
-                if (v.entitiesCount < 1 || v.entitiesCount > 8) {
-                    return false;
-                }
+                assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
                 w.put((long) (v.entitiesCount) - 1L, 3);
                 for (int i1 = 0; i1 < v.entitiesCount; i1++) {
                     if (!MixedEntityMessage.saveMessageBody(w, v.entities[i1])) {
@@ -127,14 +123,10 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.statsCount < 0 || v.statsCount > 80) {
-                return false;
-            }
+            assert v.statsCount >= 0 && v.statsCount <= 80;
             if (v.statsCount > 0) {
                 w.put(11L, 7);
-                if (v.statsCount < 0 || v.statsCount > 80) {
-                    return false;
-                }
+                assert v.statsCount >= 0 && v.statsCount <= 80;
                 w.put((long) (v.statsCount) - 0L, 7);
                 for (int i2 = 0; i2 < v.statsCount; i2++) {
                     if (!MixedStatMessage.saveMessageBody(w, v.stats[i2])) {
@@ -196,27 +188,19 @@ public final class BenchMixedMessage {
             }
         }
         {
-            if (v.playerNameLength < 0 || v.playerNameLength > 15) {
-                return false;
-            }
+            assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
             if (v.playerNameLength > 0) {
                 w.put(14L, 7);
-                if (v.playerNameLength < 0 || v.playerNameLength > 15) {
-                    return false;
-                }
+                assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
                 w.put((long) v.playerNameLength, 4);
                 w.raw(v.playerName, v.playerNameLength);
             }
         }
         {
-            if (v.payloadLength < 0 || v.payloadLength > 16) {
-                return false;
-            }
+            assert v.payloadLength >= 0 && v.payloadLength <= 16;
             if (v.payloadLength > 0) {
                 w.put(15L, 7);
-                if (v.payloadLength < 0 || v.payloadLength > 16) {
-                    return false;
-                }
+                assert v.payloadLength >= 0 && v.payloadLength <= 16;
                 w.put((long) v.payloadLength - 0L, 5);
                 w.raw(v.payload, v.payloadLength);
             }
