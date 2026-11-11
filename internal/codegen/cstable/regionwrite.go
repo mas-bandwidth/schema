@@ -36,13 +36,13 @@ const tableRegionWriteSource = `
     {
         if (f.TextList && f.Kind == 12)
         {
-            NativeValue child = value.Child(f,i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
-            return count >= 0 && count <= text.ArrayBound && TextValid(child.Buffer(text).Slice(0,count));
+            NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
+            return count >= 0 && count <= text.ArrayBound && TextValid(child.Buffer(text).Slice(0, count));
         }
         if (!f.IsArray && f.Kind == 12)
         {
             int count = value.Count(f);
-            return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0,count));
+            return count >= 0 && count <= f.ArrayBound && TextValid(value.Buffer(f).Slice(0, count));
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
@@ -69,7 +69,7 @@ const tableRegionWriteSource = `
     {
         if (f == null) { return true; } // selected, payload-free arm
         if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
-        if (f.TextTotal>0 && !TextFitsRegion(value,f)) { return false; }
+        if (f.TextTotal > 0 && !TextFitsRegion(value, f)) { return false; }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
         {
@@ -102,7 +102,7 @@ const tableRegionWriteSource = `
     }
     static long RegionElementSize(NativeValue value, TableFieldInfo f, int i, ref RegionIds ids, bool framed)
     {
-        if (f.TextList && f.Kind == 12) { long n = value.Child(f,i).Count(f.Table.Fields[0]); return n + (framed ? VarSize((ulong)n) : 0); }
+        if (f.TextList && f.Kind == 12) { long n = value.Child(f, i).Count(f.Table.Fields[0]); return n + (framed ? VarSize((ulong)n) : 0); }
         if (f.Kind == 13)
         {
             long n = RegionBodySize(value.Child(f, i), f.Table, ref ids);
@@ -158,8 +158,9 @@ const tableRegionWriteSource = `
     {
         if (f.TextList && f.Kind == 12)
         {
-            NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];int count=child.Count(text);
-            if (framed) { w.Var((ulong)count); } w.Raw(child.Buffer(text).Slice(0,count)); return;
+            NativeValue child = value.Child(f, i); TableFieldInfo text = f.Table.Fields[0]; int count = child.Count(text);
+            if (framed) { w.Var((ulong)count); }
+            w.Raw(child.Buffer(text).Slice(0, count)); return;
         }
         if (f.Kind == 13)
         {

@@ -54,11 +54,11 @@ func fixedFunctionBody(src, name string) (string, bool) {
 		return "", false
 	}
 	rest := src[i:]
-	end := strings.Index(rest, "\n}\n")
-	if end < 0 {
+	before, _, ok := strings.Cut(rest, "\n}\n")
+	if !ok {
 		return "", false
 	}
-	return rest[:end], true
+	return before, true
 }
 
 // strictFixedProblems reports every way the generated artifact violates the
@@ -306,9 +306,9 @@ func TestGooseFixedLoadRefusesNeverClampsNegativeControl(t *testing.T) {
 		t.Fatal("negative control: runtime probe still passed when TFixedLoad clamped instead of refusing")
 	}
 
-	tolerant := strings.Replace(code,
+	tolerant := strings.ReplaceAll(code,
 		"return schema_rt::FixedRefuseWireDamaged;",
-		"return 0;", -1)
+		"return 0;")
 	if tolerant == code {
 		t.Fatal("negative control: the wire_damaged refusal is not in the generated scan")
 	}
