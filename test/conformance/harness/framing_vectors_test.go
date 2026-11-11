@@ -143,6 +143,21 @@ func listNodeRecordNext(v int32, next byte) []byte {
 // reserved node-table id, 5 TreeNode's type id.
 var sceneTreeIds = []string{"tree", "left", "right", "node-table", "type:TreeNode"}
 
+// The graphdemo Scene id table for the reserved-type vectors: 1 head, 2 name,
+// 3 next, 4 the reserved node-table id, 5 the record's TYPE id. A vector
+// carries the reserved id it pins in slot 5 like a declared type id (§3.1,
+// §3.3).
+var sceneNodeTypeIds = []string{"head", "name", "next", "node-table", "type:ListNode"}
+
+// sceneNodeTypeRecord is one empty ListNode record whose TYPE reference is
+// `ref`.
+func sceneNodeTypeRecord(ref byte) []byte { return cat(b(ref, 1), b(0)) }
+
+// sceneNodeTypeBody is a Scene whose head names the record at node index 2.
+func sceneNodeTypeBody(ref byte) []byte {
+	return cat(b(1, 17, 2), nodeTable(1, sceneNodeTypeRecord(ref)), b(0))
+}
+
 // diamondLevels is the diamond chain's depth: 2^40 root-to-leaf paths over 82
 // nodes, so a check that re-enters a shared node never finishes.
 const diamondLevels = 40
@@ -415,6 +430,14 @@ var framingVectors = []framingVector{
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
+	// §3.1, §3.3, §5: a node record whose TYPE reference resolves to one of
+	// the three reserved ids is malformed, and the whole load refuses. The
+	// node-table id is already slot 4, so its record names that slot directly;
+	// the build-version and vocabulary ids ride in slot 5 like a declared type
+	// id. The two blob type ids are a blob record's lawful type (§2.5).
+	{name: "node_type_node_table_id", unit: "graphdemo", root: "Scene", ids: sceneNodeTypeIds, body: sceneNodeTypeBody(4), held: true},
+	{name: "node_type_build_version_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "build-version"}, body: sceneNodeTypeBody(5), held: true},
+	{name: "node_type_vocabulary_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "vocabulary"}, body: sceneNodeTypeBody(5), held: true},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and
@@ -460,6 +483,8 @@ func framingId(u *units, unitKey, name string) (uint64, error) {
 		return ir.TableNodeWireId, nil
 	case name == "build-version":
 		return ir.TableBuildVersionWireId, nil
+	case name == "vocabulary":
+		return ir.TableMessageVocabularyWireId, nil
 	case len(name) > 5 && name[:5] == "type:":
 		unit, err := u.get(unitKey)
 		if err != nil {
