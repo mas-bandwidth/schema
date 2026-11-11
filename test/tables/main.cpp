@@ -295,38 +295,64 @@ static void test_exact_capacity()
     check_exact_capacity( v2, tblv2::CfgMeasure, tblv2::CfgSave );
 }
 
-// ---- storage invariants: the write side validates what it reads ----
+// ---- storage invariants: a count or length past its storage is the caller's
+// ---- bug, caught by the debug assert and by nothing in a release build
+// ---- (docs/SPEC.md §5.1). This unit compiles with asserts LIVE, so each case
+// ---- runs in a forked child that must die on the assert.
+
+template <typename Write> static void expect_storage_assert( const char * what, Write write )
+{
+    fflush( stdout );
+    pid_t child = fork();
+    if ( child == 0 )
+    {
+        // the abort message is the point of the child, not of this log
+        FILE * quiet = freopen( "/dev/null", "w", stderr );
+        (void) quiet;
+        write();
+        _exit( 0 );
+    }
+    CHECK( child > 0 );
+    int status = 0;
+    CHECK( waitpid( child, &status, 0 ) == child );
+    if ( !WIFSIGNALED( status ) )
+    {
+        printf( "FAIL storage invariant %s: the writer returned — the assert is gone\n", what );
+        failures++;
+    }
+}
 
 static void test_storage_invariants()
 {
-    uint8_t buffer[4096];
+    static uint8_t buffer[4096];
 
     // a count above the bound must not read out of the array into the wire
     tabledemo::RootConfig root;
     root.weapons_count = 9; // bound is 8
-    CHECK( tabledemo::RootConfigMeasure( root ) == -1 );
-    CHECK( tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ) == -1 );
+    expect_storage_assert( "count past bound (measure)", [&] { (void) tabledemo::RootConfigMeasure( root ); } );
+    expect_storage_assert( "count past bound (save)", [&] { (void) tabledemo::RootConfigSave( root, buffer, sizeof( buffer ) ); } );
 
     // a negative length must not memcpy a huge size_t
     tblv1::Cfg cfg;
     cfg.name_length = -1;
-    CHECK( tblv1::CfgMeasure( cfg ) == -1 );
-    CHECK( tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ) == -1 );
+    expect_storage_assert( "negative length (measure)", [&] { (void) tblv1::CfgMeasure( cfg ); } );
+    expect_storage_assert( "negative length (save)", [&] { (void) tblv1::CfgSave( cfg, buffer, sizeof( buffer ) ); } );
 
-    // a negative count refuses too
+    // a negative count too
     tblv1::Cfg cfg2;
     cfg2.items_count = -3;
-    CHECK( tblv1::CfgMeasure( cfg2 ) == -1 );
-    CHECK( tblv1::CfgSave( cfg2, buffer, sizeof( buffer ) ) == -1 );
+    expect_storage_assert( "negative count (measure)", [&] { (void) tblv1::CfgMeasure( cfg2 ); } );
+    expect_storage_assert( "negative count (save)", [&] { (void) tblv1::CfgSave( cfg2, buffer, sizeof( buffer ) ); } );
 
-    // a violation deep inside a nested, guarded table propagates up
+    // and deep inside a nested, guarded table
     tabledemo::ProfileConfig profile;
     profile.has_loadout = true;
     profile.loadout.attachments_count = -5;
-    CHECK( tabledemo::ProfileConfigMeasure( profile ) == -1 );
-    CHECK( tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ) == -1 );
+    expect_storage_assert( "nested count (measure)", [&] { (void) tabledemo::ProfileConfigMeasure( profile ); } );
+    expect_storage_assert( "nested count (save)", [&] { (void) tabledemo::ProfileConfigSave( profile, buffer, sizeof( buffer ) ); } );
 
     // an out-of-range union tag refuses in measure exactly as in write
+    // (a row the leg still refuses in every build)
     tabledemo::WeaponConfig weapon;
     weapon.effect.type = (tabledemo::EffectType) 9;
     CHECK( tabledemo::WeaponConfigMeasure( weapon ) == -1 );

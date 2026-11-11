@@ -5889,7 +5889,7 @@ inline int64_t PaddedRowMeasureBody( TableIds & ids, const PaddedRow & value )
     if ( table_double_to_bits( value.value ) != table_double_to_bits( 0.0 ) ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7ce4fd9430e80ceaull ) ) + 1 + 8; } // value
     if ( value.flag != false ) { bytes += TableLebBytes( ids.ref_at( 73, 0xd5f2d079088c0b17ull ) ) + 1 + 1; } // flag
     if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
-    if ( value.label_length < 0 || value.label_length > 15 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         bool all_default_slots = true;
@@ -5960,7 +5960,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedRowSaveBody( TableWriter & w, TableIds & ids, 
         w.header( ids.ref_at( 0, 0x08b72e07b55c3ac0ull ), 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
-    if ( value.label_length < 0 || value.label_length > 15 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 16, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -6633,7 +6633,7 @@ inline int64_t PaddedRowMeasureMessageBody( int64_t at, const PaddedRow & value 
         bits += kTableMessageRefBitsHere;
         bits += 32;
     }
-    if ( value.label_length < 0 || value.label_length > 15 ) { return -1; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -6710,7 +6710,7 @@ inline bool PaddedRowSaveMessageBody( TableBitWriter & w, const PaddedRow & valu
         w.put( 8, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.id ), 32 );
     }
-    if ( value.label_length < 0 || value.label_length > 15 ) { return false; } // storage invariant
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
@@ -7422,7 +7422,7 @@ inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.marker != 0 ) { bytes += TableLebBytes( ids.ref_at( 81, 0xeddcb72b15486e77ull ) ) + 1 + 1; } // marker
     if ( value.stamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 83, 0xee7ba9ad45c64144ull ) ) + 1 + 8; } // stamp
-    if ( value.rows_count < 0 || value.rows_count > 64 ) { return -1; } // storage invariant
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.rows_count > 0 )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
@@ -7436,7 +7436,7 @@ inline int64_t PaddedFrameMeasureBody( TableIds & ids, const PaddedFrame & value
         }
         bytes += TableLebBytes( ref_rows ) + 1 + TableLebBytes( (uint64_t) ( body_rows ) ) + ( body_rows ); // rows
     }
-    if ( value.blob_length < 0 || value.blob_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.blob_length > 0 )
     {
         const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + value.blob_length;
@@ -7465,7 +7465,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
         w.header( ids.ref_at( 83, 0xee7ba9ad45c64144ull ), 9 ); // stamp
         w.put64( uint64_t( value.stamp ) );
     }
-    if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; } // storage invariant
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.rows_count > 0 )
     {
         const uint64_t ref_rows = ids.ref_at( 48, 0xa3a7061ff10a8138ull );
@@ -7496,7 +7496,7 @@ BLOCKDEMO_TABLE_INLINE bool PaddedFrameSaveBody( TableWriter & w, TableIds & ids
             }
         }
     }
-    if ( value.blob_length < 0 || value.blob_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.blob_length > 0 )
     {
         const int64_t body_blob = 1 + TableLebBytes( (uint64_t) value.blob_length ) + value.blob_length;
@@ -7915,7 +7915,7 @@ inline int64_t PaddedFrameMeasureMessageBody( int64_t at, const PaddedFrame & va
         bits += kTableMessageRefBitsHere;
         bits += 64;
     }
-    if ( value.rows_count < 0 || value.rows_count > 64 ) { return -1; } // storage invariant
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.rows_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -7927,7 +7927,7 @@ inline int64_t PaddedFrameMeasureMessageBody( int64_t at, const PaddedFrame & va
             bits += elem;
         }
     }
-    if ( value.blob_length < 0 || value.blob_length > 12 ) { return -1; } // storage invariant
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.blob_length > 0 )
     {
         bits += kTableMessageRefBitsHere;
@@ -7955,7 +7955,7 @@ inline bool PaddedFrameSaveMessageBody( TableBitWriter & w, const PaddedFrame & 
         w.put( 2, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.stamp ), 64 );
     }
-    if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; } // storage invariant
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
     if ( value.rows_count > 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
@@ -7965,7 +7965,7 @@ inline bool PaddedFrameSaveMessageBody( TableBitWriter & w, const PaddedFrame & 
             if ( !PaddedRowSaveMessageBody( w, value.rows[i] ) ) { return false; }
         }
     }
-    if ( value.blob_length < 0 || value.blob_length > 12 ) { return false; } // storage invariant
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // storage invariant, debug only (§5.1)
     if ( value.blob_length > 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
