@@ -11,6 +11,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -40,6 +41,9 @@ func main() {
 		os.Exit(1)
 	}
 	if len(leftover) > 0 {
+		for _, d := range nameDisagreements(leftover) {
+			fmt.Fprintln(os.Stderr, "fixedtwin: "+d)
+		}
 		fmt.Fprintf(os.Stderr, "fixedtwin: leftover lines after the twin map (not one of the three named differences):\n")
 		for _, line := range leftover {
 			fmt.Fprintln(os.Stderr, line)
@@ -88,6 +92,54 @@ func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	leftover = append(leftover, diffLines("layout", canonicalize(cLay), canonicalize(cppLay))...)
 
 	return leftover, nil
+}
+
+// A disagreement is a rule one leg carries and the other lacks. The twin
+// map never strips one: its lines stay in the leftover, and this list only
+// names the rule so a red says which rule is open, from which spec line, and
+// which leg is behind. A disagreement leaves this list when the lagging leg
+// carries the rule and the gate goes green over it.
+type disagreement struct {
+	name    string
+	markers []string
+}
+
+var openDisagreements = []disagreement{
+	{
+		name: "ABSENT PAYLOAD: under a clear present flag (or an inactive union arm) the reader lands the template's zeros " +
+			"the record carries, as the Go engine and the C leg do (docs/FIXED-FORM-ALGORITHM.md, the corpus manifest rule " +
+			"\"the bytes are the TEMPLATE'S ZEROS and not the declared default\"; internal/check \"value at the type's own zero\"). " +
+			"The C++ leg lands the declared defaults instead (kTableFixedPresentDefaults); the C++ leg is the one to change",
+		markers: []string{"kTableFixedPresentDefaults", "defaults = nullptr", ", defaults )", "payload_dst", "payload_size", "second_half"},
+	},
+	{
+		name: "BYTE ORDER: on a big-endian host every multi-byte fixed element lands from the little-endian wire in native order, " +
+			"by element width (docs/FIXED-FORM-ALGORITHM.md: every integer on the wire is little-endian; the C leg's entry elem column, " +
+			"TableFixedGetLe / TableFixedCopyLe / TableFixedStoreNative, and copies coalesced only at equal widths). " +
+			"The C++ leg copies in host order and its plan carries no elem column; the C++ leg is the one to change",
+		markers: []string{"TableFixedGetLe", "TableFixedCopyLe", "TableFixedStoreNative", "TableFixedBigEndianHost", "e.elem", "uint8_t elem;"},
+	},
+}
+
+// nameDisagreements returns the open disagreements the leftover shows, each
+// with the count of leftover lines that carry its markers.
+func nameDisagreements(left []string) []string {
+	var out []string
+	for _, d := range openDisagreements {
+		n := 0
+		for _, line := range left {
+			for _, m := range d.markers {
+				if strings.Contains(line, m) {
+					n++
+					break
+				}
+			}
+		}
+		if n > 0 {
+			out = append(out, fmt.Sprintf("OPEN DISAGREEMENT (%d leftover line(s)): %s", n, d.name))
+		}
+	}
+	return out
 }
 
 func diffLines(section string, c, cpp []string) []string {
