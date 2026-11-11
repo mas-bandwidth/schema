@@ -70,8 +70,9 @@ func pruneUnreferencedDeclarations(files map[string][]byte) (map[string][]byte, 
 					kept = append(kept, decl)
 				case *ast.GenDecl:
 					old := len(decl.Specs)
-					decl.Specs = pruneSpecs(decl, referenced, usedIdentifiers)
-					if len(decl.Specs) < old {
+					var specsChanged bool
+					decl.Specs, specsChanged = pruneSpecs(decl, referenced, usedIdentifiers[name])
+					if specsChanged || len(decl.Specs) < old {
 						changed = true
 					}
 					if len(decl.Specs) != 0 {
@@ -102,11 +103,12 @@ func pruneUnreferencedDeclarations(files map[string][]byte) (map[string][]byte, 
 	return files, nil
 }
 
-func referencesInFiles(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident) (map[string]bool, map[string]bool) {
+func referencesInFiles(names []string, parsed map[string]*ast.File, declarations map[string][]*ast.Ident) (map[string]bool, map[string]map[string]bool) {
 	referenced := map[string]bool{}
-	usedIdentifiers := map[string]bool{}
+	usedIdentifiers := map[string]map[string]bool{}
 	for _, name := range names {
 		file := parsed[name]
+		usedIdentifiers[name] = map[string]bool{}
 		nonReferences := map[*ast.Ident]bool{}
 		ast.Inspect(file, func(node ast.Node) bool {
 			switch node := node.(type) {
@@ -132,7 +134,7 @@ func referencesInFiles(names []string, parsed map[string]*ast.File, declarations
 			if !ok || nonReferences[id] || isDeclarationIdentifier(declarations[id.Name], id) {
 				return true
 			}
-			usedIdentifiers[id.Name] = true
+			usedIdentifiers[name][id.Name] = true
 			if declarations[id.Name] != nil {
 				referenced[id.Name] = true
 			}
@@ -161,8 +163,9 @@ func isDeclarationIdentifier(ids []*ast.Ident, id *ast.Ident) bool {
 	return false
 }
 
-func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) []ast.Spec {
+func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) ([]ast.Spec, bool) {
 	kept := make([]ast.Spec, 0, len(decl.Specs))
+	changed := false
 	for _, spec := range decl.Specs {
 		switch spec := spec.(type) {
 		case *ast.TypeSpec:
@@ -174,11 +177,47 @@ func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) 
 				kept = append(kept, spec)
 				continue
 			}
+			if decl.Tok == token.VAR {
+				live := make([]bool, len(spec.Names))
+				liveCount := 0
+				for i, id := range spec.Names {
+					live[i] = !isPrivate(id.Name) || referenced[id.Name]
+					if live[i] {
+						liveCount++
+					}
+				}
+				if liveCount == 0 {
+					changed = true
+					continue
+				}
+				if liveCount < len(spec.Names) && len(spec.Values) == len(spec.Names) {
+					names := make([]*ast.Ident, 0, liveCount)
+					values := make([]ast.Expr, 0, liveCount)
+					for i := range spec.Names {
+						if live[i] {
+							names = append(names, spec.Names[i])
+							values = append(values, spec.Values[i])
+						}
+					}
+					spec.Names, spec.Values = names, values
+					changed = true
+				} else {
+					for i, id := range spec.Names {
+						if !live[i] {
+							id.Name = "_"
+							changed = true
+						}
+					}
+				}
+				kept = append(kept, spec)
+				continue
+			}
 			for _, id := range spec.Names {
 				if isPrivate(id.Name) && !referenced[id.Name] {
 					// A blank binding preserves initializer evaluation and the
 					// position of const iota entries without exporting a name.
 					id.Name = "_"
+					changed = true
 				}
 			}
 			kept = append(kept, spec)
@@ -187,9 +226,10 @@ func pruneSpecs(decl *ast.GenDecl, referenced, usedIdentifiers map[string]bool) 
 		}
 	}
 	if decl.Tok == token.IMPORT {
-		return pruneImports(kept, usedIdentifiers)
+		imports := pruneImports(kept, usedIdentifiers)
+		return imports, len(imports) != len(kept) || changed
 	}
-	return kept
+	return kept, changed
 }
 
 func pruneImports(specs []ast.Spec, referenced map[string]bool) []ast.Spec {
