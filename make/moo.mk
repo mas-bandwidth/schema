@@ -13,6 +13,7 @@
 # override; CI restores dist/moo from a cache keyed on the pin
 # (.github/actions/moo).
 MOO_REPO        := https://github.com/mas-bandwidth/moo.git
+MOO_VERSION     := v1.3.0
 MOO_PIN         := f60f0239f41c6c0a827ecee44a7f9539c5798068
 MOO_DIST        := $(CURDIR)/dist/moo
 MOO            ?= $(MOO_DIST)/moo
@@ -20,8 +21,24 @@ MOO_ANALYZE    ?= $(MOO_DIST)/moo-analyze
 MOO_BUILD_JOBS ?= 4
 export MOO MOO_ANALYZE
 
-.PHONY: dist-moo
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has the CLI and the analyzer at moo-<version>/bin/, built from the
+# release's tag, with the commit it was built from in moo-<version>/PIN, and a
+# sandboxed bench job has no network to clone. When that PIN is MOO_PIN,
+# dist-moo copies both into MOO_DIST with the PIN; any other commit, or no
+# NOVA_SDK, builds from the clone as before (dist-moo-fetch).
+MOO_SDK = $(NOVA_SDK)/moo-$(MOO_VERSION)
+
+.PHONY: dist-moo dist-moo-fetch
 dist-moo:
+	@if [ -n "$(NOVA_SDK)" ] && [ "$$(cat "$(MOO_SDK)/PIN" 2>/dev/null)" = "$(MOO_PIN)" ] && \
+		[ -x "$(MOO_SDK)/bin/moo" ] && [ -x "$(MOO_SDK)/bin/moo-analyze" ]; then \
+		rm -rf $(MOO_DIST) && mkdir -p $(MOO_DIST) && \
+		cp -p "$(MOO_SDK)/bin/moo" "$(MOO_SDK)/bin/moo-analyze" "$(MOO_SDK)/PIN" $(MOO_DIST)/ && \
+		echo "dist-moo: moo $(MOO_PIN) from the fleet SDK $(MOO_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-moo-fetch; fi
+
+dist-moo-fetch:
 	@rm -rf build/moo-src build/moo-build && mkdir -p build/moo-src $(MOO_DIST)
 	@cd build/moo-src && git init -q && git fetch -q --depth 1 $(MOO_REPO) $(MOO_PIN) && git checkout -q FETCH_HEAD
 	@got=$$(git -C build/moo-src rev-parse HEAD); if [ "$$got" != "$(MOO_PIN)" ]; then \

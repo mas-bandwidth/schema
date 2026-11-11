@@ -33,11 +33,25 @@ LOBSTER_DIST    := $(CURDIR)/dist/lobster-$(LOBSTER_VERSION)
 LOBSTER         ?= $(LOBSTER_DIST)/bin/lobster
 export LOBSTER
 
-# dist-lobster fetches the pinned release and REFUSES any archive whose sha256
-# is not the pin's, by name: the archive is checked before it is unpacked, so
-# a wrong download never reaches dist/.
-.PHONY: dist-lobster
+# THE FLEET'S BENCHES ALREADY HOLD THE PIN. Their SDK (the directory $NOVA_SDK
+# names) has this host's release archive unpacked at lobster-<version>/, held
+# to its digest when it was installed, and a sandboxed bench job has no network
+# to download it. When that directory holds bin/lobster, dist-lobster copies it
+# to LOBSTER_DIST; otherwise, or with no NOVA_SDK, it fetches the archive as
+# before (dist-lobster-fetch).
+LOBSTER_SDK = $(NOVA_SDK)/lobster-$(LOBSTER_VERSION)
+
+.PHONY: dist-lobster dist-lobster-fetch
 dist-lobster:
+	@if [ -n "$(NOVA_SDK)" ] && [ -x "$(LOBSTER_SDK)/bin/lobster" ]; then \
+		rm -rf $(LOBSTER_DIST) && mkdir -p dist && cp -pR "$(LOBSTER_SDK)" $(LOBSTER_DIST) && \
+		echo "dist-lobster: lobster $(LOBSTER_VERSION) from the fleet SDK $(LOBSTER_SDK), no download"; \
+	else $(MAKE) --no-print-directory dist-lobster-fetch; fi
+
+# dist-lobster-fetch fetches the pinned release and REFUSES any archive whose
+# sha256 is not the pin's, by name: the archive is checked before it is
+# unpacked, so a wrong download never reaches dist/.
+dist-lobster-fetch:
 	@mkdir -p $(LOBSTER_DIST) build/dist-lobster
 	@curl -fsSL -o build/dist-lobster/$(LOBSTER_ZIP) $(LOBSTER_ZIP_URL)
 	@got=$$( { sha256sum build/dist-lobster/$(LOBSTER_ZIP) 2>/dev/null || shasum -a 256 build/dist-lobster/$(LOBSTER_ZIP); } | cut -d' ' -f1); \
