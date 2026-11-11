@@ -7269,13 +7269,16 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
                 if ( sub.size < 2 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                 if ( sub.size >= 2 )
                 {
-                    uint8_t elem_kind; uint64_t count, i;
+                    uint8_t elem_kind; uint64_t count, i; uint8_t seen[512]; memset( seen, 0, sizeof( seen ) );
                     if ( !graphdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                     if ( elem_kind != 13 ) { if ( !(graphdemo_table_kind_widens(elem_kind,13)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_KIND_MISMATCH; break; } r->report->widened++; }
                     for ( i = 0; i < count; i++ )
                     {
                         uint64_t key_ref, key; int32_t slot = -1; graphdemo_table_reader_t elem;
-                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || key_ref > 4096 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        if ( seen[(key_ref-1)>>3] & (uint8_t)(1u << ((key_ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                        seen[(key_ref-1)>>3] |= (uint8_t)(1u << ((key_ref-1) & 7));
+                        if ( !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
                         key = graphdemo_table_reader_id_at( &sub, key_ref );
                         switch ( key )
                         {
@@ -10083,6 +10086,8 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                 {
                     uint8_t elem_kind;
                     uint64_t count, i;
+                    uint8_t seen[512];
+                    memset( seen, 0, sizeof( seen ) );
                     if ( !graphdemo_table_reader_array_header( &sub, r, &elem_kind, &count ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                     break;
                     }
@@ -10095,7 +10100,14 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body_retain( graphdemo_table_reade
                         uint64_t key_ref, key;
                         int32_t slot = -1;
                         graphdemo_table_reader_t elem;
-                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        if ( !graphdemo_table_reader_leb( &sub, &key_ref ) || key_ref == 0 || key_ref > sub.id_count || key_ref > 4096 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
+                        if ( seen[(key_ref-1)>>3] & (uint8_t)(1u << ((key_ref-1) & 7)) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+                        break;
+                        }
+                        seen[(key_ref-1)>>3] |= (uint8_t)(1u << ((key_ref-1) & 7));
+                        if ( !graphdemo_table_reader_span( &sub, &elem ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         break;
                         }
                         key = graphdemo_table_reader_id_at( &sub, key_ref );
