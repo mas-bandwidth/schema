@@ -259,6 +259,14 @@
         "the explicit default is refused where the reader names the field under the same announced shape and the same build version; a field whose sender default it cannot know is read as today, under lawful version evolution"
       ],
       "source": "the owner's standing rule of 2026-11-10 that where the standard is silent between strict and lenient, strict wins, applied by the coordinator"
+    },
+    {
+      "id": "pointer-target-type-checked",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a pointer naming a record of a declared type that is not its target type is damage"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
     }
   ]
 }

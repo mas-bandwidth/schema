@@ -5633,13 +5633,14 @@ the payload opens with the count and then carries the records:
   own ROOT table**: damage, `wire_damaged` (a wrong-type pointer target, §6.5). The root carries no
   record and therefore no wire type id, so the reader's own root type is
   what the claim is checked against, and it is checked.
-- **A node whose type id this reader cannot name**: skipped by its
-  length, counted **unknown**. It KEEPS ITS INDEX — numbering is
-  positional in the table, so one unnameable node never shifts the rest —
-  and every pointer naming it reads null.
+- **A node whose TYPE this reader does not DECLARE** — a newer writer's
+  type — is skipped by its length and counted **unknown**. It KEEPS ITS
+  INDEX — numbering is positional in the table, so one unnameable node
+  never shifts the rest — and every pointer naming it reads null, the
+  load accepted.
 - **A node whose type id is not the one the field's declared target
-  requires**, a type this reader names: damage, `wire_damaged` (a wrong-type
-  pointer target, §6.5). A target of a type it CANNOT name is the bullet above:
+  requires, a type this reader DOES declare**: damage, `wire_damaged` (a wrong-type
+  pointer target, §6.5). A target of a type it does NOT declare is the bullet above:
   the pointer reads null.
 - **A pointer field arriving as any other kind** — `13` from a schema
   that holds the field by value or as `?T`, `8` from one that holds a
@@ -8674,7 +8675,9 @@ diagnostic name, which is not normative and is never compared:
   carries a zero byte — the same refusal SPEC.md §4.7 puts on the packet
   wire), a node table that cannot be read whole, a cycle (a loaded
   graph in which a pointer names a node whose descent is still open, which no
-  writer produces, §3.1), a node record no pointer reaches, kind `32` with a
+  writer produces, §3.1), a node record no pointer reaches, a pointer naming
+  a record of a type the reader declares that is not the type its slot
+  requires, kind `32` with a
   nonzero `L` at any position, a reserved id out of place, and every case
   that makes the whole wire damaged (§3). **No reader accepts damage**, on any
   form, which is what lets fifteen targets owe each other one verdict on one
