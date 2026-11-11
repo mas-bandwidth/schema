@@ -732,7 +732,7 @@ impl TableNodeReader {
             16 => {
                 if depth + 1 > BINARY_MAX_DEPTH || content.len() < 2 { report.damaged = true; return; }
                 let ek = content[0];
-                if matches!(ek, 14 | 16 | 12 | 31 | 32) { report.damaged = true; return; }
+                if matches!(ek, 14 | 12 | 31 | 32) { report.damaged = true; return; }
                 off = 1;
                 let Some(count) = leb_read(content, &mut off) else { report.damaged = true; return; };
                 if count > 0x7fffffff { let _ = self.refuse_count(report); return; }
@@ -1015,7 +1015,7 @@ pub struct TableRetain {
 
 /// THE WALK'S NESTING CAP (docs/SPEC-TABLES.md §6.6): a small stated constant,
 /// the one depth on this path a file can drive.
-pub const TABLE_RETAIN_DEPTH_CAP: usize = 64;
+pub const TABLE_RETAIN_DEPTH_CAP: usize = 128;
 
 /// THE RETAIN PATH (docs/SPEC-TABLES.md §6.6): the region's address for one
 /// body — depth steps, each the pair (field ordinal, element index). A step is
