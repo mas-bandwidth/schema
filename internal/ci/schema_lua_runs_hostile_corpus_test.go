@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luatable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
@@ -139,16 +140,28 @@ func luaHostileGenerate(t *testing.T, root, dir string, cases []luaHostileCase, 
 			}
 		}
 		u := luarun.LoadUnit(t, path)
-		files, err := luatable.Generate(u)
 		unitDir := filepath.Join(dir, fmt.Sprintf("unit-%d", len(units)))
 		if err := os.MkdirAll(unitDir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		entry := luaHostileUnit{schema: c.Schema, module: luatable.ModuleName(u), dir: unitDir}
+		// A PACKET schema is read by the type-wire modules and the vendored
+		// serialize port they bring, not by a table module: its unit's module
+		// is the schema file's own, as the Luau and Squirrel runners have it.
+		packet := c.Carrier == "packet"
+		var files map[string][]byte
+		var err error
+		entry := luaHostileUnit{schema: c.Schema, dir: unitDir}
+		if packet {
+			files, err = lua.Generate(u)
+			entry.module = strings.TrimSuffix(filepath.Base(c.Schema), ".schema")
+		} else {
+			files, err = luatable.Generate(u)
+			entry.module = luatable.ModuleName(u)
+		}
 		if err != nil {
 			entry.unavailable = err.Error()
 		} else {
-			if plant {
+			if plant && !packet {
 				rt := string(files["load.lua"])
 				if !strings.Contains(rt, luaHostilePlantFrom) {
 					t.Fatalf("the emitted load.lua does not carry the planted pattern %q", luaHostilePlantFrom)
@@ -217,11 +230,26 @@ local function caseResult(c)
   if not unit then return "refuse", "reader_unavailable", nil end
   if unit.unavailable ~= "" then return "refuse", "reader_unavailable", nil end
   package.path = unit.dir .. "/?.lua;" .. package.path
+  local payload = read(corpusDir .. "/" .. c[5])
+  if c[2] == "packet" then
+    -- A PACKET is Read<Type> from bit 0 of the input through the type-wire
+    -- module; a refusal is the manifest's packet_refused, and an accept's
+    -- digest is of the bytes the port's own Write<Type> puts back.
+    local S = require("serialize")
+    local P = require(unit.module)
+    local value = P["New" .. c[4]]()
+    if not P["Read" .. c[4]](S.ReadStream.new(payload), value) then
+      return "refuse", "packet_refused", nil
+    end
+    local w = S.WriteStream.new(((#payload * 2 + 4096 + 7) // 8) * 8)
+    if not P["Write" .. c[4]](w, value) then error("the port's writer refused the decoded value: " .. c[1]) end
+    w:flush()
+    return "accept", "-", w:data()
+  end
   local T = require(unit.module)
   local J = require("json")
   local L = require("load")
   local M = require("message")
-  local payload = read(corpusDir .. "/" .. c[5])
   local r = report()
   local value
 
