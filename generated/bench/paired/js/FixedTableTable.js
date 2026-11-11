@@ -530,7 +530,7 @@ export function FixedTableMeasureMessages(values, report) {
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -546,7 +546,7 @@ export function FixedTableSaveMessages(values, buffer, report) {
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }

@@ -2735,7 +2735,36 @@ export function FixedTableFixedDecode(value, view, at, report) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function MixedEntityMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.entityId !== "number" || !Number.isInteger(value.entityId)) { return false; }
+  if (value.entityId < 0 || value.entityId > 4095) { return false; }
+  if (typeof value.posX !== "number" || !Number.isInteger(value.posX)) { return false; }
+  if (value.posX < -16383 || value.posX > 16383) { return false; }
+  if (typeof value.posY !== "number" || !Number.isInteger(value.posY)) { return false; }
+  if (value.posY < -16383 || value.posY > 16383) { return false; }
+  if (typeof value.posZ !== "number" || !Number.isInteger(value.posZ)) { return false; }
+  if (value.posZ < -16383 || value.posZ > 16383) { return false; }
+  if (typeof value.yaw !== "number" || !Number.isInteger(value.yaw)) { return false; }
+  if (value.yaw < 0 || value.yaw > 511) { return false; }
+  if (typeof value.pitch !== "number" || !Number.isInteger(value.pitch)) { return false; }
+  if (value.pitch < 0 || value.pitch > 511) { return false; }
+  if (typeof value.velX !== "number" || !Number.isInteger(value.velX)) { return false; }
+  if (value.velX < -2048 || value.velX > 2047) { return false; }
+  if (typeof value.velY !== "number" || !Number.isInteger(value.velY)) { return false; }
+  if (value.velY < -2048 || value.velY > 2047) { return false; }
+  if (typeof value.velZ !== "number" || !Number.isInteger(value.velZ)) { return false; }
+  if (value.velZ < -2048 || value.velZ > 2047) { return false; }
+  if (typeof value.health !== "number" || !Number.isInteger(value.health)) { return false; }
+  if (value.health < 0 || value.health > 1000) { return false; }
+  if (typeof value.weapon !== "number" || !Number.isInteger(value.weapon)) { return false; }
+  if (value.weapon < 0 || value.weapon > 15) { return false; }
+  if (typeof value.damage !== "bigint") { return false; }
+  return true;
+}
+
 export function MixedEntitySaveMessageBody(w, value) {
+  if (!MixedEntityMessageBodyOk(value)) { return false; }
   if (value.entityId !== 0) {
     w.Put(31n, TableMessageRefBitsHere);
     w.Put(BigInt(value.entityId) - 0n, 12);
@@ -2974,7 +3003,17 @@ export function MixedEntityLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function MixedStatMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.statId !== "number" || !Number.isInteger(value.statId)) { return false; }
+  if (value.statId < 0 || value.statId > 255) { return false; }
+  if (typeof value.delta !== "number" || !Number.isInteger(value.delta)) { return false; }
+  if (value.delta < -512 || value.delta > 511) { return false; }
+  return true;
+}
+
 export function MixedStatSaveMessageBody(w, value) {
+  if (!MixedStatMessageBodyOk(value)) { return false; }
   if (value.statId !== 0) {
     w.Put(51n, TableMessageRefBitsHere);
     w.Put(BigInt(value.statId) - 0n, 8);
@@ -3027,7 +3066,19 @@ export function MixedStatLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function MixedHitEventMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.targetId !== "number" || !Number.isInteger(value.targetId)) { return false; }
+  if (value.targetId < 0 || value.targetId > 4095) { return false; }
+  if (typeof value.damage !== "number" || !Number.isInteger(value.damage)) { return false; }
+  if (value.damage < 0 || value.damage > 4095) { return false; }
+  if (typeof value.hitKind !== "number" || !Number.isInteger(value.hitKind)) { return false; }
+  if (value.hitKind < 0 || value.hitKind > 7) { return false; }
+  return true;
+}
+
 export function MixedHitEventSaveMessageBody(w, value) {
+  if (!MixedHitEventMessageBodyOk(value)) { return false; }
   if (value.targetId !== 0) {
     w.Put(45n, TableMessageRefBitsHere);
     w.Put(BigInt(value.targetId) - 0n, 12);
@@ -3102,7 +3153,17 @@ export function MixedHitEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function MixedChatEventMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.channel !== "number" || !Number.isInteger(value.channel)) { return false; }
+  if (value.channel < 0 || value.channel > 3) { return false; }
+  if (typeof value.speaker !== "number" || !Number.isInteger(value.speaker)) { return false; }
+  if (value.speaker < 0 || value.speaker > 4095) { return false; }
+  return true;
+}
+
 export function MixedChatEventSaveMessageBody(w, value) {
+  if (!MixedChatEventMessageBodyOk(value)) { return false; }
   if (value.channel !== 0) {
     w.Put(29n, TableMessageRefBitsHere);
     w.Put(BigInt(value.channel) - 0n, 2);
@@ -3155,7 +3216,17 @@ export function MixedChatEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function MixedPickupEventMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.itemId !== "number" || !Number.isInteger(value.itemId)) { return false; }
+  if (value.itemId < 0 || value.itemId > 1023) { return false; }
+  if (typeof value.amount !== "number" || !Number.isInteger(value.amount)) { return false; }
+  if (value.amount < 0 || value.amount > 255) { return false; }
+  return true;
+}
+
 export function MixedPickupEventSaveMessageBody(w, value) {
+  if (!MixedPickupEventMessageBodyOk(value)) { return false; }
   if (value.itemId !== 0) {
     w.Put(49n, TableMessageRefBitsHere);
     w.Put(BigInt(value.itemId) - 0n, 10);
@@ -3208,7 +3279,79 @@ export function MixedPickupEventLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function BenchMixedMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (typeof value.sequence !== "number" || !Number.isInteger(value.sequence)) { return false; }
+  if (value.sequence < 0 || value.sequence > 65535) { return false; }
+  if (typeof value.ackSequence !== "number" || !Number.isInteger(value.ackSequence)) { return false; }
+  if (value.ackSequence < 0 || value.ackSequence > 65535) { return false; }
+  if (typeof value.ackBits !== "number" || !Number.isInteger(value.ackBits)) { return false; }
+  if (value.ackBits < 0 || value.ackBits > 4294967295) { return false; }
+  if (typeof value.sessionId !== "bigint") { return false; }
+  if (typeof value.clientId !== "number" || !Number.isInteger(value.clientId)) { return false; }
+  if (typeof value.nonce !== "bigint") { return false; }
+  if (value.nonce < 0n || value.nonce > 18446744073709551615n) { return false; }
+  if (typeof value.worldTime !== "bigint") { return false; }
+  if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) { return false; }
+  if (typeof value.frameTick !== "bigint") { return false; }
+  if (value.frameTick < 0n || value.frameTick > 281474976710655n) { return false; }
+  if (typeof value.serverTime !== "number" || !Number.isInteger(value.serverTime)) { return false; }
+  if (value.serverTime < 0 || value.serverTime > 16776960) { return false; }
+  if (value.entities === null || value.entities === undefined || typeof value.entities.length !== "number") { return false; }
+  if (typeof value.entitiesCount !== "number" || !Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8 || value.entitiesCount > value.entities.length) { return false; }
+  for (let i = 0; i < value.entitiesCount; i++) {
+    if (value.entities[i] === null || value.entities[i] === undefined || !MixedEntityMessageBodyOk(value.entities[i])) { return false; }
+  }
+  if (value.stats === null || value.stats === undefined || typeof value.stats.length !== "number") { return false; }
+  if (typeof value.statsCount !== "number" || !Number.isInteger(value.statsCount) || value.statsCount < 0 || value.statsCount > 80 || value.statsCount > value.stats.length) { return false; }
+  for (let i = 0; i < value.statsCount; i++) {
+    if (value.stats[i] === null || value.stats[i] === undefined || !MixedStatMessageBodyOk(value.stats[i])) { return false; }
+  }
+  if (value.gameEvent === null || value.gameEvent === undefined) { return false; }
+  if (typeof value.gameEvent.type !== "number" || !Number.isInteger(value.gameEvent.type)) { return false; }
+  switch (value.gameEvent.type) {
+    case 0: break;
+    case 1:
+      if (value.gameEvent.hit === null || value.gameEvent.hit === undefined || !MixedHitEventMessageBodyOk(value.gameEvent.hit)) { return false; }
+      break;
+    case 2:
+      if (value.gameEvent.chat === null || value.gameEvent.chat === undefined || !MixedChatEventMessageBodyOk(value.gameEvent.chat)) { return false; }
+      break;
+    case 3:
+      if (value.gameEvent.pickup === null || value.gameEvent.pickup === undefined || !MixedPickupEventMessageBodyOk(value.gameEvent.pickup)) { return false; }
+      break;
+    default: return false;
+  }
+  if (value.loadout === null || value.loadout === undefined || typeof value.loadout.length !== "number" || value.loadout.length < 4) { return false; }
+  for (let i = 0; i < 4; i++) {
+    if (typeof value.loadout[i] !== "number" || !Number.isInteger(value.loadout[i])) { return false; }
+  }
+  if (value.playerName === null || value.playerName === undefined || typeof value.playerName.length !== "number" ||
+      typeof value.playerNameLength !== "number" || !Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15 || value.playerNameLength > value.playerName.length) { return false; }
+  if (!tableMessageUtf8Valid(value.playerName, 0, value.playerNameLength)) { return false; }
+  if (value.payload === null || value.payload === undefined || typeof value.payload.length !== "number" ||
+      typeof value.payloadLength !== "number" || !Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16 || value.payloadLength > value.payload.length) { return false; }
+  if (typeof value.aimX !== "number" || !Number.isFinite(Math.fround(value.aimX))) { return false; }
+  if (typeof value.aimY !== "number" || !Number.isFinite(Math.fround(value.aimY))) { return false; }
+  if (typeof value.aimZ !== "number" || !Number.isFinite(Math.fround(value.aimZ))) { return false; }
+  if (typeof value.recoil !== "number" || !Number.isFinite(Math.fround(value.recoil))) { return false; }
+  if (typeof value.drift !== "number" || !Number.isFinite(value.drift)) { return false; }
+  if (typeof value.wideKey !== "bigint") { return false; }
+  if (typeof value.flux !== "bigint") { return false; }
+  if (value.flux < -1267650600228229401496703205376n || value.flux > 1267650600228229401496703205376n) { return false; }
+  if (typeof value.ping !== "number" || !Number.isInteger(value.ping)) { return false; }
+  if (value.ping < 0 || value.ping > 64000) { return false; }
+  if (typeof value.crcHint !== "number" || !Number.isInteger(value.crcHint)) { return false; }
+  if (value.crcHint < 0 || value.crcHint > 16777215) { return false; }
+  if (typeof value.extra !== "number" || !Number.isInteger(value.extra)) { return false; }
+  if (value.extra < 0 || value.extra > 255) { return false; }
+  if (typeof value.idleTicks !== "number" || !Number.isInteger(value.idleTicks)) { return false; }
+  if (value.idleTicks < 0 || value.idleTicks > 15) { return false; }
+  return true;
+}
+
 export function BenchMixedSaveMessageBody(w, value) {
+  if (!BenchMixedMessageBodyOk(value)) { return false; }
   if (value.sequence !== 0) {
     w.Put(1n, TableMessageRefBitsHere);
     w.Put(BigInt(value.sequence) - 0n, 16);
@@ -3701,7 +3844,14 @@ export function BenchMixedLoadMessageBody(r, value) {
 // reference. The write measures then saves over one bit writer; the read
 // fills the caller's storage.
 
+function FixedTableMessageBodyOk(value) {
+  if (value === null || value === undefined) { return false; }
+  if (value.value === null || value.value === undefined || !BenchMixedMessageBodyOk(value.value)) { return false; }
+  return true;
+}
+
 export function FixedTableSaveMessageBody(w, value) {
+  if (!FixedTableMessageBodyOk(value)) { return false; }
   if (value.value !== 0) {
     w.Put(28n, TableMessageRefBitsHere);
     if (!BenchMixedSaveMessageBody(w, value.value)) { return false; }
