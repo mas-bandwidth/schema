@@ -286,8 +286,9 @@ nothing and may write an off-declaration value that the reader on the other end
 refuses. Languages without a dormant assert — Go, Elixir and the others §5.1
 names — refuse in every build by their own error idiom. A language should verify
 correctness the way that language verifies correctness, so the write side is not
-uniform across builds or targets. A count or length that would index past the
-writer's own storage is refused in every build in every leg.
+uniform across builds or targets. That includes a count or length that would
+index past the writer's own storage: an assert in an assert leg, a refusal
+elsewhere.
 
 Reads are different: **the read guarantee is unconditional** — that is where
 untrusted input arrives, and it holds in all nine languages in every build.

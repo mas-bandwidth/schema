@@ -32,7 +32,7 @@ fixed table Holder {
 		t.Errorf("bits(12) does not clamp at 2^12-1 and count:\n%s", body)
 	}
 
-	clamp := csFn(src, "public static void HolderFixedClamp(")
+	clamp := csFn(src, "public static bool HolderFixedClamp(")
 	if clamp == "" {
 		t.Fatal("the root has no bounds entry point")
 	}
@@ -44,7 +44,7 @@ fixed table Holder {
 	if load == "" {
 		t.Fatal("HolderFixedLoad was not emitted")
 	}
-	if !strings.Contains(load, "HolderFixedClamp(values[k], report);") {
+	if !strings.Contains(load, "if (!HolderFixedClamp(values[k], report)) { refused = true; }") {
 		t.Error("the record loop does not run the bounds pass: §5.3 step 11 is hash check, prefill, run, BOUNDS")
 	}
 	run := strings.Index(load, "TableFixedWire.Run(")
