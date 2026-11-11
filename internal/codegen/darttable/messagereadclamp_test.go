@@ -272,7 +272,7 @@ func matchReadClampMutant(t *testing.T, m *tabletext.Model) []byte {
 			continue
 		}
 		// placement's offset (value - min, 4 bits) follows its reference
-		for b := 0; b < 4; b++ {
+		for b := range 4 {
 			at := s.Off + s.Width + b
 			out[1+at/8] &^= 1 << (at % 8)
 			out[1+at/8] |= byte((12>>b)&1) << (at % 8)
