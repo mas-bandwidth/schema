@@ -184,18 +184,25 @@ func TestRustWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	harness := rustWireFuzzHarness(t, repo)
 	modules := rustWireFuzzCardModules(t, repo)
 
-	control := func(name, from, to string) {
+	control := func(name string, replacements ...string) {
 		t.Helper()
 		t.Run(name, func(t *testing.T) {
 			src, ok := modules["card_table.rs"]
 			if !ok {
 				t.Fatal("no generated card_table.rs")
 			}
-			text := string(src)
-			if strings.Count(text, from) == 0 {
-				t.Fatalf("negative control: %q occurs nowhere in the generated card_table.rs", from)
+			if len(replacements) == 0 || len(replacements)%2 != 0 {
+				t.Fatalf("negative control: %s needs from/to replacement pairs", name)
 			}
-			mutant := strings.ReplaceAll(text, from, to)
+			text := string(src)
+			mutant := text
+			for i := 0; i < len(replacements); i += 2 {
+				from, to := replacements[i], replacements[i+1]
+				if strings.Count(mutant, from) == 0 {
+					t.Fatalf("negative control: %q occurs nowhere in the generated card_table.rs", from)
+				}
+				mutant = strings.ReplaceAll(mutant, from, to)
+			}
 			if mutant == text {
 				t.Fatal("NEGATIVE CONTROL FAILED: the plant did not alter the generated artifact")
 			}
@@ -215,7 +222,12 @@ func TestRustWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	// refuses as damage.
 	control("array-tail", "if *off != sub { report.damaged = true; }", "if false { report.damaged = true; }")
 
-	// Plant 2: a field id appears at most once in a body. Without the check the
-	// leg accepts a repeated known field id, which the oracle refuses.
-	control("repeated-field", "if seen[", "if false && seen[")
+	// Plant 2: a field id appears at most once in a body. The leg enforces it
+	// twice — the declared-field array and the body's resolved-id list — so the
+	// plant removes both, or the leg still refuses the repeat and the control
+	// shows nothing.
+	control("repeated-field",
+		"if seen[", "if false && seen[",
+		"if seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }",
+		"if false && seen_ids.contains(&id) { report.damaged = true; } else { seen_ids.push(id); }")
 }
