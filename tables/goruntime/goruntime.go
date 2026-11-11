@@ -161,10 +161,11 @@ const (
 	// §2.5, §16.7). Every writer refuses to emit it; the strict read refuses it.
 	TableRefuseBlobShared
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
-	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseBlobShared so no existing value renumbers, in §6.5's table order so
-	// names, order and spelling agree in all ports. Each member's Error() is its
+	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the reference's
+	// one refusal enum: every fixed-form refusal name is a TableRefuseReason member,
+	// appended after TableRefuseBlobShared so no existing value renumbers, in §6.5's
+	// recommended table order so a port that follows it spells them alike; the verdict,
+	// not the names, is the contract. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
 	// for a fixed load that refused. The form-byte refusals keep answering

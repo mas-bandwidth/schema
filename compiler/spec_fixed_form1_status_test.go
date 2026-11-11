@@ -5,9 +5,9 @@
 // refuse." Every read at a declared fixed root that carries form `3` refuses a
 // form-`1` file as `previous_form`, and every write there writes form `3`
 // (docs/rulings.json fixed-root-refuses-form1). What the legs do today is
-// status, and the page says so beside the rule: every leg still emits a
-// form-`1` `<T>Save` for a declared fixed table and a `<T>Load` and
-// `ReadStrict` that read form `1` there, and a declared fixed table past one
+// status, and the page says so beside the rule: the legs that still emit a
+// form-`1` `<T>Save` for a declared fixed table are named, as are those whose
+// plain load still reads form `1` there, and a declared fixed table past one
 // of §3.4's bounds carries no form `3` at all.
 //
 // The stale sentences are the ones the ruling retired: §3.4's "THE READ SIDE
@@ -44,7 +44,8 @@ func TestSpecFixedRootRefusesForm1(t *testing.T) {
 				"`ReadStrict`",
 				"the retain load",
 				"`schema pack`",
-				"STATUS: EVERY LEG STILL CARRIES THE FORM-`1` PAIR AT A FIXED ROOT",
+				"STATUS: SIX LEGS STILL WRITE FORM `1` AT A DECLARED FIXED ROOT",
+				"Dart, Elixir and Rust emit the fixed form alone",
 				"This is status, not the",
 				"<T>Save",
 				"<T>Load",
