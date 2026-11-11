@@ -141,7 +141,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 		if key.Type.Width > 32 {
 			cast = "longValue"
 		}
-		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} try {java.math.BigInteger n=new java.math.BigDecimal(token).toBigIntegerExact(); if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();}catch(ArithmeticException|NumberFormatException invalid){accepted=false;in.rep.refuse(\"kind_mismatch\");}\n", min, max, cast)
+		fmt.Fprintf(b, "                    TableJson.In number=new TableJson.In(mapKey.getBytes(StandardCharsets.UTF_8),new TableVariable.Report()); String token=number.scanNumber(new boolean[1]); if(number.bad||number.p!=number.t.length||mapKey.isEmpty()||Character.isWhitespace(mapKey.charAt(0))){in.bad=true;return;} java.math.BigInteger n=TableJson.exactIntegerToken(token); if(n==null){accepted=false;in.rep.refuse(\"kind_mismatch\");}else if(n.compareTo(%s)<0||n.compareTo(%s)>0){accepted=false;in.rep.refuse(\"kind_mismatch\");}else entry.key=n.%s();\n", min, max, cast)
 	}
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s);\n", st.Name, m, depth)
