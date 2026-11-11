@@ -48,8 +48,8 @@ func dartTextNumberLinearCases(long, floatLen int) []dartTextNumberLinearCase {
 		{"uint64-past-range", "u", nines},
 		{"uint128-past-range", "w", nines},
 		{"fixed-past-range", "g", nines},
-		{"leading-zeros", "g", "0." + strings.Repeat("0", long-1) + "1"},
-		{"zeros-after-point", "g", "1." + strings.Repeat("0", long)},
+		{"leading-zeros", "g", "0." + strings.Repeat("0", long-2) + "1"},
+		{"zeros-after-point", "g", "1." + strings.Repeat("0", long-1)},
 		{"float-long-token", "f", "0." + strings.Repeat("0", floatLen-2) + "1"},
 	}
 }
