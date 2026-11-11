@@ -1118,14 +1118,21 @@ tables-java-discard-negative-control:
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one
 # offset mistake round trip perfectly and are both wrong. bench/paired has no
 # Java half to run the matched gate through, so this is that gate's shape for
-# this port: the reference is the oracle, at gate time, over the same corpus.
+# this port: the reference is the oracle over the same corpus.
 # It is also where the WIDE KINDS ride — a `fixed(24, 8)`, a `ufixed(8, 8)`, a
 # bare `uint128` and a ranged `int128` — which no other fixed-form corpus has.
-build/java-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+#
+# THE BYTES ARE THE COMMITTED REFERENCE FILE, bench/paired/corpus/bench_fixed.bin,
+# the one every paired leg reads, and the oracle beside it is stated from the
+# reference's own hand-written constant-offset decoder (test/bench/
+# fixedform_measure.cpp). Reading the committed bytes keeps this leg's corpus
+# the reference's while requiring no C++ serialize checkout to rebuild a file
+# that is already in the tree.
+build/java-fixed-corpus/.stamp: bench/paired/corpus/bench_fixed.bin test/java-tables/bench_fixed.oracle.json make/java.mk
+	@rm -rf build/java-fixed-corpus
 	@mkdir -p build/java-fixed-corpus
-	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/java-fixed-corpus/corpus
-	./build/java-fixed-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
-		build/java-fixed-corpus/bench_fixed.bin build/java-fixed-corpus/bench_fixed.oracle.json
+	cp bench/paired/corpus/bench_fixed.bin build/java-fixed-corpus/bench_fixed.bin
+	cp test/java-tables/bench_fixed.oracle.json build/java-fixed-corpus/bench_fixed.oracle.json
 	@touch $@
 
 build/java-fixed-bench/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/java-fixedform/src/BenchFixed.java make/java.mk
@@ -1171,6 +1178,29 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 	@grep -m1 "FAILED:" $(JAVA_FIXED_SABOTAGE)/log
 	@echo "negative control: one byte off the fixed write template reds the reference byte match"
 
+# THE REFERENCE'S FORM-3 CORPUS, rebuilt for this leg. The dump writes one
+# form-3 file per root from the generated C++ reference, so its bytes are the
+# reference's at gate time. It includes serialize.h only for the 128-bit storage
+# type its generated fixed headers name (the fixed form calls no serialize
+# stream or byte routine), so the shim under test/java-tables/serialize128
+# supplies that type and this leg needs no C++ serialize checkout to produce
+# the oracle.
+JAVA_FIXEDFORM_CORPUS := build/java-fixedform-corpus
+build/java-fixedform-corpus/.stamp: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/java-tables/serialize128/serialize.h make/java.mk
+	@rm -rf $(JAVA_FIXEDFORM_CORPUS)
+	@mkdir -p $(JAVA_FIXEDFORM_CORPUS)
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) -Itest/java-tables/serialize128 \
+	    test/tables/fixedform_dump.cpp -o build/java-fixedform-dump
+	./build/java-fixedform-dump $(JAVA_FIXEDFORM_CORPUS)
+	@test -s $(JAVA_FIXEDFORM_CORPUS)/manifest.txt || \
+		{ echo "tables-java-fixedform-corpus: manifest.txt missing"; exit 1; }
+	@touch $@
+
 # THE ARM-TEXT CONTROL, and it plants the ENCODING this form replaced: the
 # text op's flavour written over the ARM ORDINAL a guarded entry is selected
 # by. Under it a `string(N)` under a union's SECOND arm is dropped on every
@@ -1188,7 +1218,7 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 JAVA_ARM_SABOTAGE := build/java-arm-sabotage
 JAVA_ARM_SABOTAGE_SED := s|e\.arg = chainArg\[chainLen - 1\];|e.arg = op == opText ? e.meta : chainArg[chainLen - 1]; // SABOTAGED: the flavour over the arm ordinal|
 .PHONY: tables-java-fixedform-arm-negative-control
-tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.stamp
+tables-java-fixedform-arm-negative-control: bin/schema build/java-fixedform-corpus/.stamp
 	@rm -rf $(JAVA_ARM_SABOTAGE) && mkdir -p $(JAVA_ARM_SABOTAGE)
 	@sed '$(JAVA_ARM_SABOTAGE_SED)' internal/codegen/javatable/fixedruntime.go > $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext
 	@cmp -s internal/codegen/javatable/fixedruntime.go $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext && \
@@ -1212,7 +1242,7 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/examples tables/examples
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_ARM_SABOTAGE)/classes \
 		$(JAVA_ARM_SABOTAGE)/src/*/*.java test/java-fixedform/src/Main.java
-	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main build/fixedform-corpus \
+	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main $(JAVA_FIXEDFORM_CORPUS) \
 			> $(JAVA_ARM_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a text entry guarded on its flavour instead of its arm ordinal left the fixed form green"; \
 		cat $(JAVA_ARM_SABOTAGE)/log; exit 1; \
