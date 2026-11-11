@@ -34,6 +34,14 @@ func TestUnnamedGraph(t *testing.T) {
 	if NodeLoad(region(max(NodeLoadMeasure(reached), 1)), reached, &seen) == nil || seen.Unknown == 0 {
 		t.Fatalf("a reached unnameable record did not read as one unknown: %+v", seen)
 	}
+	if !retainLoad(reached) { t.Fatal("the retaining read refused a reached record of an unnameable type") }
+	if _, err := NodeReadStrict(reached); err != nil { t.Fatalf("ReadStrict refused a reached record of an unnameable type: %v", err) }
+	accepts(t, "a chain of unnameable records reached from the root",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) },
+			stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), stranger(&ids, func(w *TableWriter) {})))
+	accepts(t, "a named record reached only through an unnameable one",
+		file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) },
+			stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), node(&ids, func(w *TableWriter) {})))
 
 	// (a) a record under a type id this reader does not declare that no
 	// pointer reaches is damage
@@ -50,6 +58,17 @@ func TestUnnamedGraph(t *testing.T) {
 	refuses(t, "an unnameable record's pointer to itself", self)
 	if retainLoad(self) { t.Fatal("the retaining read accepted an unnameable record's pointer to itself") }
 	if _, err := NodeReadStrict(self); err == nil { t.Fatal("ReadStrict accepted an unnameable record's pointer to itself") }
+
+	// a cycle through two unnameable records, and one through a named record
+	// and an unnameable one, are cycles as well
+	loop := file(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 2) },
+		stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 3) }), stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }))
+	refuses(t, "two unnameable records naming each other", loop)
+	if retainLoad(loop) { t.Fatal("the retaining read accepted two unnameable records naming each other") }
+	mixed := file(&ids, func(w *TableWriter) { ptr(w, field(fNext), 2) },
+		node(&ids, func(w *TableWriter) { ptr(w, field(fLeaf), 3) }), stranger(&ids, func(w *TableWriter) { ptr(w, unknownField, 2) }))
+	refuses(t, "a named record and an unnameable one naming each other", mixed)
+	if retainLoad(mixed) { t.Fatal("the retaining read accepted a named record and an unnameable one naming each other") }
 
 	// (c) many unreferenced records of unnameable types are all damage
 	var many []record
