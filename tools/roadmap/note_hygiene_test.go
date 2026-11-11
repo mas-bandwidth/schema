@@ -41,11 +41,12 @@ func noteInForm(raw string, start int) string {
 	for i := start; i < len(raw); i++ {
 		ch := raw[i]
 		if inStr {
-			if esc {
+			switch {
+			case esc:
 				esc = false
-			} else if ch == '\\' {
+			case ch == '\\':
 				esc = true
-			} else if ch == '"' {
+			case ch == '"':
 				inStr = false
 			}
 			continue
