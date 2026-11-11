@@ -135,22 +135,21 @@ func cT12F4(t *testing.T) {
 
 // ---- c/F7 — "malformed, under 20 bytes" ------------------------------------
 //
-// FIXED-FORM-ALGORITHM §5.3 step 1, and §5.4's malformed column ("a null buffer
-// or one shorter than the header"): a file with fewer than the twenty-byte
-// header (16 header bytes + the u32 layout length) is MALFORMED and returns -1
-// — never a refusal by name. Step 1's own guard covers bytes < 1; this guard
-// covers the rest of the short header. The RUN of this clause is
-// TestCFixedFormUnder20Bytes (fixedform_under_20_bytes_test.go), which loops
-// k = 0..header+4 over a real file and proves malformed, refused clear and
-// reason untouched.
+// FIXED-FORM-ALGORITHM §5.3 step 2 (docs/SPEC-TABLES.md §3.4): a file with
+// fewer than the twenty-byte header (16 header bytes + the u32 layout length)
+// is refused, and the short header is named `truncated` beside wire_damaged.
+// Step 1's own guard covers bytes < 1; this guard covers the rest of the short
+// header. The RUN of this clause is TestCFixedFormUnder20Bytes
+// (fixedform_under_20_bytes_test.go), which loops k = 0..header+4 over a real
+// file and proves the destination untouched and the report total.
 func cT12F7(t *testing.T) {
 	load := cT12Load(t, cT12UnitSrc)
 	cT04Has(t, load,
 		"if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
 		"F7 a file of no bytes at all")
 	cT04Has(t, load,
-		"if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
-		"F7 a file shorter than the twenty-byte header is refused")
+		"if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, report->reason=SCHEMA_TABLE_REFUSE_TRUNCATED; return -1; }",
+		"F7 a file shorter than the twenty-byte header is refused truncated")
 }
 
 // ---- c/C14 — "bounds pass walks live only" ---------------------------------

@@ -312,6 +312,12 @@ const cStrictT01Macros = `
     if ( r.refused != 1 || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED ) { printf( "%s: refused=%d reason=%d refuse_reason=%d beside wire_damaged\n", (WHO), r.refused, r.reason, r.refuse_reason ); return 1; } \
     if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly wire_damaged\n", (WHO) ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
+#define EXPECT_FRAMING( WHO, REASON ) do { TableReport e_; \
+    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \
+    if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
+    if ( r.refused != 1 || r.reason != (REASON) || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED ) { printf( "%s: refused=%d reason=%d refuse_reason=%d, not reason %d beside wire_damaged\n", (WHO), r.refused, r.reason, r.refuse_reason, (int) (REASON) ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason+wire_damaged\n", (WHO) ); return 1; } \
+    CHECK_POISON( WHO ); } while ( 0 )
 `
 
 func cStrictT01Probe(t *testing.T, reader string, older []string, retire int, file, body string) {
@@ -349,7 +355,8 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 		}
 	})
 
-	// c/F7: every length from 0 through kTableFixedHeaderBytes + 4 - 1 refuses wire_damaged.
+	// c/F7: no bytes is step 1 (wire_damaged), and every length 1 through
+	// kTableFixedHeaderBytes + 4 - 1 is step 2, named truncated beside it.
 	t.Run("c/F7_under_20_bytes", func(t *testing.T) {
 		t.Parallel()
 		newer := cReadSchema(t, "VNEW_field_append")
@@ -368,7 +375,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
             n = %s_fixed_load( back, 8, data, k, plan, 4096, NULL, &r );
             if ( n != -1 )
                 { printf( "len=%%lld: n=%%lld, want -1\n", (long long) k, (long long) n ); return 1; }
-            if ( !r.refused || r.reason != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
+            if ( !r.refused || r.reason != ( k == 0 ? 0 : SCHEMA_TABLE_REFUSE_TRUNCATED ) || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED )
                 { printf( "len=%%lld: refused=%%d reason=%%d refuse_reason=%%d\n", (long long) k, r.refused, r.reason, r.refuse_reason ); return 1; }
             if ( r.widened != 0 || r.unknown != 0 || r.layout_hash != 0 )
                 { printf( "len=%%lld: counters moved on a short header\n", (long long) k ); return 1; }
@@ -675,9 +682,9 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
         RESET_BACK(); n = @LOAD@( back, 8, data, L + 1, plan, 4096, NULL, &r );
         EXPECT_WIRE_DAMAGED( "ragged tail" );
         RESET_BACK(); n = @LOAD@( back, 8, data, kTableFixedHeaderBytes + 3, plan, 4096, NULL, &r );
-        EXPECT_WIRE_DAMAGED( "under twenty bytes" );
+        EXPECT_FRAMING( "under twenty bytes", SCHEMA_TABLE_REFUSE_TRUNCATED );
         data[3] = 1; RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
-        EXPECT_WIRE_DAMAGED( "nonzero reserved byte" );
+        EXPECT_FRAMING( "nonzero reserved byte", SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO );
         memcpy( data, orig, (size_t) L );
     }
 `)

@@ -966,9 +966,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEP 2: the length, then the seven reserved bytes.
 	g.pf("    /* 2. the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which are\n")
 	g.pf("       REFUSED and not ignored so they stay spendable later (§3.4, §5.3). */\n")
-	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, report->reason=SCHEMA_TABLE_REFUSE_TRUNCATED; return -1; }\n")
 	g.pf("    for ( reserved_at = 1; reserved_at < kTableFixedHashAt; ++reserved_at )\n")
-	g.pf("    {\n        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }\n    }\n")
+	g.pf("    {\n        if ( data[reserved_at] != 0 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED, report->reason=SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO; return -1; }\n    }\n")
 	// STEP 3.
 	g.pf("    /* 3. the layout's length, and the bytes behind it. */\n")
 	g.pf("    layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );\n")

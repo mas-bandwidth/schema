@@ -55,6 +55,12 @@ const cT01Macros = `
     if ( r.refused || r.reason != 0 ) { printf( "%s: refused=%d reason=%d beside malformed\n", (WHO), r.refused, r.reason ); return 1; } \
     if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly malformed\n", (WHO) ); return 1; } \
     CHECK_POISON( WHO ); } while ( 0 )
+#define EXPECT_FRAMING( WHO, REASON ) do { TableReport e_; \
+    memset( &e_, 0, sizeof( e_ ) ); e_.refused = 1; e_.reason = (REASON); e_.refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; \
+    if ( n != -1 ) { printf( "%s: n=%lld, not -1\n", (WHO), (long long) n ); return 1; } \
+    if ( r.refused != 1 || r.reason != (REASON) || r.refuse_reason != SCHEMA_TABLE_REFUSE_WIRE_DAMAGED ) { printf( "%s: refused=%d reason=%d refuse_reason=%d, not reason %d beside wire_damaged\n", (WHO), r.refused, r.reason, r.refuse_reason, (int) (REASON) ); return 1; } \
+    if ( memcmp( &r, &e_, sizeof( e_ ) ) != 0 ) { printf( "%s: the report is not exactly refused+reason+wire_damaged\n", (WHO) ); return 1; } \
+    CHECK_POISON( WHO ); } while ( 0 )
 `
 
 // cT01Body expands the load symbol into a probe body.
@@ -466,9 +472,9 @@ func cT01RefuseIsTotal(t *testing.T, corpus string) {
         RESET_BACK(); n = @LOAD@( back, 8, data, L + 1, plan, 4096, NULL, &r );
         EXPECT_MALFORMED( "ragged tail" );
         RESET_BACK(); n = @LOAD@( back, 8, data, kTableFixedHeaderBytes + 3, plan, 4096, NULL, &r );
-        EXPECT_MALFORMED( "under twenty bytes" );
+        EXPECT_FRAMING( "under twenty bytes", SCHEMA_TABLE_REFUSE_TRUNCATED );
         data[3] = 1; RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
-        EXPECT_MALFORMED( "nonzero reserved byte" );
+        EXPECT_FRAMING( "nonzero reserved byte", SCHEMA_TABLE_REFUSE_RESERVED_NOT_ZERO );
         memcpy( data, orig, (size_t) L );
     }
 `)
