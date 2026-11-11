@@ -2622,6 +2622,7 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(StringBuilder b, long bits, String[] names, int depth) {
+        assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
         for (int i = 0; i < names.length; i++)
@@ -5048,7 +5049,7 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 				for j := range ref.Variants {
 					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
 				}
-				b.WriteString("                    default: TableJson.esc(b, \"None\"); break;\n                }\n")
+				fmt.Fprintf(b, "                    default: assert v.%s.get(i) == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n                }\n", m)
 			case *ir.Flags:
 				fmt.Fprintf(b, "                TableJson.writeFlags(b,v.%s.get(i),%s,depth+1);\n", m, variableFlagNames(ref))
 			}
@@ -5301,7 +5302,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			for i := range enum.Variants {
 				fmt.Fprintf(b, "            case %d: TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
 			}
-			b.WriteString("            default: TableJson.esc(b, \"None\"); break;\n        }\n")
+			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
 		} else if _, ok := f.Type.Ref.(*ir.Flags); ok {
 			fmt.Fprintf(b, "        b.append(Long.toString(v.%s));\n", m)
 		}
