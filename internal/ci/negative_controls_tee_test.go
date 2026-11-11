@@ -112,13 +112,13 @@ func negativeControlsScripts(workflow string) []string {
 // command this gate refuses.
 func pipesMakeThroughTee(script string) bool {
 	joined := strings.ReplaceAll(script, "\\\n", " ")
-	for _, line := range strings.Split(joined, "\n") {
+	for line := range strings.SplitSeq(joined, "\n") {
 		code, _, _ := strings.Cut(line, "#")
 		compact := strings.ReplaceAll(code, " ", "")
 		if strings.Contains(compact, "|tee") || strings.Contains(compact, "|&tee") {
 			return true
 		}
-		for _, tok := range strings.Fields(code) {
+		for tok := range strings.FieldsSeq(code) {
 			base := tok
 			if i := strings.LastIndex(tok, "/"); i >= 0 {
 				base = tok[i+1:]
