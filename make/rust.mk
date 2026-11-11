@@ -981,11 +981,12 @@ tables-rust-wire-fuzz-all: build/conformance-harness build/conformance-rust-all
 # THE WIRE-FUZZ NEGATIVE CONTROL (docs/PORTING.md I15; docs/SPEC-TABLES.md
 # §2.5, §3.1): the generated node reader's range check on a pointer's or a
 # blob's node index keeps its refusal but loses its verdict — an index past the
-# node table still reads null, and the report no longer says malformed. The
+# node table still reads null, and the report no longer says damaged. The
 # sabotage goes through a `go build -overlay` of
 # internal/codegen/rusttable/variable.go, so no tracked file is edited; the
 # all-roots driver is rebuilt from that generator and the harness's enumerated
-# passes (--n 0) must go red on the REPORT, which is the half of the
+# passes (--n 0) must go red on the strict VERDICT: the oracle discards the
+# damaged load and the sabotaged leg accepts it, which is the half of the
 # differential a value comparison alone would never see.
 .PHONY: tables-rust-wire-fuzz-negative-control
 tables-rust-wire-fuzz-negative-control: build/conformance-harness
@@ -1003,11 +1004,11 @@ tables-rust-wire-fuzz-negative-control: build/conformance-harness
 		echo "NEGATIVE CONTROL FAILED: the wire fuzzer stayed green with the node-index verdict removed"; \
 		cat build/rust-wire-fuzz-control/log; exit 1; \
 	fi
-	@grep -qE '^harness: FAILED after [0-9]* mutants: (the report differs|the oracle discards a damaged load)' build/rust-wire-fuzz-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the report"; \
+	@grep -qE '^harness: FAILED after [0-9]* mutants: read acceptance differs: the leg says true, the oracle says false$$' build/rust-wire-fuzz-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red, but not on the strict verdict"; \
 		  cat build/rust-wire-fuzz-control/log; exit 1; }
 	@grep -m1 '^harness: FAILED' build/rust-wire-fuzz-control/log
-	@echo "rust wire-fuzz negative control: an out-of-range node index read without its malformed verdict turns the differential RED on the report"
+	@echo "rust wire-fuzz negative control: an out-of-range node index read without its damaged verdict turns the differential RED on the strict verdict"
 
 test-rust: tables-rust-wire-fuzz-negative-control
 

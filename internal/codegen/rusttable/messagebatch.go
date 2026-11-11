@@ -394,11 +394,15 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
+	m.pf("    // A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), whether this reader can name it or not.\n")
+	m.pf("    let mut seen_ids: Vec<u64> = Vec::new();\n")
 	m.pf("    loop {\n")
 	m.pf("        let Some(reference) = r.get(v.ref_bits) else %s;\n", msgBad)
 	m.pf("        if reference == 0 { return true; }\n")
 	m.pf("        let Some(entry) = v.entry(reference).copied() else %s;\n", msgBad)
 	m.pf("        if entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
+	m.pf("        if seen_ids.contains(&entry.id) %s\n", msgBad)
+	m.pf("        seen_ids.push(entry.id);\n")
 	m.pf("        match entry.id {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -612,9 +616,12 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	e := msgElement(f)
 	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
+		m.pf("%s    let mut seen_keys: Vec<u64> = Vec::new();\n", ind)
 		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
 		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
+		m.pf("%s        if seen_keys.contains(&id) %s\n", ind, msgBad)
+		m.pf("%s        seen_keys.push(id);\n", ind)
 		m.pf("%s        let key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
