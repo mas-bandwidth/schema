@@ -168,7 +168,7 @@ store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
   label = %q
   case %s.load(%q, wire) do
     {:ok, value, report} ->
-      check.(want, label <> ": plain load refused a lawful wire " <> inspect(report))
+      check.(want, label <> ": plain load landed a damaged wire " <> inspect(report))
       if want do
         case %s.save(%q, value) do
           {:ok, out} -> check.(out == wire, label <> ": plain save does not reproduce the wire")
@@ -176,7 +176,7 @@ store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
         end
       end
     {:error, _reason, _report} ->
-      check.(not want, label <> ": plain load landed a damaged wire")
+      check.(not want, label <> ": plain load refused a lawful wire")
     other -> check.(false, label <> ": plain load answered " <> inspect(other))
   end
   case %s.variable_load(%q, wire) do
@@ -186,7 +186,7 @@ store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
   end
   case %s.load_retain(%q, wire, store, zero) do
     {:ok, value, report, retain} ->
-      check.(want, label <> ": retaining load refused a lawful wire " <> inspect(report))
+      check.(want, label <> ": retaining load landed a damaged wire " <> inspect(report))
       if want do
         case %s.save_retain(%q, value, retain, report) do
           {:ok, out, _, _} -> check.(out == wire, label <> ": retaining save does not reproduce the wire")
@@ -194,7 +194,7 @@ store = %{records: [], used: 0, cap: 4096, ids: [], id_cap: 256}
         end
       end
     {:error, _reason, _report, _retain} ->
-      check.(not want, label <> ": retaining load landed a damaged wire")
+      check.(not want, label <> ": retaining load refused a lawful wire")
     other -> check.(false, label <> ": retaining load answered " <> inspect(other))
   end
 `, hex.EncodeToString(row.wire), row.want, row.name, mod, row.table, mod, row.table,
