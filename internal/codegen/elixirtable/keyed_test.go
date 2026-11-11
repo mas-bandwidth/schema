@@ -420,6 +420,7 @@ func writeKeyedModules(t *testing.T, dir string, files map[string][]byte) []stri
 // element bytes without decoding them, and a damaged slot key ref must stop the
 // keyed-array body immediately (docs/SPEC-TABLES.md §3.2, §4, §6.6).
 func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "the Elixir toolchain")
 	v2Path := filepath.Join("..", "..", "..", "test", "tables", "V2.schema")
 	u := loadUnit(t, v2Path)

@@ -16,6 +16,7 @@ import (
 // The compiler's canonical writer is independent of the C generator. These
 // bytes include compact, differently aligned graph nodes and nested extents.
 func TestCTableCookCanonical(t *testing.T) {
+	t.Parallel()
 	u := unitFromSource(t, `package probe
 fixed table Tiny { value uint8 }
 table Bucket { numbers []int16 }
