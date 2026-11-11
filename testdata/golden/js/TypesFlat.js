@@ -36,8 +36,17 @@ export function ReadVec3Flat(view, numBits, value) {
     return false;
   }
   value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   return true;
 }
 
@@ -61,9 +70,21 @@ export function ReadQuatFlat(view, numBits, value) {
     return false;
   }
   value.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.w = view.getFloat64(24, true);
+  if ((view.getUint32(28, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   return true;
 }
 
@@ -467,12 +488,33 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     return false;
   }
   value.position.x = view.getFloat64(0, true);
+  if ((view.getUint32(4, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.position.y = view.getFloat64(8, true);
+  if ((view.getUint32(12, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.position.z = view.getFloat64(16, true);
+  if ((view.getUint32(20, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.orientation.x = view.getFloat64(24, true);
+  if ((view.getUint32(28, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.orientation.y = view.getFloat64(32, true);
+  if ((view.getUint32(36, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.orientation.z = view.getFloat64(40, true);
+  if ((view.getUint32(44, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   value.orientation.w = view.getFloat64(48, true);
+  if ((view.getUint32(52, true) & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+    return false;
+  }
   out = view.getUint32(56, true);
   v = (out & 0x1) >>> 0;
   value.atRest = v !== 0;
@@ -496,6 +538,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.linearVelocity.x = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
@@ -513,6 +558,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.linearVelocity.y = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
@@ -530,6 +578,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.linearVelocity.z = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
@@ -547,6 +598,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.angularVelocity.x = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
@@ -564,6 +618,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.angularVelocity.y = SC.getFloat64(0, true);
     br += 32;
     bi = br >>> 3;
@@ -581,6 +638,9 @@ export function ReadRigidBodyFlat(view, numBits, value) {
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
     SC.setUint32(4, v, true);
+    if ((v & 0x7ff00000) === 0x7ff00000) { // a bare float must be finite
+      return false;
+    }
     value.angularVelocity.z = SC.getFloat64(0, true);
     br += 32;
   } else {
@@ -681,6 +741,9 @@ export function ReadInputFlat(view, numBits, value) {
   }
   out = view.getUint32(0, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.stickX = SC.getFloat64(0, true);
@@ -690,6 +753,9 @@ export function ReadInputFlat(view, numBits, value) {
   }
   out = view.getUint32(4, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.stickY = SC.getFloat64(0, true);
@@ -699,6 +765,9 @@ export function ReadInputFlat(view, numBits, value) {
   }
   out = view.getUint32(8, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.throttle = SC.getFloat64(0, true);
@@ -708,6 +777,9 @@ export function ReadInputFlat(view, numBits, value) {
   }
   out = view.getUint32(12, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.yaw = SC.getFloat64(0, true);
@@ -717,6 +789,9 @@ export function ReadInputFlat(view, numBits, value) {
   }
   out = view.getUint32(16, true);
   v = out >>> 0;
+  if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+    return false;
+  }
   if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
     SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
     value.pitch = SC.getFloat64(0, true);
@@ -1080,6 +1155,9 @@ export function ReadInputPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -1094,6 +1172,9 @@ export function ReadInputPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -1108,6 +1189,9 @@ export function ReadInputPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -1122,6 +1206,9 @@ export function ReadInputPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);
@@ -1136,6 +1223,9 @@ export function ReadInputPacketFlat(view, numBits, value) {
     s2 = br & 7;
     out = s2 === 0 ? wlo : ((wlo >>> s2) | (whi << (32 - s2)));
     v = out >>> 0;
+    if ((v & 0x7f800000) === 0x7f800000) { // a bare float must be finite
+      return false;
+    }
     br += 32;
     if ((v & 0x7f800000) === 0x7f800000 && (v & 0x7fffff) !== 0) {
       SC.setBigUint64(0, (BigInt(v >>> 31) << 63n) | 0x7ff0000000000000n | (BigInt(v & 0x7fffff) << 29n), true);

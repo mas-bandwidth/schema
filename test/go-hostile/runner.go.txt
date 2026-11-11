@@ -81,14 +81,24 @@ func run(dir string) error {
 	return nil
 }
 
-func reasonName(s string) string {
+// corpusReason maps the generated reader's diagnostic to the corpus's own
+// reason vocabulary. The shared corpus's reasons are the Go engine's
+// (internal/ci/hostilecorpus), and docs/SPEC-TABLES.md holds why a read refused
+// to be per-language diagnostic detail: every condition the engine groups as
+// damage is damage here too, and only the reasons the engine names keep their
+// name.
+func corpusReason(s string) string {
 	if i := strings.Index(s, ": "); i >= 0 {
 		s = s[:i]
 	}
-	if s == "count_over_extent_cap" {
+	switch s {
+	case "count_over_extent_cap":
 		return "count_refusal"
+	case "newer_form", "no_vocabulary", "second_announcement", "vocabulary_too_large",
+		"message_form_as_file", "batch_too_large", "count_refusal", "non_finite_float":
+		return s
 	}
-	return s
+	return "damaged"
 }
 
 func wireRefusal(ok bool, r *goruntime.TableReport) string {
@@ -96,7 +106,7 @@ func wireRefusal(ok bool, r *goruntime.TableReport) string {
 		if r.Reason == "" {
 			return "error: unnamed public refusal"
 		}
-		return "refuse " + reasonName(r.Reason)
+		return "refuse " + corpusReason(r.Reason)
 	}
 	switch r.Refusal {
 	case goruntime.TableRefuseOk:
@@ -107,7 +117,7 @@ func wireRefusal(ok bool, r *goruntime.TableReport) string {
 	case goruntime.TableRefuseWireDamaged, goruntime.TableRefuseMalformed, goruntime.TableRefuseTruncated:
 		return "refuse damaged"
 	}
-	return "refuse " + reasonName(r.Refusal.Error())
+	return "refuse " + corpusReason(r.Refusal.Error())
 }
 
 // The region API requires its generated measure before allocation. A named
