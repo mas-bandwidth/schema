@@ -321,17 +321,23 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, ind
 		// written twice with two different values did not compare equal on the
 		// second write.
 		g.pf("%sview.setInt32(%s, %s.%sLength, true);\n", ind, off(base, at), val, name)
-		g.pf("%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint8(%s + i, %s.%s[i]); }\n",
-			ind, val, name, off(base, at+fixedCountBytes), val, name)
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = 0; %s < %s.%sLength; %s++) { view.setUint8(%s + %s, %s.%s[%s]); }\n",
+			ind, iv, iv, val, name, iv, off(base, at+fixedCountBytes), iv, val, name, iv)
 	default:
 		g.emitWriteElement(f, base, at, val+"."+name, ind)
 	}
 }
 
 func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count string, expr, ind string) {
+	// A UNION ELEMENT'S TEXT OR ARRAY ARM IS WRITTEN INLINE in this loop's
+	// body, so its own loop takes the next depth's variable, as the decode's do.
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitWriteElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, expr+"["+iv+"]", ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
@@ -635,6 +641,7 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	// (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.3): REFUSE is total, so a
 	// text violation in the image, or a non-finite float (docs/SPEC-TABLES.md
 	// §3.3), refuses by name before a single property of value is touched.
+	g.loops = 0
 	g.emitCheckStruct(st, "at", 0, "  ")
 	g.inl, g.loops = 0, 0
 	var cur int64
@@ -786,9 +793,15 @@ func (g *fixedGen) emitCheckLoop(f *ir.Field, base string, at int64, count, ind 
 	if !fixedElementChecked(f) {
 		return
 	}
+	// A NESTED STRUCT'S CHECKS ARE INLINED, so an array inside an element
+	// takes the next depth's variable: `i` again would shadow the one this
+	// element's base offset is written in.
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
-	g.emitCheckElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, ind+"  ")
+	iv := g.loopVar()
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.loops++
+	g.emitCheckElement(f, fmt.Sprintf("%s + %s * %d", off(base, at), iv, elem), 0, ind+"  ")
+	g.loops--
 	g.pf("%s}\n", ind)
 }
 
