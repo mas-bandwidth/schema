@@ -32,12 +32,15 @@ func TestCTablePlainLoadIsStrict(t *testing.T) {
 	t.Run("region", testCTablePlainRegionLoadIsStrict)
 }
 
-// The fixed-class value read and its text read: an out-of-range value, a
-// wrong-kind key in the text form, and a truncated wire.
+// The value-class read of a VARIABLE root and its text read: an out-of-range
+// value, a wrong-kind key in the text form, and a truncated wire. The root is
+// a variable table because the plain read it names is form 1's; a declared
+// fixed root encodes and reads form 3 (docs/SPEC-TABLES.md §3.4), and the C
+// leg's fixed-root plain read is its own work.
 func testCTablePlainValueLoadIsStrict(t *testing.T) {
 	t.Parallel()
 	u := unitFromSource(t, `package probe
-fixed table Root {
+table Root {
  low int32 = 1000 | min = 1000, max = 2000
  wide int64
 }
@@ -47,7 +50,7 @@ fixed table Root {
 	// 5000 is OUT OF RANGE on this read, and wide = 7 as an i32 into an i64 is
 	// WIDENED, decoded exactly.
 	writer := unitFromSource(t, `package probe
-fixed table Root {
+table Root {
  low int32
  wide int32
 }
@@ -74,38 +77,54 @@ fixed table Root {
 #define PLAIN(x) do { if (!(x)) { fprintf(stderr,"THE PLAIN READ ACCEPTED what the strict read refuses: line %%d: %%s\n",__LINE__,#x); return 1; } } while(0)
 static const uint8_t clamped[]={%s};
 static const uint8_t widened[]={%s};
+static uint8_t region[4096];
+/* The plain region read into the one static region, after its measure. */
+static const Root * load(const uint8_t * wire, int64_t bytes, TableReport * report) {
+ int64_t need=root_load_measure(wire,bytes);
+ if (need<=0 || need>(int64_t)sizeof(region)) { need=(int64_t)sizeof(region); }
+ return root_load(region,need,wire,bytes,report);
+}
 int main(void) {
- Root value; TableReport report; uint8_t saved[64]; int64_t n;
+ const Root * root; RootBuilder builder; TableCtx ctx; TableReport report; uint8_t saved[256]; int64_t n;
 
- /* OUT OF RANGE: the plain read refuses it, resets the value, keeps this
+ /* OUT OF RANGE: the plain read refuses it, hands back no root, keeps this
     read's report, and names the reason. */
  report.unknown=99; /* a caller's stale report is overwritten */
- PLAIN(!root_load(&value,clamped,sizeof(clamped),&report));
- CHECK(report.refused && report.unknown==0);
- CHECK(value.low==1000 && value.wide==0); /* the declared defaults */
- PLAIN(!root_load(&value,clamped,sizeof(clamped),NULL));
+ PLAIN(load(clamped,sizeof(clamped),&report)==NULL);
+ CHECK(report.refused && report.refuse_reason==SCHEMA_TABLE_REFUSE_OUT_OF_RANGE && report.unknown==0);
+ PLAIN(load(clamped,sizeof(clamped),NULL)==NULL);
 
  /* A WIDENING alone is not a loss: the plain read accepts it. */
  memset(&report,0,sizeof(report));
- CHECK(root_load(&value,widened,sizeof(widened),&report));
- CHECK(report.widened==1 && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK && value.wide==7);
+ root=load(widened,sizeof(widened),&report);
+ CHECK(root!=NULL);
+ CHECK(report.widened==1 && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK && root->low==1500 && root->wide==7);
 
  /* A CLEAN wire round-trips through the plain read. */
- value.low=1500; value.wide=-3; n=root_save(&value,saved,sizeof(saved)); CHECK(n>0);
+ CHECK(root_builder_init(&builder));
+ root_builder_root(&builder)->low=1500; root_builder_root(&builder)->wide=-3;
+ ctx.arena=&builder.arena;
+ n=root_save(&ctx,root_builder_root(&builder),saved,sizeof(saved)); CHECK(n>0);
+ root_builder_shutdown(&builder);
  memset(&report,0,sizeof(report));
- CHECK(root_load(&value,saved,n,&report) && value.low==1500 && value.wide==-3);
+ root=load(saved,n,&report);
+ CHECK(root!=NULL && root->low==1500 && root->wide==-3);
  CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_OK);
 
  /* DAMAGE: a truncated wire is wire_damaged on the plain read. */
  memset(&report,0,sizeof(report));
- PLAIN(!root_load(&value,saved,n-3,&report));
+ PLAIN(load(saved,n-3,&report)==NULL);
  CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED && report.refused);
 
  /* THE TEXT READ: a key of the wrong JSON type refuses the whole read. */
- PLAIN(!root_from_json(&value,"{\"low\":1200,\"wide\":\"seven\"}",27,&report));
+ CHECK(root_builder_init(&builder));
+ PLAIN(!root_from_json(&builder,"{\"low\":1200,\"wide\":\"seven\"}",27,&report));
  CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH && report.refused);
- CHECK(value.low==1000 && value.wide==0);
- CHECK(root_from_json(&value,"{\"low\":1200,\"wide\":7}",21,&report) && value.wide==7);
+ CHECK(root_builder_root(&builder)->low==1000 && root_builder_root(&builder)->wide==0);
+ root_builder_shutdown(&builder);
+ CHECK(root_builder_init(&builder));
+ CHECK(root_from_json(&builder,"{\"low\":1200,\"wide\":7}",21,&report) && root_builder_root(&builder)->wide==7);
+ root_builder_shutdown(&builder);
  return 0;
 }
 `, cOctets(clamped), cOctets(widened)))
@@ -150,7 +169,11 @@ int main(void) {
  report.unknown=99; /* a caller's stale report is overwritten */
  root=depth_load(region,need,kind,sizeof(kind),&report);
  PLAIN(root==NULL);
- CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH && report.refused && report.unknown==0);
+ /* The VERDICT (refused, no root) is the contract; the reason is this leg's
+    own answer, pinned here and never compared across ports
+    (docs/rulings.json refusal-verdict-only). The C leg's wire-alone checks
+    meet this vector before its kind check does. */
+ CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED && report.refused && report.unknown==0);
  PLAIN(depth_load(region,need,kind,sizeof(kind),NULL)==NULL);
  free(region);
 
@@ -162,10 +185,10 @@ int main(void) {
  CHECK(root!=NULL && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK && !report.refused);
  free(region);
 
- /* THE BUILDER READ, the same refusal. */
+ /* THE BUILDER READ, the same refusal, and the same leg's own reason. */
  CHECK(depth_builder_init(&builder)); memset(&report,0,sizeof(report));
  PLAIN(!depth_load_builder(&builder,kind,sizeof(kind),&report));
- CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_KIND_MISMATCH && report.refused);
+ CHECK(report.refuse_reason==SCHEMA_TABLE_REFUSE_WIRE_DAMAGED && report.refused);
  depth_builder_shutdown(&builder);
  CHECK(depth_builder_init(&builder)); memset(&report,0,sizeof(report));
  CHECK(depth_load_builder(&builder,clean,sizeof(clean),&report) && report.refuse_reason==SCHEMA_TABLE_REFUSE_OK);

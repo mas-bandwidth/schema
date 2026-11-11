@@ -132,11 +132,12 @@ func generate(compiler, corpus, out, runtime string) error {
 			}
 			emitDigest(&dispatch, a, t)
 		case "wire":
-			if fixed {
+			switch {
+			case fixed:
 				fmt.Fprintf(&dispatch, "values:=make([]%s.%s,1)\nplan:=make([]goruntime.TableFixedEntry,%s.%sFixedPlanMax)\nn:=%s.%sFixedLoad(values,data,plan,&r)\nif reason:=wireRefusal(n==1,&r);reason!=\"\"{return reason}\nif n!=1{return \"refuse damaged\"};v:=&values[0]\n", a, t, a, t, a, t)
-			} else if variable {
+			case variable:
 				fmt.Fprintf(&dispatch, "n,err:=%s.%sLoadMeasureReason(data);if err!=nil{return measureRefusal(err)}\nif n<=0{return \"error: invalid region extent\"}\nraw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63\nv:=%s.%sLoad(raw[off:off+uintptr(n)],data,&r)\nif reason:=wireRefusal(v!=nil,&r);reason!=\"\"{return reason}\n", a, t, a, t)
-			} else {
+			default:
 				fmt.Fprintf(&dispatch, "v:=new(%s.%s)\nok:=%s.%sLoad(v,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\n", a, t, a, t)
 			}
 			emitDigest(&dispatch, a, t)
