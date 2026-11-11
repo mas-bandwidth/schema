@@ -11,6 +11,20 @@ control=build/cs-armtext-control
 rm -rf "$control"
 mkdir -p "$control"
 
+# The control reads the TABLE runtime only. The packet writes and reads in
+# the generated UT.cs name the serialize.cs sibling runtime, which this
+# control does not exercise; drop those two functions and their `using`, and
+# keep every type declaration and every table helper the table files name.
+table_types() {
+    awk '
+        /^        public static bool (Write|Read)[A-Za-z0-9_]+\(/ { skip = 1 }
+        skip && /^        }$/ { skip = 0; next }
+        skip { next }
+        /^using Serialize;$/ { next }
+        { print }
+    ' "$control/generated/ut/UT.cs" > "$control/generated/ut/UTTypes.cs"
+}
+
 cat > "$control/control.csproj" <<'PROJECT'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -23,9 +37,9 @@ cat > "$control/control.csproj" <<'PROJECT'
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs"/>
-    <Compile Include="generated/ut/*.cs"/>
-    <Compile Include="../../../serialize.cs/src/Serialize.cs"/>
-    <Compile Include="../../../serialize.cs/src/Int128Pair.cs"/>
+    <Compile Include="generated/ut/Tblut*.cs"/>
+    <Compile Include="generated/ut/UTTable.cs"/>
+    <Compile Include="generated/ut/UTTypes.cs"/>
   </ItemGroup>
 </Project>
 PROJECT
@@ -65,8 +79,12 @@ class Program
         ReadOnlySpan<byte> at = wire.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
         byte[] widenScratch = Array.Empty<byte>();
         int forgedOrdinal = 0;
-        Schema.TableFixedWire.Run(plan.Slice(0, made), Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref widenScratch, ref forgedOrdinal);
-        r.Clamped += forgedOrdinal;
+        string why = Schema.TableFixedWire.Run(plan.Slice(0, made), Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref widenScratch, ref forgedOrdinal);
+        // An out-of-range value is a REFUSAL by reason (docs/SPEC-TABLES.md §4,
+        // §6.5), never a counter: the forged-ordinal lane and the run's own
+        // verdict both land on the report the generated loaders use.
+        if (forgedOrdinal != 0 && r != null && !r.Refused) { r.Refused = true; r.Reason = "out_of_range"; }
+        if (why != null && r != null) { r.Refused = true; r.Reason = why; r.Verdict = Schema.TableWire.Verdict.Refused; }
         return outVal;
     }
 
@@ -96,12 +114,16 @@ CS
 
 # 1. Positive run with unsabotaged compiler
 ./bin/schema generate --lang cs --out "$control/generated/ut" test/tables/UT.schema
+table_types
 "$dotnet" run --project "$control/control.csproj" > "$control/positive.log" 2>&1 || \
     { echo "POSITIVE RUN FAILED:"; cat "$control/positive.log"; exit 1; }
 
-# 2. Sabotage the runtime
-go run ./tools/sabotage -name fixed-form-cs-arm-text-flavour \
-    -out "$control/fixedruntime.gotext" internal/codegen/cstable/fixedruntime.go
+# 2. Sabotage the runtime. The guard-chain stamp is where a guarded entry's
+# `arg` now becomes the ARM ORDINAL; planting the text flavour there is the
+# old encoding, so a text entry under the second arm is selected on its
+# flavour and never fires.
+sed 's|stamped.Guard = inner.Guard; stamped.Arg = inner.Arg; stamped.ArgW = inner.ArgW;|stamped.Guard = inner.Guard; stamped.Arg = stamped.Op == Text ? (ulong)stamped.Meta : inner.Arg; stamped.ArgW = inner.ArgW; // SABOTAGED: the flavour over the arm ordinal|' \
+    internal/codegen/cstable/fixedruntime.go > "$control/fixedruntime.gotext"
 grep -q SABOTAGED "$control/fixedruntime.gotext" || \
     { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 
@@ -110,6 +132,7 @@ printf '{"Replace":{"%s/internal/codegen/cstable/fixedruntime.go":"%s/%s/fixedru
 go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
 
 "$control/schema" generate --lang cs --out "$control/generated/ut" test/tables/UT.schema
+table_types
 grep -q SABOTAGED "$control/generated/ut/TblutTable.cs" || \
     { echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged runtime"; exit 1; }
 
