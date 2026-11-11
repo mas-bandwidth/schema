@@ -1151,7 +1151,7 @@ const gooseInstallLine = `test -x "$(GOOSE)" || $(MAKE) dist-goose`
 // prerequisites and its recipe text.
 type gooseRule struct {
 	prereqs []string
-	recipe   string
+	recipe  string
 }
 
 // logicalLines joins backslash-continued lines into single logical lines, the
@@ -1288,6 +1288,22 @@ func gooseClosure(rules map[string]gooseRule, start string) (usesGoose, installs
 	return
 }
 
+// gooseControlProblems runs the check for one control: a target that runs the
+// pinned GOOSE must install the pin itself (the install line, or the
+// goose-toolchain-ready prerequisite), and it must never depend on bare
+// toolchain-goose, which only probes an already-installed pin.
+func gooseControlProblems(rules map[string]gooseRule, target string) []string {
+	var problems []string
+	uses, installs, bare := gooseClosure(rules, target)
+	if bare {
+		problems = append(problems, fmt.Sprintf("goose control %s depends on bare toolchain-goose, which only probes the pinned GOOSE: on a runner whose dist/ holds no Goose the job dies before the control runs", target))
+	}
+	if uses && !installs {
+		problems = append(problems, fmt.Sprintf("goose control %s runs the pinned GOOSE but installs it neither in its recipe (test -x \"$(GOOSE)\" || $(MAKE) dist-goose) nor through the goose-toolchain-ready prerequisite", target))
+	}
+	return problems
+}
+
 // TestGooseControlsInstallThePin holds every Goose control in the plan to the
 // rule that a control which runs the pinned compiler must install it itself.
 // Bare toolchain-goose only probes the pin, so a control that depends on it
@@ -1341,17 +1357,13 @@ func TestGooseControlsInstallThePin(t *testing.T) {
 	}
 
 	for _, tgt := range targets {
-		uses, installs, bare := gooseClosure(rules, tgt)
-		if bare {
-			t.Errorf("goose control %s depends on bare toolchain-goose, which only probes the pinned GOOSE: on a runner whose dist/ holds no Goose the job dies before the control runs", tgt)
-		}
-		if uses && !installs {
-			t.Errorf("goose control %s runs the pinned GOOSE but installs it neither in its recipe (test -x \"$(GOOSE)\" || $(MAKE) dist-goose) nor through the goose-toolchain-ready prerequisite", tgt)
+		for _, problem := range gooseControlProblems(rules, tgt) {
+			t.Error(problem)
 		}
 	}
 
 	// The negative control: the same check over an in-test copy of the verdict
-	// target with the old prerequisite must fail as a bare toolchain dependency.
+	// target with the old prerequisite must fail, naming the bare dependency.
 	const oldVerdict = ".PHONY: tables-goose-wire-fuzz-verdict-negative-control\n" +
 		"tables-goose-wire-fuzz-verdict-negative-control: toolchain-goose\n" +
 		"\tSCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'\n"
@@ -1359,8 +1371,12 @@ func TestGooseControlsInstallThePin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, bare := gooseClosure(negRules, "tables-goose-wire-fuzz-verdict-negative-control")
-	if !bare {
-		t.Error("PLANTED: the verdict control with the old prerequisite (toolchain-goose) must be caught as a bare toolchain dependency")
+	problems := gooseControlProblems(negRules, "tables-goose-wire-fuzz-verdict-negative-control")
+	found := false
+	for _, problem := range problems {
+		found = found || strings.Contains(problem, "depends on bare toolchain-goose")
+	}
+	if !found {
+		t.Errorf("PLANTED: the verdict control with the old prerequisite (toolchain-goose) must be caught as a bare toolchain dependency, got %v", problems)
 	}
 }
