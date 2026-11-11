@@ -12,7 +12,6 @@ package tabledemo
 
 import (
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -148,8 +147,8 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 }
 func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 	WideBlobReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -164,11 +163,24 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{

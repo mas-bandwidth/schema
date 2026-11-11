@@ -14,7 +14,6 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/serialize.go/v2"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -873,8 +872,8 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 }
 func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool {
 	MixedEntityReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -889,11 +888,24 @@ func MixedEntityLoadMessageBody(r *TableMessageReader, value *MixedEntity) bool 
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x23fcfd6678e36712:
 			{
@@ -1423,8 +1435,8 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 }
 func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 	MixedStatReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1439,11 +1451,24 @@ func MixedStatLoadMessageBody(r *TableMessageReader, value *MixedStat) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x80ab75f0866dbf65:
 			{
@@ -1569,8 +1594,8 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 }
 func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) bool {
 	MixedHitEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1585,11 +1610,24 @@ func MixedHitEventLoadMessageBody(r *TableMessageReader, value *MixedHitEvent) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb7bc9ac015a25050:
 			{
@@ -1767,8 +1805,8 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 }
 func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent) bool {
 	MixedChatEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1783,11 +1821,24 @@ func MixedChatEventLoadMessageBody(r *TableMessageReader, value *MixedChatEvent)
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xa5013e9ad5caeda4:
 			{
@@ -1894,8 +1945,8 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 }
 func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEvent) bool {
 	MixedPickupEventReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1910,11 +1961,24 @@ func MixedPickupEventLoadMessageBody(r *TableMessageReader, value *MixedPickupEv
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x9e7fd06d864fbd56:
 			{
@@ -2332,8 +2396,8 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 }
 func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 	BenchMixedReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2348,11 +2412,24 @@ func BenchMixedLoadMessageBody(r *TableMessageReader, value *BenchMixed) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xaa38aca481f528a8:
 			{

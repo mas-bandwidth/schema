@@ -12,7 +12,6 @@ package tabledemo
 
 import (
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -151,8 +150,8 @@ func RootConfigSaveMessages(values []*RootConfig, buffer []byte, report *TableRe
 }
 func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 	RootConfigReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -167,11 +166,24 @@ func RootConfigLoadMessageBody(r *TableMessageReader, value *RootConfig) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x8a67c9728746d394:
 			{
@@ -474,8 +486,8 @@ func WeaponConfigSaveMessages(values []*WeaponConfig, buffer []byte, report *Tab
 }
 func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) bool {
 	WeaponConfigReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -490,11 +502,24 @@ func WeaponConfigLoadMessageBody(r *TableMessageReader, value *WeaponConfig) boo
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
@@ -996,8 +1021,8 @@ func LoadoutConfigSaveMessages(values []*LoadoutConfig, buffer []byte, report *T
 }
 func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) bool {
 	LoadoutConfigReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1012,11 +1037,24 @@ func LoadoutConfigLoadMessageBody(r *TableMessageReader, value *LoadoutConfig) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x32a89b2977c48ad4:
 			{
@@ -1558,8 +1596,8 @@ func ProfileConfigSaveMessages(values []*ProfileConfig, buffer []byte, report *T
 }
 func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) bool {
 	ProfileConfigReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -1574,11 +1612,24 @@ func ProfileConfigLoadMessageBody(r *TableMessageReader, value *ProfileConfig) b
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xc4bcadba8e631b86:
 			{
@@ -2103,8 +2154,8 @@ func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool
 }
 func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool {
 	AttachmentReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2119,11 +2170,24 @@ func AttachmentLoadMessageBody(r *TableMessageReader, value *AttachmentRow) bool
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x6a771618f6fe31d1:
 			{
@@ -2226,8 +2290,8 @@ func BuffSaveMessageBody(w *TableMessageWriter, value *BuffRow) bool {
 }
 func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 	BuffReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2242,11 +2306,24 @@ func BuffLoadMessageBody(r *TableMessageReader, value *BuffRow) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x9adc623a805c87c6:
 			{
@@ -2310,8 +2387,8 @@ func DebuffSaveMessageBody(w *TableMessageWriter, value *DebuffRow) bool {
 }
 func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 	DebuffReset(value)
-	var seenIDs [64]uint64
-	seen := seenIDs[:0]
+	var seenRefs [128]uint64
+	var seenLarge map[uint64]struct{}
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
@@ -2326,11 +2403,24 @@ func DebuffLoadMessageBody(r *TableMessageReader, value *DebuffRow) bool {
 			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
-		if slices.Contains(seen, entry.ID) {
-			r.Report.Refuse(TableRefuseWireDamaged, "")
-			return false
+		if ref > uint64(len(seenRefs))*64 {
+			if seenLarge == nil {
+				seenLarge = map[uint64]struct{}{}
+			}
+			if _, dup := seenLarge[ref]; dup {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenLarge[ref] = struct{}{}
+		} else {
+			word := (ref - 1) >> 6
+			bit := uint64(1) << ((ref - 1) & 63)
+			if seenRefs[word]&bit != 0 {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+			seenRefs[word] |= bit
 		}
-		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x8113fe7ea2b16969:
 			{

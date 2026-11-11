@@ -10,9 +10,12 @@ import (
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);\n", st.Name, g.storageName(st.Name), st.Name)
 	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
-	// or unknown: the ids this body has carried are held in a stack buffer.
-	g.pf("var seenIDs [64]uint64;seen:=seenIDs[:0]\n")
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if slices.Contains(seen,entry.ID){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seen=append(seen,entry.ID);switch entry.ID {\n")
+	// or unknown: a reference is tested and set in one bit of a stack bitmap.
+	// The bitmap is sized for every vocabulary the conforming byte bound admits,
+	// and a caller that raised that bound keeps the same verdicts through the
+	// overflow set, so the check costs one test per field whatever the size.
+	g.pf("var seenRefs [128]uint64;var seenLarge map[uint64]struct{}\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref>uint64(len(seenRefs))*64 {if seenLarge==nil{seenLarge=map[uint64]struct{}{}};if _,dup:=seenLarge[ref];dup{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seenLarge[ref]=struct{}{}} else {word:=(ref-1)>>6;bit:=uint64(1)<<((ref-1)&63);if seenRefs[word]&bit!=0{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};seenRefs[word]|=bit};switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
