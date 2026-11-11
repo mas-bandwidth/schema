@@ -1153,7 +1153,7 @@ fn retain_id(ids: &[u64], r: u64, bad: &mut bool) -> u64 {
 /// resolves each, and a kind outside the closed set is framing damage (§3).
 fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
     let w = |c: &mut RetainCur, n: usize| -> bool {
-        if c.off + n > c.buf.len() {
+        if c.off > c.buf.len() || n > c.buf.len() - c.off {
             return false;
         }
         c.off += n;
@@ -1167,10 +1167,10 @@ fn retain_skip(c: &mut RetainCur, kind: u8) -> bool {
         18 | 19 | 24 | 29 => w(c, 16),
         12 | 31 | 32 => {
             let Some(n) = c.leb() else { return false; };
-            let n = n as usize;
-            if c.off + n > c.buf.len() {
+            if c.off > c.buf.len() || n > (c.buf.len() - c.off) as u64 {
                 return false;
             }
+            let n = n as usize;
             c.off += n;
             true
         }
@@ -1244,11 +1244,11 @@ fn retain_resolve(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
 
 fn retain_framed(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     let Some(n) = c.leb() else { *bad = true; return; };
-    let n = n as usize;
-    if c.off + n > c.buf.len() {
+    if c.off > c.buf.len() || n > (c.buf.len() - c.off) as u64 {
         *bad = true;
         return;
     }
+    let n = n as usize;
     let mut sub = RetainCur { buf: &c.buf[c.off..c.off + n], off: 0 };
     c.off += n;
     let mark = out.len();
@@ -1287,7 +1287,13 @@ fn retain_content(c: &mut RetainCur, ids: &[u64], kind: u8, depth: usize, out: &
             out.push(ek);
             let Some(count) = c.leb() else { *bad = true; return; };
             out.extend_from_slice(&count.to_le_bytes());
+            // Every element costs at least one byte, so the claimed count
+            // cannot outrun the bytes the frame has left (docs/SPEC-TABLES.md §6.6).
             for _ in 0..count {
+                if c.off >= c.buf.len() {
+                    *bad = true;
+                    return;
+                }
                 if kind == 16 {
                     retain_keyed(c, ids, ek, depth, out, bad);
                 } else {
@@ -1457,7 +1463,7 @@ pub fn retain_discard_body(retain: &mut TableRetain, path: TableRetainPath) {
 }
 
 fn retain_emit_ref(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], bad: &mut bool) -> u64 {
-    if c.off + 8 > c.buf.len() {
+    if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
         *bad = true;
         return 0;
     }
@@ -1511,16 +1517,17 @@ fn retain_emit_resolve(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
 
 #[allow(clippy::too_many_arguments)] // one recursive walk's shared state, threaded explicitly
 fn retain_emit_framed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], kind: u8, depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
-    if c.off + 8 > c.buf.len() {
+    if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
         *bad = true;
         return;
     }
-    let len = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap()) as usize;
+    let len = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
     c.off += 8;
-    if c.off + len > c.buf.len() {
+    if c.off > c.buf.len() || len > (c.buf.len() - c.off) as u64 {
         *bad = true;
         return;
     }
+    let len = len as usize;
     let mut sub = RetainCur { buf: &c.buf[c.off..c.off + len], off: 0 };
     c.off += len;
     let mut content = Vec::new();
@@ -1552,14 +1559,20 @@ fn retain_emit_content(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableR
             let ek = c.buf[c.off];
             c.off += 1;
             out.push(ek);
-            if c.off + 8 > c.buf.len() {
+            if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
                 *bad = true;
                 return;
             }
             let count = u64::from_le_bytes(c.buf[c.off..c.off + 8].try_into().unwrap());
             c.off += 8;
             leb_write(out, count);
+            // Every element costs at least one byte, so the claimed count
+            // cannot outrun the bytes the frame has left (docs/SPEC-TABLES.md §6.6).
             for _ in 0..count {
+                if c.off >= c.buf.len() {
+                    *bad = true;
+                    return;
+                }
                 if kind == 16 {
                     retain_emit_keyed(c, ids, retain, known, ek, depth, out, bad);
                 } else {
@@ -1590,7 +1603,7 @@ fn retain_emit_keyed(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRet
 
 fn retain_emit_body(c: &mut RetainCur, ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], depth: usize, out: &mut Vec<u8>, bad: &mut bool) {
     loop {
-        if c.off + 8 > c.buf.len() {
+        if c.off > c.buf.len() || 8 > c.buf.len() - c.off {
             *bad = true;
             return;
         }
