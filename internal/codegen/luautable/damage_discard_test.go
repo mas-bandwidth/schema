@@ -83,7 +83,7 @@ func luauDamageRead(t *testing.T, file, sabotage string) string {
 		fmt.Fprintf(&b, "require(%q)\n", "./"+mod)
 	}
 	b.WriteString(`for _, retain in {false, true} do
- local report = {malformed=false, refused=0, unknown=0, kindMismatch=0, clamped=0, widened=0, duplicate=0}
+ local report = {malformed=false, refused=0, unknown=0, widened=0}
  local value = if retain then R.loadRetainWalk("Cfg", inputs.wire, report) else L.loadWalk("Cfg", inputs.wire, report)
  print(tostring(value == nil) .. " " .. tostring(report.malformed))
 end

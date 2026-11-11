@@ -116,7 +116,7 @@ local J = require("./schema_json")
 
 local function row(name: string, answer: string) print(name .. " " .. answer) end
 local function report(): any
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
+	return { malformed = false, refused = 0, unknown = 0, widened = 0 }
 end
 local function hex(b: buffer?): string
 	if b == nil then return "nil" end
