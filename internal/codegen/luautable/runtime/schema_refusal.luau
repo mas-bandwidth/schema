@@ -110,6 +110,9 @@ R.ReadStrictNames = table.freeze({
 	-- the storage cap refusal (§2.9): a `[]` or map count past the int32
 	-- storage cap, answered by schema_load.luau
 	count_over_extent_cap = true,
+	-- the blob size cap (§3.1, §11): a string or bytes blob whose length does
+	-- not fit 2^32 - 1, answered by schema_load.luau
+	blob_over_size_cap = true,
 	-- the fixed reader's own, answered through schema_fixed.luau for a form-3 file
 	-- (§3.4, §6.5): Go's names, every framing-damage return included
 	layout_malformed = true, layout_record_too_large = true, layout_unknown = true, layout_unsupported = true,
