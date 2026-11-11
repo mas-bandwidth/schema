@@ -231,7 +231,13 @@ int main(void) {
         printf("value moved %%08x lead %%u trail %%u\n", bits.u, back[0].lead, back[0].trail);
         return 1;
     }
-    if (r.clamped != 0) { printf("clamped %%d\n", r.clamped); return 1; }
+    /* A reader never clamps (docs/SPEC-TABLES.md §4, §6.5): the value either
+       reads exactly, as checked above, or the load refuses. A read that
+       returned the record names no refusal. */
+    if (r.refused != 0 || r.refuse_reason != SCHEMA_TABLE_REFUSE_OK) {
+        printf("refused %%d reason %%d\n", (int)r.refused, (int)r.refuse_reason);
+        return 1;
+    }
     return 0;
 }
 `, file)

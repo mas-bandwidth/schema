@@ -776,7 +776,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        return -1;\n    }\n")
 	if st.Integrity != "" {
 		g.pf("    if ( !schema_table_integrity_holds_( data, bytes ) )\n    {\n")
-		g.pf("        report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n")
+		g.pf("        report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
 		g.pf("        report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;\n")
 		g.pf("        return -1;\n    }\n")
 		g.pf("    bytes -= 4;\n")
