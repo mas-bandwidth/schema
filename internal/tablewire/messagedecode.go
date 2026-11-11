@@ -224,7 +224,8 @@ func (d *bitDecoder) entry(ref uint64) (ir.TableVocabularyEntry, bool) {
 
 // reserved reports one of the three ids the language holds back
 // (docs/SPEC-TABLES.md §3.1, §3.3, §5): each is damage anywhere but its own
-// transport, and the rule OUTRANKS the wrong-sort rule below.
+// transport, in a message and in a file's node table alike. In a message the
+// rule OUTRANKS the wrong-sort rule below.
 func reserved(id uint64) bool {
 	return id == ir.TableBuildVersionWireId || id == ir.TableMessageVocabularyWireId || id == ir.TableNodeWireId
 }
