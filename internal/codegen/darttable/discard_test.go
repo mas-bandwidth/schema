@@ -61,22 +61,33 @@ func discardInstance(t *testing.T, m *tabletext.Model, root string) *tabletext.I
 	return inst
 }
 
-// discardWireDart encodes the root and then damages the nested body: Inner's
-// one field, kind 4 holding 3, gets the kind 37 no reader can skip. The engine
-// is asked first, so the vector is damaged by the rule and not by assumption.
+// discardWireDart encodes the root and then damages it by the strict form's
+// rule: a fixed root's form-3 image has no field-kind byte, so its final
+// record is truncated; a variable root keeps the nested-body corruption, where
+// Inner's one field, kind 4 holding 3, gets the kind 37 no reader can skip. The
+// engine is asked first, so the vector is damaged by the rule and not by
+// assumption.
 func discardWireDart(t *testing.T, u *ir.Unit, root string) []byte {
 	t.Helper()
 	m := tabletext.NewModel(u)
-	wire, err := tablewire.Encode(m, discardInstance(t, m, root))
+	inst := discardInstance(t, m, root)
+	wire, err := tablewire.Encode(m, inst)
 	if err != nil {
 		t.Fatal(err)
+	}
+	var report tabletext.Report
+	if tablewire.FixedRoot(m, inst.Def) {
+		wire = wire[:len(wire)-1]
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) || !report.Refused {
+			t.Fatalf("%s: the engine does not read the truncated record as damage: ok=%v err=%v %+v", root, ok, err, report)
+		}
+		return wire
 	}
 	at := bytes.Index(wire, []byte{byte(ir.TableKindI32), 3, 0, 0, 0, 0})
 	if at < 0 {
 		t.Fatalf("%s: Inner's body is not where this test expects it", root)
 	}
 	wire[at] = 37
-	var report tabletext.Report
 	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) || !report.Refused {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
@@ -106,12 +117,12 @@ func discardMessages(t *testing.T, u *ir.Unit) []byte {
 }
 
 // TestDamageDiscardsTheWholeLoadDart is the Dart leg's gate for DAMAGE
-// DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): damage inside a nested
-// body, with a whole field before it and after it, makes WireLoad hand back the
-// type's defaults for a fixed root and a variable root with the report saying
-// malformed, WireLoadRetain hand back defaults with the retention store empty,
-// and LoadMessages answer no body with every body at its defaults. Red if any
-// read hands back what it decoded.
+// DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a fixed root's truncated
+// form-3 record makes FixedLoad refuse and hand back the type's defaults; a
+// variable root's damage inside the nested body makes WireLoad hand back the
+// type's defaults with the report refusing; WireLoadRetain hands back defaults
+// with the retention store empty, and LoadMessages answers no body with every
+// body at its defaults. Red if any read hands back what it decoded.
 func TestDamageDiscardsTheWholeLoadDart(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "dart")
@@ -120,9 +131,9 @@ func TestDamageDiscardsTheWholeLoadDart(t *testing.T) {
 	fixed := discardWireDart(t, u, "Root")
 	variable := discardWireDart(t, u, "Graph")
 
-	files, err := generateWireFiles(u)
+	files, err := Generate(u)
 	if err != nil {
-		t.Fatalf("generateWireFiles: %v", err)
+		t.Fatalf("Generate: %v", err)
 	}
 	home := runtimeHome(u)
 	dir := t.TempDir()
@@ -136,7 +147,8 @@ func TestDamageDiscardsTheWholeLoadDart(t *testing.T) {
 	}
 	probe := fmt.Sprintf(`import 'dart:io';
 import 'dart:typed_data';
-import '%[1]sWire.dart';
+import '%[1]sWire.dart' as w;
+import '%[1]sFixed.dart' as f;
 
 void fail(String what) {
   print(what);
@@ -145,21 +157,22 @@ void fail(String what) {
 
 void main() {
   final fixed = Uint8List.fromList(%[2]s);
-  final rf = TableWireReport();
-  final f = rootWireLoad(fixed, rf);
-  if (!rf.refused || rf.reason != 'wire_damaged') fail('fixed: the report does not refuse wire_damaged');
-  if (f.a != 0 || f.b != 0 || f.inner.n != 0) fail('fixed: WireLoad handed back a=${f.a} b=${f.b} n=${f.inner.n} on damage');
+  final rf = f.TableFixedReport();
+  final out = <f.Root>[f.Root()];
+  final n = f.rootFixedLoad(out, 1, fixed, fixed.length, f.rootFixedNewPlan(), rf);
+  if (n != -1 || rf.refused == f.TableFixedRefusal.none) fail('fixed: the report does not refuse the truncated record');
+  if (out[0].a != 0 || out[0].b != 0 || out[0].inner.n != 0) fail('fixed: FixedLoad handed back a=${out[0].a} b=${out[0].b} n=${out[0].inner.n} on damage');
 
   final variable = Uint8List.fromList(%[3]s);
-  final rg = TableWireReport();
-  final g = graphWireLoad(variable, rg);
-  if (!rg.refused || rg.reason != 'wire_damaged') fail('variable: the report does not refuse wire_damaged');
+  final rg = w.TableWireReport();
+  final g = w.graphWireLoad(variable, rg);
+  if (!rg.refused) fail('variable: the report does not refuse the damaged body');
   if (g.a != 0 || g.b != 0 || g.inner.n != 0 || g.next != null) fail('variable: WireLoad handed back a=${g.a} b=${g.b} n=${g.inner.n} on damage');
 
-  final retain = TableRetain(1 << 16, List<int>.filled(64, 0));
-  final rr = TableWireReport();
-  final k = graphWireLoadRetain(variable, retain, rr);
-  if (!rr.refused || rr.reason != 'wire_damaged') fail('retain: the report does not refuse wire_damaged');
+  final retain = w.TableRetain(1 << 16, List<int>.filled(64, 0));
+  final rr = w.TableWireReport();
+  final k = w.graphWireLoadRetain(variable, retain, rr);
+  if (!rr.refused) fail('retain: the report does not refuse the damaged body');
   if (k.a != 0 || k.b != 0 || k.inner.n != 0) fail('retain: WireLoadRetain handed back a=${k.a} b=${k.b} n=${k.inner.n} on damage');
   if (retain.used != 0 || retain.records.isNotEmpty) fail('retain: the store kept used=${retain.used} records=${retain.records.length}');
   print('ok');
