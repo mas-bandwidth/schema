@@ -15,6 +15,7 @@ import (
 )
 
 func TestInertArrayHeadersElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir array bodies shorter than their two-byte header are inert in both read modes, and a bytes(N) body is damage")
 	u := unitFrom(t, `package inertarray
  enum Key { A, B }
@@ -86,6 +87,7 @@ end
 }
 
 func TestInertArrayKeepsRetainedOccurrenceElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "an inert later array header preserves the previous body and its retained records")
 	u := unitFrom(t, `package inertretain
  table Inner { value int32 }
@@ -133,6 +135,7 @@ end
 }
 
 func TestPinnedInertByteArrayHeaderElixir(t *testing.T) {
+	t.Parallel()
 	slowtest.Gate(t, "Elixir stream bytes header replays the permanent enumerated report divergence")
 	u := loadUnit(t, "../../../tables/stream/Stream.schema")
 	m := tabletext.NewModel(u)
