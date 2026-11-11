@@ -156,9 +156,29 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
+# $(call tables_generate_side_by_side,<VAR>) runs each line of the exported
+# variable <VAR> -- a generate macro's expansion -- as its own process, all
+# of them at once, and fails when any fails. Every line of the C macros writes
+# an --out directory no other line writes; one after another they were most
+# of the conformance (c) job on a busy runner.
+define tables_generate_side_by_side
+	@awk 'BEGIN{printf "%s\n", ENVIRON["$(1)"]}' | { \
+		pids=''; fail=0; \
+		while IFS= read -r line; do \
+			line=$$(printf '%s' "$$line" | sed 's/^[[:space:]]*//'); \
+			[ -n "$$line" ] || continue; \
+			echo "$$line"; \
+			sh -c "$$line" & pids="$$pids $$!"; \
+		done; \
+		for p in $$pids; do wait "$$p" || fail=1; done; \
+		[ "$$fail" = 0 ]; \
+	}
+endef
+
+build/tables-generated-c/.stamp: export TABLES_C_GENERATE = $(call tables_generate_c,./bin/schema,build/tables-generated-c)
 build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_WIDELIST) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-c
-	$(call tables_generate_c,./bin/schema,build/tables-generated-c)
+	$(call tables_generate_side_by_side,TABLES_C_GENERATE)
 	@touch $@
 
 # -Werror on purpose: generated headers are included by the CONSUMER's
@@ -221,9 +241,28 @@ C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
 	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
 
-build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
+# THE DRIVER'S TRANSLATION UNITS COMPILE SIDE BY SIDE. One `$(CC) ... sources
+# -o driver` compiled every unit one after another; at -O2 that was 206 s on
+# four threads, past the per-commit two-minute rule on its own. Each unit is now
+# its own object, compiled with the same flags and include path the single
+# command gave it, so `make -j` runs as many at once as it is given, and the
+# objects are linked as before. The generated units are the corpus stamp's
+# output, which the empty rule below says.
+C_CONFORMANCE_OBJDIR := build/conformance-c-objs
+C_CONFORMANCE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_SOURCES:.c=.o))
+
+$(filter build/tables-generated-c/%,$(C_CONFORMANCE_SOURCES)): build/tables-generated-c/.stamp ;
+
+$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+	@mkdir -p $(@D)
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
+
+# The link still names the stamp and the driver's own sources, so the
+# prerequisite graph `make -p` prints reaches every input from this target.
+build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
-	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) $(C_CONFORMANCE_SOURCES) -o $@ -lm
+	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_OBJECTS) -o $@ -lm
+
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
 # in its by-value closure must pay NOTHING for the pointer machinery — no
@@ -1686,8 +1725,9 @@ define tables_generate_c_collections
 	$(1) generate --lang c --out $(2)/arms tables/arms
 endef
 
+build/tables-generated-c/collections.stamp: export TABLES_C_COLLECTIONS_GENERATE = $(call tables_generate_c_collections,./bin/schema,build/tables-generated-c)
 build/tables-generated-c/collections.stamp: bin/schema make/c.mk $(wildcard tables/maps/*.schema) $(wildcard tables/lists/*.schema) $(wildcard tables/arms/*.schema)
-	$(call tables_generate_c_collections,./bin/schema,build/tables-generated-c)
+	$(call tables_generate_side_by_side,TABLES_C_COLLECTIONS_GENERATE)
 	@touch $@
 
 build/c-collections-maps: build/tables-generated-c/collections.stamp test/c-tables/collections_maps.c test/c-tables/collections.h

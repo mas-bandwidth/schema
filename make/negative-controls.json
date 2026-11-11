@@ -245,15 +245,23 @@
       "lua": "5.4.8"
     },
     {
-      "name": "lua",
+      "name": "lua-a",
       "when": "pull-request",
-      "why": "the Lua port's resource-bounds raised depth cap, the caller-owned load's three, the soak, the release-tier wire fuzz at its release count on seed 2, and the damage-discard control, the compile-light refusers split from the single `lua` group (which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739). Measured 22 s of control time over the 6 controls (a couple of seconds each for the resource-bounds, alloc, soak and damage-discard checks plus the release-count seed-2 wire fuzz).",
+      "why": "slice 1 of 2 of lua, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-lua-resource-bounds-negative-control 27 s, tables-lua-alloc-negative-control 17 s, tables-lua-soak-negative-control 4 s, tables-lua-release-negative-control 12 s.",
       "targets": [
         "schema-lua-resource-bounds-negative-control",
         "tables-lua-alloc-negative-control",
-        "tables-lua-alloc-runtime-negative-control",
         "tables-lua-soak-negative-control",
-        "tables-lua-release-negative-control",
+        "tables-lua-release-negative-control"
+      ],
+      "lua": "5.4.8"
+    },
+    {
+      "name": "lua-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of lua, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lua-alloc-runtime-negative-control 2 s, tables-lua-damage-discard-negative-control 2 s.",
+      "targets": [
+        "tables-lua-alloc-runtime-negative-control",
         "tables-lua-damage-discard-negative-control"
       ],
       "lua": "5.4.8"
@@ -434,16 +442,37 @@
       ]
     },
     {
-      "name": "base-maps",
+      "name": "base-maps-a",
       "when": "pull-request",
-      "why": "the map gate's builder and shape controls, and the cook checker's walk over a map. The family ran as two jobs at 80 s and 74 s of control time on run 34115675206, which is inside the rule and too close to it, so it runs as four. Measured 20 s over 5 controls.",
+      "why": "slice 1 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-builder-cap-negative-control 85 s.",
       "targets": [
-        "tables-maps-ascending-negative-control",
-        "tables-maps-cap-negative-control",
+        "tables-maps-builder-cap-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-ascending-negative-control 81 s.",
+      "targets": [
+        "tables-maps-ascending-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-cap-negative-control 74 s.",
+      "targets": [
+        "tables-maps-cap-negative-control"
+      ]
+    },
+    {
+      "name": "base-maps-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-clamp-negative-control 5 s, tables-maps-cook-check-negative-control 7 s, tables-maps-dead-entry-negative-control 4 s.",
+      "targets": [
         "tables-maps-clamp-negative-control",
         "tables-maps-cook-check-negative-control",
-        "tables-maps-dead-entry-negative-control",
-        "tables-maps-builder-cap-negative-control"
+        "tables-maps-dead-entry-negative-control"
       ]
     },
     {
@@ -481,34 +510,90 @@
       ]
     },
     {
-      "name": "base-tool-cook-differential",
+      "name": "base-tool-cook-differential-a",
       "when": "pull-request",
-      "why": "the tool's cook against the C++ reference's, nothing pinned between: the tool's map carve given slack after an entry array through go build -overlay, the harness rebuilt with it, and the differential required red on the map-bearing rows and on no other (1 s on hetzner1 beyond the reference driver's build); and the node alignment rule's two halves taken out of ir in turn through go test -overlay, each required to red the tool's cook of widelist_wide and no other row.",
+      "why": "slice 1 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-differential-negative-control 129 s.",
       "targets": [
-        "tables-tool-cook-differential-negative-control",
+        "tables-tool-cook-differential-negative-control"
+      ]
+    },
+    {
+      "name": "base-tool-cook-differential-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of base-tool-cook-differential, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-tool-cook-node-align-negative-control 86 s.",
+      "targets": [
         "tables-tool-cook-node-align-negative-control"
       ]
     },
     {
-      "name": "base-lists",
+      "name": "base-lists-a",
       "when": "pull-request",
-      "why": "the list gate, whole, with the umbrella target that names every leaf: make builds each of them once in one invocation, so the umbrella costs this group nothing and stays on the leg. The cook tool's list control rides here for the same corpus. Measured 35 s over 14 controls.",
+      "why": "slice 1 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-shared-negative-control 152 s.",
       "targets": [
-        "tables-lists-allocation-negative-control",
-        "tables-lists-clamp-negative-control",
+        "tables-lists-shared-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-b",
+      "when": "pull-request",
+      "why": "slice 2 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-unreached-negative-control 64 s.",
+      "targets": [
+        "tables-lists-unreached-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-c",
+      "when": "pull-request",
+      "why": "slice 3 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-cook-check-negative-control 4 s, tables-lists-dead-element-negative-control 39 s, tables-lists-tool-cook-negative-control 3 s, tables-maps-tool-cook-negative-control 12 s.",
+      "targets": [
         "tables-lists-cook-check-negative-control",
         "tables-lists-dead-element-negative-control",
-        "tables-lists-depth-negative-control",
-        "tables-lists-element-kind-negative-control",
-        "tables-lists-fit-negative-control",
-        "tables-lists-negative-controls",
-        "tables-lists-order-negative-control",
-        "tables-lists-preorder-negative-control",
-        "tables-lists-shared-negative-control",
         "tables-lists-tool-cook-negative-control",
-        "tables-maps-tool-cook-negative-control",
-        "tables-lists-unreached-negative-control",
+        "tables-maps-tool-cook-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-d",
+      "when": "pull-request",
+      "why": "slice 4 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-depth-negative-control 36 s, tables-lists-element-kind-negative-control 24 s.",
+      "targets": [
+        "tables-lists-depth-negative-control",
+        "tables-lists-element-kind-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-e",
+      "when": "pull-request",
+      "why": "slice 5 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-preorder-negative-control 23 s, tables-lists-walk-order-negative-control 35 s.",
+      "targets": [
+        "tables-lists-preorder-negative-control",
         "tables-lists-walk-order-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-f",
+      "when": "pull-request",
+      "why": "slice 6 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-fit-negative-control 32 s, tables-lists-order-negative-control 28 s.",
+      "targets": [
+        "tables-lists-fit-negative-control",
+        "tables-lists-order-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-g",
+      "when": "pull-request",
+      "why": "slice 7 of 7 of base-lists, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-lists-allocation-negative-control 27 s, tables-lists-clamp-negative-control 22 s.",
+      "targets": [
+        "tables-lists-allocation-negative-control",
+        "tables-lists-clamp-negative-control"
+      ]
+    },
+    {
+      "name": "base-lists-all",
+      "when": "nightly",
+      "why": "the umbrella target over every list control (and tables-maps-cook-check), as base-arms-all is over the arm controls: each control it names runs on every pull request in a base-lists or base-maps slice, so per commit it only ran them all a second time. Here it runs them together on the nightly tier.",
+      "targets": [
+        "tables-lists-negative-controls"
       ]
     },
     {
@@ -565,17 +650,31 @@
       ]
     },
     {
-      "name": "base-cook-1",
+      "name": "base-cook-1-a",
       "when": "pull-request",
-      "why": "the blob span and read hooks and the C leg's fuzz, soak and keyed refusal: the cooked corpus and the generated C tree they read. One half of what was the single `base-cook` group, cut on 2026-10-28 because that group ran 200 s median and 218 s max against the job's five-minute timeout over 14 ci-full runs (run 40684770225: 146 s of control time over 14 controls). Measured about 70 s of control time on run 40684770225 and 84 s on run 40684051433.",
+      "why": "slice 1 of 3 of base-cook-1, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-c-fuzz-negative-control 61 s.",
+      "targets": [
+        "tables-c-fuzz-negative-control"
+      ]
+    },
+    {
+      "name": "base-cook-1-b",
+      "when": "pull-request",
+      "why": "slice 2 of 3 of base-cook-1, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-c-keyed-max-refusal-negative-control 8 s, tables-c-soak-negative-control 50 s.",
+      "targets": [
+        "tables-c-keyed-max-refusal-negative-control",
+        "tables-c-soak-negative-control"
+      ]
+    },
+    {
+      "name": "base-cook-1-c",
+      "when": "pull-request",
+      "why": "slice 3 of 3 of base-cook-1, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-blob-read-hooks-negative-control 12 s, tables-blob-span-negative-control 16 s, tables-go-blob-span-negative-control 12 s, tables-c-keyed-none-refusal-negative-control 6 s.",
       "targets": [
         "tables-blob-read-hooks-negative-control",
         "tables-blob-span-negative-control",
         "tables-go-blob-span-negative-control",
-        "tables-c-fuzz-negative-control",
-        "tables-c-keyed-none-refusal-negative-control",
-        "tables-c-keyed-max-refusal-negative-control",
-        "tables-c-soak-negative-control"
+        "tables-c-keyed-none-refusal-negative-control"
       ]
     },
     {
@@ -1619,47 +1718,127 @@
       ]
     },
     {
-      "name": "dart-conformance",
+      "name": "dart-conformance-a",
       "when": "pull-request",
-      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11): walk negates the generated text reader's bool arm and requires dart / json-read red alone, text-boundary checks the text reader's boundary handling, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, framing drops the id-table cap and requires the framing surface red, and share breaks the shared-node identity and requires the shared rows red. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group keeps five of the ten, and dart-conformance-2 carries the other five.",
-      "dart": "3.13.2",
+      "why": "slice 1 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-share 361 s.",
       "targets": [
-        "conformance-negative-control-dart-walk",
-        "conformance-negative-control-dart-text-boundary",
-        "conformance-negative-control-dart-zero",
-        "conformance-negative-control-dart-framing",
         "conformance-negative-control-dart-share"
-      ]
+      ],
+      "dart": "3.13.2"
     },
     {
-      "name": "dart-conformance-2",
+      "name": "dart-conformance-b",
       "when": "pull-request",
-      "why": "the Dart leg's remaining emitter-side conformance controls (docs/PORTING.md I11, I12, I15): absent runs the conformance driver with its per-case absent writers silenced, block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader, and the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point. Split out of the `dart-conformance` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); each is built the same way, about 15 s each on a local host.",
-      "dart": "3.13.2",
+      "why": "slice 2 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-text-boundary 135 s.",
       "targets": [
-        "conformance-negative-control-dart-absent",
-        "conformance-negative-control-dart-block",
-        "tables-dart-wire-fuzz-negative-control",
-        "schema-dart-runs-hostile-corpus-negative-control",
-        "tables-dart-usage-negative-control"
-      ]
+        "conformance-negative-control-dart-text-boundary"
+      ],
+      "dart": "3.13.2"
     },
     {
-      "name": "dart",
+      "name": "dart-conformance-c",
       "when": "pull-request",
-      "why": "the Dart port's card controls, its four packet families, and the first four table gates: the allocation gate's two, the soak and the fixed form. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); the table gates moved to dart-tables-1 and dart-tables-2 so each row stays inside the rule. Each control is a few seconds off the warm generated tree.",
+      "why": "slice 3 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-walk 48 s.",
+      "targets": [
+        "conformance-negative-control-dart-walk"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-d",
+      "when": "pull-request",
+      "why": "slice 4 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-zero 47 s.",
+      "targets": [
+        "conformance-negative-control-dart-zero"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-e",
+      "when": "pull-request",
+      "why": "slice 5 of 5 of dart-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-framing 47 s.",
+      "targets": [
+        "conformance-negative-control-dart-framing"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-a",
+      "when": "pull-request",
+      "why": "slice 1 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-absent 80 s.",
+      "targets": [
+        "conformance-negative-control-dart-absent"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: conformance-negative-control-dart-block 45 s, tables-dart-usage-negative-control 10 s.",
+      "targets": [
+        "conformance-negative-control-dart-block",
+        "tables-dart-usage-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-wire-fuzz-negative-control 42 s.",
+      "targets": [
+        "tables-dart-wire-fuzz-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-conformance-2-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: schema-dart-runs-hostile-corpus-negative-control 34 s.",
+      "targets": [
+        "schema-dart-runs-hostile-corpus-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-a",
+      "when": "pull-request",
+      "why": "slice 1 of 4 of dart, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-dart-soak-negative-control 59 s.",
+      "targets": [
+        "tables-dart-soak-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of dart, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-utf8-dart-negative-control 14 s, tables-dart-alloc-negative-control 42 s.",
+      "targets": [
+        "packet-utf8-dart-negative-control",
+        "tables-dart-alloc-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of dart, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: cards-dart-conformance-upgrade-negative-control 5 s, packet-finite-dart-negative-control 8 s, tables-dart-alloc-runtime-negative-control 26 s, tables-dart-fixed-form-negative-control 21 s.",
+      "targets": [
+        "cards-dart-conformance-upgrade-negative-control",
+        "packet-finite-dart-negative-control",
+        "tables-dart-alloc-runtime-negative-control",
+        "tables-dart-fixed-form-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of dart, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: cards-dart-conformance-hash-negative-control 8 s, cards-dart-conformance-negative-control 5 s, packet-arm-defaults-dart-negative-control 6 s, packet-defaults-dart-negative-control 14 s.",
       "targets": [
         "cards-dart-conformance-hash-negative-control",
         "cards-dart-conformance-negative-control",
-        "cards-dart-conformance-upgrade-negative-control",
         "packet-arm-defaults-dart-negative-control",
-        "packet-defaults-dart-negative-control",
-        "packet-finite-dart-negative-control",
-        "packet-utf8-dart-negative-control",
-        "tables-dart-alloc-negative-control",
-        "tables-dart-alloc-runtime-negative-control",
-        "tables-dart-soak-negative-control",
-        "tables-dart-fixed-form-negative-control"
+        "packet-defaults-dart-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1684,22 +1863,46 @@
       "dart": "3.13.2"
     },
     {
-      "name": "dart-tables-2",
+      "name": "dart-tables-2-a",
       "when": "pull-request",
-      "why": "the Dart port's table gates' controls, the other half: the float-jit boxing, the text differential, the finite-float rule, the cook writer, the clean gate, the retain, the identity, the map sort, the cook map, the byte order, the discard and the cycle. Split out of the `dart` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); this group and dart-tables-1 split the table gates so each row stays inside the rule. The form-1 cook writer's control adds two driver compiles and two dart-only harness runs, about 30 s.",
+      "why": "slice 1 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-cookwrite-negative-control 130 s.",
+      "targets": [
+        "tables-dart-cookwrite-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-b",
+      "when": "pull-request",
+      "why": "slice 2 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-float-jit-boxing-negative-control 3 s, tables-dart-text-differential-negative-control 5 s, tables-dart-cook-map-negative-control 51 s.",
       "targets": [
         "tables-dart-float-jit-boxing-negative-control",
         "tables-dart-text-differential-negative-control",
+        "tables-dart-cook-map-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-c",
+      "when": "pull-request",
+      "why": "slice 3 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-finite-float-negative-control 2 s, tables-dart-clean-negative-control 2 s, tables-dart-retain-negative-control 44 s, tables-dart-identity-negative-control 2 s, tables-dart-map-sort-negative-control 2 s, tables-dart-byte-order-negative-control 2 s, tables-dart-cycle-negative-control 3 s.",
+      "targets": [
         "tables-dart-finite-float-negative-control",
-        "tables-dart-cookwrite-negative-control",
         "tables-dart-clean-negative-control",
         "tables-dart-retain-negative-control",
         "tables-dart-identity-negative-control",
         "tables-dart-map-sort-negative-control",
-        "tables-dart-cook-map-negative-control",
         "tables-dart-byte-order-negative-control",
-        "tables-dart-discard-negative-control",
         "tables-dart-cycle-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-tables-2-d",
+      "when": "pull-request",
+      "why": "slice 4 of 4 of dart-tables-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-discard-negative-control 20 s.",
+      "targets": [
+        "tables-dart-discard-negative-control"
       ],
       "dart": "3.13.2"
     },
@@ -1717,46 +1920,102 @@
       "java": "21"
     },
     {
-      "name": "java-packet",
+      "name": "java-packet-a",
       "when": "pull-request",
-      "why": "the Java port's four packet families, with the packet FINITE-FLOAT control (SPEC.md §4.3): arm defaults, defaults, UTF-8, wide and finite-float, each one schema build and one small javac off the generated tree, a few seconds. Split out of the `java` row on 2026-11-09 when that row ran 129-142 s on a loaded runner against the job's 120 s rule (runs 42556155793 and 42554833739); java-cards carries the card facade and the conformance-harness.",
+      "why": "slice 1 of 2 of java-packet, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-arm-defaults-java-negative-control 15 s, packet-defaults-java-negative-control 21 s, packet-utf8-java-negative-control 15 s.",
       "targets": [
         "packet-arm-defaults-java-negative-control",
         "packet-defaults-java-negative-control",
-        "packet-finite-java-negative-control",
         "packet-utf8-java-negative-control"
       ],
       "java": "21"
     },
     {
-      "name": "java-tables",
+      "name": "java-packet-b",
       "when": "pull-request",
-      "why": "the Java table gates' controls, split from the java row (see its why): the accessor and slot agreement, the allocation gate's localizing and off-pin controls, the base alignment, the format gate's drift and missing-formatter controls, the cook extent and the fixed form's two. Measured 78 s of control time on ubuntu-latest inside the java row on 2026-10-21 (87 s on 2026-10-22), the java-tables build included.",
+      "why": "slice 2 of 2 of java-packet, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: packet-finite-java-negative-control 12 s.",
       "targets": [
-        "tables-java-accessor-negative-control",
+        "packet-finite-java-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-a",
+      "when": "pull-request",
+      "why": "slice 1 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-alloc-negative-control 49 s, tables-java-allocator-runtime-negative-control 1 s, tables-java-fixedform-negative-control 8 s.",
+      "targets": [
         "tables-java-alloc-negative-control",
         "tables-java-allocator-runtime-negative-control",
-        "tables-java-block-lead-negative-control",
-        "tables-java-clean-drift-negative-control",
-        "tables-java-clean-formatter-missing-negative-control",
-        "tables-java-cook-extent-negative-control",
-        "tables-java-fixedform-arm-negative-control",
         "tables-java-fixedform-negative-control"
       ],
       "java": "21"
     },
     {
-      "name": "java-tables-more",
+      "name": "java-tables-b",
       "when": "pull-request",
-      "why": "the rest of the Java table gates' controls, split from the java row (see its why): the block fuzz oracle, the text differential, the keyed accessor's two bounds, the runtime home, the pointer slot and the soak count. Measured 51 s of control time on ubuntu-latest inside the java row on 2026-10-21 (56 s on 2026-10-22). The hostile-corpus control (docs/HOSTILE-CORPUS.md) rides here too: it flips the generated text reader's malformed check in a scratch copy, requires the corpus runner to red naming an unexplained case, then reruns the unplanted gate green; one schema generate of eight units and two javac passes, 10 s on the studio.",
+      "why": "slice 2 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-accessor-negative-control 19 s, tables-java-block-lead-negative-control 12 s, tables-java-fixedform-arm-negative-control 29 s.",
+      "targets": [
+        "tables-java-accessor-negative-control",
+        "tables-java-block-lead-negative-control",
+        "tables-java-fixedform-arm-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-c",
+      "when": "pull-request",
+      "why": "slice 3 of 3 of java-tables, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-clean-drift-negative-control 11 s, tables-java-clean-formatter-missing-negative-control 3 s, tables-java-cook-extent-negative-control 16 s.",
+      "targets": [
+        "tables-java-clean-drift-negative-control",
+        "tables-java-clean-formatter-missing-negative-control",
+        "tables-java-cook-extent-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more-a",
+      "when": "pull-request",
+      "why": "slice 1 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: schema-java-runs-hostile-corpus-negative-control 115 s.",
+      "targets": [
+        "schema-java-runs-hostile-corpus-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more-b",
+      "when": "pull-request",
+      "why": "slice 2 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-soak-negative-control 49 s.",
+      "targets": [
+        "tables-java-soak-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more-c",
+      "when": "pull-request",
+      "why": "slice 3 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-fuzz-negative-control 30 s, tables-java-keyed-negative-control 30 s.",
       "targets": [
         "tables-java-fuzz-negative-control",
-        "tables-java-json-differential-negative-control",
-        "tables-java-keyed-negative-control",
+        "tables-java-keyed-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more-d",
+      "when": "pull-request",
+      "why": "slice 4 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-runtime-home-negative-control 26 s, tables-java-slot-negative-control 26 s.",
+      "targets": [
         "tables-java-runtime-home-negative-control",
-        "tables-java-slot-negative-control",
-        "tables-java-soak-negative-control",
-        "schema-java-runs-hostile-corpus-negative-control"
+        "tables-java-slot-negative-control"
+      ],
+      "java": "21"
+    },
+    {
+      "name": "java-tables-more-e",
+      "when": "pull-request",
+      "why": "slice 5 of 5 of java-tables-more, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-java-json-differential-negative-control 22 s.",
+      "targets": [
+        "tables-java-json-differential-negative-control"
       ],
       "java": "21"
     },
@@ -2116,15 +2375,22 @@
       ]
     },
     {
-      "name": "goose-json-conformance",
+      "name": "goose-json-conformance-a",
       "when": "pull-request",
-      "why": "the Goose leg's emitter-overlay conformance text controls, each regenerating tabledemo under a sabotage and requiring its own surface red while the neighbours stay green: the walk control (16 s on hetzner1) and the three json_value controls (the writer's `&node` label, the reader's reference resolution, and the read's hold of a text list's total). Each installs the pinned Goose compiler itself (make dist-goose) and needs Go and nothing else. Split from the single `goose-text` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 36 s of control time over the 5 conformance JSON controls.",
+      "why": "slice 1 of 2 of goose-json-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-goose-walk 26 s, conformance-negative-control-goose-json-count 29 s.",
       "targets": [
         "conformance-negative-control-goose-walk",
+        "conformance-negative-control-goose-json-count"
+      ]
+    },
+    {
+      "name": "goose-json-conformance-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of goose-json-conformance, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-goose-json-label 13 s, conformance-negative-control-goose-json-share 13 s, conformance-negative-control-goose-json-total 10 s.",
+      "targets": [
         "conformance-negative-control-goose-json-label",
         "conformance-negative-control-goose-json-share",
-        "conformance-negative-control-goose-json-total",
-        "conformance-negative-control-goose-json-count"
+        "conformance-negative-control-goose-json-total"
       ]
     },
     {
@@ -2252,11 +2518,18 @@
       "lobster": "v2026.8"
     },
     {
-      "name": "go-containers-1",
+      "name": "go-containers-1-a",
       "when": "pull-request",
-      "why": "the Go container family's six modes (sort, ascending, duplicate, key-domain, dead, cap) and the builder-union refusal control. Split from the former 14-target `go-containers` group, which ran 130-148 s and was killed at 120 s on runs 42556155793 and 42554833739. Measured 42 s of control time over the 2 controls on vision (containers 37 s, builders 5 s).",
+      "why": "slice 1 of 2 of go-containers-1, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-go-containers-negative-controls 58 s.",
       "targets": [
-        "tables-go-containers-negative-controls",
+        "tables-go-containers-negative-controls"
+      ]
+    },
+    {
+      "name": "go-containers-1-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of go-containers-1, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-go-builders-negative-control 18 s.",
+      "targets": [
         "tables-go-builders-negative-control"
       ]
     },
@@ -2395,13 +2668,21 @@
       "squirrel": "3.2"
     },
     {
-      "name": "squirrel-tools",
+      "name": "squirrel-tools-a",
       "when": "pull-request",
-      "why": "first slice of the Squirrel port's small refusers and table-float controls (split from the single `squirrel` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739): the usage and runtime-home gates, the release tier, and the TABLE finite-float and float-parity controls. Measured 18 s of control time over the 5 controls (about 2 s for the seven finite-float sq runs, under 1 s for the four float-parity sq runs, and ~15 s for the usage, runtime-home and release-tier checks, with the first target paying the package test build).",
+      "why": "slice 1 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-release-negative-control 724 s.",
+      "targets": [
+        "tables-squirrel-release-negative-control"
+      ],
+      "squirrel": "3.2"
+    },
+    {
+      "name": "squirrel-tools-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of squirrel-tools, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-squirrel-usage-negative-control 12 s, tables-squirrel-runtime-home-negative-control 10 s, tables-squirrel-finite-float-negative-control 24 s, tables-squirrel-float-parity-negative-control 7 s.",
       "targets": [
         "tables-squirrel-usage-negative-control",
         "tables-squirrel-runtime-home-negative-control",
-        "tables-squirrel-release-negative-control",
         "tables-squirrel-finite-float-negative-control",
         "tables-squirrel-float-parity-negative-control"
       ],
@@ -2517,26 +2798,42 @@
       "luau": "0.741"
     },
     {
-      "name": "luau-text",
+      "name": "luau-text-a",
       "when": "pull-request",
-      "why": "the Luau text-form gates' controls on the pinned interpreter (make dist-luau): the strict FromJson and JSON required close, the text differential's float32 digits, the one-walk gate, the JSONTestSuite depth cap, the documented usage pages, versioning, and the release tier. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 26 s of control time over the 7 text-form controls.",
+      "why": "slice 1 of 2 of luau-text, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-luau-release-negative-control 146 s.",
+      "targets": [
+        "tables-luau-release-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-text-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of luau-text, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-luau-json-strict-negative-control 4 s, tables-luau-json-walk-negative-control 1 s, tables-luau-jsontestsuite-negative-control 1 s, tables-luau-text-differential-negative-control 1 s, tables-luau-usage-negative-control 2 s, tables-luau-versioning-negative-control 12 s.",
       "targets": [
         "tables-luau-json-strict-negative-control",
         "tables-luau-json-walk-negative-control",
         "tables-luau-jsontestsuite-negative-control",
         "tables-luau-text-differential-negative-control",
         "tables-luau-usage-negative-control",
-        "tables-luau-versioning-negative-control",
-        "tables-luau-release-negative-control"
+        "tables-luau-versioning-negative-control"
       ],
       "luau": "0.741"
     },
     {
-      "name": "luau-fuzz",
+      "name": "luau-fuzz-a",
       "when": "pull-request",
-      "why": "the Luau wire-fuzz controls and the bench/fuzz host controls on the pinned interpreter (make dist-luau): the wire-fuzz differential and its pinned vectors' fixes reverted in a scratch copy, the nightly fuzz host's planted crash replayed, the ludicrous control and the bench legs' golden flips. The wire-fuzz controls build the native host, which is the heavy half. Split from the single `luau` group, which ran 129-147 s on a loaded runner on runs 42556155793 and 42554833739. Measured 44 s of control time over the 5 wire-fuzz and host controls.",
+      "why": "slice 1 of 2 of luau-fuzz, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-luau-wire-fuzz-negative-control 77 s.",
       "targets": [
-        "tables-luau-wire-fuzz-negative-control",
+        "tables-luau-wire-fuzz-negative-control"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "luau-fuzz-b",
+      "when": "pull-request",
+      "why": "slice 2 of 2 of luau-fuzz, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-luau-wire-fuzz-vectors-negative-control 3 s, luau-ludicrous-negative-control 4 s, luau-nightly-fuzz-negative-control 29 s, bench-luau-gate-negative-control 4 s.",
+      "targets": [
         "tables-luau-wire-fuzz-vectors-negative-control",
         "luau-ludicrous-negative-control",
         "luau-nightly-fuzz-negative-control",
@@ -2730,12 +3027,26 @@
       ]
     },
     {
-      "name": "base-c-write-refusal",
+      "name": "base-c-write-refusal-a",
       "when": "pull-request",
-      "why": "the write contract's C controls (docs/SPEC.md §5.1): one generated writer check removed from a copy of the generated C tree, the conformance driver rebuilt against it, and the writer's surface required red with the surface beside it green. One driver compile and one leg run per control.",
+      "why": "slice 1 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-fixed 287 s.",
       "targets": [
-        "conformance-negative-control-c-write-refusal",
-        "conformance-negative-control-c-write-refusal-fixed",
+        "conformance-negative-control-c-write-refusal-fixed"
+      ]
+    },
+    {
+      "name": "base-c-write-refusal-b",
+      "when": "pull-request",
+      "why": "slice 2 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal 60 s.",
+      "targets": [
+        "conformance-negative-control-c-write-refusal"
+      ]
+    },
+    {
+      "name": "base-c-write-refusal-c",
+      "when": "pull-request",
+      "why": "slice 3 of 3 of base-c-write-refusal, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: conformance-negative-control-c-write-refusal-message 2 s.",
+      "targets": [
         "conformance-negative-control-c-write-refusal-message"
       ]
     },
