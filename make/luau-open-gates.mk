@@ -111,8 +111,10 @@ tables-luau-release: toolchain-luau build/conformance-harness build/conformance-
 # THE RELEASE TIER's CONTROL: the release gate runs over a scratch copy of the
 # units with the wire-fuzz control's reader bug planted (a string frame past its
 # body not counted malformed, test/conformance/luau/wire-fuzz-negative-control)
-# and must go RED on the report, at the release count, on its first seed: the
-# tier is not blind to what the PR tier catches.
+# and must go RED on the read verdict, at the release count, on its first seed:
+# the planted load accepts a wire the Go oracle refuses (under the strict read
+# the verdict is the comparison; the counters it once compared are the leg's
+# own diagnostics), so the tier is not blind to what the PR tier catches.
 .PHONY: tables-luau-release-negative-control
 tables-luau-release-negative-control: toolchain-luau build/conformance-harness build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	LUAU_WFNC_OUT=build/luau-release-nc sh test/conformance/luau/wire-fuzz-negative-control
@@ -123,9 +125,9 @@ tables-luau-release-negative-control: toolchain-luau build/conformance-harness b
 		> build/luau-release-nc.log 2>&1; then \
 		cat build/luau-release-nc.log; \
 		echo "NEGATIVE CONTROL FAILED: the release gate stayed green over a reader that does not count a string frame past its body"; exit 1; fi
-	@grep -q 'the report differs' build/wire-fuzz/luau-release-nc.log || { cat build/luau-release-nc.log; \
-		echo "NEGATIVE CONTROL FAILED: the release gate went red, but not on the report the plant moves"; exit 1; }
-	@echo "luau release negative control: the planted reader turns the release gate RED on the report"
+	@grep -q '^harness: FAILED after [0-9]* mutants: read acceptance differs: the leg says true, the oracle says false' build/wire-fuzz/luau-release-nc.log || { cat build/luau-release-nc.log; \
+		echo "NEGATIVE CONTROL FAILED: the release gate went red, but not on the acceptance the plant moves"; exit 1; }
+	@echo "luau release negative control: the planted reader turns the release gate RED on the read verdict"
 
 test-luau: tables-luau-release-negative-control
 
