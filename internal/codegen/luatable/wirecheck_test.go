@@ -86,7 +86,12 @@ local load = require("load")
 for line in inputs.rows:gmatch("[^\n]+") do
   local name, root = line:match("^(%S+) (%S+)$")
   local r = {}
-  local v = load.Load(T, root, inputs["wire:" .. name], r, load.NewState())
+  -- the vectors are form-1 files (docs/LAYERS/1-framing.md): at a fixed-class
+  -- root, whose plain Load answers previous_form, the variable form's strict
+  -- read is ReadStrictVariable
+  local read = load.Load
+  if not T.Tables[root].variable then read = load.ReadStrictVariable end
+  local v = read(T, root, inputs["wire:" .. name], r, load.NewState())
   print(name .. " " .. (v ~= nil and "read" or "refused"))
 end
 `

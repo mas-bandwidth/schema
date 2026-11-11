@@ -2618,7 +2618,7 @@ end
 -- it with THIS read's report, and answers the root only where the strict set
 -- accepts the wire. Otherwise it answers nil, raising nothing, with
 -- report.reason naming the refusal. A nil report refuses the same way (§6.5).
-function L.Load(T, name, bytes, report, state, into)
+local function reset_report(report)
   local r = report
   if r == nil then r = {} end
   r.damaged = false
@@ -2632,15 +2632,13 @@ function L.Load(T, name, bytes, report, state, into)
   r.missingRequired = 0
   r.wireDamaged = false
   r.reason = nil
-  state = state or L.NewState()
-  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4), and the
-  -- plain Load reads it as the engine's decode does: one record through the
-  -- fixed form's strict read. A form-1 file is previous_form, refused before
-  -- anything decodes, so nothing moves and nothing lands.
-  local desc = T.Tables[name]
-  if desc ~= nil and not desc.variable then
-    return fixed_root_load(T, name, bytes, r)
-  end
+  return r
+end
+
+-- strict_form1 is the variable form's strict read into a report at rest: the
+-- walk, the strict set, and the wire's own rules. Load runs it at a variable
+-- root, ReadStrictVariable at any root.
+local function strict_form1(T, name, bytes, r, state, into)
   local root = read_form1(T, name, bytes, r, state, into)
   local reason = strict_refusal(bytes, r, root)
   if reason == nil then
@@ -2661,6 +2659,29 @@ function L.Load(T, name, bytes, report, state, into)
     return nil
   end
   return root
+end
+
+function L.Load(T, name, bytes, report, state, into)
+  local r = reset_report(report)
+  -- A FIXED-CLASS ROOT'S FILE IS FORM 3 (docs/SPEC-TABLES.md §3.4), and the
+  -- plain Load reads it as the engine's decode does: one record through the
+  -- fixed form's strict read. A form-1 file is previous_form, refused before
+  -- anything decodes, so nothing moves and nothing lands.
+  local desc = T.Tables[name]
+  if desc ~= nil and not desc.variable then
+    return fixed_root_load(T, name, bytes, r)
+  end
+  return strict_form1(T, name, bytes, r, state or L.NewState(), into)
+end
+
+-- ReadStrictVariable is THE VARIABLE FORM'S STRICT READ AT ANY ROOT
+-- (docs/LAYERS/1-framing.md): the framing surface's read of a form-1 file at a
+-- fixed-class root, where Load itself answers previous_form. It is Load's
+-- variable half, the same walk and the same refusals; the descriptor is never
+-- touched, so a save that follows still writes the fixed root's form 3.
+function L.ReadStrictVariable(T, name, bytes, report, state, into)
+  local r = reset_report(report)
+  return strict_form1(T, name, bytes, r, state or L.NewState(), into)
 end
 
 L.loadWalk = read_form1
