@@ -39,8 +39,8 @@ export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
 // fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
-export const FixedTableFixedHashLo = 0x7e9ad910;
-export const FixedTableFixedHashHi = 0x5f132092;
+export const FixedTableFixedHashLo = 0xbf3bc923;
+export const FixedTableFixedHashHi = 0x17a486da;
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
@@ -318,7 +318,7 @@ export function FixedTableFixedIdentityCopy() { return FixedTableFixedIdentity.s
 // bytes per wire byte where base64 is four per three. The reader's OWN
 // layout is the array above, not a second copy.
 const FixedTableFixedKnown = [
-  new TableFixedKnownLayout(0x7e9ad910, 0x5f132092, FixedTableFixedLayout, 1279, 1244),
+  new TableFixedKnownLayout(0xbf3bc923, 0x17a486da, FixedTableFixedLayout, 1279, 1244),
 ];
 // THE OBJECT TABLE IS FROZEN, descriptors included: an importer can hold
 // the module's own entries to their values but cannot replace one.

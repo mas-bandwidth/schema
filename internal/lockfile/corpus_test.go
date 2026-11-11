@@ -36,7 +36,10 @@ var corpora = []string{
 
 // TestCorpusLocksAreCurrent regenerates each committed lock and compares byte
 // for byte — the idempotence `schema lock` promises, measured on the corpus
-// rather than a fixture.
+// rather than a fixture. The regeneration runs on a COPY of the unit, because
+// `schema lock` carries the committed lineage forward and appends an entry when
+// a fixed table's hash moved; a live render carries the identity alone and
+// would call every moved hash stale.
 func TestCorpusLocksAreCurrent(t *testing.T) {
 	for _, dir := range corpora {
 		t.Run(strings.TrimPrefix(dir, "../../"), func(t *testing.T) {
@@ -45,7 +48,25 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("this unit declares fixed tables and carries a committed lock: %v", err)
 			}
-			paths, err := compiler.GatherPaths([]string{dir})
+			tmp := t.TempDir()
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				name := e.Name()
+				if e.IsDir() || (!strings.HasSuffix(name, ".schema") && name != lockfile.FileName) {
+					continue
+				}
+				b, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(tmp, name), b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			paths, err := compiler.GatherPaths([]string{tmp})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +74,14 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
-			if got := lockfile.Render(u).Text(); got != string(want) {
+			if _, _, err := compiler.UpdateSchemaLock(u, paths); err != nil {
+				t.Fatalf("regenerating %s: %v", path, err)
+			}
+			got, err := os.ReadFile(filepath.Join(tmp, lockfile.FileName))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(want) {
 				t.Errorf("%s is stale — a fixed table's layout moved:\n  ./bin/schema lock %s\n--- committed ---\n%s\n--- current ---\n%s",
 					path, dir, want, got)
 			}

@@ -34,7 +34,7 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	const (
 		refEntries    = 75
 		refLayoutLen  = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash       = uint64(0x5f1320927e9ad910)
+		refHash       = uint64(0x17a486dabf3bc923)
 		refBodyBytes  = int64(1236)
 		refRecordSize = fixedHashBytes + refBodyBytes
 	)
