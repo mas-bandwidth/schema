@@ -88,7 +88,10 @@ leb|leb-driver)
     sed 's/if i > 0 \&\& b == 0/if false/' "$source" > "$out/source.gotext"
     ;;
 frame-cap)
-    source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1/*Table.go)
+    # the framing vectors at tblr1's fixed root Cfg are read through
+    # tblr1framing, the same unit with Cfg a variable table (make/go.mk,
+    # framing_variable.go); the cap comes out of that reader
+    source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1framing/*Table.go)
     sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
     ;;
 absent)
@@ -178,7 +181,8 @@ else
         grep -q 'wire          pass' "$out/log"
         grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = frame-cap ]; then
-        grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
+        grep -q 'go / framing: frame_entries_4097: read outcome differs: got read, want refused' "$out/log"
+        grep -q '^framing       FAIL 103/104' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = absent ]; then
         grep -q 'go / wire: root_full: .*driver wrote nothing' "$out/log"
