@@ -445,9 +445,9 @@ func t12R29(t *testing.T) {
 	t12Has(t, text, "if (value.N < 0 || value.N > 200) { clamped++; }", "R29 the reader's own pass holds the reader's 0..200")
 	t12Has(t, text, "if (value.N < 0 || value.N > 100) { clamped++; }", "R29 the writer's carried pass holds the writer's 0..100")
 	t12Has(t, text, "BandFixedClampKnown0(Band value, TableReport report)", "R29 the writer's bounds are one clamp per lineage entry")
-	t12Has(t, text, "System.Action<Band, TableReport>[] BandFixedClampKnown", "R29 the writer's bounds dispatch by pick")
+	t12Has(t, text, "System.Func<Band, TableReport, bool>[] BandFixedClampKnown", "R29 the writer's bounds dispatch by pick")
 	t12Has(t, text, "writerClamp = BandFixedClampKnown[pick];", "R29 the load selects the writer's bounds by the resolved lineage index")
-	t12Has(t, text, "writerClamp?.Invoke(values[k], report);", "R29 the compiled lane holds the writer's bounds after the run")
+	t12Has(t, text, "if (writerClamp != null && !writerClamp.Invoke(values[k], report)) { refused = true; }", "R29 the compiled lane holds the writer's bounds after the run")
 
 	t.Run("forged", func(t *testing.T) {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
