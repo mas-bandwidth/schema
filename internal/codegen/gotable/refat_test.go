@@ -115,8 +115,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -135,7 +145,7 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 	value.N = 9
 	value.ChildrenCount = 2
 	value.Children[1].X = 3
-	n := RootMeasure(&value)
+	n := rootForm1Measure(&value)
 	if n < 0 {
 		t.Fatal("measure")
 	}
@@ -164,7 +174,7 @@ func TestRefAtFirstUseAndElision(t *testing.T) {
 
 	var empty Root
 	empty.N = 1
-	m := RootMeasure(&empty)
+	m := rootForm1Measure(&empty)
 	short := rootForm1Save(&empty)
 	if short == nil || int64(len(short)) != m {
 		t.Fatal("empty children save")
@@ -228,8 +238,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -247,7 +267,7 @@ func TestSharedIdRoundTrip(t *testing.T) {
 	var value, loaded Root
 	value.Banks[0].Alpha = 7
 	value.N = 1
-	n := RootMeasure(&value)
+	n := rootForm1Measure(&value)
 	if n < 0 {
 		t.Fatal("measure")
 	}

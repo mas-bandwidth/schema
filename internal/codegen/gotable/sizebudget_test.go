@@ -59,7 +59,8 @@ const (
 	// reads form 3 (docs/SPEC-TABLES.md §3.4, "NEITHER CLASS BORROWS THE OTHER'S
 	// FORM"): the one-table fixed unit's Save body is one delegation instead of
 	// the form-1 writer it replaced.
-	goOneTableLineBudget = 10005
+	// -5: a fixed-class root's Measure answers the fixed form its Save writes (§3.4)
+	goOneTableLineBudget = 10000
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -97,7 +98,8 @@ const (
 	// -29: the announcement and the message entries carry the message closure alone (SPEC-TABLES §3.3, #2529)
 	// -161: wide text is retired: kind 33's storage, codecs, JSON and text form are gone (SPEC.md §4.12)
 	// +7: a union tag's Max is defined from its last arm, and a 128-bit widen carries the source's sign (measured together at the merged head)
-	goExamplesLineBudget = 60097
+	// -109: a fixed-class root's Measure answers the fixed form its Save writes (§3.4)
+	goExamplesLineBudget = 59988
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

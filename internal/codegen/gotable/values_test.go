@@ -106,8 +106,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -124,7 +134,7 @@ func rootForm1Save(value *Root) []byte {
 func TestDefaults(t *testing.T) {
  var v Root; RootReset(&v)
  if string(v.Title[:v.TitleLength]) != "default" || string(v.Tag[:v.TagLength]) != "ab" || v.Caps != 3 || string(v.Badge.Title[:v.Badge.TitleLength]) != "fresh" { t.Fatalf("defaults: %+v",v) }
- if n:=RootMeasure(&v);n!=10 {t.Fatalf("default file: %d",n)}
+ if n:=rootForm1Measure(&v);n!=10 {t.Fatalf("default file: %d",n)}
  v.TitleLength=0;v.TagLength=0;v.ValuesPresent=true;v.GradesPresent=true
  v.Grades[1]=GradeGold
  b:=rootForm1Save(&v);if b==nil{t.Fatal("save")}
@@ -133,7 +143,7 @@ func TestDefaults(t *testing.T) {
  h:=fnv.New64a();h.Write([]byte("OldGold"));needle:=binary.LittleEndian.AppendUint64(nil,h.Sum64());if !bytes.Contains(b,needle){t.Fatal("renamed variant lost its id")}
  text:=[]byte("{\"values\":[],\"grades\":[\"Gold\",\"None\"]}")
  r=TableReport{};if !RootFromJSON(&got,text,&r)||r!=(TableReport{})||!got.ValuesPresent||!got.GradesPresent {t.Fatalf("optional text: %+v %+v",got,r)}
- if n:=testing.AllocsPerRun(20,func(){RootMeasure(&v);var ids TableIds;w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);if !RootSaveBody(&w,&v){return};w.Trailer();if w.Overflow||ids.Overflow{return};rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
+ if n:=testing.AllocsPerRun(20,func(){rootForm1Measure(&v);var ids TableIds;w:=TableWriter{Buffer:b,Ids:&ids};w.Put8(1);if !RootSaveBody(&w,&v){return};w.Trailer();if w.Overflow||ids.Overflow{return};rootForm1(&got,b,&r)});n!=0{t.Fatalf("allocations: %v",n)}
 }
 `)
 }

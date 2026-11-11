@@ -117,8 +117,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	return true
 }
 
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -347,7 +357,7 @@ func TestRoot(t *testing.T) {
 			}
 			continue
 		}
-		n := RootMeasure(&v)
+		n := rootForm1Measure(&v)
 		if n <= 0 {
 			t.Fatalf("root %s: measure %d", c.name, n)
 		}
@@ -804,8 +814,18 @@ func keyedForm1Strict(wire []byte) (*Keyed, error) {
 	return value, nil
 }
 
+// keyedForm1Measure is the variable form's file size (form byte, body, id
+// trailer): KeyedMeasure answers the fixed form a fixed root's Save writes.
+func keyedForm1Measure(value *Keyed) int64 {
+	var ids TableIds
+	body := KeyedMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func keyedForm1Save(value *Keyed) []byte {
-	n := KeyedMeasure(value)
+	n := keyedForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -822,7 +842,7 @@ func keyedForm1Save(value *Keyed) []byte {
 func TestKeyed(t *testing.T) {
 	var empty Keyed
 	KeyedReset(&empty)
-	base := KeyedMeasure(&empty)
+	base := keyedForm1Measure(&empty)
 	for _, c := range []struct {
 		name   string
 		b64    uint64
@@ -936,8 +956,18 @@ func negForm1(value *Neg, data []byte, report *TableReport) bool {
 	return true
 }
 
+// negForm1Measure is the variable form's file size (form byte, body, id
+// trailer): NegMeasure answers the fixed form a fixed root's Save writes.
+func negForm1Measure(value *Neg) int64 {
+	var ids TableIds
+	body := NegMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func negForm1Save(value *Neg) []byte {
-	n := NegMeasure(value)
+	n := negForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -974,7 +1004,7 @@ func TestNegativeZeroDefault(t *testing.T) {
 	if gotC, err := NegCReadStrict(czWire); err != nil || math.Float32bits(gotC.C) != 0 {
 		t.Errorf("compressed default: strict read %v", err)
 	}
-	empty := int64(NegMeasure(&r))
+	empty := int64(negForm1Measure(&r))
 	emptyV := int64(NegVMeasure(&w))
 	for _, c := range []struct {
 		name string

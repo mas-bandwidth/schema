@@ -62,8 +62,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -133,7 +143,7 @@ func TestLebFastPathAndLoop(t *testing.T) {
 			wantBytes = binary.LittleEndian.AppendUint64(wantBytes, 0)
 		}
 		got := rootForm1Save(&value)
-		if RootMeasure(&value) != int64(len(wantBytes)) || got == nil || !bytes.Equal(got, wantBytes) {
+		if rootForm1Measure(&value) != int64(len(wantBytes)) || got == nil || !bytes.Equal(got, wantBytes) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, wantBytes, got)
 		}
 		var report TableReport

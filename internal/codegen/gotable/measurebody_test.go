@@ -143,8 +143,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// leafForm1Measure is the variable form's file size (form byte, body, id
+// trailer): LeafMeasure answers the fixed form a fixed root's Save writes.
+func leafForm1Measure(value *Leaf) int64 {
+	var ids TableIds
+	body := LeafMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func leafForm1Save(value *Leaf) []byte {
-	n := LeafMeasure(value)
+	n := leafForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -158,8 +168,18 @@ func leafForm1Save(value *Leaf) []byte {
 	}
 	return buf[:w.Offset]
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -192,7 +212,7 @@ func trailerIds(t *testing.T, wire []byte) []uint64 {
 
 func TestLeafMeasureEqualsSave(t *testing.T) {
 	var empty Leaf
-	if n := LeafMeasure(&empty); n != 10 {
+	if n := leafForm1Measure(&empty); n != 10 {
 		t.Fatalf("elided file %d", n)
 	}
 	buf := leafForm1Save(&empty)
@@ -204,7 +224,7 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	}
 
 	empty.MaybePresent = true
-	if n := LeafMeasure(&empty); n <= 10 {
+	if n := leafForm1Measure(&empty); n <= 10 {
 		t.Fatalf("optional default elided: %d", n)
 	}
 
@@ -225,7 +245,7 @@ func TestLeafMeasureEqualsSave(t *testing.T) {
 	if body < 0 || ids.Overflow {
 		t.Fatal("measure body")
 	}
-	size := LeafMeasure(&v)
+	size := leafForm1Measure(&v)
 	if size != 1+body+int64(ids.Count)*8+8 {
 		t.Fatalf("file size %d body %d ids %d", size, body, ids.Count)
 	}
@@ -268,7 +288,7 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	v.Child.N = 5
 	copy(v.Note[:], []byte("hi"))
 	v.NoteLength = 2
-	n := RootMeasure(&v)
+	n := rootForm1Measure(&v)
 	if n < 0 {
 		t.Fatal("measure")
 	}
@@ -286,7 +306,7 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 	}
 
 	var z Root
-	if n := RootMeasure(&z); n != 10 {
+	if n := rootForm1Measure(&z); n != 10 {
 		t.Fatalf("elided root %d", n)
 	}
 }
@@ -386,8 +406,18 @@ func trailerIds(t *testing.T, wire []byte) []uint64 {
 	return ids
 }
 
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -404,7 +434,7 @@ func rootForm1Save(value *Root) []byte {
 
 func roundTrip(t *testing.T, v *Root) []byte {
 	t.Helper()
-	n := RootMeasure(v)
+	n := rootForm1Measure(v)
 	if n < 0 {
 		t.Fatal("measure")
 	}
@@ -432,7 +462,7 @@ func roundTrip(t *testing.T, v *Root) []byte {
 
 func TestUnionTableArmMeasureEqualsSave(t *testing.T) {
 	var empty Root
-	if n := RootMeasure(&empty); n != 10 {
+	if n := rootForm1Measure(&empty); n != 10 {
 		t.Fatalf("elided file %d", n)
 	}
 
@@ -483,7 +513,7 @@ func TestUnionTableArmMeasureEqualsSave(t *testing.T) {
 	if HitMeasureBody(&hit.Choice.Hit, &full) != -1 {
 		t.Fatal("HitMeasureBody on overflow")
 	}
-	if RootMeasure(&hit) < 0 {
+	if rootForm1Measure(&hit) < 0 {
 		t.Fatal("fresh RootMeasure overflowed")
 	}
 }

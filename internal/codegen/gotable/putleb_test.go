@@ -60,8 +60,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -102,7 +112,7 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 			want = binary.LittleEndian.AppendUint64(want, 0)
 		}
 		got := rootForm1Save(&value)
-		if RootMeasure(&value) != int64(len(want)) || got == nil || len(got) != len(want) || !bytes.Equal(got, want) {
+		if rootForm1Measure(&value) != int64(len(want)) || got == nil || len(got) != len(want) || !bytes.Equal(got, want) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, want, got)
 		}
 		var report TableReport
@@ -115,9 +125,9 @@ func TestPutLebBytesAndOverflow(t *testing.T) {
 	}
 	RootReset(&value)
 	value.PayloadLength = 16384
-	wire := make([]byte, RootMeasure(&value))
+	wire := make([]byte, rootForm1Measure(&value))
 	if n := testing.AllocsPerRun(50, func() {
-		if RootMeasure(&value) != int64(len(wire)) {
+		if rootForm1Measure(&value) != int64(len(wire)) {
 			panic("measure")
 		}
 		var ids TableIds

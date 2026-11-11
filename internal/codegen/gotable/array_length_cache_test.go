@@ -107,8 +107,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -140,7 +150,7 @@ func TestNestedScratch(t *testing.T) {
   if RootToJSON(&value,a)!=int64(len(a))||RootToJSON(&loaded,b)!=int64(len(b))||!bytes.Equal(a,b) {t.Fatal("nested scratch changed logical fields")}
   if out:=rootForm1Save(&loaded);out==nil||!bytes.Equal(out,wire) {t.Fatal("nested scratch changed wire")}
   if n:=testing.AllocsPerRun(50,func(){
-   if RootMeasure(&value)!=int64(len(wire)) {panic("measure")}
+   if rootForm1Measure(&value)!=int64(len(wire)) {panic("measure")}
    var ids TableIds
    w := TableWriter{Buffer: wire, Ids: &ids}
    w.Put8(1)
@@ -185,8 +195,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	}
 	return true
 }
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -268,7 +288,7 @@ func TestArrayWireAndReuse(t *testing.T) {
   value.OptionalPresent=variant%2==0
   if value.OptionalPresent {value.OptionalCount=int32(variant%3);for i:=int32(0);i<value.OptionalCount;i++ {fillChild(&value.Optional[i],variant+int(i),variant%131)}}
    want:=oracle.root(&value);got:=rootForm1Save(&value)
-   if RootMeasure(&value)!=int64(len(want)) || got==nil || len(got)!=len(want) || !bytes.Equal(got,want) {t.Fatalf("variant %d wire differs",variant)}
+   if rootForm1Measure(&value)!=int64(len(want)) || got==nil || len(got)!=len(want) || !bytes.Equal(got,want) {t.Fatalf("variant %d wire differs",variant)}
    var report TableReport
    if !rootForm1(&loaded,want,&report)||report!=(TableReport{})||loaded!=value {t.Fatalf("variant %d reused load differs: %+v",variant,report)}
    if re:=rootForm1Save(&loaded);re==nil||!bytes.Equal(re,want) {t.Fatalf("variant %d re-save differs",variant)}
@@ -285,10 +305,10 @@ func TestArrayRefusalsAndAllocations(t *testing.T) {
  value.ChildrenCount=128;value.LargeCount=129;value.OptionalPresent=true;value.OptionalCount=2
  for i:=range value.Children {fillChild(&value.Children[i],i+1,130)}
  for i:=range value.Large {fillChild(&value.Large[i],i+1,130)}
-  wire:=make([]byte,RootMeasure(&value));var report TableReport
+  wire:=make([]byte,rootForm1Measure(&value));var report TableReport
   if n:=testing.AllocsPerRun(50,func(){
    report=TableReport{}
-   if RootMeasure(&value)!=int64(len(wire)) {panic("round trip failed")}
+   if rootForm1Measure(&value)!=int64(len(wire)) {panic("round trip failed")}
    var ids TableIds
    w := TableWriter{Buffer: wire, Ids: &ids}
    w.Put8(1)

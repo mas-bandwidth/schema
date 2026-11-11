@@ -172,8 +172,18 @@ const integrityFixedVarFormPlainGolden = "0101041100000000ea0ce83094fde47c010000
 const integrityFixedVarFormProbe = `package probe
 import ("bytes"; "encoding/base64"; "encoding/binary"; "encoding/hex"; "errors"; "hash/crc32"; "testing")
 
+// fixedRowForm1Measure is the variable form's file size (form byte, body, id
+// trailer): FixedRowMeasure answers the fixed form a fixed root's Save writes.
+func fixedRowForm1Measure(value *FixedRow) int64 {
+	var ids TableIds
+	body := FixedRowMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 12
+}
 func fixedRowForm1Save(value *FixedRow) []byte {
-	buf := make([]byte, FixedRowMeasure(value))
+	buf := make([]byte, fixedRowForm1Measure(value))
 	var ids TableIds
 	w := TableWriter{Buffer: buf[:len(buf)-4], Ids: &ids}
 	w.Put8(1)
@@ -186,8 +196,18 @@ func fixedRowForm1Save(value *FixedRow) []byte {
 	}
 	return buf[:tableIntegritySeal(buf, w.Offset)]
 }
+// plainFixedRowForm1Measure is the variable form's file size (form byte, body, id
+// trailer): PlainFixedRowMeasure answers the fixed form a fixed root's Save writes.
+func plainFixedRowForm1Measure(value *PlainFixedRow) int64 {
+	var ids TableIds
+	body := PlainFixedRowMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func plainFixedRowForm1Save(value *PlainFixedRow) []byte {
-	buf := make([]byte, PlainFixedRowMeasure(value))
+	buf := make([]byte, plainFixedRowForm1Measure(value))
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
 	w.Put8(1)
@@ -204,14 +224,11 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 	t.Parallel()
 	row := FixedRow{Value: 17}
 	plain := PlainFixedRow{Value: 17}
-	if FixedRowMeasure(&row) != 28 {
-		t.Fatalf("FixedRowMeasure = %d, want 28", FixedRowMeasure(&row))
+	if fixedRowForm1Measure(&row) != 28 {
+		t.Fatalf("form-1 measure = %d, want 28", fixedRowForm1Measure(&row))
 	}
-	if PlainFixedRowMeasure(&plain) != 24 {
-		t.Fatalf("PlainFixedRowMeasure = %d, want 24", PlainFixedRowMeasure(&plain))
-	}
-	if n, err := FixedRowMeasureReason(&row); n != 28 || err != nil {
-		t.Fatalf("FixedRowMeasureReason = (%d, %v), want (28, nil)", n, err)
+	if plainFixedRowForm1Measure(&plain) != 24 {
+		t.Fatalf("plain form-1 measure = %d, want 24", plainFixedRowForm1Measure(&plain))
 	}
 	// The form-1 file and its integrity trailer, written by hand through the
 	// variable form's body writer: a fixed-class root's plain Save writes form 3
@@ -237,6 +254,12 @@ func TestIntegrityFixedVariableForm(t *testing.T) {
 	// The plain Save writes form 3, the same bytes FixedSave writes, and seals
 	// the same trailer. One byte short refuses.
 	n3 := FixedRowFixedMeasure(1)
+	if FixedRowMeasure(&row) != n3 {
+		t.Fatalf("FixedRowMeasure = %d, want the fixed save's %d", FixedRowMeasure(&row), n3)
+	}
+	if n, err := FixedRowMeasureReason(&row); n != n3 || err != nil {
+		t.Fatalf("FixedRowMeasureReason = (%d, %v), want (%d, nil)", n, err, n3)
+	}
 	fw := make([]byte, n3)
 	if FixedRowFixedSave([]FixedRow{row}, fw) != n3 {
 		t.Fatal("fixed save")

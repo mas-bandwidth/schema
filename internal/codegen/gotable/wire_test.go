@@ -80,8 +80,18 @@ func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	return true
 }
 
+// rootForm1Measure is the variable form's file size (form byte, body, id
+// trailer): RootMeasure answers the fixed form a fixed root's Save writes.
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	body := RootMeasureBody(value, &ids)
+	if body < 0 || ids.Overflow {
+		return -1
+	}
+	return 1 + body + int64(ids.Count)*8 + 8
+}
 func rootForm1Save(value *Root) []byte {
-	n := RootMeasure(value)
+	n := rootForm1Measure(value)
 	buf := make([]byte, n)
 	var ids TableIds
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -126,7 +136,7 @@ func TestWire(t *testing.T) {
  want = append(want, 0)
  for _, id := range ids { want = binary.LittleEndian.AppendUint64(want, id) }
  want = binary.LittleEndian.AppendUint64(want, uint64(len(ids)))
- if n := RootMeasure(&value); n != int64(len(want)) { t.Fatalf("measure %d, want %d", n, len(want)) }
+ if n := rootForm1Measure(&value); n != int64(len(want)) { t.Fatalf("measure %d, want %d", n, len(want)) }
  got := rootForm1Save(&value)
  if got == nil || len(got) != len(want) || !bytes.Equal(got,want) { t.Fatalf("save differs") }
  var loaded Root
@@ -140,7 +150,7 @@ func TestWire(t *testing.T) {
   if !RootSaveBody(&w, &value) { panic("save") }
   w.Trailer()
   if w.Overflow || ids.Overflow { panic("overflow") }
-  rootForm1(&loaded,got,&report); RootMeasure(&value)
+  rootForm1(&loaded,got,&report); rootForm1Measure(&value)
  }); n != 0 { t.Fatalf("allocated %v",n) }
 }
 
