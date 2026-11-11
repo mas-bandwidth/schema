@@ -194,9 +194,7 @@ func listPackages(t *testing.T, root string, pkgs []string) map[string][]string 
 	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
 	var wg sync.WaitGroup
 	for i, pkg := range pkgs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			cmd := exec.Command("go", "test", "-list", ".*", pkg)
@@ -211,7 +209,7 @@ func listPackages(t *testing.T, root string, pkgs []string) map[string][]string 
 				r.names = append(r.names, line)
 			}
 			results[i] = r
-		}()
+		})
 	}
 	wg.Wait()
 	names := map[string][]string{}
