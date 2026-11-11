@@ -10,7 +10,10 @@
 
 package tabledemo
 
-import "math"
+import (
+	"encoding/binary"
+	"math"
+)
 
 const TableMessageRefBitsHere = 7
 const TableMessageEntriesHere = 123
@@ -428,4 +431,191 @@ func tableMessageEntryRead(r *TableReader) (e TableMessageEntry, ok bool) {
 		}
 	}
 	return e, true
+}
+
+func tableMessageSkip(r *TableBitReader, v *TableVocabulary, indexBits int64, e TableMessageEntry, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	s := e.Shape
+	switch s.Kind {
+	case 0, 32:
+		return true
+	case 30:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		_, ok = v.Name(ref)
+		return ok
+	case 13:
+		return tableMessageSkipBody(r, v, indexBits, depth+1)
+	case 17:
+		return indexBits > 0 && r.Skip(indexBits)
+	case 15:
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		arm, ok := v.Entry(ref)
+		return ok && arm.ID < 0xfffffffffffffffd && arm.Shape.Kind != 0 && tableMessageSkip(r, v, indexBits, arm, depth+1)
+	case 12:
+		n, ok := tableMessageCount(r, s)
+		if !ok || !r.Align() {
+			return false
+		}
+		return r.Skip(int64(n) * 8)
+	case 31:
+		if !r.Align() {
+			return false
+		}
+		n, ok := r.Get(32)
+		return ok && r.Skip(int64(n)*8)
+	case 14, 16:
+		n, ok := tableMessageCount(r, s)
+		if !ok {
+			return false
+		}
+		if s.Kind == 14 && e.Element.Kind == 6 && !r.Align() {
+			return false
+		}
+		if e.Element.Bits >= 0 || e.Element.Kind == 0 || e.Element.Kind == 32 {
+			width := e.Element.Bits
+			width = max(width, 0)
+			if s.Kind == 16 {
+				width += v.RefBits
+			}
+			return r.Skip(int64(n) * width)
+		}
+		for range n {
+			if s.Kind == 16 && !r.Skip(v.RefBits) {
+				return false
+			}
+			before := r.Offset
+			if !tableMessageSkip(r, v, indexBits, TableMessageEntry{Shape: e.Element}, depth+1) || r.Offset == before {
+				return false
+			}
+		}
+		return true
+	}
+	return s.Bits >= 0 && r.Skip(s.Bits)
+}
+
+// Framing scans follow announced shapes; typed body reads diagnose reserved ids.
+func tableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64, depth int) bool {
+	if depth > 128 {
+		return false
+	}
+	for {
+		ref, ok := r.Get(v.RefBits)
+		if !ok || ref == 0 {
+			return ok
+		}
+		e, ok := v.Entry(ref)
+		if !ok || !tableMessageSkip(r, v, indexBits, e, depth) {
+			return false
+		}
+	}
+}
+
+// Numeric values are reconstructed at the announced storage width. Typed
+// readers then hold these lanes to the declared ranges, as the file read does.
+func tableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
+	lo, ok := r.Get(min(s.Bits, 64))
+	if !ok {
+		return false
+	}
+	hi := uint64(0)
+	if s.Bits > 64 {
+		hi, ok = r.Get(s.Bits - 64)
+		if !ok {
+			return false
+		}
+	}
+	if s.Packing == 1 {
+		sum := lo + s.Base[0]
+		carry := uint64(0)
+		if sum < lo {
+			carry = 1
+		}
+		lo = sum
+		hi += s.Base[1] + carry
+	}
+	if s.Packing == 2 {
+		index := min(uint32(lo), s.QCount)
+		ratio := float32(float32(index) / float32(s.QCount))
+		scaled := float32(ratio * s.QDelta)
+		lo = uint64(math.Float32bits(float32(scaled + s.QMin)))
+	}
+	binary.LittleEndian.PutUint64(out[:], lo)
+	binary.LittleEndian.PutUint64(out[8:], hi)
+	return true
+}
+
+// A quantized float outside its range is a value the writer refuses
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1. So is a
+// ranged value whose offset from its base does not fit its bits, a flags bit
+// past the declared W among them: a writer never truncates (§5).
+func tableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape, lo, hi uint64) {
+	if s.Packing == 1 {
+		borrow := uint64(0)
+		if lo < s.Base[0] {
+			borrow = 1
+		}
+		lo -= s.Base[0]
+		hi -= s.Base[1] + borrow
+		if s.Kind >= 18 {
+			if s.Bits < 64 && (hi != 0 || lo>>uint(s.Bits) != 0) || s.Bits >= 64 && s.Bits < 128 && hi>>uint(s.Bits-64) != 0 {
+				*over++
+			}
+		} else if s.Bits < 64 && lo>>uint(s.Bits) != 0 {
+			*over++
+		}
+	}
+	if s.Packing == 2 {
+		value := math.Float32frombits(uint32(lo))
+		ratio := float32((value - s.QMin) / s.QDelta)
+		if !(ratio >= 0) {
+			ratio = 0
+			*over++
+		} else if !(ratio <= 1) {
+			ratio = 1
+			*over++
+		}
+		scaled := float32(ratio * float32(s.QCount))
+		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount))
+	}
+	w.Put(lo, min(s.Bits, 64))
+	if s.Bits > 64 {
+		w.Put(hi, s.Bits-64)
+	}
+}
+func tableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
+	r := TableMessageReader{Vocabulary: v, Report: *report}
+	defer func() { *report = r.Report }()
+	if len(data) == 0 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	if data[0] != 2 {
+		tableMessageRefuse(&r.Report, "newer_form")
+		return r, -1
+	}
+	if v == nil || !v.Announced {
+		tableMessageRefuse(&r.Report, "no_vocabulary")
+		return r, -1
+	}
+	if len(data) < 2 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return r, -1
+	}
+	r.Bits.Buffer = data[2:]
+	return r, int64(data[1]) + 1
+}
+func tableMessageBatchClose(r *TableMessageReader) bool {
+	if !r.Bits.Align() || r.Bits.Offset != int64(len(r.Bits.Buffer))*8 {
+		r.Report.Refuse(TableRefuseWireDamaged, "")
+		return false
+	}
+	return true
 }

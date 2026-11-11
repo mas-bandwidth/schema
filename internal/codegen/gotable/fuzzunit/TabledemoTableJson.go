@@ -3547,18 +3547,8 @@ func (e TableTimestampError) Error() string {
 
 // tableTimestampNanos is the count of a time.Time, and false for a time whose
 // count UnixNano cannot represent. Go's zero Time{} is the zero time.
-func tableTimestampNanos(t time.Time) (int64, bool) {
-	if t.IsZero() {
-		return 0, true
-	}
-	if t.Before(time.Unix(0, -1<<63)) || t.After(time.Unix(0, 1<<63-1)) {
-		return 0, false
-	}
-	return t.UnixNano(), true
-}
 
 // tableTimestampTime is the UTC time of a count; every count is legal.
-func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
