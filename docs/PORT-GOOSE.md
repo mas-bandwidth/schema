@@ -83,8 +83,8 @@ keyword, a scalar type name, `std`, `main` or the runtime's namespace
 value is one variant's payload, while a schema union keeps every arm's
 storage, unselected arms holding what they last held — the reused-storage
 discipline every target shares. A schema enum is NOT a Goose enum either:
-the wire carries any value up to the declared max, headroom values included,
-which only an integer holds. And `string(N)` is `u8[N]` plus a length rather
+its wire range is [0, variant count] and nothing else, which only an integer
+holds. And `string(N)` is `u8[N]` plus a length rather
 than Goose's limited array `u8[..N]`: the length's type and the bytes past it
 are the Go target's, so the codec ports field for field.
 

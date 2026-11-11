@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 // The generated surface is specified in the schema compiler's docs/SPEC.md §6.
 
 package example
@@ -37,6 +37,18 @@ const (
 	WeaponLaser   Weapon = 1
 	WeaponMissile Weapon = 2
 	WeaponRailgun Weapon = 3
+	WeaponFlak    Weapon = 4
+	WeaponBeam    Weapon = 5
+	WeaponPlasma  Weapon = 6
+	WeaponTorpedo Weapon = 7
+	WeaponMine    Weapon = 8
+	WeaponDrone   Weapon = 9
+	WeaponSwarm   Weapon = 10
+	WeaponPulse   Weapon = 11
+	WeaponLance   Weapon = 12
+	WeaponComet   Weapon = 13
+	WeaponQuake   Weapon = 14
+	WeaponArc     Weapon = 15
 	WeaponMax     Weapon = 15
 )
 
@@ -52,6 +64,30 @@ func (v Weapon) String() string {
 		return "Missile"
 	case WeaponRailgun:
 		return "Railgun"
+	case WeaponFlak:
+		return "Flak"
+	case WeaponBeam:
+		return "Beam"
+	case WeaponPlasma:
+		return "Plasma"
+	case WeaponTorpedo:
+		return "Torpedo"
+	case WeaponMine:
+		return "Mine"
+	case WeaponDrone:
+		return "Drone"
+	case WeaponSwarm:
+		return "Swarm"
+	case WeaponPulse:
+		return "Pulse"
+	case WeaponLance:
+		return "Lance"
+	case WeaponComet:
+		return "Comet"
+	case WeaponQuake:
+		return "Quake"
+	case WeaponArc:
+		return "Arc"
 	}
 	return "???"
 }
