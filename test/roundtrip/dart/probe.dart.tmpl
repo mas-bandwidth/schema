@@ -104,7 +104,7 @@ void main(List<String> args) {
           }
 [[end]][[if eq .Class "variable"]]          if (wire != null) {
             say(root, name, 'retain', call(() {
-              final store = w.TableRetain(1 << 20, 1 << 17);
+              final store = w.TableRetain(1 << 20, List<int>.filled(1 << 17, 0));
               final r = w.TableWireReport();
               final got = w.[[.Lower]]WireLoadRetain(wire!, store, r);
               if (r.refused) return 'refused:${r.refusal}';
