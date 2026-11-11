@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -461,19 +460,16 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	fixedLoad := names(`fn ([A-Za-z0-9_]*)FixedLoad\(`)
 	fromLoaded := names(`fn ([A-Za-z0-9_]*)FromLoaded\(`)
 	fixedSave := names(`fn ([A-Za-z0-9_]*)FixedSave\(`)
-	has := func(list []string, r string) bool {
-		return slices.Contains(list, r)
-	}
 	needFixedHelpers := false
 	for _, r := range fixedLoad {
-		if !has(toLoaded, r) {
+		if !slices.Contains(toLoaded, r) {
 			needFixedHelpers = true
 		}
 	}
 
 	glue.WriteString("fn conformance_wire(root: const u8[:], data: const u8[:], out: u8[>..<]&) -> i64 {\n")
 	for _, st := range ir.TableFixedFormRoots(u) {
-		if !has(fixedLoad, st.Name) {
+		if !slices.Contains(fixedLoad, st.Name) {
 			continue
 		}
 		fmt.Fprintf(&glue, "    if root == %q {\n", st.Name)
@@ -500,7 +496,7 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 			glue.WriteString("        var rep = schema_rt::FixedReport { .. };\n")
 			fmt.Fprintf(&glue, "        let n = %s::%sFixedLoad(values[0..1], data[0..data.len], rep);\n", ns, r)
 			glue.WriteString("        if n < 0 || rep.damaged || rep.reason != 0 || rep.oor != 0 { return -1; }\n")
-			if has(toLoaded, r) {
+			if slices.Contains(toLoaded, r) {
 				fmt.Fprintf(&glue, "        return %s::%sToLoaded(values[0], conformance_unit(), data, vals);\n", ns, r)
 			} else {
 				glue.WriteString("        var body: u8[>..] = [];\n")
@@ -519,7 +515,7 @@ func formThreeUnitFiles(t *testing.T, key string, paths []string, override map[s
 	if !sabotageDispatch {
 		for _, r := range fixedSave {
 			fmt.Fprintf(&glue, "    if root == %q {\n", r)
-			if has(fromLoaded, r) {
+			if slices.Contains(fromLoaded, r) {
 				fmt.Fprintf(&glue, "        var v = %s::%s { .. };\n", ns, r)
 				fmt.Fprintf(&glue, "        if !%s::%sFromLoaded(v, conformance_unit(), data, vals, at) { return 1; }\n", ns, r)
 			} else {
@@ -636,7 +632,7 @@ func runGooseDriver(t *testing.T, dir string, inputs map[string][]byte, allowDri
 		}
 	}
 	line := append([]string{"run", "main.goose", "--"}, argv...)
-	cmd := exec.Command(gooseBin, line...)
+	cmd := gooserun.Command(t, gooseBin, line...)
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

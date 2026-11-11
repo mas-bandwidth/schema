@@ -811,10 +811,10 @@ namespace Blockdemo
                 if (fraction == 0) { o.Put((byte)'0'); return; }
                 while (fraction != 0)
                 {
-                    UInt128 low = (UInt128)(ulong)fraction * 10;
+                    UInt128 low = (UInt128)unchecked((ulong)fraction) * 10;
                     UInt128 high = (fraction >> 64) * 10 + (low >> 64);
                     uint carry = (uint)(high >> 64);
-                    fraction = (high << 64) | (ulong)low;
+                    fraction = (high << 64) | unchecked((ulong)low);
                     ulong digit = (ulong)(fraction >> frac);
                     if (frac > 64) { digit |= (ulong)carry << (128 - frac); }
                     o.Put((byte)('0' + (int)digit)); fraction &= mask;
@@ -1232,10 +1232,10 @@ namespace Blockdemo
                 if (value < 0)
                 {
                     o.Put((byte)'-');
-                    WriteUnsigned(ref o, 0ul - (ulong)value);
+                    WriteUnsigned(ref o, unchecked(0ul - (ulong)value));
                     return;
                 }
-                WriteUnsigned(ref o, (ulong)value);
+                WriteUnsigned(ref o, unchecked((ulong)value));
             }
 
             // C's "%.*g" for a finite double, spelled out into chars: the exponent form
@@ -1374,9 +1374,9 @@ namespace Blockdemo
             {
                 if (f.TextList)
                 {
-                    object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
-                    if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
-                    return WriteField(ref o,child,text,depth);
+                    object child = f.GetChild(owner, index); TableFieldInfo text = f.Table.Fields[0];
+                    if (text.Optional && !text.GetPresent(child)) { o.Text("null"); return true; }
+                    return WriteField(ref o, child, text, depth);
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
@@ -1474,7 +1474,7 @@ namespace Blockdemo
                     case 3:
                     case 4:
                     case 5:
-                        WriteSigned(ref o, (long)f.GetRaw(owner, index));
+                        WriteSigned(ref o, unchecked((long)f.GetRaw(owner, index)));
                         return true;
                     default:
                         WriteUnsigned(ref o, f.GetRaw(owner, index));
@@ -1484,11 +1484,11 @@ namespace Blockdemo
 
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
-                if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
+                if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value, f)))) { return false; }
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -1705,7 +1705,7 @@ namespace Blockdemo
                     if (held >= 8)
                     {
                         held -= 8;
-                        if (count < bytes.Length) { bytes[count++] = (byte)(accumulator >> held); }
+                        if (count < bytes.Length) { bytes[count++] = unchecked((byte)(accumulator >> held)); }
                     }
                 }
                 f.SetChild(owner, index, new TableBlob(bytes));
@@ -1772,13 +1772,13 @@ namespace Blockdemo
                     if (c == '}') { input.Pos++; return true; }
                     input.TextField = mapField;
                     scoped ReadOnlySpan<byte> actual; int used;
-                    if(key.Unbounded)
+                    if (key.Unbounded)
                     {
-                        if(!DecodedStringBody(text,ref input,out actual)){return false;}
-                        if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
-                        used=actual.Length;
+                        if (!DecodedStringBody(text, ref input, out actual)) { return false; }
+                        if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
+                        used = actual.Length;
                     }
-                    else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
+                    else { if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual = spelling.Slice(0, used); }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                     input.Pos++;
                     object entry = f.Table.Create();
@@ -1786,7 +1786,7 @@ namespace Blockdemo
                     if (key.Kind == 12)
                     {
                         if (used > key.ArrayBound) { return RefuseText(ref input, "length_over_bound"); }
-                        else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                        else { if (key.Unbounded) { key.EnsureCount(entry, used); } actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
                     }
                     else
                     {
@@ -2429,12 +2429,12 @@ namespace Blockdemo
             // place one scalar at one storage slot
             static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
             {
-                if(f.TextList)
+                if (f.TextList)
                 {
-                    object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
-                    if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
-                    if(field.Optional){field.SetPresent(child,true);}
-                    return ReadField(text,ref input,child,field,depth);
+                    object child = f.GetChild(owner, index); TableFieldInfo field = f.Table.Fields[0]; f.Table.Reset(child);
+                    if (field.Optional && ValueShape(text, ref input) == 'z') { return Literal(text, ref input, "null"); }
+                    if (field.Optional) { field.SetPresent(child, true); }
+                    return ReadField(text, ref input, child, field, depth);
                 }
                 if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
                 if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
@@ -2731,9 +2731,9 @@ namespace Blockdemo
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
                 if (f.Unbounded)
                 {
-                    if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
-                    if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
-                    f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
+                    if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+                    if (!TableWire.TextValid(body)) { return RefuseText(ref input, "text_holds_zero"); }
+                    f.EnsureCount(value, body.Length); body.CopyTo(f.GetBuffer(value)); f.SetCount(value, body.Length); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
@@ -2907,10 +2907,11 @@ namespace Blockdemo
                         {
                             if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                             if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
-                            if(f.TextTotal>0){
-                                object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
-                                int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){return false;}
+                            if (f.TextTotal > 0)
+                            {
+                                object child = f.GetChild(value, placed); TableFieldInfo element = f.Table.Fields[0];
+                                int length = element.Optional && !element.GetPresent(child) ? 0 : Count(child, element);
+                                if (!TableWire.TextTotalKeep(f, length, ref textSpent, input.Report)) { return false; }
                             }
                             placed++;
                         }
@@ -3097,12 +3098,15 @@ namespace Blockdemo
         {
             public enum Verdict { Ok, Refused, Damaged, BodyStopped }
 
-            // A null report is DISCARDED, not created: one cached instance carries the
-            // ledger for a caller who supplies no report, so a null-report read
-            // allocates nothing (docs/SPEC-TABLES.md §6.5). The head of every read
-            // resets it exactly as it resets a caller-supplied report, so no earlier
-            // read's verdict leaks into the next.
-            public static readonly TableReport Ignored = new TableReport();
+            // A null report is DISCARDED, not created: the ledger for a caller who
+            // supplies no report is per thread, so no read on another thread can reach
+            // it, and a read never re-enters on its own thread. Each thread caches its
+            // ledger on first use, so a null-report read allocates nothing after that
+            // (docs/SPEC-TABLES.md §6.5). The head of every read resets it exactly as
+            // it resets a caller-supplied report.
+            [ThreadStatic]
+            static TableReport ignored;
+            static TableReport IgnoredReport() { return ignored ?? (ignored = new TableReport()); }
 
             // One schema-bounded vocabulary lives on the caller's stack for a save.
             // Collect follows the emitted fields in order. Measuring and writing then
@@ -3251,12 +3255,12 @@ namespace Blockdemo
                 {
                     switch (n)
                     {
-                        case 1: Byte((byte)v); return;
-                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), (ushort)v); break;
-                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), (uint)v); break;
+                        case 1: Byte(unchecked((byte)v)); return;
+                        case 2: System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(Buffer.Slice(Offset), unchecked((ushort)v)); break;
+                        case 4: System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(Buffer.Slice(Offset), unchecked((uint)v)); break;
                         case 8: System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(Buffer.Slice(Offset), v); break;
                         default:
-                            for (int i = 0; i < n; i++) { Byte((byte)v); v >>= 8; }
+                            for (int i = 0; i < n; i++) { Byte(unchecked((byte)v)); v >>= 8; }
                             return;
                     }
                     Offset += n;
@@ -3280,9 +3284,9 @@ namespace Blockdemo
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
                 {
-                    if (v < 128) { Byte((byte)v); return; }
-                    while (v >= 128) { Byte((byte)(v | 128)); v >>= 7; }
-                    Byte((byte)v);
+                    if (v < 128) { Byte(unchecked((byte)v)); return; }
+                    while (v >= 128) { Byte(unchecked((byte)(v | 128))); v >>= 7; }
+                    Byte(unchecked((byte)v));
                 }
             }
 
@@ -3586,7 +3590,12 @@ namespace Blockdemo
                             if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
                             return true;
                         case 15: return Union(buf, ref off);
-                        case 12: case 31: case 32: case 13: case 14: case 16:
+                        case 12:
+                        case 31:
+                        case 32:
+                        case 13:
+                        case 14:
+                        case 16:
                             if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                             off += (int)n;
                             return Content(buf.Slice(off - (int)n, (int)n), kind);
@@ -3604,21 +3613,25 @@ namespace Blockdemo
                         case 12: return TextValid(b) || Damage();
                         case 31: return true;
                         case 32: return b.Length == 0 || Damage();
-                        case 13: case 14: case 16:
-                        {
-                            // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
-                            if (Depth >= 128) { return Damage(); }
-                            Depth++;
-                            bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
-                            Depth--;
-                            return good;
-                        }
-                        case 17: case 30: case 15:
-                        {
-                            int end = 0;
-                            if (!Payload(b, ref end, kind)) { return false; }
-                            return end == b.Length || Damage();
-                        }
+                        case 13:
+                        case 14:
+                        case 16:
+                            {
+                                // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
+                                if (Depth >= 128) { return Damage(); }
+                                Depth++;
+                                bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
+                                Depth--;
+                                return good;
+                            }
+                        case 17:
+                        case 30:
+                        case 15:
+                            {
+                                int end = 0;
+                                if (!Payload(b, ref end, kind)) { return false; }
+                                return end == b.Length || Damage();
+                            }
                     }
                     return Damage();
                 }
@@ -3996,7 +4009,7 @@ namespace Blockdemo
             }
             static bool ExtentField(ref Reader r, TableFieldInfo f, bool framed, ref long at, ref string reason)
             {
-                if(f.Unbounded){Reader text=r;if(framed&&!r.Slice(out text)){r.Offset=r.Buffer.Length;return true;}if(text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);}if(!framed){r.Offset=r.Buffer.Length;}return true;}
+                if (f.Unbounded) { Reader text = r; if (framed && !r.Slice(out text)) { r.Offset = r.Buffer.Length; return true; } if (text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } if (!framed) { r.Offset = r.Buffer.Length; } return true; }
                 if (f.IsArray)
                 {
                     Reader a = r;
@@ -4016,7 +4029,7 @@ namespace Blockdemo
                         Reader source = a;
                         if (f.KeyId != null)
                         { if (!a.Var(out _) || !a.Slice(out source)) { break; } }
-                        if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if(f.Table.Fields[0].Unbounded && text.Buffer.Length>0){at=Align(at,8)+Align(9L+text.Buffer.Length,8);} }
+                        if (f.TextList && sourceKind == 12) { if (!a.Slice(out Reader text)) { break; } if (f.Table.Fields[0].Unbounded && text.Buffer.Length > 0) { at = Align(at, 8) + Align(9L + text.Buffer.Length, 8); } }
                         else if (f.Kind == 13)
                         {
                             Reader element = source;
@@ -4091,7 +4104,12 @@ namespace Blockdemo
             }
             public static long LoadMeasure(TableTypeInfo type, ReadOnlySpan<byte> bytes, out string reason)
             {
+                return LoadMeasureWalk(type, bytes, out reason, out _);
+            }
+            static long LoadMeasureWalk(TableTypeInfo type, ReadOnlySpan<byte> bytes, out string reason, out bool nonFinite)
+            {
                 reason = null;
+                nonFinite = false;
                 if (bytes.Length < 1) { return -1; }
                 if (bytes[0] != 1) { reason = "unknown_form"; return -1; }
                 if (type.Integrity && !IntegrityRead(ref bytes)) { reason = "integrity_mismatch"; return -1; }
@@ -4105,7 +4123,8 @@ namespace Blockdemo
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
                 if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
-                int whole = WireCheck(root.Buffer, ids, false, out _);
+                int whole = WireCheck(root.Buffer, ids, false, out bool wireNonFinite);
+                nonFinite = wireNonFinite;
                 if (whole == WireDamaged) { return -1; }
                 // THE REGION READ IS THE ONE READ: every non-whole answer refuses,
                 // and the two apart ones keep their names (docs/SPEC-TABLES.md §6.5).
@@ -4650,7 +4669,7 @@ namespace Blockdemo
                     above = !baseNegative && stored < bits;
                     if (kind < 18)
                     {
-                        ulong raw = (ulong)stored;
+                        ulong raw = unchecked((ulong)stored);
                         negative = Signed(kind) && unchecked((long)raw) < 0; above = false;
                         stored = negative ? unchecked((UInt128)(Int128)(long)raw) : raw;
                     }
@@ -4672,8 +4691,8 @@ namespace Blockdemo
                 if (keep)
                 {
                     if (f.SetWide != null) { f.SetWide(value, index, stored); }
-                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = (byte)stored; }
-                    else { f.SetRaw(value, index, (ulong)stored); }
+                    else if (f.GetBuffer != null) { f.GetBuffer(value)[index] = unchecked((byte)stored); }
+                    else { f.SetRaw(value, index, unchecked((ulong)stored)); }
                 }
                 return true;
             }
@@ -4687,7 +4706,7 @@ namespace Blockdemo
             }
             public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
             {
-                count = 0; report.NonFiniteFloat = null;
+                count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
                 {
                     if (bytes.Length < 6 || !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }
@@ -4746,7 +4765,7 @@ namespace Blockdemo
                 public void Put(long at, UInt128 raw, int width)
                 {
                     if (Measure) { return; }
-                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = (byte)(raw >> (i * 8)); }
+                    for (int i = 0; i < width; i++) { Bytes[checked((int)(Base + at + (Big ? width - 1 - i : i)))] = unchecked((byte)(raw >> (i * 8))); }
                 }
                 public void Raw(long at, ReadOnlySpan<byte> bytes)
                 { if (!Measure) { bytes.CopyTo(Bytes.Slice(checked((int)(Base + at)))); } }
@@ -4764,11 +4783,11 @@ namespace Blockdemo
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
                 if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
-                if(f.Unbounded)
+                if (f.Unbounded)
                 {
-                    if(live==0){w.Put(at,0,8);return true;}
-                    extent=Align(extent,8);long start=extentAt+extent;extent+=Align(9L+live,8);
-                    w.Put(at,unchecked((ulong)(start-at)),8);w.Put(start,(uint)live,4);w.Raw(start+8,f.GetBuffer(value).AsSpan(0,live));return true;
+                    if (live == 0) { w.Put(at, 0, 8); return true; }
+                    extent = Align(extent, 8); long start = extentAt + extent; extent += Align(9L + live, 8);
+                    w.Put(at, unchecked((ulong)(start - at)), 8); w.Put(start, (uint)live, 4); w.Raw(start + 8, f.GetBuffer(value).AsSpan(0, live)); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 { w.Raw(at, f.GetBuffer(value).AsSpan(0, live)); return true; }
@@ -4861,7 +4880,7 @@ namespace Blockdemo
             { foreach (TableFieldInfo f in type.Fields) { if (!NativeExtentSize(value, f, ref at)) { return false; } } return true; }
             static bool NativeExtentSize(object value, TableFieldInfo f, ref long at)
             {
-                if(f.Unbounded){int length=f.GetCount(value);if(length<0||length>f.GetBuffer(value).Length){return false;}if(length>0){at=Align(at,8)+Align(9L+length,8);}return true;}
+                if (f.Unbounded) { int length = f.GetCount(value); if (length < 0 || length > f.GetBuffer(value).Length) { return false; } if (length > 0) { at = Align(at, 8) + Align(9L + length, 8); } return true; }
                 if (f.Dynamic)
                 {
                     int count = f.GetCount(value); if (count < 0) { return false; }
@@ -5013,7 +5032,7 @@ namespace Blockdemo
                 if (f == null) { return true; } // selected, payload-free arm
                 int count = Count(value, f);
                 if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
-                if (f.TextTotal>0 && !TextFits(value,f)) { return false; }
+                if (f.TextTotal > 0 && !TextFits(value, f)) { return false; }
                 if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
                 for (int i = 0; i < count; i++)
                 {
@@ -5124,7 +5143,8 @@ namespace Blockdemo
                 if (f.TextList && f.Kind == 12)
                 {
                     object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0]; int count = Count(child, text);
-                    if (framed) { w.Var((ulong)count); } w.Raw(text.GetBuffer(child).AsSpan(0,count)); return;
+                    if (framed) { w.Var((ulong)count); }
+                    w.Raw(text.GetBuffer(child).AsSpan(0, count)); return;
                 }
                 if (f.Kind == 13)
                 {
@@ -5150,7 +5170,7 @@ namespace Blockdemo
                 else if (f.GetWide != null)
                 {
                     UInt128 raw = f.GetWide(value, i); int width = Width(f.Kind);
-                    w.Fixed((ulong)raw, Math.Min(width, 8)); if (width == 16) { w.Fixed((ulong)(raw >> 64), 8); }
+                    w.Fixed(unchecked((ulong)raw), Math.Min(width, 8)); if (width == 16) { w.Fixed(unchecked((ulong)(raw >> 64)), 8); }
                 }
                 else { w.Fixed(f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i), Width(f.Kind)); }
             }
@@ -5449,7 +5469,7 @@ namespace Blockdemo
                 {
                     Reader text = r; if (framed && !r.Slice(out text)) { return Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
-                    return ReadText(text.Buffer, f.GetChild(value,index), f.Table.Fields[0], report);
+                    return ReadText(text.Buffer, f.GetChild(value, index), f.Table.Fields[0], report);
                 }
                 if (kind == 17)
                 {
@@ -5614,7 +5634,7 @@ namespace Blockdemo
                 if (!TextValid(text)) { return Damage(report); }
                 int keep = text.Length;
                 if (keep > f.ArrayBound) { return Fail(report, "length_over_bound: " + f.Name); }
-                if (value != null) { if(f.Unbounded){f.EnsureCount(value,keep);} text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
+                if (value != null) { if (f.Unbounded) { f.EnsureCount(value, keep); } text.Slice(0, keep).CopyTo(f.GetBuffer(value)); f.SetCount(value, keep); }
                 return true;
             }
             internal static bool TextTotalRefuse(TableReport report, TableFieldInfo field)
@@ -5684,10 +5704,11 @@ namespace Blockdemo
                         {
                             if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
                             if (!ReadElement(ref array, value, f, i, elementKind, report, true)) { break; }
-                            if(f.TextTotal>0){
-                                object child=f.GetChild(value,i);TableFieldInfo text=f.Table.Fields[0];
-                                int length=text.Optional&&!text.GetPresent(child)?0:Count(child,text);
-                                if(!TextTotalKeep(f,length,ref textSpent,report)){ResetElement(value,f,i);break;}
+                            if (f.TextTotal > 0)
+                            {
+                                object child = f.GetChild(value, i); TableFieldInfo text = f.Table.Fields[0];
+                                int length = text.Optional && !text.GetPresent(child) ? 0 : Count(child, text);
+                                if (!TextTotalKeep(f, length, ref textSpent, report)) { ResetElement(value, f, i); break; }
                             }
                             decoded++;
                         }
@@ -5827,7 +5848,7 @@ namespace Blockdemo
             static Verdict Finish(TableReport report, Verdict verdict) { report.Verdict = verdict; return verdict; }
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
-                if (report == null) { report = Ignored; }
+                if (report == null) { report = IgnoredReport(); }
                 type.Reset(value);
                 report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
@@ -5880,34 +5901,38 @@ namespace Blockdemo
         {
             internal static bool TextFits(object value, TableFieldInfo field, int extra = 0)
             {
-                if(field.TextTotal==0){return true;}long spent=extra;
-                TableFieldInfo text=field.Table.Fields[0];int count=Count(value,field);
-                for(int i=0;i<count;i++){object child=field.GetChild(value,i);if(!text.Optional||text.GetPresent(child)){int length=Count(child,text);if(length<0){return false;}spent+=length;if(spent>field.TextTotal){return false;}}}
-                return spent<=field.TextTotal;
+                if (field.TextTotal == 0) { return true; }
+                long spent = extra;
+                TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
+                for (int i = 0; i < count; i++) { object child = field.GetChild(value, i); if (!text.Optional || text.GetPresent(child)) { int length = Count(child, text); if (length < 0) { return false; } spent += length; if (spent > field.TextTotal) { return false; } } }
+                return spent <= field.TextTotal;
             }
             internal static bool TextTotalKeep(TableFieldInfo field, int length, ref long spent, TableReport report)
             {
-                if(field.TextTotal==0){return true;}spent+=length;
-                if(spent<=field.TextTotal){return true;}TextTotalRefuse(report,field);return false;
+                if (field.TextTotal == 0) { return true; }
+                spent += length;
+                if (spent <= field.TextTotal) { return true; }
+                TextTotalRefuse(report, field); return false;
             }
             public static ReadOnlySpan<byte> TextAt(object value, TableFieldInfo field, int index, out bool present)
             {
-                present=false;
-                if(value==null||index<0||index>=Count(value,field)){return default;}
-                object child=field.GetChild(value,index);TableFieldInfo text=field.Table.Fields[0];
-                if(text.Optional&&!text.GetPresent(child)){return default;}
-                present=true;return text.GetBuffer(child).AsSpan(0,Count(child,text));
+                present = false;
+                if (value == null || index < 0 || index >= Count(value, field)) { return default; }
+                object child = field.GetChild(value, index); TableFieldInfo text = field.Table.Fields[0];
+                if (text.Optional && !text.GetPresent(child)) { return default; }
+                present = true; return text.GetBuffer(child).AsSpan(0, Count(child, text));
             }
             public static bool TextAppend(object value, TableFieldInfo field, ReadOnlySpan<byte> bytes, bool present)
             {
-                if(value==null){return false;}
-                TableFieldInfo text=field.Table.Fields[0];int count=Count(value,field);
-                if(count<0||count>=field.ArrayBound||!present&&!text.Optional||present&&(bytes.Length>text.ArrayBound||!TextValid(bytes))){return false;}
-                if(!TextFits(value,field,present?bytes.Length:0)){return false;}
-                if(field.Dynamic){field.EnsureCount(value,count+1);}
-                object child=field.GetChild(value,count);field.Table.Reset(child);
-                if(present){if(text.Unbounded){text.EnsureCount(child,bytes.Length);}bytes.CopyTo(text.GetBuffer(child));text.SetCount(child,bytes.Length);}
-                if(text.Optional){text.SetPresent(child,present);}field.SetCount(value,count+1);return true;
+                if (value == null) { return false; }
+                TableFieldInfo text = field.Table.Fields[0]; int count = Count(value, field);
+                if (count < 0 || count >= field.ArrayBound || !present && !text.Optional || present && (bytes.Length > text.ArrayBound || !TextValid(bytes))) { return false; }
+                if (!TextFits(value, field, present ? bytes.Length : 0)) { return false; }
+                if (field.Dynamic) { field.EnsureCount(value, count + 1); }
+                object child = field.GetChild(value, count); field.Table.Reset(child);
+                if (present) { if (text.Unbounded) { text.EnsureCount(child, bytes.Length); } bytes.CopyTo(text.GetBuffer(child)); text.SetCount(child, bytes.Length); }
+                if (text.Optional) { text.SetPresent(child, present); }
+                field.SetCount(value, count + 1); return true;
             }
         }
 
@@ -7102,12 +7127,12 @@ namespace Blockdemo
                                     {
                                         int bits = sw * 8;
                                         ulong top = 1UL << (bits - 1);
-                                        if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                                        if ((raw & top) != 0) { raw |= unchecked(~((top << 1) - 1UL)); }
                                     }
                                     System.Span<byte> cell = wide.Slice(e * dw, dw);
-                                    if (dw == 1) cell[0] = (byte)raw;
-                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
-                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                                    if (dw == 1) cell[0] = unchecked((byte)raw);
+                                    else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, unchecked((ushort)raw));
+                                    else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, unchecked((uint)raw));
                                     else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                                 }
                                 slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, need);
@@ -7204,12 +7229,12 @@ namespace Blockdemo
                                     ulong top = 1UL << (bits - 1);
                                     if ((raw & top) != 0)
                                     {
-                                        raw |= ~((top << 1) - 1UL);
+                                        raw |= unchecked(~((top << 1) - 1UL));
                                     }
                                 }
                                 if (p.DstSize == 16)
                                 {
-                                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                    UInt128 w = (p.Sign != 0 && unchecked((long)raw) < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
                                     slots[(int)p.Dst].SetWide?.Invoke(dst, w);
                                 }
                                 else

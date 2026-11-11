@@ -107,6 +107,21 @@ func (c *checker) errf(pos ast.Pos, format string, args ...any) {
 	c.errs = append(c.errs, fmt.Errorf("%s: %s", pos, fmt.Sprintf(format, args...)))
 }
 
+// oneHeaderPath reports whether v is exactly one header path: non-empty and
+// holding no control byte, double quote or backslash, so the generated
+// `#include "<v>"` is one directive (SPEC §4.2 Native type mapping).
+func oneHeaderPath(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if b := v[i]; b < 0x20 || b == 0x7F || b == '"' || b == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
 // Unit checks the files against every supported language's reserved words
 // (SPEC §4.6: whatever target is generated) and lowers them to IR. Files may
 // arrive in any order; the unit is processed in sorted-basename order, so
@@ -150,6 +165,9 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkNativeMapping()
 	c.checkTargetNames()
 	c.assemble()
+	if len(c.errs) == 0 {
+		c.checkZeroBitPacketArrays()
+	}
 	c.checkSizes()
 	if len(c.errs) > 0 {
 		return nil, c.errs
@@ -1002,31 +1020,14 @@ func (c *checker) resolveEnum(d *ast.EnumDecl) *ir.Enum {
 	// variants are known keeps compiling and spends nothing on the wire, and a
 	// field typed by it round-trips as None without the schema having to
 	// invent a placeholder variant to satisfy the compiler.
+	// An enum takes no | max (SPEC §4.2): its wire range is [0, variant
+	// count] and nothing widens it. The key is read only so the refusal can
+	// name the declaration and the wire rule, rather than falling through to
+	// the generic unknown-attribute diagnostic.
 	max := int64(len(variants))
-	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, map[string]bool{"max": true})
+	tags, valued := c.qualification("enum "+d.Name, "an enum declaration", d.Attrs, nil, "max")
 	for _, a := range valued {
-		v, ok := c.evalInt(a.Value)
-		if !ok {
-			// the bound never resolved (a cycle, an undefined name, a bad
-			// expression — all already reported). Mark the enum degraded so
-			// dependents do not inherit the fallback count and report a
-			// CASCADE error naming a max the author never wrote.
-			if c.failedEnum == nil {
-				c.failedEnum = map[string]bool{}
-			}
-			c.failedEnum[d.Name] = true
-			continue
-		}
-		if !v.IsInt64() || v.Int64() < max {
-			c.errf(a.Pos, "enum %s | max = %s is below its variant count %d (SPEC §4.6)", d.Name, v, max)
-			continue
-		}
-		if v.Int64() > math.MaxInt32 {
-			// the enum wire rides the 32-bit ranged call in every target
-			c.errf(a.Pos, "enum %s | max = %s exceeds the 32-bit tag wire's ceiling %d (SPEC §4.6)", d.Name, v, int64(math.MaxInt32))
-			continue
-		}
-		max = v.Int64()
+		c.errf(a.Pos, "enum %s takes no | max — an enum's wire range is [0, variant count] and nothing widens it (SPEC §4.2)", d.Name)
 	}
 	en := &ir.Enum{Name: d.Name, Variants: variants, Was: was, Max: max, StorageBits: ir.StorageBitsFor(max),
 		Doc: d.Doc, Tags: tags, VariantDocs: docs, VariantTags: vtags, VariantDeprecated: deprecated}
@@ -1106,6 +1107,10 @@ func (c *checker) resolveBodies() {
 						lit, ok := a.Value.(*ast.StringLit)
 						if !ok {
 							c.errf(a.Pos, `cpp_include takes a quoted header path, e.g. cpp_include = "core_vector.h" (SPEC §4.2 Native type mapping)`)
+							continue
+						}
+						if !oneHeaderPath(lit.Value) {
+							c.errf(a.Pos, `cpp_include takes one non-empty header path, holding no control byte, double quote or backslash, so the generated #include "<value>" is exactly one directive (SPEC §4.2 Native type mapping)`)
 							continue
 						}
 						st.CppInclude = lit.Value
@@ -1245,6 +1250,7 @@ func (c *checker) resolveUnion(d *ast.UnionDecl) {
 			c.errf(v.Pos, "variant %s is a reserved word in %s — rename at the source, no escaping machinery (SPEC §4.6)", v.Name, listReservedLangs(langs))
 			continue
 		}
+		c.checkJavaScriptObjectMember(v.Name, v.Pos, "union arm", "a union arm")
 		if prev, dup := seen[exported]; dup {
 			c.errf(v.Pos, "duplicate variant %s in union %s (first at %s; names are unique AFTER export mapping — both become %s) (SPEC §4.8)",
 				v.Name, d.Name, prev, exported)
@@ -1621,8 +1627,7 @@ func (c *checker) resolveField(owner string, f *ast.Field, inTable bool) *ir.Fie
 		minN := int64(1)
 		what := "bytes"
 		k := ir.TBytes
-		switch f.Type.Kind {
-		case ast.ScalarString:
+		if f.Type.Kind == ast.ScalarString {
 			minN = 2
 			what = "string"
 			k = ir.TString
@@ -3206,10 +3211,6 @@ func (c *checker) checkTableVariantIdentity(closureNames []string) {
 	}
 	for _, name := range sortedKeys(enums) {
 		e := enums[name]
-		if e.Max > int64(len(e.Variants)) {
-			c.errf(pos(name), "enum %s: | max = %d reserves values above the declared variants, and %s reaches it, putting %s in a table closure — a headroom value has no NAME, and a table-wire enum value rides as the hash of its variant name; the table wire needs no headroom, because a variant may be added anywhere (docs/SPEC-TABLES.md §5)",
-				name, e.Max, reachedBy[name], name)
-		}
 		seen := map[uint64]string{}
 		for i, v := range e.Variants {
 			// THE EFFECTIVE NAME: a variant renamed under `was` rides under
@@ -3578,7 +3579,8 @@ var reservedLanguages = []struct {
 	{"JavaScript", []string{"js", "javascript"}, `await break case catch class const continue debugger default delete do else
 		enum export extends false finally for function if implements import in instanceof
 		interface let new null package private protected public return static super switch
-		this throw true try typeof var void while with yield`},
+		this throw true try typeof var void while with yield
+		__proto__ __defineGetter__ __defineSetter__ __lookupGetter__ __lookupSetter__`},
 	// Dart 3's reserved words, the dart:core types generated files use
 	// unqualified (shadowing `int` would corrupt every declaration below it),
 	// and Object's members, which a static member may not share.
@@ -3845,6 +3847,18 @@ var jsObjectMembers = map[string]bool{
 	"propertyIsEnumerable": true, "toLocaleString": true, "toString": true, "valueOf": true,
 }
 
+// checkJavaScriptObjectMember refuses a name whose JavaScript member spelling
+// is one every object inherits from Object.prototype (SPEC §4.6, §6.1). It
+// applies to every name kind a target emits as an object member: a field, an
+// enum or flags variant, and a union arm.
+func (c *checker) checkJavaScriptObjectMember(name string, pos ast.Pos, what, noun string) {
+	member := ir.DartMemberName(name)
+	if !jsObjectMembers[member] {
+		return
+	}
+	c.errf(pos, "%s %s becomes the JavaScript member %s, which every object inherits from Object.prototype; %s of that name shadows it — rename at the source (SPEC §4.6)", what, name, member, noun)
+}
+
 // goExportName delegates to the one true mapping (ir.GoExportName), which
 // the Go backend also emits with — two names that collide under it cannot
 // coexist in one type (SPEC §4.6).
@@ -3926,9 +3940,7 @@ func (c *checker) checkTargetNames() {
 						// JavaScript storage members are lowerCamelCase own
 						// properties of a plain class instance, so a field spelt
 						// as an Object.prototype member would shadow it
-						if jsObjectMembers[ir.DartMemberName(item.Name)] {
-							c.errf(item.Pos, "field %s becomes the JavaScript member %s, which every object inherits from Object.prototype; a field of that name shadows it — rename at the source (SPEC §4.6)", item.Name, ir.DartMemberName(item.Name))
-						}
+						c.checkJavaScriptObjectMember(item.Name, item.Pos, "field", "a field")
 						if owner != "" && goExportName(item.Name) == owner {
 							c.errf(item.Pos, "field %s's exported name equals its declaring type %s — C# forbids a member sharing its enclosing type's name; rename at the source (SPEC §4.6)", item.Name, owner)
 						}
@@ -3967,10 +3979,12 @@ func (c *checker) checkTargetNames() {
 						continue
 					}
 					checkEscaped(v.Text, v.Pos, "enum variant")
+					c.checkJavaScriptObjectMember(v.Text, v.Pos, "enum variant", "an enum variant")
 				}
 			case *ast.FlagsDecl:
 				for _, v := range d.Variants {
 					checkEscaped(v.Text, v.Pos, "flags variant")
+					c.checkJavaScriptObjectMember(v.Text, v.Pos, "flags variant", "a flags variant")
 				}
 			}
 		}
@@ -4789,6 +4803,59 @@ func (c *checker) assemble() {
 		u.Files = append(u.Files, irf)
 	}
 	maps.Copy(u.DeclFile, c.declFile)
+}
+
+// checkZeroBitPacketArrays refuses a packet counted array whose ELEMENT
+// encodes in zero bits (SPEC §4.6): an empty type, a ranged integer or fixed
+// value with min = max, or a type all of whose fields cost nothing. The count
+// is the only thing that varies on such a field, so a hostile count would be
+// almost the whole wire cost while the reader still materializes the declared
+// bound in memory. A fixed [N]T is not refused: its extent is a compile-time
+// constant, so no value read from the wire chooses its size.
+func (c *checker) checkZeroBitPacketArrays() {
+	refuse := func(owner, arm string, f *ir.Field) {
+		if f.Array != ir.ArrayCounted {
+			return
+		}
+		elem := *f
+		elem.Array = ir.ArrayNone
+		if ir.MaxBitsField(&elem) != 0 {
+			return
+		}
+		pos := ast.Pos{}
+		if d, ok := c.astDecls[owner]; ok {
+			pos = d.DeclPos()
+		}
+		where := fmt.Sprintf("field %s", f.Name)
+		if arm != "" {
+			where = fmt.Sprintf("union %s: arm %s", owner, arm)
+		}
+		c.errf(pos, "%s: a counted array whose element encodes in zero bits is refused — its count would be almost the whole cost on the wire while the reader still materializes the declared bound in memory; give the element a wire bit (an empty type, a min = max range and a type of zero-bit fields all cost none) (SPEC §4.6)", where)
+	}
+
+	names := make([]string, 0, len(c.unit.Structs))
+	for name := range c.unit.Structs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		for _, f := range c.unit.Structs[name].Fields {
+			refuse(name, "", f)
+		}
+	}
+
+	unions := make([]string, 0, len(c.unit.Unions))
+	for name := range c.unit.Unions {
+		unions = append(unions, name)
+	}
+	sort.Strings(unions)
+	for _, name := range unions {
+		for _, v := range c.unit.Unions[name].Variants {
+			if v.F != nil {
+				refuse(name, v.Name, v.F)
+			}
+		}
+	}
 }
 
 // checkSizes refuses a unit whose derived sizes pass the caps [ir.CheckSizes]

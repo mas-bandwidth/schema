@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0xeb26c970fde3fd71
+# package example — protocol id 0xf35accd0582cdd84
 
 # type DefaultArm
 defmodule Example.DefaultArm do
@@ -171,7 +171,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_default_arm_entries(value_entries, <<>>, scratch, scratch_bits)
+      wZdefault_armZentries(value_entries, <<>>, scratch, scratch_bits)
 
     if value_marker < 0 do
       raise ArgumentError, "value.marker is below the wire minimum"
@@ -213,7 +213,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultArm.t(), non_neg_integer()} | :error
   def read_default_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -225,7 +225,7 @@ defmodule Example.ArmDefaults do
       if v > 2, do: throw(:invalid)
       n = v
       if 2 + n * 36 > num_bits, do: throw(:invalid)
-      {bits_read, v_entries} = r_default_arm_entries(n, [], data, num_bits, 2)
+      {bits_read, v_entries} = rZdefault_armZentries(n, [], data, num_bits, 2)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
@@ -321,7 +321,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_first_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_first_entries, data, scratch, scratch_bits)
 
           if value_first_marker < 0 do
             raise ArgumentError, "value.first.marker is below the wire minimum"
@@ -353,7 +353,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_second_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_second_entries, data, scratch, scratch_bits)
 
           if value_second_marker < 0 do
             raise ArgumentError, "value.second.marker is below the wire minimum"
@@ -403,7 +403,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultChoice.t(), non_neg_integer()} | :error
   def read_default_choice_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -425,7 +425,7 @@ defmodule Example.ArmDefaults do
             if v > 2, do: throw(:invalid)
             n = v
             if 4 + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_first_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
+            {bits_read, v_first_entries} = rZdefault_armZentries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
@@ -442,7 +442,7 @@ defmodule Example.ArmDefaults do
             if v > 2, do: throw(:invalid)
             n = v
             if 4 + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_second_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
+            {bits_read, v_second_entries} = rZdefault_armZentries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
@@ -540,7 +540,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_choice_first_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_choice_first_entries, data, scratch, scratch_bits)
 
           if value_choice_first_marker < 0 do
             raise ArgumentError, "value.choice.first.marker is below the wire minimum"
@@ -576,7 +576,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_choice_second_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_choice_second_entries, data, scratch, scratch_bits)
 
           if value_choice_second_marker < 0 do
             raise ArgumentError, "value.choice.second.marker is below the wire minimum"
@@ -628,7 +628,7 @@ defmodule Example.ArmDefaults do
   def read_default_choice_packet_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -650,7 +650,7 @@ defmodule Example.ArmDefaults do
             if v > 2, do: throw(:invalid)
             n = v
             if 4 + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_choice_first_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
+            {bits_read, v_choice_first_entries} = rZdefault_armZentries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
@@ -672,7 +672,7 @@ defmodule Example.ArmDefaults do
             if v > 2, do: throw(:invalid)
             n = v
             if 4 + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_choice_second_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
+            {bits_read, v_choice_second_entries} = rZdefault_armZentries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
@@ -751,7 +751,7 @@ defmodule Example.ArmDefaults do
     scratch_bits = 2
 
     {data, scratch, scratch_bits} =
-      w_default_arm_entries(value_payload_entries, <<>>, scratch, scratch_bits)
+      wZdefault_armZentries(value_payload_entries, <<>>, scratch, scratch_bits)
 
     if value_payload_marker < 0 do
       raise ArgumentError, "value.payload.marker is below the wire minimum"
@@ -806,7 +806,7 @@ defmodule Example.ArmDefaults do
           {:ok, Example.DefaultBulkArm.t(), non_neg_integer()} | :error
   def read_default_bulk_arm_bits(data, num_bits) when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -818,7 +818,7 @@ defmodule Example.ArmDefaults do
       if v > 2, do: throw(:invalid)
       n = v
       if 2 + n * 36 > num_bits, do: throw(:invalid)
-      {bits_read, v_payload_entries} = r_default_arm_entries(n, [], data, num_bits, 2)
+      {bits_read, v_payload_entries} = rZdefault_armZentries(n, [], data, num_bits, 2)
       if bits_read + 3 > num_bits, do: throw(:invalid)
       rv = rd(data, bits_read, 3)
       v = rv
@@ -949,7 +949,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_first_payload_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_first_payload_entries, data, scratch, scratch_bits)
 
           if value_first_payload_marker < 0 do
             raise ArgumentError, "value.first.payload.marker is below the wire minimum"
@@ -1001,7 +1001,7 @@ defmodule Example.ArmDefaults do
           scratch_bits = 4
 
           {data, scratch, scratch_bits} =
-            w_default_arm_entries(value_second_payload_entries, data, scratch, scratch_bits)
+            wZdefault_armZentries(value_second_payload_entries, data, scratch, scratch_bits)
 
           if value_second_payload_marker < 0 do
             raise ArgumentError, "value.second.payload.marker is below the wire minimum"
@@ -1067,7 +1067,7 @@ defmodule Example.ArmDefaults do
   def read_default_bulk_choice_bits(data, num_bits)
       when is_binary(data) and is_integer(num_bits) do
     try do
-      if num_bits > byte_size(data) * 8 do
+      if num_bits < 0 or num_bits > byte_size(data) * 8 do
         # the payload cannot exceed the buffer behind it
         throw(:invalid)
       end
@@ -1089,7 +1089,7 @@ defmodule Example.ArmDefaults do
             if v > 2, do: throw(:invalid)
             n = v
             if 4 + n * 36 > num_bits, do: throw(:invalid)
-            {bits_read, v_first_payload_entries} = r_default_arm_entries(n, [], data, num_bits, 4)
+            {bits_read, v_first_payload_entries} = rZdefault_armZentries(n, [], data, num_bits, 4)
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
             v = rv
@@ -1137,7 +1137,7 @@ defmodule Example.ArmDefaults do
             if 4 + n * 36 > num_bits, do: throw(:invalid)
 
             {bits_read, v_second_payload_entries} =
-              r_default_arm_entries(n, [], data, num_bits, 4)
+              rZdefault_armZentries(n, [], data, num_bits, 4)
 
             if bits_read + 3 > num_bits, do: throw(:invalid)
             rv = rd(data, bits_read, 3)
@@ -1200,9 +1200,9 @@ defmodule Example.ArmDefaults do
     end
   end
 
-  defp w_default_arm_entries([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
+  defp wZdefault_armZentries([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
-  defp w_default_arm_entries([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+  defp wZdefault_armZentries([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
     %{retries: e1_retries, preferred: e1_preferred} = e1
     v = e1_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1251,10 +1251,10 @@ defmodule Example.ArmDefaults do
 
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_default_arm_entries(rest, data, scratch, scratch_bits)
+    wZdefault_armZentries(rest, data, scratch, scratch_bits)
   end
 
-  defp w_default_arm_entries([e | rest], data, scratch, scratch_bits) do
+  defp wZdefault_armZentries([e | rest], data, scratch, scratch_bits) do
     %{retries: e_retries, preferred: e_preferred} = e
     v = e_retries &&& 0xFFFFFFFF
     scratch = scratch ||| v <<< scratch_bits
@@ -1266,19 +1266,19 @@ defmodule Example.ArmDefaults do
     data = <<data::binary, scratch::little-size(flush)-unit(8)>>
     scratch = scratch >>> (flush <<< 3)
     scratch_bits = scratch_bits &&& 7
-    w_default_arm_entries(rest, data, scratch, scratch_bits)
+    wZdefault_armZentries(rest, data, scratch, scratch_bits)
   end
 
-  defp r_default_arm_entries(0, acc, _data, _num_bits, bits_read),
+  defp rZdefault_armZentries(0, acc, _data, _num_bits, bits_read),
     do: {bits_read, Enum.reverse(acc)}
 
-  defp r_default_arm_entries(remaining, acc, data, num_bits, bits_read) do
+  defp rZdefault_armZentries(remaining, acc, data, num_bits, bits_read) do
     rv = rdw(data, bits_read, 36)
     v = rv &&& 0xFFFFFFFF
     e_retries = if v >= 2_147_483_648, do: v - 4_294_967_296, else: v
     v = rv >>> 32
     {:ok, e_preferred} = Example.Weapon.from_int(v)
     e = %Example.ProbeConfig{retries: e_retries, preferred: e_preferred}
-    r_default_arm_entries(remaining - 1, [e | acc], data, num_bits, bits_read + 36)
+    rZdefault_armZentries(remaining - 1, [e | acc], data, num_bits, bits_read + 36)
   end
 end

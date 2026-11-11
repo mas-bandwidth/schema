@@ -213,7 +213,12 @@ const tableWireCheckSource = `
                     if (!Leb(buf, ref off, out ulong variant) || variant > (ulong)(Ids.Length / 8)) { return Damage(); }
                     return true;
                 case 15: return Union(buf, ref off);
-                case 12: case 31: case 32: case 13: case 14: case 16:
+                case 12:
+                case 31:
+                case 32:
+                case 13:
+                case 14:
+                case 16:
                     if (!Leb(buf, ref off, out ulong n) || n > (ulong)(buf.Length - off)) { return Damage(); }
                     off += (int)n;
                     return Content(buf.Slice(off - (int)n, (int)n), kind);
@@ -231,21 +236,25 @@ const tableWireCheckSource = `
                 case 12: return TextValid(b) || Damage();
                 case 31: return true;
                 case 32: return b.Length == 0 || Damage();
-                case 13: case 14: case 16:
-                {
-                    // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
-                    if (Depth >= 128) { return Damage(); }
-                    Depth++;
-                    bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
-                    Depth--;
-                    return good;
-                }
-                case 17: case 30: case 15:
-                {
-                    int end = 0;
-                    if (!Payload(b, ref end, kind)) { return false; }
-                    return end == b.Length || Damage();
-                }
+                case 13:
+                case 14:
+                case 16:
+                    {
+                        // THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4)
+                        if (Depth >= 128) { return Damage(); }
+                        Depth++;
+                        bool good = kind == 13 ? Body(b, false) : kind == 14 ? ArrayBody(b) : KeyedBody(b);
+                        Depth--;
+                        return good;
+                    }
+                case 17:
+                case 30:
+                case 15:
+                    {
+                        int end = 0;
+                        if (!Payload(b, ref end, kind)) { return false; }
+                        return end == b.Length || Damage();
+                    }
             }
             return Damage();
         }
