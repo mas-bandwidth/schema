@@ -1194,7 +1194,12 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
           r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) return false;
         }
+        // A WALKED ELEMENT THAT CONSUMES NO BITS is damage and ends the
+        // walk (internal/codegen/gotable/message.go, tableMessageSkip):
+        // otherwise the announced count alone buys the iterations.
+        final before = r.bits.offset;
         if (!tableMessageSkip(r, s.elem, inner, depth + 1)) return false;
+        if (r.bits.offset == before) return false;
       }
       return true;
   }
