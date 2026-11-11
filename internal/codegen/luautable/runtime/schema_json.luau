@@ -1834,8 +1834,14 @@ local function narrow_text_ok(s: string, bound: number): boolean
   return true
 end
 
-local function int_cmp(a: any, b: any): number
+-- an unsigned 64-bit value and its bounds are bit patterns in a signed
+-- integer, so they compare unsigned, as the reader's clamp compares them
+local function int_cmp(a: any, b: any, unsigned: boolean): number
   if typeof(a) == "integer" and typeof(b) == "integer" then
+    if unsigned then
+      if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 end
+      return 0
+    end
     if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 end
     return 0
   end
@@ -1872,7 +1878,8 @@ local function int_ok(fd: any, v: any): boolean
       local lo, hi = wide_shl(wide_of(fd, fd.lo), f), wide_shl(wide_of(fd, fd.hi), f)
       if cmp(raw, lo) < 0 or cmp(raw, hi) > 0 then refuse_reason = "out_of_range"; return false end
     else
-      if int_cmp(v, fd.lo) < 0 or int_cmp(v, fd.hi) > 0 then refuse_reason = "out_of_range"; return false end
+      local u = fd.signed == false
+      if int_cmp(v, fd.lo, u) < 0 or int_cmp(v, fd.hi, u) > 0 then refuse_reason = "out_of_range"; return false end
     end
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
