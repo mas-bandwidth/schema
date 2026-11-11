@@ -2305,19 +2305,26 @@ a caller can hold that the declaration does not admit:
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
 own error idiom. No leg silently writes a value off the contract in the build
-where its check is active. A check that guards the WRITER'S OWN STORAGE (a
-count or length that would read past the array it indexes) refuses in every
-build in every leg, because past that point the writer would read memory, not
-a value.
+where its check is active. **In an assert leg (C, C++, C#, Rust, Java, Dart)
+every write check is a debug assert and nothing else, the storage checks
+included** (a count or length that would index past the array it describes):
+correct writes are the programmer's responsibility, and the assert is how the
+leg tells them they got it wrong. An assert leg's release build carries no
+write-side check and no write-side refusal, and none is a defect. Reads are the
+library's responsibility, because they arrive from the network, and every read
+check runs in every build in every leg (§4). Glenn, 2026-11-10: "in languages
+that have assert, we rely on assert to prompt the user they fucked up. when we
+don't have asserts, we have to do some checks in release depending on the
+language."
 
 | leg | idiom | build | how a refusal surfaces |
 |---|---|---|---|
-| C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first. A storage guard returns `-1`/`false` in every build |
-| C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++; a storage guard returns `0`/`-1` |
-| C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it); a storage guard returns `-1` |
-| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic; an every-build refusal is `Err` from `_save_checked`. An out-of-set enum or union tag cannot be built: both are native enums |
-| Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError`; an every-build refusal is `null` or `-1` |
-| Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError`; an every-build refusal is `StateError` or `-1` |
+| C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first |
+| C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++ |
+| C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it) |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic. An out-of-set enum or union tag cannot be built: both are native enums |
+| Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError` |
+| Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError` |
 | Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |
 | JavaScript | none | every build | `null` from `Save`, `[-1, "invalid_value"]` from `MeasureReason`, `-1` from `FixedSave` |
 | Elixir | none | every build | `{:error, :invalid_value}` from `save/2`; `ArgumentError` from the fixed and packet writers |
@@ -2329,7 +2336,10 @@ a value.
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
-is the leg's assert, "every build" its refusal.
+is the leg's assert, "every build" its refusal. These tables record the code as
+it stands, not the contract: an "every build" entry in an assert leg is a
+release-build check the contract does not ask for, and the contract for that
+row is the debug assert.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
 success, never after failure: a writer that refuses returns its refusal
@@ -2365,11 +2375,10 @@ truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
 finite value off its range, and no writer quantizes one into it
 (docs/plans/strict-only.md, decision 8).
-**Two rules hold in every leg on top of the table.** A count or a length that
-would index past the storage it describes is refused in EVERY build, before
-the first byte, assert legs included: it guards memory, not a value, and the
-debug-only allowance does not reach it (the `write-refusal-storage-release-<lang>`
-gates hold it in the release builds of C, C++, C#, Rust, Java and Dart). And
+**One rule holds in every leg on top of the table.** A count or a length that
+would index past the storage it describes is a write check like any other: a
+debug assert in an assert leg, a refusal in every build elsewhere. No release
+build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: a writer never produces bytes its own
 reader refuses.
