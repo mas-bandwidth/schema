@@ -2337,7 +2337,10 @@ check runs in every packet target, in every build (§4). (docs/rulings.json `wri
 is the leg's assert, "every build" its refusal. These tables record the code as
 it stands, not the contract: an "every build" entry in an assert leg is a
 release-build check the contract does not ask for, and the contract for that
-row is the debug assert.
+row is the debug assert. As a fact of today's code, C++, C, C#, Rust, Java and
+Dart also refuse a count or length past the storage it indexes in a release
+build, before the first byte, held by the `write-refusal-storage-release-<lang>`
+gates.
 
 **After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
 success, never after failure: a writer that refuses returns its refusal
@@ -2371,15 +2374,15 @@ read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
 and the message form refuses a mask above its declared width rather than
 truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
-finite value off its range, and no writer quantizes one into it
-(docs/plans/strict-only.md, decision 8).
+finite value off its range, and no writer quantizes one into it in the build
+where its check is active (docs/plans/strict-only.md, decision 8).
 **One rule holds in every leg on top of the table.** A count or a length that
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
-reader refuses one as `text_ill_formed`: a writer never produces bytes its own
-reader refuses.
+reader refuses one as `text_ill_formed`: in the build where its check is
+active, a writer never produces bytes its own reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–8 and 10) |
 |---|---|---|---|
