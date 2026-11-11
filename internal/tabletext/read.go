@@ -1103,6 +1103,20 @@ func (in *reader) readBase64(fv *Field) bool {
 	if malformed {
 		return in.fail("base64_damaged: " + fv.Def.Name)
 	}
+	// JSON bytes use the same canonical spelling as the writer: padded
+	// standard base64 with zero pad bits (§16.2). The walk above deliberately
+	// accepts decodable unpadded input, so distinguish it from damaged input.
+	canonical := pad > 0 || symbols == 0
+	if pad == 1 {
+		last := strings.IndexByte(alphabet, raw[len(raw)-2])
+		canonical = last >= 0 && last&0x03 == 0
+	} else if pad == 2 {
+		last := strings.IndexByte(alphabet, raw[len(raw)-3])
+		canonical = last >= 0 && last&0x0f == 0
+	}
+	if !canonical {
+		return in.fail("base64_not_canonical: " + fv.Def.Name)
+	}
 	var out []byte
 	var accumulator uint32
 	held := 0
