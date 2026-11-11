@@ -74,7 +74,7 @@ func TestFixedAlgorithmCurrent(t *testing.T) {
 				"a backend's lineage input must carry them",
 			},
 			stales: []string{
-				"The reference carries them per entry for ranges and still owes the rest",
+				"The reference carries them per entry for ranges and still owes the",
 			},
 		},
 	}
