@@ -1251,6 +1251,7 @@ public final class BenchPacketVariable {
 
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
         boolean[] seenField = new boolean[12];
+        java.util.Set<String> seenKey = new java.util.HashSet<>();
         while (true) {
             int c = in.peek();
             if (c == 0) {
@@ -1264,6 +1265,11 @@ public final class BenchPacketVariable {
             String key = in.scanString();
             if (in.bad) {
                 return;
+            }
+            // THE KEY SET HOLDS EVERY KEY OF THE OBJECT, declared or not,
+            // compared by decoded text (§16.2, §16.12).
+            if (!seenKey.add(key)) {
+                in.rep.refuse("text_damaged");
             }
             if (key != null && key.startsWith("&")) {
                 in.bad = true;

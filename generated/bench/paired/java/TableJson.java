@@ -1020,6 +1020,7 @@ public final class TableJson {
                 return;
             }
             p++; // the opening bracket
+            java.util.Set<String> seenKey = null;
             while (true) {
                 int c = peek();
                 if (c == closing) {
@@ -1034,6 +1035,14 @@ public final class TableJson {
                     String key = scanString();
                     if (bad) {
                         return;
+                    }
+                    // A SKIPPED OBJECT'S KEYS ARE HELD TO THE SAME RULE (§16.2,
+                    // §16.12): the set is per object and holds decoded text.
+                    if (seenKey == null) {
+                        seenKey = new java.util.HashSet<>();
+                    }
+                    if (!seenKey.add(key)) {
+                        rep.refuse("text_damaged");
                     }
                     if (peek() != ':') {
                         bad = true;
