@@ -1464,25 +1464,31 @@ write-refusal-storage-release-cs-negative-control: bin/schema $(STORAGE_RELEASE_
 
 # THE WRITE-REFUSAL NEGATIVE CONTROLS, C# side (docs/SPEC.md §5.1). The
 # conformance driver is built Debug against a copy of the generated tree with
-# one write check removed, and the surface that writer serves must go red while
-# the surface beside it stays green. Nothing tracked is written to.
+# one write assert removed, and the surface that writer serves must go red by
+# the one case that assert refuses while the surface beside it stays green. The
+# sabotaged driver must compile under the leg's warnings-as-errors and answer.
+# Nothing tracked is written to. C# is an assert leg: every write check is a
+# Debug.Assert, so each control removes one. Every write-refusal row names a
+# fixed root, so both binary surfaces are the fixed writer's: one control takes
+# its union tag assert, one its range assert. The message control takes the
+# message writer's range assert.
 .PHONY: conformance-negative-control-cs-write-refusal
 conformance-negative-control-cs-write-refusal: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-control \
-		's/if \(!float\.IsFinite\(value\.Damage\)\) return "WeaponConfig\.damage";/\/* SABOTAGED: a non-finite float writes *\//' \
-		'!float\.IsFinite\(value\.Damage\)' write-refusal wire
-	@echo 'C# write-refusal negative control: the writer without its finite check is detected by cs / write-refusal; wire stays green'
+		's/System\.Diagnostics\.Debug\.Assert\(\(ulong\)value\.Effect\.Type <= 2\);/\/* SABOTAGED: no union tag check *\//' \
+		'Debug\.Assert\(\(ulong\)value\.Effect\.Type <= 2\);' write-refusal wref_union_tag wire
+	@echo 'C# write-refusal negative control: the writer without its union tag assert is detected by cs / write-refusal wref_union_tag; wire stays green'
 
 .PHONY: conformance-negative-control-cs-write-refusal-fixed
 conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-fixed-control \
 		's/System\.Diagnostics\.Debug\.Assert\(value\.Penetration >= 0 && value\.Penetration <= 10\);/\/* SABOTAGED: no fixed range check *\//' \
-		'Debug\.Assert\(value\.Penetration >= 0 && value\.Penetration <= 10\)' write-refusal-fixed wire
-	@echo 'C# write-refusal-fixed negative control: the fixed writer without its range check is detected by cs / write-refusal-fixed; wire stays green'
+		'Debug\.Assert\(value\.Penetration >= 0 && value\.Penetration <= 10\);' write-refusal-fixed fref_range_high wire
+	@echo 'C# write-refusal-fixed negative control: the fixed writer without its range assert is detected by cs / write-refusal-fixed fref_range_high; wire stays green'
 
 .PHONY: conformance-negative-control-cs-write-refusal-message
 conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
 	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
 		's/System\.Diagnostics\.Debug\.Assert\(f\.RangeValidRaw\(f\.GetRaw\(value, i\)\)\);/\/* SABOTAGED: no message range check *\//' \
-		'Debug\.Assert\(f\.RangeValidRaw' write-refusal-message message
-	@echo 'C# write-refusal-message negative control: the message writer without its range check is detected by cs / write-refusal-message; message stays green'
+		'Debug\.Assert\(f\.RangeValidRaw\(f\.GetRaw\(value, i\)\)\);' write-refusal-message mref_range_high message
+	@echo 'C# write-refusal-message negative control: the message writer without its range assert is detected by cs / write-refusal-message mref_range_high; message stays green'

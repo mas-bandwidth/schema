@@ -33,9 +33,12 @@ static partial class Program
     }
 
     // the write's answer: its length, -1 on a refusal by return, or null when
-    // a write assert fired
-    static long? WriteRefusalRun(Func<long> write)
+    // a write assert fired. Any other exception is neither a refusal nor a
+    // write: `threw` names it, and the case answers that, so one writer that
+    // throws is that case's wrong answer rather than the end of the surface.
+    static long? WriteRefusalRun(Func<long> write, out string threw)
     {
+        threw = null;
         TraceListener[] saved = new TraceListener[Trace.Listeners.Count];
         Trace.Listeners.CopyTo(saved, 0);
         Trace.Listeners.Clear();
@@ -48,6 +51,11 @@ static partial class Program
         {
             return null;
         }
+        catch (Exception e)
+        {
+            threw = "threw " + e.GetType().Name;
+            return null;
+        }
         finally
         {
             Trace.Listeners.Clear();
@@ -58,7 +66,8 @@ static partial class Program
     // a binary writer's verdict: "refused" on -1 or a fired write assert
     static string WriteRefusalSave(Func<long> write)
     {
-        long? n = WriteRefusalRun(write);
+        long? n = WriteRefusalRun(write, out string threw);
+        if (threw != null) { return threw; }
         return n == null || n < 0 ? "refused" : "wrote";
     }
 
@@ -199,7 +208,8 @@ static partial class Program
     static string WriteRefusalJson(Codec codec, object value, string kind, string text)
     {
         byte[] buffer = new byte[1 << 20];
-        long? n = WriteRefusalRun(() => codec.ToJson(value, buffer));
+        long? n = WriteRefusalRun(() => codec.ToJson(value, buffer), out string threw);
+        if (threw != null) { return threw; }
         if (n == null || n < 0) { return "refused"; }
         string json = Encoding.UTF8.GetString(buffer, 0, checked((int)n));
         var spelled = new StringBuilder();
