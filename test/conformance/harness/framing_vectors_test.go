@@ -286,6 +286,8 @@ var framingVectors = []framingVector{
 	{name: "array_count_bound_plus_one", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 7, 30, 5, 2, 9, 11, 2, 9, 0)},
 	// H5: a count of two over one element's bytes.
 	{name: "array_count_over_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 3, 30, 2, 2, 0)},
+	// L6: two complete elements inside L, the count saying one.
+	{name: "array_elements_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: b(8, 14, 4, 30, 1, 9, 11, 0)},
 	// H3, H5: the count's second byte is the parent's next reference (ref 2,
 	// `past`): count = 2 + 2·128 = 258, the elements bounded by L cover none,
 	// and the parent resumes at that byte.
@@ -325,6 +327,8 @@ var framingVectors = []framingVector{
 	{name: "map_descending", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 2), squadEntry(9, 90), squadEntry(2, 20), name50, b(0))},
 	// H5 at a map: a count of two over one entry.
 	{name: "map_count_over_length", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 17, 13, 2), squadEntry(2, 20), name50, b(0))},
+	// L6 at a map: two complete ascending entries inside L, the count saying one.
+	{name: "map_entries_past_count", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 32, 13, 1), squadEntry(2, 20), squadEntry(3, 30), name50, b(0))},
 	// H2 at a map.
 	{name: "map_L1_inert", unit: "listdemo", root: "Squad", ids: squadIds, body: cat(b(1, 14, 1, 13), name50, b(0))},
 	// THE KNOWN WITNESS, verbatim: the Dart wire-fuzz mutant #2400 fixed (ci-full
@@ -351,6 +355,8 @@ var framingVectors = []framingVector{
 	{name: "keyed_triple_L_past_body", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 2, 2, 4), i32(7), b(9, 9), i32(3), b(0))},
 	// H5 at kind 16: a count of two over one triple.
 	{name: "keyed_count_over_length", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 4, 2, 2, 4), i32(7), b(0))},
+	// L6 at kind 16: two complete triples inside L, the count saying one.
+	{name: "keyed_slots_past_count", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 14, 4, 1, 2, 4), i32(7), b(3, 4), i32(3), b(0))},
 	// H4 at kind 16, inside L.
 	{name: "keyed_elem_kind_mismatch", unit: "tblr1", root: "Cfg", ids: cfgIds, body: cat(b(10, 16, 8, 30, 1, 2, 4), i32(7), b(0))},
 	// H2 at kind 16.
@@ -381,6 +387,9 @@ var framingVectors = []framingVector{
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.
 	{name: "node_record_L_past_field", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(5, 9, 1, 4), i32(2), b(0))), b(0))},
+	// L3 at a record: the body ends at its terminator, with a further byte
+	// still inside the record's L.
+	{name: "node_record_bytes_after_terminator", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, cat(b(5, 8, 1, 4), i32(2), b(0), b(0xFF))), b(0))},
 	// T2: bytes left over inside the field.
 	{name: "node_bytes_left_over", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(1, listNodeRecord(2), b(0xFF)), b(0))},
 	// T2: the field under a kind other than 12.

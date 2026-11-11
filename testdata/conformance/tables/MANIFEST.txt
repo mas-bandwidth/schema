@@ -1181,6 +1181,7 @@ framing array_L2_empty                          tblr1 Cfg testdata/wire/tables/f
 framing array_count_at_bound                    tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin             read    testdata/conformance/tables/framing/cfg_grades_four.json
 framing array_count_bound_plus_one              tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin       refused -
 framing array_count_over_length                 tblr1 Cfg testdata/wire/tables/framing/array_count_over_length.bin          refused -
+framing array_elements_past_count               tblr1 Cfg testdata/wire/tables/framing/array_elements_past_count.bin        refused -
 framing array_header_crosses_L_unbounded        listdemo Ints testdata/wire/tables/framing/array_header_crosses_L_unbounded.bin refused -
 framing array_header_crosses_L_bounded          tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_bounded.bin   refused -
 framing array_header_crosses_L_kind_mismatch    tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin refused -
@@ -1195,6 +1196,7 @@ framing map_entry_terminator_early              listdemo Squad testdata/wire/tab
 framing map_entry_L_past_map                    listdemo Squad testdata/wire/tables/framing/map_entry_L_past_map.bin             refused -
 framing map_descending                          listdemo Squad testdata/wire/tables/framing/map_descending.bin                   refused -
 framing map_count_over_length                   listdemo Squad testdata/wire/tables/framing/map_count_over_length.bin            refused -
+framing map_entries_past_count                  listdemo Squad testdata/wire/tables/framing/map_entries_past_count.bin           refused -
 framing map_L1_inert                            listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin                     refused -
 framing map_header_crosses_L_dart_mutant        listdemo Army testdata/wire/tables/framing/map_header_crosses_L_dart_mutant.bin refused -
 framing keyed_header_crosses_L                  tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L.bin           refused -
@@ -1203,6 +1205,7 @@ framing keyed_key_zero                          tblr1 Cfg testdata/wire/tables/f
 framing keyed_unknown_key                       tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin                read    testdata/conformance/tables/framing/cfg_tally_gold_3.json
 framing keyed_triple_L_past_body                tblr1 Cfg testdata/wire/tables/framing/keyed_triple_L_past_body.bin         refused -
 framing keyed_count_over_length                 tblr1 Cfg testdata/wire/tables/framing/keyed_count_over_length.bin          refused -
+framing keyed_slots_past_count                  tblr1 Cfg testdata/wire/tables/framing/keyed_slots_past_count.bin           refused -
 framing keyed_elem_kind_mismatch                tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin         refused -
 framing keyed_L1_inert                          tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin                   refused -
 framing union_arm_L_not_width                   tblr1 Cfg testdata/wire/tables/framing/union_arm_L_not_width.bin            refused -
@@ -1216,6 +1219,7 @@ framing union_arm_zero_in_field                 tblr1 Cfg testdata/wire/tables/f
 framing node_clean                              graphdemo ListNode testdata/wire/tables/framing/node_clean.bin                       read    testdata/conformance/tables/framing/listnode_1_to_2.json
 framing node_count_disagrees                    graphdemo ListNode testdata/wire/tables/framing/node_count_disagrees.bin             refused -
 framing node_record_L_past_field                graphdemo ListNode testdata/wire/tables/framing/node_record_L_past_field.bin         refused -
+framing node_record_bytes_after_terminator      graphdemo ListNode testdata/wire/tables/framing/node_record_bytes_after_terminator.bin refused -
 framing node_bytes_left_over                    graphdemo ListNode testdata/wire/tables/framing/node_bytes_left_over.bin             refused -
 framing node_field_wrong_kind                   graphdemo ListNode testdata/wire/tables/framing/node_field_wrong_kind.bin            refused -
 framing node_type_ref_zero                      graphdemo ListNode testdata/wire/tables/framing/node_type_ref_zero.bin               refused -
