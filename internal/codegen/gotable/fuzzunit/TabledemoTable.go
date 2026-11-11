@@ -3365,19 +3365,28 @@ func tableNodeStorage(id uint64, body TableReader, nodeType func(uint64) *TableT
 	n, _ := tableNodeStorageReason(id, body, nodeType, blobs)
 	return n
 }
-func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *TableTypeInfo, blobs int) (int64, TableRefuseReason) {
-	if t := nodeType(id); t != nil {
-		return tableRegionRound(int64(t.Size)), TableRefuseOk
+func tableBlobStorageReason(id uint64, length int64, blobs int) (int64, TableRefuseReason, bool) {
+	if id != tableBytesTypeID && id != tableStringTypeID {
+		return -1, TableRefuseOk, false
+	}
+	if length > 0xffffffff {
+		return -2, TableRefuseBlobOverSizeCap, true
 	}
 	if id == tableBytesTypeID && blobs&1 != 0 || id == tableStringTypeID && blobs&2 != 0 {
 		extra := int64(0)
 		if id == tableStringTypeID {
 			extra = 1
 		}
-		if int64(len(body.Buffer)) > 0xffffffff {
-			return -2, TableRefuseBlobOverSizeCap
-		}
-		return tableRegionRound(8 + int64(len(body.Buffer)) + extra), TableRefuseOk
+		return tableRegionRound(8 + length + extra), TableRefuseOk, true
+	}
+	return -1, TableRefuseOk, true
+}
+func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *TableTypeInfo, blobs int) (int64, TableRefuseReason) {
+	if t := nodeType(id); t != nil {
+		return tableRegionRound(int64(t.Size)), TableRefuseOk
+	}
+	if n, reason, blob := tableBlobStorageReason(id, int64(len(body.Buffer)), blobs); blob {
+		return n, reason
 	}
 	return -1, TableRefuseOk
 }

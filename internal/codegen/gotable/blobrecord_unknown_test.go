@@ -87,6 +87,21 @@ func field(i int) uint64 { return NodeTableFields[i].ID }
 
 const (fN, fNext = 0, 1)
 
+func TestUnknownBlobSizeCapIsIndependentOfMask(t *testing.T) {
+	t.Parallel()
+	for _, id := range []uint64{tableBytesTypeID, tableStringTypeID} {
+		const maxBlobLength = int64((uint64(1) << 32) - 1)
+		n, reason, blob := tableBlobStorageReason(id, maxBlobLength, 0)
+		if !blob || n != -1 || reason != TableRefuseOk {
+			t.Fatalf("type id %016x at cap: storage=%d reason=%v blob=%v, want -1/ok/true", id, n, reason, blob)
+		}
+		n, reason, blob = tableBlobStorageReason(id, maxBlobLength+1, 0)
+		if !blob || n != -2 || reason != TableRefuseBlobOverSizeCap {
+			t.Fatalf("type id %016x over cap: storage=%d reason=%v blob=%v, want -2/blob_over_size_cap/true", id, n, reason, blob)
+		}
+	}
+}
+
 func TestBlobRecordUnderUnknownField(t *testing.T) {
 	var ids TableIds
 	// two unknown fields and two records this reader cannot name: four events
