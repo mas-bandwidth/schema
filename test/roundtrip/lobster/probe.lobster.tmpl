@@ -16,8 +16,13 @@ let inputs = args[length(args) - 1]
 def say(root:string, name:string, verb:string, verdict:string):
     print("RT " + root + " " + name + " " + verb + " " + verdict)
 
+// The lobster VM writes files only under its own directory, so the bytes the
+// probe saves are printed as `RTB <root> <sample> <ext> <hex>` lines.
 def keep(root:string, name:string, ext:string, bytes:string):
-    assert write_file(inputs + "/out/" + root + "/" + name + ext, bytes)
+    var hex = ""
+    for(bytes) c:
+        hex += number_to_string(c & 255, 16, 2)
+    print("RTB " + root + " " + name + " " + ext + " " + hex)
 
 def jw(rec:schema_rt.Record) -> string:
     let js, why = schema_rt.json_write(rec)
