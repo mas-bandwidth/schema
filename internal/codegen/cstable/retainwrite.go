@@ -88,15 +88,15 @@ const tableRetainSaveSource = `
     }
     public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
-        long total = LoadMeasureParts(type, bytes, out long data, out long attribution, out string reason);
+        long total = LoadMeasurePartsWalk(type, bytes, out long data, out long attribution, out string reason, out bool wireNonFinite);
         if (total >= 0 && capacity < total) { return IntPtr.Zero; }
         fixed (TableRetain* retain = &store)
-        { return RetainLoadRegion(type, region, data, (IntPtr)((byte*)region + data), attribution, bytes, report, total, data, reason, retain); }
+        { return RetainLoadRegion(type, region, data, (IntPtr)((byte*)region + data), attribution, bytes, report, total, data, reason, wireNonFinite, retain); }
     }
     public static IntPtr LoadRetainRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, ref TableRetain store, TableReport report)
     {
-        long total = LoadMeasureParts(type, bytes, out long data, out _, out string reason);
+        long total = LoadMeasurePartsWalk(type, bytes, out long data, out _, out string reason, out bool wireNonFinite);
         fixed (TableRetain* retain = &store)
-        { return RetainLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, data, reason, retain); }
+        { return RetainLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, data, reason, wireNonFinite, retain); }
     }
 `

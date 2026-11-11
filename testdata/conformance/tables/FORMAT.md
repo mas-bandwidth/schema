@@ -87,7 +87,10 @@ json-write-refusal <case> <unit> <root> <wire file> <damage>
   the nearest value that is not text in that leg and says so in its driver.
 - **`write-refusal`** is one row of the WRITE CONTRACT's battery
   (docs/SPEC.md §5.1): load `<wire>` as `<root>`, set the one field at `<path>`
-  to `<value>`, and save through the variable-form Save. `<path>` is dotted
+  to `<value>`, and save through the root's own form's writer—the variable-form
+  Save for a variable root, the fixed form's FixedSave for a declared fixed
+  root. `<wire>` is the root's current-form instance (`instance` line), read
+  by that same form. `<path>` is dotted
   field names with `[i]` element indexes, from the root. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
   count of the array at `<path>` (a new element is a copy of element 0),
