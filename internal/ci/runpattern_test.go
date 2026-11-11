@@ -322,3 +322,128 @@ func TestEveryRunPatternMatchesATest(t *testing.T) {
 		t.Errorf("%s", o)
 	}
 }
+
+// TestPerCommitLegBuildsFitTheWall holds the three leg jobs the two-minute
+// rule names to the shape that fits it: the toolchain-dependent build is
+// restored from a cache (or handed over as an artifact), the make
+// prerequisite is a real stamp rather than a phony regenerator, and the fuzz
+// row runs the bounded per-commit smoke while the full campaign still runs
+// nightly in certify.yml. A job that rebuilds its driver from nothing on
+// every run spends its two minutes before it tests, which is the red this
+// pins.
+func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	wfs := workflows(t, root)
+	wf, ok := wfs["ci-full.yml"]
+	if !ok {
+		t.Fatal("ci-full.yml is the workflow this gate reads")
+	}
+	jobs := yamlJobs(wf)
+	if len(jobs) == 0 {
+		t.Fatal("ci-full.yml has no jobs: this gate would pass over an empty set")
+	}
+
+	legs := []struct {
+		job      string
+		cacheID  string
+		cacheKey string
+		touch    []string
+		build    string
+		run      string
+	}{
+		{
+			job:      "cs-fuzz",
+			cacheID:  "cs-fuzz-cache",
+			cacheKey: "cs-fuzz-driver-",
+			touch: []string{
+				"build/tables-generated-cs/.stamp",
+				"build/tables-generated-cs/cards/.stamp",
+				"test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
+			},
+			build: `make -j"$(nproc)" build/conformance-harness build-conformance-cs`,
+			run:   `make ${{ matrix.target }}-smoke`,
+		},
+		{
+			job:      "dart-fuzz",
+			cacheID:  "dart-fuzz-cache",
+			cacheKey: "dart-fuzz-driver-",
+			touch: []string{
+				"build/tables-generated-dart/.stamp",
+				"build/tables-generated-dart/cards/.stamp",
+				"build/conformance-dart",
+			},
+			build: `make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart`,
+			run:   `make ${{ matrix.target }}-smoke`,
+		},
+	}
+	for _, leg := range legs {
+		body, ok := jobs[leg.job]
+		if !ok {
+			t.Errorf("ci-full.yml has no %s job: the leg this gate names cannot be checked", leg.job)
+			continue
+		}
+		for _, want := range []string{
+			"id: " + leg.cacheID,
+			"key: " + leg.cacheKey,
+			"actions/cache/save@",
+			"cache-primary-key",
+			leg.build,
+			leg.run,
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s does not carry %q: the leg rebuilds or reruns the campaign the card moved", leg.job, want)
+			}
+		}
+		for _, path := range leg.touch {
+			if !strings.Contains(body, "touch "+path) {
+				t.Errorf("%s does not touch %s after restoring the cached build, so make rebuilds it over the new checkout", leg.job, path)
+			}
+		}
+		const hostedOnly = "if: runner.environment == 'github-hosted'\n        with:\n          path: ${{ env.GO_BUILD_CACHE }}"
+		if strings.Contains(body, hostedOnly) {
+			t.Errorf("%s restores the Go build cache only on a github-hosted runner, so a fleet runner starts cold", leg.job)
+		}
+	}
+
+	conf, ok := jobs["conformance"]
+	if !ok {
+		t.Fatal("ci-full.yml has no conformance job: the C leg this gate names cannot be checked")
+	}
+	for _, want := range []string{
+		"id: conformance-c-cache",
+		"if: matrix.lang == 'c'",
+		"key: conformance-c-driver-",
+		"touch build/tables-generated-c/collections.stamp",
+		"touch build/tables-generated-c/.stamp",
+		"touch build/conformance-c",
+		"actions/cache/save@",
+		"cache-primary-key",
+	} {
+		if !strings.Contains(conf, want) {
+			t.Errorf("conformance does not carry %q: the C leg rebuilds its driver over the new checkout", want)
+		}
+	}
+
+	dartMK := readCI(t, root, "make/dart.mk")
+	if !strings.Contains(dartMK, "build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP)") {
+		t.Error("make/dart.mk: build/conformance-dart still depends on the phony cards-dart-generate, so a restored driver is rebuilt every run")
+	}
+	if !strings.Contains(dartMK, "$(CARDS_DART_STAMP): bin/schema") {
+		t.Error("make/dart.mk: the cards stamp the driver depends on has no rule")
+	}
+	csMK := readCI(t, root, "make/cs.mk")
+	if !strings.Contains(csMK, "build-conformance-cs: build/tables-generated-cs/.stamp $(CARDS_CS_STAMP)") {
+		t.Error("make/cs.mk: build-conformance-cs still depends on the phony cards-cs-generate, so a restored driver is rebuilt every run")
+	}
+	if !strings.Contains(csMK, "$(CARDS_CS_STAMP): bin/schema") {
+		t.Error("make/cs.mk: the cards stamp the driver depends on has no rule")
+	}
+
+	cert := readCI(t, root, ".github/workflows/certify.yml")
+	for _, target := range []string{"tables-cs-wire-fuzz", "tables-cs-region-fuzz", "tables-dart-wire-fuzz"} {
+		if !strings.Contains(cert, target) {
+			t.Errorf("certify.yml does not run the full %s campaign nightly: the per-commit smoke dropped its cases", target)
+		}
+	}
+}

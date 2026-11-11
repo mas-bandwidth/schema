@@ -651,8 +651,11 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
 # The cards wire library is generated beside it so the wire-fuzz mode below can
-# bind the Card codec.
-build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
+# bind the Card codec. The cards prerequisite is a real stamp rather than the
+# phony cards-dart-generate target: a restored driver must not rebuild only
+# because the phony target is always considered out of date.
+CARDS_DART_STAMP := build/tables-generated-dart/cards/.stamp
+build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
@@ -1449,6 +1452,15 @@ cards-dart-generate: bin/schema
 	@rm -rf build/tables-generated-dart/cards
 	@mkdir -p build/tables-generated-dart/cards
 	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+
+# The stamp the driver depends on, so a cached build is not invalidated by the
+# phony regenerator above. It still cleans its owned output whenever bin/schema
+# or the Card schemas move, so a deleted symbol cannot survive regeneration.
+$(CARDS_DART_STAMP): bin/schema $(wildcard tables/cards/*.schema)
+	@rm -rf build/tables-generated-dart/cards
+	@mkdir -p build/tables-generated-dart/cards
+	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+	@touch $@
 
 # cards-dart-wire-fuzz is the oracle harness over the Card root only. --vectors
 # '' keeps the default pinned vectors out of this Card-only manifest. The greps
