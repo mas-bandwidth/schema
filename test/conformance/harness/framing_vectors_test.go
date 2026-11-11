@@ -165,6 +165,53 @@ func diamondChain() []byte {
 	return cat(b(1, 17, 2), nodeTable(uint64(len(records)), records...), b(0))
 }
 
+// The held depth vectors name one field id graphdemo does not declare; it is
+// carried in the id table like a declared type id, and every nested body names
+// it by reference 1.
+var depthIds = []string{"held_depth_unknown"}
+
+// depthTables is a root body whose one unknown field holds `levels` table
+// bodies nested by value: the innermost body sits at depth `levels`.
+func depthTables(levels int) []byte {
+	body := b(0)
+	for range levels {
+		body = cat(b(1, 13), leb(uint64(len(body))), body, b(0))
+	}
+	return body
+}
+
+// depthArrays is a root body whose one unknown field holds `levels` arrays
+// nested by value: each array carries one element of kind 14.
+func depthArrays(levels int) []byte {
+	content := b(14, 0)
+	for i := 1; i < levels; i++ {
+		content = cat(b(14, 1), leb(uint64(len(content))), content)
+	}
+	return cat(b(1, 14), leb(uint64(len(content))), content, b(0))
+}
+
+// depthKeyed is a root body whose one unknown field holds `levels` keyed
+// bodies nested by value: each slot's element is the next keyed body.
+func depthKeyed(levels int) []byte {
+	content := b(16, 0)
+	for i := 1; i < levels; i++ {
+		content = cat(b(16, 1), b(1), leb(uint64(len(content))), content)
+	}
+	return cat(b(1, 16), leb(uint64(len(content))), content, b(0))
+}
+
+// depthUnionTables is a root body whose one unknown field is a union whose arm
+// is a table holding the next union: `pairs` unions with a table arm each, so
+// the innermost table body sits at depth 2*pairs.
+func depthUnionTables(pairs int) []byte {
+	body := b(0)
+	for range pairs {
+		union := cat(b(1, 13), leb(uint64(len(body))), body)
+		body = cat(b(1, 15), union, b(0))
+	}
+	return body
+}
+
 var rootValue1 = cat(b(1, 4), i32(1))
 var nextIs2 = b(3, 17, 2)
 
@@ -415,6 +462,22 @@ var framingVectors = []framingVector{
 	{name: "node_unknown_to_fixed_reader", unit: "tblr1", root: "Cfg", ids: append(append([]string{}, cfgIds...), "node-table"), body: cat(b(17, 12, 3, 1, 0, 0), gradeSilver, b(0))},
 	// L4 at the node-table field: its L past the root body.
 	{name: "node_table_L_past_body", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, b(4, 12, 99, 1), listNodeRecord(2), b(0))},
+
+	// ---------------------------------------------------------------- X. the nesting bound
+	// §4, ONE NESTING BOUND (binary_max_depth): the root body is depth 0 and
+	// each structural payload inside it is one level deeper. Depth 128 passes
+	// and 129 refuses in every walk, unknown fields included (§6.5). A union
+	// whose arm is a table adds two levels: the union, then the table body
+	// inside it. HELD out of the manifest until every leg answers them.
+	{name: "depth_tables_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(128), held: true},
+	{name: "depth_arrays_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(128), held: true},
+	{name: "depth_union_tables_64", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(64), held: true},
+	{name: "depth_keyed_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(128), held: true},
+	{name: "depth_tables_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(129), held: true},
+	{name: "depth_arrays_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(129), held: true},
+	{name: "depth_union_tables_65", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(65), held: true},
+	{name: "depth_keyed_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(129), held: true},
+	{name: "depth_tables_5000", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(5000), held: true},
 }
 
 // counting is n distinct raw entries, 1..n: a reader checks distinctness and
