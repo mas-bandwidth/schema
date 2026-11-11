@@ -3,6 +3,9 @@
 // once with its exports; link indexes each descriptor's fields by wire id, by
 // schema name and by text key, so the load, save and text runtimes find a
 // field without a per-table function (docs/SPEC-TABLES.md §8.1).
+if (!(_intsize_ == 8 && _floatsize_ == 8 && _charsize_ == 1))
+  throw "squirrel_table_unpinned_vm: _intsize_=" + _intsize_ + ", _floatsize_=" + _floatsize_ + ", _charsize_=" + _charsize_;
+
 local _M = vargv[0];
 
 _M.link <- function(mod) {

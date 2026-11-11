@@ -36,9 +36,10 @@ Both build switches are load-bearing, and both were measured on the pin:
   field survives a load.
 
 A port that embeds Squirrel in a host (a game engine) must build the VM the
-same way, or the generated code is not this design's code. The runtime's
-first file can check it at load (`_intsize_ == 8 && _floatsize_ == 8`) and
-refuse by name; that check is owed to the first codec card (THE CARD MAP).
+same way, or the generated code is not this design's code. The table runtime's
+first file checks it at load (`_intsize_ == 8 && _floatsize_ == 8 &&
+_charsize_ == 1`) and refuses by name; the table runtime enforces the pin
+before it defines its exports.
 
 ## THE TYPE MAPPING
 
