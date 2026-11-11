@@ -715,7 +715,7 @@ static SCHEMA_UNUSED int blockdemo_table_wire_open( blockdemo_table_reader_t * r
 {
     uint64_t count, i; int64_t span; blockdemo_table_reader_t tail;
     if ( bytes < 1 || buffer == NULL ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-    if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM; return 0; }
+    if ( buffer[0] != 1 ) { report->refused = 1; report->reason = buffer[0] == 2 ? SCHEMA_BLOCKDEMO_TABLE_MESSAGE_FORM_AS_FILE : SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM; report->refuse_reason = SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM; return 0; }
     if ( bytes < 9 ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
     tail = blockdemo_table_reader_make( buffer + bytes - 8, 8, report ); count = blockdemo_table_reader_get64( &tail );
     if ( count > (uint64_t) ((bytes - 9) / 8) ) { report->refused=1, report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
@@ -3426,6 +3426,7 @@ static SCHEMA_UNUSED int64_t blockdemo_table_message_open(blockdemo_table_messag
  }
  if(buffer[0]!=2){report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_NEWER_FORM;
+ report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_UNKNOWN_FORM;
  return -1;
  }
  if(v==NULL || !v->announced){report->refused=1;
