@@ -192,8 +192,8 @@ var messageEmitterSabotages = map[string][]edit{
 	// THE WRITER'S SLOT NUMBERS ARE COMPILE-TIME CONSTANTS: every emitted slot
 	// off by one writes a legal body that names another field.
 	"message-emitter-slot-off-by-one": {{
-		old: "func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] }",
-		new: "func (g *tableGen) msgSlot(entry ir.TableVocabularyEntry) uint64 { return g.slots[entry.Key()] + 1 } // SABOTAGED: every emitted slot off by one",
+		old: "return slot",
+		new: "return slot + 1 // SABOTAGED: every emitted slot off by one",
 	}},
 	// THE COUNT IS EIGHT BITS: spend sixteen and every pinned batch moves.
 	"message-emitter-count-sixteen-bits": {{
@@ -340,8 +340,8 @@ var messageColdReadSabotages = map[string][]edit{
 	// read: narrow to int32 first and a count of 2^31 + 1 is negative, which
 	// passes the signed test against the bound and lands in caller storage.
 	"message-emitter-narrow-count-before-clamp": {{
-		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%s    if ( n%s > (uint64_t) %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; } else { kept%s = (int32_t) n%s; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
-		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%s    if ( kept%s > %d ) { kept%s = %d; report->refused = true; report->refuse_reason = out_of_range; }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
+		old: "\tg.pf(\"%s    int32_t kept%s = 0;\\n\", ind, sfx)\n\tg.pf(\"%[1]s    if ( n%[2]s > (uint64_t) %[3]d )\\n%[1]s    {\\n%[1]s        kept%[4]s = %[5]d;\\n%[1]s        report->refused = true;\\n%[1]s        report->refuse_reason = out_of_range;\\n%[1]s        } else { kept%[6]s = (int32_t) n%[7]s;\\n%[1]s    }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound, sfx, sfx)\n",
+		new: "\tg.pf(\"%s    int32_t kept%s = (int32_t) n%s;\\n\", ind, sfx, sfx) // SABOTAGED: narrowed before the bound\n\tg.pf(\"%[1]s    if ( kept%[2]s > %[3]d )\\n%[1]s    {\\n%[1]s        kept%[4]s = %[5]d;\\n%[1]s        report->refused = true;\\n%[1]s        report->refuse_reason = out_of_range;\\n%[1]s    }\\n\", ind, sfx, f.ArrayBound, sfx, f.ArrayBound)\n",
 	}},
 }
 
@@ -378,7 +378,7 @@ var messageTextSabotages = map[string][]edit{
 	// reads with. The content rule first: the emitted reader stops calling
 	// TableUtf8Valid and stores whatever arrived.
 	"message-emitter-text-accepts-ill-formed": {{
-		old: "\t\tg.pf(\"%s    if ( !TableUtf8Valid( text%s, n%s ) ) { report->damaged = true; return false; }\\n\", ind, sfx, sfx)\n",
+		old: "\t\tg.pf(\"%[1]s    if ( !TableUtf8Valid( text%[2]s, n%[3]s ) )\\n%[1]s    {\\n%[1]s        report->damaged = true;\\n%[1]s        return false;\\n%[1]s    }\\n\", ind, sfx, sfx)\n",
 		new: "\t\tg.pf(\"%s    // SABOTAGED: the kind 12 content rule is gone\\n\", ind)\n",
 	}},
 
