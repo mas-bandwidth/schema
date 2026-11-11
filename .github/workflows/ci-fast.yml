@@ -442,8 +442,11 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # The three languages write separate trees, so they run side by side:
+      # one after another they were the sum of three rows, past the
+      # per-commit limit on a busy runner.
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make tables-block-zero-cost
+        run: make -j"$(nproc)" tables-block-zero-cost
 
   # `go test` OF WHAT THE DIFF TOUCHES. The whole of `go test ./...` is 650 s
   # median and lives in ci-full.yml; this job runs the packages `plan` picked,
