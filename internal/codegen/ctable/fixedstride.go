@@ -200,6 +200,28 @@ func (c *fixedStrideCompiler) tagBytes(i int32) uint32 {
 	return c.their(i).size - c.unionArmBytes(i)
 }
 
+// tagBytesMine is the twin over THIS reader's own walk. A union's tag width is
+// the reader's, not the writer's: the compiled plan's tag entries land in the
+// reader's storage, so the storage the stride must cover is sized from this
+// walk even when the writer's entry at the same index is another field.
+func (c *fixedStrideCompiler) unionArmBytesMine(i int32) uint32 {
+	e := c.mineEntry(i)
+	widest := uint32(0)
+	at := i + 1
+	for k := uint32(0); k < uint32(e.Children) && int(at) < len(c.mine); k++ {
+		a := c.mineEntry(at)
+		if uint32(a.Size) > widest {
+			widest = uint32(a.Size)
+		}
+		at += c.subtreeMine(at)
+	}
+	return widest
+}
+
+func (c *fixedStrideCompiler) tagBytesMine(i int32) uint32 {
+	return uint32(c.mineEntry(i).Size) - c.unionArmBytesMine(i)
+}
+
 func (c *fixedStrideCompiler) push(e fixedSizedEntry) {
 	// THE RUNTIME'S entry_zero() STARTS WITH NO SECOND GUARD and a width of
 	// one. A pushed entry is never nested yet; the union walk stamps guard2 on
@@ -384,7 +406,7 @@ func (c *fixedStrideCompiler) compileEntry(ti int32, theirAt uint32, mi int32, m
 		}
 	case ir.TableKindUnion:
 		theirTag := c.tagBytes(ti)
-		myTag := c.tagBytes(mi)
+		myTag := c.tagBytesMine(mi)
 		savedArgw := c.argw
 		c.argw = 1
 		if theirTag >= 1 && theirTag <= 8 {
