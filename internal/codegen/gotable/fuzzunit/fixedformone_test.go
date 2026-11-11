@@ -12,8 +12,9 @@ import (
 // TestGeneratedFixedLoadRefusesForm1 holds docs/SPEC-TABLES.md §3.4 ("a
 // reader that expects a fixed table refuses every other form") on both fixed
 // readers: for every fixed root of the examples unit, the generated
-// <T>FixedLoad and the engine's Decode both refuse a form-1 file, the plain
-// <T>Save's own image and the fixed image with its form byte set to 1. The
+// <T>FixedLoad and the engine's Decode both refuse a form-1 file, the variable
+// form's whole file of a value and the fixed image with its form byte set to
+// 1. The
 // generated read names it previous_form (a diagnostic, pinned here so the
 // form gate itself is held).
 func TestGeneratedFixedLoadRefusesForm1(t *testing.T) {
@@ -24,12 +25,23 @@ func TestGeneratedFixedLoadRefusesForm1(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := tabletext.NewModel(u)
+	// the variable form's whole file of one value: the plain save writes form
+	// 3 at a fixed root (§3), so the form-1 file is the engine's variable
+	// writer's
 	var ranged tabledemo.RangedSigned
 	tabledemo.RangedSignedReset(&ranged)
 	ranged.I8Inside = 9
-	plain := make([]byte, tabledemo.RangedSignedMeasure(&ranged))
-	if n := tabledemo.RangedSignedSave(&ranged, plain); n != int64(len(plain)) || plain[0] != 1 {
-		t.Fatalf("the plain save wrote %d bytes, form %d", n, plain[0])
+	text := make([]byte, tabledemo.RangedSignedToJSONMeasure(&ranged))
+	if n := tabledemo.RangedSignedToJSON(&ranged, text); n != int64(len(text)) {
+		t.Fatalf("ToJSON wrote %d bytes", n)
+	}
+	inst := m.New(m.Lookup("RangedSigned"))
+	if rep := new(tabletext.Report); !m.Read(inst, text, rep) {
+		t.Fatalf("the engine refuses the value's text: %+v", rep)
+	}
+	plain, err := tablewire.EncodeVariable(m, inst)
+	if err != nil || len(plain) < 2 || plain[0] != 1 {
+		t.Fatalf("the variable writer wrote %d bytes: %v", len(plain), err)
 	}
 	for _, target := range fixedTargets {
 		root := m.Lookup(target.name)
@@ -42,7 +54,7 @@ func TestGeneratedFixedLoadRefusesForm1(t *testing.T) {
 		forged[0] = 1
 		inputs := map[string][]byte{"form byte 1": forged}
 		if target.name == "RangedSigned" {
-			inputs["the plain save's image"] = plain
+			inputs["the variable form's file"] = plain
 		}
 		for what, in := range inputs {
 			var rep tabledemo.TableReport

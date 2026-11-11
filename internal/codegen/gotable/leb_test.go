@@ -36,6 +36,34 @@ const lebWireTest = `package probe
 import ("bytes"; "encoding/binary"; "hash/fnv"; "testing")
 
 
+func rootForm1Measure(value *Root) int64 {
+	var ids TableIds
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
+func rootForm1Save(value *Root, buffer []byte) int64 {
+	var ids TableIds
+	w := TableWriter{Buffer: buffer, Ids: &ids}
+	w.Put8(1)
+	if !RootSaveBody(&w, value) {
+		return -1
+	}
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
+}
+
 func rootForm1(value *Root, data []byte, report *TableReport) bool {
 	// Load refuses a form-1 file at a fixed-class root. The body still answers the probe.
 	var gate TableReport
@@ -118,7 +146,7 @@ func TestLebFastPathAndLoop(t *testing.T) {
 			wantBytes = binary.LittleEndian.AppendUint64(wantBytes, 0)
 		}
 		got := make([]byte, len(wantBytes))
-		if RootMeasure(&value) != int64(len(wantBytes)) || RootSave(&value, got) != int64(len(wantBytes)) || !bytes.Equal(got, wantBytes) {
+		if rootForm1Measure(&value) != int64(len(wantBytes)) || rootForm1Save(&value, got) != int64(len(wantBytes)) || !bytes.Equal(got, wantBytes) {
 			t.Fatalf("length %d wire differs\n  want %x\n   got %x", n, wantBytes, got)
 		}
 		var report TableReport

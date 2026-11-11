@@ -78,8 +78,9 @@ func TestTableWireOverATextTransport(t *testing.T) {
 }
 `
 
-// A fixed table read from a wider writer's wire: the read refuses the string
-// past its bound, and LoadText refuses it length_over_bound.
+// A fixed table's file is selected by its layout hash (docs/SPEC-TABLES.md
+// §3.4): another fixed table's form-3 file is refused as layout_unknown, and
+// LoadText names the same refusal.
 const textTransportClampSchema = `package probe
 fixed table Wide {
 	id uint32
@@ -103,20 +104,25 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	wire, _ := WideLoadText(text, nil)
 	if wire == nil { t.Fatal("wide round trip") }
 	buf := make([]byte, WideMeasure(&w))
-	WideSave(&w, buf)
+	if WideSave(&w, buf) != int64(len(buf)) || buf[0] != TableFixedForm {
+		t.Fatal("wide fixed save")
+	}
 	var v Root
 	var tolerant TableReport
 	if RootLoad(&v, buf, &tolerant) || tolerant.Err() == nil {
-		t.Fatalf("a name past its bound read: %+v", tolerant)
+		t.Fatalf("another fixed layout read: %+v", tolerant)
+	}
+	if !errors.Is(tolerant.Err(), TableRefuseLayoutUnknown) {
+		t.Fatalf("another fixed layout: %v, want layout_unknown", tolerant.Err())
 	}
 	got, err := RootLoadText(text, nil)
-	if got != nil || !errors.Is(err, TableRefuseLengthOverBound) {
-		t.Fatalf("nil report: value %v, error %v; want nil and length_over_bound", got != nil, err)
+	if got != nil || !errors.Is(err, TableRefuseLayoutUnknown) {
+		t.Fatalf("nil report: value %v, error %v; want nil and layout_unknown", got != nil, err)
 	}
 	var r TableReport
 	got, err = RootLoadText(text, &r)
-	if got != nil || !errors.Is(err, TableRefuseLengthOverBound) || r.Err() == nil {
-		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil and length_over_bound", got != nil, err, r)
+	if got != nil || !errors.Is(err, TableRefuseLayoutUnknown) || r.Err() == nil {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil and layout_unknown", got != nil, err, r)
 	}
 }
 `
@@ -174,7 +180,7 @@ func TestTableWireOverATextTransport(t *testing.T) {
 
 	// A TRUNCATED DECODED WIRE REFUSES BY NAME.
 	_, err = RootLoadText(base64.StdEncoding.EncodeToString(wire[:4]), nil)
-	if err == nil || err.Error() != "wire_damaged" {
+	if err == nil || err.Error() != "truncated" {
 		t.Fatalf("truncated wire: %v", err)
 	}
 
