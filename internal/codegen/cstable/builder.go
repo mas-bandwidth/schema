@@ -218,9 +218,9 @@ public abstract unsafe class TableBuilder : IDisposable
 const tableBuilderWireSource = `
     public static void ResetNative(IntPtr pointer, TableTypeInfo type) { NativeReset(new NativeValue((byte*)pointer, 0), type); }
     public static long MeasureBuilder(IntPtr root, TableTypeInfo type, TableAllocator allocator, bool mutable = false)
-    { Span<ulong> ids = stackalloc ulong[tableOwnVocabulary.Count]; return SaveRegion(root, type, Span<byte>.Empty, ids, true, allocator, mutable); }
+    { Span<ulong> ids = stackalloc ulong[@WIREIDS@]; return SaveRegion(root, type, Span<byte>.Empty, ids, true, allocator, mutable); }
     public static long SaveBuilder(IntPtr root, TableTypeInfo type, Span<byte> bytes, TableAllocator allocator, bool mutable = false)
-    { Span<ulong> ids = stackalloc ulong[tableOwnVocabulary.Count]; return SaveRegion(root, type, bytes, ids, false, allocator, mutable); }
+    { Span<ulong> ids = stackalloc ulong[@WIREIDS@]; return SaveRegion(root, type, bytes, ids, false, allocator, mutable); }
     public static long PackSize(IntPtr pointer, TableTypeInfo type, TableAllocator allocator, out long data, out long attribution, bool mutable = false)
     {
         data = attribution = 0; if (pointer == IntPtr.Zero) { return -1; }
