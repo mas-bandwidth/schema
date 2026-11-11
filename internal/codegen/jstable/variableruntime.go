@@ -2281,6 +2281,9 @@ class TableVariableTextIn {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
+    // a skipped object's keys are held to the layer's rule too: a repeated
+    // key refuses in every object of the text (§16.2, §16.12)
+    const keys = close === "}" ? new Set() : null;
     for (;;) {
       let ch = this.peek();
       if (ch === close) { this.p++; return true; }
@@ -2290,6 +2293,8 @@ class TableVariableTextIn {
         if (key === null) { return false; }
         if (this.peek() !== ":") { this.bad = true; return false; }
         this.p++;
+        if (keys.has(key)) { this.bad = true; return false; }
+        keys.add(key);
         if (key.length > 0 && key[0] === "&") {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
@@ -2363,6 +2368,7 @@ function TableVariableReadTable(c, inp, v, depth, graph, report) {
 // wrong JSON shape is skipped and counted, never coerced (§16.2)
 function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
   const seen = new Set();
+  const seenKeys = new Set();
   for (;;) {
     let key;
     if (firstKey !== null) {
@@ -2380,12 +2386,15 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
     // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (§16.7): "&node" opens a
     // pointer's object and nothing else
     if (key.length > 0 && key[0] === "&") { inp.bad = true; return false; }
+    // every key of the object is tracked, not only the ones a field names:
+    // an unknown key repeated is a repeated key (§16.2, §16.12)
+    if (seenKeys.has(key)) { report.repeated++; }
+    seenKeys.add(key);
     const fd = c.byKey.get(key);
     if (fd === undefined) {
       report.unknown++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
-      if (seen.has(fd)) { report.repeated++; }
       seen.add(fd);
       const shape = inp.shape();
       if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
