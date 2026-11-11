@@ -1208,10 +1208,12 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 	if bytesBlob, stringBlob := ir.PointerReachableBlobs(st); bytesBlob || stringBlob {
 		// §2.5: text must refuse shared blobs before expanding their contents.
 		g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
-		g.pf("\tstate.indexRoot(v);\n\t%sNumber(state, v, <Object>{v});\n", dartName(st.Name))
+	} else {
+		g.pf("\tfinal state = WireState();\n")
 	}
+	g.pf("\tstate.numberGraph(v, (obj) { _numberNode(state, obj); });\n")
 	g.pf("\tfinal sh = _Share();\n")
-	g.pf("\t%sCount(sh, v);\n", dartName(st.Name))
+	g.pf("\tstate.countTextPointers((obj) { sh.see(obj); });\n")
 	g.pf("\tfinal out = _JOut();\n")
 	g.pf("\t%sToJsonBody(out, v, 0, sh);\n", dartName(st.Name))
 	g.pf("\tout.raw('\\n');\n")
