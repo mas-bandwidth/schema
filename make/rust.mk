@@ -1418,7 +1418,7 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 	@grep -Eq 'pass [0-9]+/[0-9]+ \+[0-9]+a' build/conformance-rust-absent.log || \
 		{ echo "conformance-rust-absent: no surface counted a per-case absence"; exit 1; }
 	@echo "conformance-rust-absent: the Rust leg is green with its per-case absences counted"
-conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|spill(dir, &format!("{name}.absent"), b"");|spill(dir, name, b""); // SABOTAGED: an absence answered as an answer|' \
 		-e 's|&format!("{}.absent", f\[1\])|\&f[1] /* SABOTAGED: an absence answered as an answer */|g' \
@@ -1638,7 +1638,7 @@ define RUST_FRAMING_DRIVER
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
 	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 endef
-conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
+conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp build/tables-generated-rust/tblrt1/src/lib.rs
 	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/
 	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)-share/
