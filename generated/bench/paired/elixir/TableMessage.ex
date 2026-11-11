@@ -1055,7 +1055,9 @@ defmodule Bench.TableMessage do
   defp read_string(shape, r) do
     with {:ok, n, rest} <- get_bits(r, bit_length(shape.max)),
          {:ok, rest2} <- align(rest),
-         {:ok, bytes, rest3} <- take_bytes(rest2, n) do
+         {:ok, bytes, rest3} <- take_bytes(rest2, n),
+         true <- n <= shape.max,
+         true <- text_ok?(bytes) do
       {:ok, bytes, rest3}
     else
       _ -> :malformed
@@ -1212,6 +1214,8 @@ defmodule Bench.TableMessage do
       {:ok, {int, off + pad, total}}
     end
   end
+
+  defp text_ok?(bytes), do: String.valid?(bytes) and :binary.match(bytes, <<0>>) == :nomatch
 
   # r is byte-aligned here (align precedes the call), so read n bytes whole.
   # A legal zero-length text is an exact empty binary and the cursor unchanged.
