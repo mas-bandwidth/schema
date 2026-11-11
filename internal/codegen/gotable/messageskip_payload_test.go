@@ -6,9 +6,10 @@ import "testing"
 // checks a named read applies to the same payload (docs/SPEC-TABLES.md §3.3,
 // §4): a keyed array's key resolves and does not repeat, a string's bytes are
 // well formed with no zero, a float is finite and a quantized index is within
-// its count, an array count is within its announced range, and a nested body
-// names no field twice. A lawful batch still loads and counts the skipped
-// entry unknown; damaging the skipped payload refuses the batch.
+// its count, an array count is within its announced range, a ranged value is
+// within the sender's range, and a nested body names no field twice. A lawful
+// batch still loads and counts the skipped entry unknown; damaging the skipped
+// payload refuses the batch.
 func TestGoMessageSkipChecksPayload(t *testing.T) {
 	t.Parallel()
 	schema := `package probe
@@ -44,6 +45,11 @@ fixed table WriterArray
 {
   keep int32
   items [..2]int32 | min = 0, max = 0
+}
+fixed table WriterRanged
+{
+  keep int32
+  bounded int32 | min = 0, max = 100000
 }
 fixed table SkipBody
 {
@@ -246,6 +252,17 @@ func TestMessageSkipPayloadChecks(t *testing.T) {
 		bad := append([]byte(nil), good...)
 		countBits := int64(tableMessageBits(2))
 		skipPut(bad, skipPayloadBit(), countBits, 3)
+		skipRefused(t, bad)
+	})
+	t.Run("ranged_offset_above_max", func(t *testing.T) {
+		t.Parallel()
+		value := &WriterRanged{Bounded: 50000}
+		good := skipSave(t, []*WriterRanged{value},
+			func(v []*WriterRanged, r *TableReport) int64 { return WriterRangedMeasureMessages(v, r) },
+			func(v []*WriterRanged, b []byte, r *TableReport) int64 { return WriterRangedSaveMessages(v, b, r) })
+		skipLawful(t, good)
+		bad := append([]byte(nil), good...)
+		skipPut(bad, skipPayloadBit(), 17, 130000)
 		skipRefused(t, bad)
 	})
 	t.Run("nested_body_repeats_field", func(t *testing.T) {
