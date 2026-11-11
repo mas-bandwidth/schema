@@ -241,7 +241,7 @@ func TestCppBigEndianFormThreeReadNegativeControl(t *testing.T) {
 	t.Parallel()
 	sabotage := [2]string{
 		"dst[i + j] = src[i + elem - 1 - j];",
-		"dst[i + j] = src[i + j]; // SABOTAGED: host order",
+		"dst[i + j] = src[i + j]; /* SABOTAGED: host order */",
 	}
 	fails, out := cppBigEndianForm3Run(t, true, sabotage)
 	if len(fails) == 0 {
