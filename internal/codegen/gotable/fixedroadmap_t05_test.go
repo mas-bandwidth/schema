@@ -57,8 +57,6 @@ func t05Run(t *testing.T) string {
 	return src
 }
 
-// t05TextOp is the `case tableFixedText:` arm of the read loop, from that case
-// to the next, so an assertion reads the text op and only the text op.
 // t05Refusal is the total pre-scan that validates count and text before the
 // runner writes any destination bytes.
 func t05Refusal(t *testing.T) string {
@@ -68,20 +66,6 @@ func t05Refusal(t *testing.T) string {
 		t.Fatal("t05: the emitted runtime carries no tableFixedTextRefusal")
 	}
 	return src
-}
-
-func t05TextOp(t *testing.T) string {
-	t.Helper()
-	src := t05Run(t)
-	_, after, ok := strings.Cut(src, "case tableFixedText:")
-	if !ok {
-		t.Fatal("t05: the read loop carries no `case tableFixedText:`")
-	}
-	rest := after
-	if j := strings.Index(rest, "\n\t\tcase tableFixed"); j >= 0 {
-		rest = rest[:j]
-	}
-	return rest
 }
 
 func t05Has(t *testing.T, got, want, sentence string) {
