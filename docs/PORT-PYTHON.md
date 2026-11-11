@@ -303,14 +303,14 @@ generated class per table and per map entry, each with its descriptor
   and raise `InvalidValue`, write the flat node table for `*T`, and fill a
   `LoadReport` on success only. `Measure` runs the same walk into a counting
   sink, so measure and save agree by construction.
-- **The descriptor is the shape.** This cut keeps the descriptor walk for both
-  load and save: the generated class carries data, and the runtime's one body
-  walk dispatches through `_schema/kinds.py`. The straight-line generated shape
-  is not emitted here, and the fleet bench that would choose between the two
-  (D1) is owed before this paragraph can record numbers. When it runs, the two
-  shapes are the generated save/load pair over the same table and the
-  descriptor walk the runtime already has, on the pinned interpreters, and the
-  faster is kept with its numbers written here.
+- **The shape is measured.** A table whose fields are all bools and integers
+  gets the straight-line generated save/load pair, unrolled with each field
+  descriptor bound to a local; every table, and every construct a later card
+  adds, keeps the descriptor walk over `_schema/kinds.py`. The two shapes run
+  on the same table, under both pinned interpreters, in
+  `TestPythonTableCoreShapeBench` (internal/codegen/pythontable). The
+  straight-line pair is kept: its save is faster on both pins, and its load is
+  faster on the floor.
 - **Scope.** The runtime carries bool, the full-width integers (8 to 128 bits),
   by-value tables and `*T` pointers to tables, for both the fixed and the
   variable class. `*bytes`, `*string`, `?T`, `[]T`, `[E]T`, maps and unions
@@ -322,11 +322,21 @@ generated class per table and per map entry, each with its descriptor
 
 ### Bench
 
-No fleet sitting has been recorded for this cut yet. The worker host that
-assembled it has no pinned interpreters under `dist/` (the build needs the
-python.org tarballs), so `make dist-python` and every gate that runs the pins
-refuse by name rather than skipping. The numbers, and the choice between the
-two shapes they justify, remain owed; the descriptor walk is the shape built.
+The shape bench runs a ten-field fixed-point table (the five storage widths,
+signed and unsigned) under both pins, on the fleet host. Each figure is the
+minimum of five rounds of 10,000 iterations after warm-up, in nanoseconds per
+operation:
+
+| operation | 3.15.2 generated | 3.15.2 descriptor | 3.11.18 generated | 3.11.18 descriptor |
+|---|---:|---:|---:|---:|
+| save | 11,560 | 12,332 | 10,277 | 12,544 |
+| load | 12,700 | 12,455 | 13,590 | 14,159 |
+
+The generated save is 6% faster on 3.15.2 and 18% faster on 3.11.18; the
+generated load is 2% slower on 3.15.2 and 4% faster on 3.11.18. Save and load
+together, the generated pair is 2% faster on 3.15.2 and 11% faster on 3.11.18,
+so the pair is kept. `TestPythonTableCoreShapeBench` re-measures it and holds
+both shapes to the same value.
 
 ## IDENTIFIERS
 

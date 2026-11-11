@@ -22,6 +22,7 @@ class FieldDesc:
         "lo",
         "hi",
         "target",
+        "map_entry",
         "pointer",
         "optional",
         "array",
@@ -38,6 +39,7 @@ class FieldDesc:
     lo: int
     hi: int
     target: str
+    map_entry: str
     pointer: bool
     optional: bool
     array: bool
@@ -55,6 +57,7 @@ class FieldDesc:
         lo: int = 0,
         hi: int = 0,
         target: str = "",
+        map_entry: str = "",
         pointer: bool = False,
         optional: bool = False,
         array: bool = False,
@@ -70,6 +73,7 @@ class FieldDesc:
         self.lo = lo
         self.hi = hi
         self.target = target
+        self.map_entry = map_entry
         self.pointer = pointer
         self.optional = optional
         self.array = array
@@ -166,6 +170,7 @@ class UnionDesc:
 
 _REGISTRY_BY_ID: dict[int, type[Any]] = {}
 _REGISTRY_BY_NAME: dict[str, type[Any]] = {}
+_REGISTRY_UNION_BY_NAME: dict[str, type[Any]] = {}
 
 
 def register(cls: type[Any]) -> None:
@@ -183,8 +188,21 @@ def by_name(name: str) -> type[Any] | None:
     return _REGISTRY_BY_NAME.get(name)
 
 
+def register_union(cls: type[Any]) -> None:
+    """Register a generated table-side union class by its name."""
+    descriptor: UnionDesc = cls.descriptor
+    _REGISTRY_UNION_BY_NAME[descriptor.name] = cls
+
+
 def new_by_name(name: str) -> Any:
     cls = _REGISTRY_BY_NAME.get(name)
     if cls is None:
         raise KeyError(f"the table {name} is not registered in this package")
+    return cls()
+
+
+def new_union_by_name(name: str) -> Any:
+    cls = _REGISTRY_UNION_BY_NAME.get(name)
+    if cls is None:
+        raise KeyError(f"the union {name} is not registered in this package")
     return cls()

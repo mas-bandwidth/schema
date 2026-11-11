@@ -16,7 +16,7 @@
 # pinned interpreters and the analyzer (internal/codegen/python/pyrun), and
 # the target through the compiler's driver in the tagged build.
 .PHONY: test-python update-goldens-python python-table-core-negative-control
-test-python: python-toolchain-check python-toolchain-negative-control
+test-python: python-toolchain-check python-toolchain-negative-control python-table-core-negative-control
 	SCHEMA_SLOW=1 go test -tags schema_leg_python ./internal/codegen/python/... ./internal/codegen/pythontable/... -count=1
 	go test -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
@@ -48,8 +48,9 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@echo "conformance-python: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
 
 # The table core's negative control: the generated runtime's form byte is
-# moved in a copy, and the interpreter probe must go red. It needs the pins, so
-# it runs beside test-python and is registered in make/negative-controls.json.
+# moved in a copy, and the interpreter probe must go red by name. It needs the
+# pins, so test-python depends on it and it is registered in
+# make/negative-controls.json as a gate test-python runs.
 python-table-core-negative-control:
 	SCHEMA_SLOW=1 go test -tags schema_leg_python -run 'TestPythonTableCoreNegativeControl' ./internal/codegen/pythontable/ -count=1
 

@@ -119,6 +119,9 @@ func TestPythonTableCore(t *testing.T) {
 	if out, err := pyrun.Analyze(t, dir, "core"); err != nil {
 		t.Fatalf("mypy --strict over the generated package:\n%s", out)
 	}
+	if out, err := pyrun.Analyze(t, dir, "core/_schema"); err != nil {
+		t.Fatalf("mypy --strict over the runtime:\n%s", out)
+	}
 	lines := strings.Split(strings.TrimRight(got, "\n"), "\n")
 	var descriptors strings.Builder
 	rest := make([]string, 0, len(lines))
@@ -263,9 +266,13 @@ func TestPythonTableCoreNegativeControl(t *testing.T) {
 	sabotaged[path] = []byte(strings.Replace(text, anchor, "writer.byte(FORM + 1)", 1))
 	dir := t.TempDir()
 	writeTree(t, dir, sabotaged)
-	_, _, runErr := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probeSource)})
+	_, stderr, runErr := pyrun.Try(t, pyrun.Interpreter(t), dir, "main.py", map[string][]byte{"main.py": []byte(pyrun.ImportPrelude + probeSource)})
 	if runErr == nil {
 		t.Fatal("NEGATIVE CONTROL FAILED: moving the form byte left the probe green")
+	}
+	const named = "message_form_as_file"
+	if !strings.Contains(stderr, named) {
+		t.Fatalf("NEGATIVE CONTROL FAILED: the probe went red, but not by name %q:\n%s", named, stderr)
 	}
 }
 
@@ -300,12 +307,23 @@ for cls in (shapes.Lean, shapes.LeanLookupEntry):
     print("table", cls.descriptor.name, str(cls.descriptor.variable).lower(), len(cls.descriptor.fields))
     for f in cls.descriptor.fields:
         print("field", cls.descriptor.name, f.name, f.kind, f.codec, str(f.array).lower(), f.bound, f.key_enum or "-", str(f.pointer).lower(), str(f.optional).lower(), f.target or "-")
-print("defaults", shapes.Lean().text, shapes.Lean().maybe is None, shapes.Lean().values, shapes.Lean().lookup)
+lean = shapes.Lean()
+print("defaults", lean.text, lean.maybe is None, lean.values, lean.fixed_values, lean.by_key.__class__.__name__, len(lean.by_key), lean.lookup)
+print("keyed", [lean.by_key[k] for k in (1, 2, 3)], shapes.LeanByKey()._values)
 print("OK")
 `
 	got := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
-	if !strings.Contains(got, "OK\n") {
-		t.Fatalf("probe did not finish:\n%s", got)
+	for _, line := range []string{
+		"defaults  True [] [0, 0, 0] LeanByKey 3 {}",
+		"keyed [0, 0, 0] [0, 0, 0]",
+		"OK",
+	} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("probe output lacks %q:\n%s", line, got)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "shapes"); err != nil {
+		t.Fatalf("mypy --strict over the shapes package:\n%s", out)
 	}
 	var want strings.Builder
 	names := make([]string, 0, len(ir.TableClosure(u)))
@@ -337,6 +355,138 @@ print("OK")
 			if !strings.Contains(want.String(), line+"\n") {
 				t.Errorf("probe line is not in the descriptor set:\n%s", line)
 			}
+		}
+	}
+}
+
+const fixedUnionSchema = `package fixedunion
+
+enum Key { Alpha, Beta, Gamma }
+
+table P
+{
+    value int32
+}
+
+union U
+{
+    p P
+}
+
+table Money
+{
+    f8   fixed(8, 0)    | min = -128, max = 127
+    f16  fixed(16, 0)   | min = -32768, max = 32767
+    f32  fixed(32, 0)   | min = -2147483648, max = 2147483647
+    f64  fixed(64, 0)   | min = -9223372036854775808, max = 9223372036854775807
+    f128 fixed(112, 16) | min = -1000000, max = 1000000
+    u8   ufixed(8, 0)   | min = 0, max = 255
+    u16  ufixed(16, 0)  | min = 0, max = 65535
+    u32  ufixed(32, 0)  | min = 0, max = 4294967295
+    u64  ufixed(64, 0)  | min = 0, max = 9223372036854775807
+    u128 ufixed(112, 16) | min = 0, max = 2000000
+}
+
+table T
+{
+    u            U
+    lookup       map[uint32]int64
+    by_key       [Key]uint16
+    values       []int32
+    fixed_values [3]int32
+}
+`
+
+// TestPythonTableCoreFixedUnion covers the fixed-point kinds' widths and the
+// table-side union's generated class and descriptor, and the map entry link.
+func TestPythonTableCoreFixedUnion(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, fixedUnionSchema)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, files)
+	probe := pyrun.ImportPrelude + `import fixedunion
+from fixedunion import Money, T, U
+
+m = Money()
+m.f8 = -7
+m.f16 = 1234
+m.f32 = -123456
+m.f64 = (1 << 40) + 3
+m.f128 = -(1000000 << 16) + 9
+m.u8 = 250
+m.u16 = 65000
+m.u32 = 4000000000
+m.u64 = (1 << 62) + 7
+m.u128 = (1999999 << 16) + 11
+data = m.save()
+print("fixed", Money.load(data) == m, m.measure() == len(data))
+
+print("union", U.descriptor.name, len(U.descriptor.arms), U.descriptor.arms[0].name,
+      "%016x" % U.descriptor.arms[0].arm_id, U.descriptor.arms[0].target)
+print("uniondefault", U().type, isinstance(U().p, fixedunion.P))
+
+entry = T.descriptor.field("lookup")
+print("maplink", entry.target, entry.map_entry)
+print("keyed", T().by_key.__class__.__name__, len(T().by_key), [T().by_key[k] for k in (1, 2, 3)])
+print("defaults", T().values, T().fixed_values)
+print("OK")
+`
+	got := string(pyrun.Run(t, dir, "main.py", map[string][]byte{"main.py": []byte(probe)}))
+	for _, line := range []string{
+		"fixed True True",
+		"union U 1 p af63ed4c8602096f P",
+		"uniondefault 0 True",
+		"maplink TLookupEntry TLookupEntry",
+		"keyed TByKey 3 [0, 0, 0]",
+		"defaults [] [0, 0, 0]",
+		"OK",
+	} {
+		if !strings.Contains(got, line+"\n") {
+			t.Errorf("probe output lacks %q:\n%s", line, got)
+		}
+	}
+	if out, err := pyrun.Analyze(t, dir, "fixedunion"); err != nil {
+		t.Fatalf("mypy --strict over the fixed/union package:\n%s", out)
+	}
+	if out, err := pyrun.Analyze(t, dir, "fixedunion/_schema"); err != nil {
+		t.Fatalf("mypy --strict over the runtime:\n%s", out)
+	}
+}
+
+const packetUnionSchema = `package packetunion
+
+type P
+{
+    value int32
+}
+
+union U
+{
+    p P
+}
+
+table T
+{
+    u U
+}
+`
+
+// TestPythonTableCoreRefusesPacketThroughUnion requires a packet type reached
+// through a union arm to be refused by name, as a direct field is.
+func TestPythonTableCoreRefusesPacketThroughUnion(t *testing.T) {
+	t.Parallel()
+	u := loadUnit(t, packetUnionSchema)
+	_, err := Generate(u)
+	if err == nil {
+		t.Fatal("Generate accepted a packet type reached through a union arm")
+	}
+	for _, want := range []string{"P", "packet type"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
 	}
 }

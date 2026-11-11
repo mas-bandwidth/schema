@@ -26,6 +26,8 @@ func init() {
 		Name{Name: "by_id", What: "the table class a node record's type id names", Scoped: true},
 		Name{Name: "by_name", What: "the table class a descriptor's target name names", Scoped: true},
 		Name{Name: "new_by_name", What: "a fresh table of a descriptor's target name", Scoped: true},
+		Name{Name: "new_union_by_name", What: "a fresh table-side union of a descriptor's target name", Scoped: true},
+		Name{Name: "register_union", What: "register a generated table-side union class by name", Scoped: true},
 		Name{Name: "Reader", What: "the form-1 byte reader", Scoped: true},
 		Name{Name: "Ctx", What: "the load and save walk's state", Scoped: true},
 		Name{Name: "buffer_view", What: "the bytes, bytearray or B memoryview a read takes", Scoped: true},
