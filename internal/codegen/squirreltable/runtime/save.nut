@@ -157,6 +157,9 @@ local refuseNonFinite = function(d) {
 // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
 // default rides, and a float32 compares at float32
 local floatIsDefault = function(d, val, def) {
+  // a value that is not a number is never the default: it goes on to the
+  // writer, which refuses it
+  if (typeof val != "float" && typeof val != "integer") return false;
   // a COMPRESSED float compares by value at float32 (the engine's
   // cellIsDefault): its -0 is +0 (§3.3), so it elides as +0 does
   if (d.f32 && d.fmin != null) {
@@ -176,6 +179,21 @@ local scalarDefault = function(val, def) {
   }
   return scalarEqual(val, def);
 };
+// a scalar elides at its default only when it is of its declared Squirrel
+// type: an integer or flags is an integer (the two-integer array at width
+// 16) and a bool a bool, so a float equal to an integer default goes on to
+// the writer, which refuses it
+local typedDefault = function(d, val) {
+  if (d.shape == "int" || d.shape == "flags") {
+    if (d.width == 16) {
+      if (typeof val != "array" || val.len() != 2 ||
+          typeof val[0] != "integer" || typeof val[1] != "integer") return false;
+    } else if (typeof val != "integer") return false;
+  } else if (d.shape == "bool" && typeof val != "bool") return false;
+  return scalarDefault(val, d.def);
+};
+// a bytes value is a blob or a string; anything else is refused before its length
+local bytesValue = function(val) { return typeof val == "blob" || typeof val == "string"; };
 
 local tableDesc = function(T, name) { return T.Descriptors[name]; };
 local unionDesc = function(T, name) { return T[name + "Descriptor"]; };
@@ -428,6 +446,71 @@ local indexOfBlob = function(at, kind, val, holder = null, key = null) {
   return (id in at[kind]) ? at[kind][id] : -1;
 };
 
+// THE WRITE CONTRACT'S SCALAR AND TEXT DOMAINS (docs/SPEC.md §5.1 rows 1, 2,
+// 8 and 10): a value off its declared range, past its storage width or its
+// bits(N), or a string the load's own wire check would refuse, answers null
+// with the reason in SaveReason, before any byte reaches the caller.
+local u64cmp = function(a, b) {
+  local MIN = 0x8000000000000000;
+  local au = a ^ MIN, bu = b ^ MIN;
+  return au < bu ? -1 : (au > bu ? 1 : 0);
+};
+local widePair = function(v) {
+  if (typeof v == "array") return v;
+  return [v, v < 0 ? -1 : 0];
+};
+local wideCompare = function(a, b, signed) {
+  if (signed) {
+    local MIN = 0x8000000000000000;
+    local an = (a[1] & MIN) != 0, bn = (b[1] & MIN) != 0;
+    if (an != bn) return an ? -1 : 1;
+  }
+  local c = u64cmp(a[1], b[1]);
+  if (c != 0) return c;
+  return u64cmp(a[0], b[0]);
+};
+local integerAdmits = function(d, val) {
+  if (d.width == 16) {
+    if (typeof val != "array" || val.len() != 2 ||
+        typeof val[0] != "integer" || typeof val[1] != "integer") return false;
+    if (d.lo != null && d.hi != null) {
+      local lo = widePair(d.lo), hi = widePair(d.hi);
+      if (wideCompare(val, lo, d.signed) < 0 || wideCompare(val, hi, d.signed) > 0) return false;
+    }
+    return true;
+  }
+  if (typeof val != "integer") return false;
+  local bits = (d.bits != null && d.bits > 0) ? d.bits : d.width * 8;
+  if (d.signed) {
+    if (bits < 64) {
+      local lo = -(1 << (bits - 1));
+      local hi = (1 << (bits - 1)) - 1;
+      if (val < lo || val > hi) return false;
+    }
+  } else if (bits < 64) {
+    local max = bits >= 63 ? 0x7fffffffffffffff : (1 << bits) - 1;
+    if (val < 0 || val > max) return false;
+  }
+  if (d.lo != null && d.hi != null && typeof d.lo == "integer") {
+    if (d.signed) {
+      if (val < d.lo || val > d.hi) return false;
+    } else if (u64cmp(val, d.lo) < 0 || u64cmp(val, d.hi) > 0) return false;
+  }
+  return true;
+};
+local textOk = function(s) {
+  if (typeof s != "string") return false;
+  return _require("schema_table_load").utf8Ok(s, 0, s.len());
+};
+local refuseValue = function(w) {
+  local where = (w == null || w.owner == null ? "" : w.owner + ".") +
+                (w == null || w.field == null ? "" : w.field);
+  local reason = where == "" ? "invalid_value" : "invalid_value: " + where;
+  if (w != null) w.reason = reason;
+  _M.SaveReason <- reason;
+  return false;
+};
+
 // one field's value inside an array body or an arm payload (no id, no kind)
 local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeBare, writeMapField;
 
@@ -435,9 +518,18 @@ local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeB
 // flags little-endian at its width, a float32 narrowed and a float64 whole,
 // an enum as a reference into the id table (§5).
 writePrim = function(w, d, val, ids) {
-  if (d.shape == "bool") { wu8(w, val ? 1 : 0); return true; }
+  if (d.shape == "bool") {
+    if (typeof val != "bool") return refuseValue(w);
+    wu8(w, val ? 1 : 0);
+    return true;
+  }
   if (d.shape == "float") {
+    if (typeof val != "float" && typeof val != "integer") return refuseValue(w);
     if (!floatFinite(d, val)) return refuseNonFinite(d);
+    if (d.fmin != null && d.fmax != null) {
+      local f = val.tofloat();
+      if (f < d.fmin || f > d.fmax) return refuseValue(w);
+    }
     if (d.f32) { wfixed(w, narrowF32(val.tofloat()), 4); } else { writeF64(w, val.tofloat()); }
     return true;
   }
@@ -458,6 +550,7 @@ writePrim = function(w, d, val, ids) {
     return false;
   }
   if (d.shape == "int" || d.shape == "flags") {
+    if (!integerAdmits(d, val)) return refuseValue(w);
     if (d.width == 16) {
       wfixed(w, val[0], 8);
       wfixed(w, val[1], 8);
@@ -504,6 +597,7 @@ local writeArrayBody = function(T, d, val, w, ids, at, root) {
     wleb(w, n);
     for (local i = 0; i < n; i++) {
       local s = val[i].Value;
+      if (!textOk(s)) { refuseValue(w); return -1; }
       wleb(w, s.len());
       for (local j = 0; j < s.len(); j++) wu8(w, s[j]);
     }
@@ -528,7 +622,7 @@ local writeArrayBody = function(T, d, val, w, ids, at, root) {
       } else if (e.shape == "float") {
         rides = !floatIsDefault(e, val[i], e.def);
       } else {
-        rides = !scalarDefault(val[i], e.def);
+        rides = !typedDefault(e, val[i]);
       }
       // a slot whose only content is a retained field is not its default
       // (§6.6): it rides on the retained tail like any declared field would
@@ -591,7 +685,7 @@ local arrayRides = function(fd, val) {
     return false;
   }
   for (local i = 0; i < n; i++) {
-    if (!scalarDefault(val[i], e.def)) return true;
+    if (!typedDefault(e, val[i])) return true;
   }
   return false;
 };
@@ -628,6 +722,7 @@ writeBare = function(T, d, val, w, ids, at, root, holder = null, key = null) {
     return true;
   }
   if (shape == "sblob" || shape == "bblob") {
+    if (shape == "sblob" && val != null && !textOk(val)) return refuseValue(w);
     local kind = shape == "sblob" ? "s" : "b";
     local idx = indexOfBlob(at, kind, val, holder, key);
     if (idx < 0) return false;
@@ -641,10 +736,12 @@ writeBare = function(T, d, val, w, ids, at, root, holder = null, key = null) {
   }
   if (shape == "union") return writeUnionValue(T, unionDesc(T, d.table), val, w, ids, at, root);
   if (shape == "str") {
+    if (!textOk(val)) return refuseValue(w);
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
   if (shape == "bytes") {
+    if (!bytesValue(val)) return refuseValue(w);
     wu8(w, 6); wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
@@ -702,6 +799,7 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
   }
   if (shape == "sblob" || shape == "bblob") {
     if (!always && val == null) return true;
+    if (shape == "sblob" && val != null && !textOk(val)) return refuseValue(w);
     local kind = shape == "sblob" ? "s" : "b";
     local idx = indexOfBlob(at, kind, val, holder, key);
     if (idx < 0) return false;
@@ -730,6 +828,7 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
   }
   if (shape == "str") {
     if (!always && scalarDefault(val, d.def)) return true;
+    if (!textOk(val)) return refuseValue(w);
     if (val.len() > d.bound) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
@@ -737,6 +836,7 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
     return true;
   }
   if (shape == "bytes") {
+    if (!bytesValue(val)) return refuseValue(w);
     if (!always && blobEqString(val, d.def)) return true;
     if (val.len() > d.bound) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
@@ -781,7 +881,7 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
   if (!always) {
     if (shape == "float") {
       if (floatIsDefault(d, val, d.def)) return true;
-    } else if (scalarDefault(val, d.def)) {
+    } else if (typedDefault(d, val)) {
       return true;
     }
   }
