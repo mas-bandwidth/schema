@@ -2,6 +2,14 @@
   "note": "Rulings that make a proof cell not applicable by design (tools/matrix proof). Each entry quotes the maintainer verbatim, with the date it was said and where the words came from; `applies` names the cells it covers (a conformance surface and a case-name pattern, or a porting-register row; no langs means every language). A ruling only ever covers an ABSENT answer: a leg that answers a covered case is still held to the expectation. Add a ruling only from the maintainer's own words.",
   "rulings": [
     {
+      "id": "json-flags-name-once",
+      "date": "2026-11-10",
+      "quotes": [
+        "ruled 2026-11-10: a JSON flags array that names one known variant twice is refused, as a repeated key is"
+      ],
+      "source": "the owner's standing rule of 2026-11-10 that where the standard is silent or lenient, strict wins, applied by the coordinator"
+    },
+    {
       "id": "message-form-fixed-only",
       "date": "2026-10-31",
       "quotes": [
