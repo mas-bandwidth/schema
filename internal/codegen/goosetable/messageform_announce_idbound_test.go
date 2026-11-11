@@ -2,12 +2,18 @@ package goosetable
 
 // THE ANNOUNCEMENT'S ID TABLE IS A FILE'S (docs/SPEC-TABLES.md §3.3: the
 // announcement is a form-1 file; §3, THE DISTINCTNESS CHECK IS BOUNDED WORK):
-// every connection golden with its id table grown to exactly 4096 distinct
-// entries, to 4097, and to 4096 with one repeat, read by announce_read and
-// held to the Go reference (tablewire.Vocabulary.AnnounceRead) verdict for
-// verdict. The appended entries are named by no reference, so the 4096 table
-// announces as the golden does, and the other two are malformed. The control
-// widens the Goose bound by one and requires exactly the 4097 cases red.
+// every MESSAGE-FORM connection golden with its id table grown to exactly 4096
+// distinct entries, to 4097, and to 4096 with one repeat, read by
+// announce_read and held to the Go reference (tablewire.Vocabulary.AnnounceRead)
+// verdict for verdict. The appended entries are named by no reference, so the
+// 4096 table announces as the golden does, and the other two are malformed.
+// The control widens the Goose bound by one and requires exactly the 4097
+// cases red.
+//
+// The form is a FIXED table's (§3.3), so a connection golden whose unit is a
+// variable table is not a message-form announcement and its id table is not
+// one this test grows: map_conn is `mapdemo`'s, and its vocabulary is the
+// variable form's, outside the message closure the message form announces.
 
 import (
 	"encoding/binary"
@@ -55,11 +61,17 @@ func announceIdBoundCases(t *testing.T) (cases [][]byte, names []string) {
 		t.Fatalf("no connection goldens: %v", err)
 	}
 	for _, path := range conns {
+		base := filepath.Base(path)
+		if base == "map_conn.bin" {
+			// `mapdemo` is a VARIABLE table: the message form is a fixed
+			// table's (§3.3), and this connection announcement is the
+			// variable form's vocabulary, not a message-closure one.
+			continue
+		}
 		golden, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		base := filepath.Base(path)
 		cases = append(cases, announceGrown(t, golden, 4096, false), announceGrown(t, golden, 4097, false), announceGrown(t, golden, 4096, true))
 		names = append(names, base+" ids 4096", base+" ids 4097", base+" ids 4096 repeat")
 	}
