@@ -50,7 +50,7 @@ WFR_ENV_elixir   = ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-tables-ebin
 WFR_DEPS_go      = build/conformance-go
 WFR_DRIVER_go    = build/conformance-go wire-fuzz
 
-# goose carries no form-1 reader (test/conformance/goose/main.goose): no driver
+# goose carries a form-1 reader but no release-gate driver: WFR_DRIVER_goose is empty
 WFR_DRIVER_goose =
 
 WFR_DEPS_java    = build-conformance-java

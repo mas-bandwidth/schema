@@ -566,6 +566,7 @@ func init() {
 		Name{Name: "table_fixed_fills", What: "the fixed form: cover minus what this plan lands"},
 		Name{Name: "table_fixed_lay_fills", What: "the fixed form: reserve the prefill ranges in the plan pool"},
 		Name{Name: "table_fixed_signed_kind", What: "the fixed form's widening rungs"},
+		Name{Name: "table_fixed_store_native", What: "the fixed form's destination stores, in this host's order"},
 		Name{Name: "table_fixed_layout_entry_zero", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_layout_view_zero", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_leaf_size", What: "the fixed form's layout validation: a leaf kind's admitted sizes"},

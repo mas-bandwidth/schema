@@ -822,12 +822,39 @@ public final class TableMessage {
         public long at;
         public boolean err;
 
+        // THE IDS ONE BODY HAS CARRIED, in a reusable stack so a nested body
+        // takes its own region and a body allocates nothing (docs/SPEC-TABLES.md
+        // §4, §5).
+        private long[] seenIds = new long[64];
+        private int seenUsed;
+
         public Reader(byte[] buf, int startByte, TableVocabulary vocab, TableVocabulary.Report report) {
             this.buf = buf;
             this.totalBits = buf == null ? 0L : (long) buf.length << 3;
             this.vocab = vocab;
             this.report = report;
             this.at = (long) startByte << 3;
+        }
+
+        int seenMark() {
+            return seenUsed;
+        }
+
+        void seenRollback(int mark) {
+            seenUsed = mark;
+        }
+
+        boolean seenAdd(int mark, long id) {
+            for (int i = mark; i < seenUsed; i++) {
+                if (seenIds[i] == id) {
+                    return false;
+                }
+            }
+            if (seenUsed == seenIds.length) {
+                seenIds = java.util.Arrays.copyOf(seenIds, seenIds.length * 2);
+            }
+            seenIds[seenUsed++] = id;
+            return true;
         }
 
         public long get(int n) {
@@ -1036,6 +1063,7 @@ public final class TableMessage {
                     return skipRun(r, n, run);
                 }
                 for (long i = 0; i < n; i++) {
+                    long at = r.at;
                     if (s.kind == 16) {
                         long kref = r.get(r.vocab.refBits);
                         if (r.err || kref < 0L || kref > (long) r.vocab.count) {
@@ -1045,6 +1073,20 @@ public final class TableMessage {
                     }
                     if (!skipAt(r, elem, null, depth + 1)) {
                         return false;
+                    }
+                    // A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array
+                    // whose inner run is itself zero-width, steps the rest of
+                    // the run in one (docs/SPEC-TABLES.md §3.3). A remaining
+                    // count the bits left could not back is damage, so a
+                    // hostile count is refused here rather than walked, and
+                    // the skip is bounded by the batch's bits whatever the
+                    // count says.
+                    if (r.at == at) {
+                        if (n - i - 1 > r.totalBits - r.at) {
+                            r.err = true;
+                            return false;
+                        }
+                        return true;
                     }
                 }
                 return true;
@@ -1991,12 +2033,25 @@ func (g *messageGen) emitSaveElement(f *ir.Field, kind uint8, shape ir.TableMess
 
 func (g *messageGen) emitLoadBody(st *ir.Struct, valType string) {
 	g.owner = st.DeclaredName()
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §4, §5),
+	// known or unknown: the ids this body has carried sit in the reader's
+	// reusable stack, so a nested body takes its own region and the body
+	// allocates nothing. The read itself is the private walk below.
 	g.pf("    public static boolean loadMessageBody(TableMessage.Reader r, %s v) {\n", valType)
+	g.pf("        int seenFieldMark = r.seenMark();\n")
+	g.pf("        try {\n")
+	g.pf("            return loadMessageBodyFields(r, v, seenFieldMark);\n")
+	g.pf("        } finally {\n")
+	g.pf("            r.seenRollback(seenFieldMark);\n")
+	g.pf("        }\n")
+	g.pf("    }\n\n")
+	g.pf("    private static boolean loadMessageBodyFields(TableMessage.Reader r, %s v, int seenFieldMark) {\n", valType)
 	g.pf("        reset(v);\n")
 	g.pf("        while (true) {\n")
 	g.pf("            TableVocabulary.Entry entry = r.ref();\n")
 	g.pf("            if (r.err) { r.report.damaged = true; return false; }\n")
 	g.pf("            if (entry == null) { return true; }\n")
+	g.pf("            if (!r.seenAdd(seenFieldMark, entry.id)) { r.report.damaged = true; return false; }\n")
 	if len(st.Fields) == 0 {
 		g.pf("            r.report.unknown++;\n")
 		g.pf("            if (!TableMessage.skip(r, entry)) { r.report.damaged = true; return false; }\n")
@@ -2094,9 +2149,14 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		typ := fixedScalarType(f.Type)
 		g.pf("%slong %s = TableMessage.readCount(r, %s.shape);\n", ind, nVar, entryVar)
 		g.pf("%sif (r.err) { r.report.damaged = true; return false; }\n", ind)
+		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §4,
+		// §5): the keys this value has carried take the reader's seen stack's
+		// own region for the value.
+		g.pf("%sint seenSlotMark = r.seenMark();\n", ind)
 		g.pf("%sfor (long %s = 0; %s < %s; %s++) {\n", ind, idxVar, idxVar, nVar, idxVar)
 		g.pf("%s    TableVocabulary.Entry %s = r.nameRef();\n", ind, keyVar)
 		g.pf("%s    if (%s == null || r.err) { r.report.damaged = true; return false; }\n", ind, keyVar)
+		g.pf("%s    if (!r.seenAdd(seenSlotMark, %s.id)) { r.report.damaged = true; return false; }\n", ind, keyVar)
 		g.pf("%s    int %s = -1;\n", ind, slotVar)
 		g.pf("%s    int kHi = (int) (%s.id >>> 32);\n", ind, keyVar)
 		g.pf("%s    int kLo = (int) %s.id;\n", ind, keyVar)
@@ -2122,6 +2182,7 @@ func (g *messageGen) emitLoadPayload(f *ir.Field, owner, entryVar string, indent
 		g.emitLoadElement(f, scratchVar, entryVar+".element", indent+8)
 		g.pf("%s    }\n", ind)
 		g.pf("%s}\n", ind)
+		g.pf("%sr.seenRollback(seenSlotMark);\n", ind)
 
 	case f.Array != ir.ArrayNone:
 		nVar := g.nextTemp("n")

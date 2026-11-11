@@ -2,6 +2,7 @@
 //
 //	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers its FORM BYTE (§3)
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
+//	schema testgen    [--lang go|lua|squirrel] [--out generated] [--verbose] [dir|files...]  emit the round-trip and damage tests of every table
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
 //	schema build-version [--facts] [dir|files...]    print the build version, or the cook projection it hashes
