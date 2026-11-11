@@ -6566,10 +6566,7 @@ FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
 VLISTS_INCLUDES = -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was
 # ==== END rowan/cpp-versioning-lists ====
 
-build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
-                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+FIXEDFORM_INCLUDES = -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
@@ -6578,31 +6575,35 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/fg1 \
 	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
 	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) -I$(SERIALIZE)
+FIXEDFORM_ASAN_FLAGS = -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+
+# ONE OBJECT PER TRANSLATION UNIT, for the plain binary and its sanitized twin
+# alike: the three sources compile side by side under `make -j` rather than one
+# after another inside a single compiler command (the sanitized build of the
+# three in one command was 193 s on four threads). The flags and include path
+# are the ones the single command gave every unit.
+FIXEDFORM_UNITS := fixedform_main versioning_lists versioning_numbers
+
+build/fixedform-objs/%.o: test/tables/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+
+build/fixedform-objs-asan/%.o: test/tables/%.cpp build/tables-generated/.stamp
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $(FIXEDFORM_INCLUDES) -c $< -o $@
+
+build/schema_test_fixedform: $(FIXEDFORM_UNITS:%=build/fixedform-objs/%.o)
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $^ -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
 # fixed record carries no lengths and no terminators, so every offset the
 # reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
 # leaves the buffer" is a claim only a sanitizer can hold.
-build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
-                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
+build/schema_test_fixedform_asan: $(FIXEDFORM_UNITS:%=build/fixedform-objs-asan/%.o)
 	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-	    -fno-omit-frame-pointer -g \
-	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
-	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
-	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
-	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -Ibuild/tables-generated/fh1 -Ibuild/tables-generated/fh2 \
-	    -Ibuild/tables-generated/fg1 \
-	    -Ibuild/tables-generated/fe1 -Ibuild/tables-generated/fe2 \
-	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_ASAN_FLAGS) $^ -o $@
 
 # THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
 # fixtures above check the VALUES a read produces; this one checks the single
