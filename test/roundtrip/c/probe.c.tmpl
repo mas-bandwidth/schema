@@ -102,7 +102,9 @@ static const char * builder_load_[[.Snake]]( const uint8_t * b, int64_t n, const
     const char * out;
     memset( &r, 0, sizeof r );
     if ( ![[$.Package]]_[[.Snake]]_builder_init( &builder ) ) { return "refused:builder init"; }
-    out = ( ![[$.Package]]_[[.Snake]]_load_builder( &builder, b, n, &r ) || r.refused ) ? why( &r ) : same_[[.Snake]]( [[$.Package]]_[[.Snake]]_builder_root( &builder ), want );
+    if ( ![[$.Package]]_[[.Snake]]_load_builder( &builder, b, n, &r ) || r.refused ) { out = why( &r ); }
+    else if ( ![[$.Package]]_[[.Snake]]_builder_lock( &builder ) ) { out = "refused:builder lock"; }
+    else { out = same_[[.Snake]]( (const [[$.Package]]_[[.Snake]]_t *) builder.region, want ); }
     [[$.Package]]_[[.Snake]]_builder_shutdown( &builder );
     return out;
 }
@@ -120,7 +122,8 @@ static void probe_[[.Snake]]( const char * root, const char * name, const uint8_
     if ( ![[$.Package]]_[[.Snake]]_from_json( &builder, (const char *) text, tn, &r ) || r.refused ) { say( root, name, "fromjson", why( &r ) ); [[$.Package]]_[[.Snake]]_builder_shutdown( &builder ); return; }
     if ( ![[$.Package]]_[[.Snake]]_builder_lock( &builder ) ) { say( root, name, "fromjson", "refused:builder lock" ); [[$.Package]]_[[.Snake]]_builder_shutdown( &builder ); return; }
     say( root, name, "fromjson", "ok" );
-    v = [[$.Package]]_[[.Snake]]_builder_root( &builder );
+    /* the const form is builder.region once locked (docs/USAGE.md) */
+    v = (const [[$.Package]]_[[.Snake]]_t *) builder.region;
     want = tj_[[.Snake]]( v );
     {
         int64_t need = [[$.Package]]_[[.Snake]]_measure( NULL, v );
@@ -181,7 +184,7 @@ static void probe_[[.Snake]]( const char * root, const char * name, const uint8_
         else
         {
             if ( ![[$.Package]]_[[.Snake]]_from_json( &jb, want, (int64_t) strlen( want ), &r ) || r.refused || ![[$.Package]]_[[.Snake]]_builder_lock( &jb ) ) { say( root, name, "json", why( &r ) ); }
-            else { say( root, name, "json", same_[[.Snake]]( [[$.Package]]_[[.Snake]]_builder_root( &jb ), want ) ); }
+            else { say( root, name, "json", same_[[.Snake]]( (const [[$.Package]]_[[.Snake]]_t *) jb.region, want ) ); }
             [[$.Package]]_[[.Snake]]_builder_shutdown( &jb );
         }
     }
