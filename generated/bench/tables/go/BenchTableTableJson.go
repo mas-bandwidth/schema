@@ -21,6 +21,7 @@
 package benchtable
 
 import (
+	"bytes"
 	"encoding/base64"
 	"math"
 	"strconv"
@@ -831,8 +832,7 @@ type tableJSONIn struct {
 	// mas-bandwidth/schema docs/SPEC-TABLES.md §16.2, the read option: null where the row is an
 	// array or a map reads as [] or {}
 	nullEmpty bool
-	// zero is set when the walk stopped on a U+0000 bound for text storage
-	// (mas-bandwidth/schema docs/SPEC-TABLES.md 16.3): the field loop names the field in Reason
+	// zero is set on U+0000 text (mas-bandwidth/schema docs/SPEC-TABLES.md §16.3); its field loop names it.
 	zero bool
 	// utf8 is set when the walk stopped on a byte sequence that is not
 	// well-formed UTF-8 (16.3): the read refuses it by name rather than
@@ -2210,7 +2210,7 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		var ignored TableReport
 		report = &ignored
 	}
-	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
+	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty, bad: bytes.IndexByte(text, 0) >= 0 || !utf8.Valid(text)}
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJSONReadTable(&in, value, info, 0)
