@@ -17,22 +17,81 @@ import (
 // in declaration order: the checker assembles them beside the decl stream.
 func tableUnionsOf(f *ir.File) []*ir.Union { return f.TableUnions }
 
-// tableUnionsHeldBy returns, in field order, the unions of `unions` that st
-// holds by value — the ones that must be emitted before st's struct.
-func tableUnionsHeldBy(st *ir.Struct, unions []*ir.Union) []*ir.Union {
-	var out []*ir.Union
-	for _, f := range st.Fields {
-		un, ok := f.Type.Ref.(*ir.Union)
-		if !ok || f.Type.Kind != ir.TNamed {
-			continue
-		}
-		for _, cand := range unions {
-			if cand == un {
-				out = append(out, un)
-			}
+// emitTableShapes emits the file's table structs and table-armed unions in
+// by-value dependency order: a field names its type, an arm names its payload,
+// and either may reach the next union by value, so the closure is followed to
+// its end rather than only the types a table names directly. A pointer's
+// storage is a TableRef, so a pointer edge names no definition and does not
+// order; a map's generated entry is an ordinary table of the closure.
+func (g *tableGen) emitTableShapes(members []*ir.Struct, unions []*ir.Union) {
+	tables := map[string]*ir.Struct{}
+	for _, st := range members {
+		if st.IsTable {
+			tables[st.Name] = st
 		}
 	}
-	return out
+	tableUnions := map[string]*ir.Union{}
+	for _, un := range unions {
+		tableUnions[un.Name] = un
+	}
+	emittedStruct := map[string]bool{}
+	emittedUnion := map[string]bool{}
+
+	var field func(*ir.Field)
+	var decl func(string)
+	var declStruct func(*ir.Struct)
+	var declUnion func(*ir.Union)
+	field = func(f *ir.Field) {
+		if f == nil {
+			return
+		}
+		if f.IsMap() {
+			declStruct(tables[f.MapEntry.Name])
+			return
+		}
+		if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
+			decl(f.Type.Name)
+		}
+	}
+	decl = func(name string) {
+		if st := tables[name]; st != nil {
+			declStruct(st)
+			return
+		}
+		if un := tableUnions[name]; un != nil {
+			declUnion(un)
+		}
+	}
+	declStruct = func(st *ir.Struct) {
+		if st == nil || emittedStruct[st.Name] {
+			return
+		}
+		emittedStruct[st.Name] = true
+		for _, f := range st.Fields {
+			field(f)
+		}
+		g.emitTableStruct(st)
+	}
+	declUnion = func(un *ir.Union) {
+		if emittedUnion[un.Name] {
+			return
+		}
+		emittedUnion[un.Name] = true
+		for _, v := range un.Variants {
+			if !v.Void() {
+				field(v.F)
+			}
+		}
+		g.emitTableUnion(un)
+	}
+	for _, st := range members {
+		if st.IsTable {
+			declStruct(st)
+		}
+	}
+	for _, un := range unions {
+		declUnion(un)
+	}
 }
 
 // emitTableUnion emits one table-armed union: the <Name>Type tag enum, then
