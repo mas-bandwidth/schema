@@ -1201,19 +1201,26 @@ static partial class Program
         int homingOffset = bodyOffset + 16;
         buf[homingOffset] = 0x7F; // plant hostile nonzero byte
 
+        // a bool byte other than 0 or 1 is damage: the whole load refuses
+        // wire_damaged and lands nothing (docs/SPEC-TABLES.md §3.4)
         TD.WeaponConfig back = new TD.WeaponConfig();
+        TD.Schema.TableReset(back);
         TD.TableReport r = new TD.TableReport();
         TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
         long loaded = TD.Schema.WeaponConfigFixedLoad(back, buf, plan, r);
-        Check(loaded == 1, "hostile bool: load one record");
-        Check(r.Unknown == 0 && !r.Refused && r.Widened == 0 && !r.Damaged,
-              "hostile bool: clean report, no counters moved");
-        Check(back.Homing == true, "hostile bool: nonzero byte normalized to true");
+        Check(loaded == -1 && r.Refused && r.Reason == "wire_damaged" && !r.Damaged && r.Unknown == 0 && r.Widened == 0,
+              "hostile bool: the load refuses wire_damaged, no counters moved");
+        Check(back.Homing == false, "hostile bool: nothing landed from the refused load");
 
-        byte[] resaved = new byte[buf.Length];
-        long savedAgain = TD.Schema.WeaponConfigFixedSave(back, resaved);
-        Check(savedAgain == resaved.Length, "hostile bool: resave");
-        Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
+        // the writer emits a true bool as exactly 1, and that byte reads back
+        wc.Homing = true;
+        byte[] truth = new byte[buf.Length];
+        Check(TD.Schema.WeaponConfigFixedSave(wc, truth) == truth.Length, "hostile bool: save of true");
+        Check(truth[homingOffset] == 1, "hostile bool: a true bool is written as 1");
+        TD.WeaponConfig again = new TD.WeaponConfig();
+        TD.TableReport r2 = new TD.TableReport();
+        Check(TD.Schema.WeaponConfigFixedLoad(again, truth, plan, r2) == 1 && !r2.Refused && again.Homing == true,
+              "hostile bool: the written 1 reads back true");
     }
 
     static void TestFixedAbsentOptionalCase()
