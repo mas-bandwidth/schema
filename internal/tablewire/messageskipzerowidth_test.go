@@ -59,6 +59,8 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 			Inner: &ir.TableMessageShape{Min: 0, Max: 0, Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}}, true},
 		// AND A NESTED SHAPE IS REFUSED AT THE ANNOUNCEMENT: a count the bits
 		// back is still a list of lists, which no declaration produces
+		// A WALKED ZERO-PROGRESS ELEMENT IS DAMAGE EVEN WHEN THE BATCH
+		// HAS ENOUGH PADDING BITS FOR THE REMAINING COUNT (§3.3).
 		{"nested elem 14, a count the bits back", ir.TableMessageShape{Min: 3, Max: 3, Elem: ir.TableKindArray,
 			Inner: &ir.TableMessageShape{Min: 2, Max: 2, Elem: 0, Inner: &ir.TableMessageShape{}}}, true},
 	}
@@ -110,5 +112,72 @@ func TestMessageSkipOfZeroWidthElementsIsBounded(t *testing.T) {
 		if err != nil || !got || whole.Refused {
 			t.Errorf("%s: DecodeMessage did not read the batch: ok=%v err=%v report %+v", c.name, got, err, whole)
 		}
+	}
+}
+
+func TestMessageSkipRefusesElementWithNoProgress(t *testing.T) {
+	t.Parallel()
+	const limit = 1 << 20
+	m := zeroWidthModel(t)
+	cases := []struct {
+		name  string
+		shape ir.TableMessageShape
+		bits  []uint64
+		want  bool
+	}{
+		{
+			name: "walked nested empty arrays refuse",
+			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindArray,
+				Inner: &ir.TableMessageShape{Min: 0, Max: 0, Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}},
+			want: false,
+		},
+		{
+			name: "walked nested arrays with payload skip",
+			shape: ir.TableMessageShape{Min: 2, Max: 2, Elem: ir.TableKindArray,
+				Inner: &ir.TableMessageShape{Min: 1, Max: 1, Elem: ir.TableKindBool, Inner: &ir.TableMessageShape{}}},
+			bits: []uint64{0, 0},
+			want: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			entry := ir.TableVocabularyEntry{Id: 0x5a5a5a5a00000001, Kind: ir.TableKindArray, Shape: c.shape}
+			encoded := entry.Encode(nil)
+			if _, _, ok := ir.DecodeShape(encoded[9:], entry.Kind); !ok {
+				t.Fatal("announcement refused the shape")
+			}
+			v := &Vocabulary{entries: []ir.TableVocabularyEntry{entry}, announced: true}
+			var w bitWriter
+			w.put(0, 8) // M - 1
+			w.put(1, v.RefBits())
+			for _, bit := range c.bits {
+				w.put(bit, 1)
+			}
+			w.put(0, v.RefBits())
+			w.align()
+			data := append([]byte{ir.TableWireMessageForm}, w.b...)
+
+			r := newBitReader(data[1:])
+			if _, ok := r.get(8); !ok {
+				t.Fatal("batch count did not read")
+			}
+			var report tabletext.Report
+			steps := &skipSteps{limit: limit}
+			d := &bitDecoder{m: m, v: v, report: &report, r: r, refBits: v.RefBits(), steps: steps}
+			ok := d.body(m.New(m.Lookup("Probe")))
+			if ok != c.want {
+				t.Errorf("skip result = %v, want %v; failure=%v report=%+v", ok, c.want, d.fail, report)
+			}
+			if c.want && (report.Refused || report.Unknown != 1) {
+				t.Errorf("well-formed skipped entry was refused: %+v", report)
+			}
+			if !c.want && (d.fail == nil || d.fail.err == nil) {
+				t.Errorf("zero-progress element did not record damage: report=%+v", report)
+			}
+			if steps.n >= limit {
+				t.Errorf("skip walked %d elements", steps.n)
+			}
+		})
 	}
 }

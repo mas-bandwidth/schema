@@ -1161,22 +1161,13 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry, depth int) bool {
 			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}, depth+1) {
 				return false
 			}
-			// A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array whose
-			// inner run is itself zero-width, is the same run in a shape the
-			// arithmetic above cannot see (docs/SPEC-TABLES.md §3.3). Its skip
-			// read nothing, so it took no branch a later element could take
-			// differently, and every element after it consumes nothing too: the
-			// rest of the run is stepped in one. A REMAINING COUNT THE BITS
-			// LEFT COULD NOT BACK IS DAMAGE, the one bit an element is held to
-			// on the list path, so a hostile count is refused here rather than
-			// carried into a retaining walk, and the walk is bounded by the
-			// batch's bits whatever the count says.
+			// A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3), even
+			// when the remaining count could fit in the batch's padding. A fixed-
+			// width arithmetic run was handled above; a walked element must make
+			// progress on each step.
 			if d.r.off == at {
-				if n-i-1 > uint64(d.r.left()) {
-					d.damage()
-					return false
-				}
-				return true
+				d.damage()
+				return false
 			}
 		}
 		return true
