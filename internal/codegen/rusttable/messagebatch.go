@@ -394,11 +394,19 @@ func (m *msgGen) emitLoadBody(st *ir.Struct) {
 	m.pf("/// One %s body against the ENDPOINT's vocabulary (§3.3): a field this build\n/// cannot name is skipped by the endpoint's shape and counted unknown, a kind the\n/// declaration widened is decoded exactly and counted widened, and any other\n/// kind is a kind mismatch, skipped.\n", st.Name)
 	m.pf("pub fn %s_load_message_body(r: &mut TableBitReader, v: &TableVocabulary, report: &mut TableReport, value: &mut %sRow) -> bool {\n", snake, st.Name)
 	m.pf("    *value = %s_message_default();\n", snake)
+	// A FIELD ID TWICE IN ONE BODY IS DAMAGE (docs/SPEC-TABLES.md §3.3), known
+	// or unknown: the ids this body has carried are held in a fixed stack set.
+	m.pf("    let mut seen_ids = [0u64; 64];\n")
+	m.pf("    let mut seen_count = 0usize;\n")
+	m.pf("    let mut seen_more: Vec<u64> = Vec::new();\n")
 	m.pf("    loop {\n")
 	m.pf("        let Some(reference) = r.get(v.ref_bits) else %s;\n", msgBad)
 	m.pf("        if reference == 0 { return true; }\n")
 	m.pf("        let Some(entry) = v.entry(reference).copied() else %s;\n", msgBad)
 	m.pf("        if entry.id >= 0xffff_ffff_ffff_fffd %s\n", msgBad)
+	m.pf("        if seen_ids[..core::cmp::min(seen_count, seen_ids.len())].contains(&entry.id) || seen_more.contains(&entry.id) %s\n", msgBad)
+	m.pf("        if seen_count < seen_ids.len() { seen_ids[seen_count] = entry.id; } else { seen_more.push(entry.id); }\n")
+	m.pf("        seen_count += 1;\n")
 	m.pf("        match entry.id {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
@@ -612,9 +620,17 @@ func (m *msgGen) readArray(f *ir.Field, expr, entry, ind string) {
 	e := msgElement(f)
 	m.orig[e] = m.origOf(f)
 	if f.KeyEnum != "" {
+		// A KEYED SLOT TWICE IN ONE KEYED ARRAY IS DAMAGE (docs/SPEC-TABLES.md
+		// §3.2, §3.3): the slots this array has named are held in a fixed set.
+		m.pf("%s    let mut seen_keys = [0u64; 64];\n", ind)
+		m.pf("%s    let mut seen_key_count = 0usize;\n", ind)
+		m.pf("%s    let mut seen_key_more: Vec<u64> = Vec::new();\n", ind)
 		m.pf("%s    for _ in 0..n {\n", ind)
 		m.pf("%s        let Some(reference) = r.get(v.ref_bits) else %s;\n", ind, msgBad)
 		m.pf("%s        let Some(id) = v.name(reference) else %s;\n", ind, msgBad)
+		m.pf("%s        if seen_keys[..core::cmp::min(seen_key_count, seen_keys.len())].contains(&id) || seen_key_more.contains(&id) %s\n", ind, msgBad)
+		m.pf("%s        if seen_key_count < seen_keys.len() { seen_keys[seen_key_count] = id; } else { seen_key_more.push(id); }\n", ind)
+		m.pf("%s        seen_key_count += 1;\n", ind)
 		m.pf("%s        let key: usize = match id {", ind)
 		for i := range f.KeyEnumRef.Variants {
 			m.pf(" 0x%016x => %d,", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i+1)
