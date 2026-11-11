@@ -292,6 +292,15 @@ jobs:
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             done
+            # THE SOURCE GOLDENS. internal/goldens holds every emitter's output
+            # to the files under testdata/golden, so a diff to an emitter, to a
+            # golden, or to the examples and usage page it renders re-checks
+            # them here. Without this a golden-only diff selected nothing and an
+            # emitter-only diff selected its own packages, and a stale golden
+            # waited for the merge's full run to say so.
+            if echo "$files" | grep -qE '^(internal/codegen/|testdata/golden/|examples/|examples128/|docs/USAGE\.md$)'; then
+              case " $packages " in *" ./internal/goldens "*) ;; *) packages="$packages ./internal/goldens" ;; esac
+            fi
             packages=$(echo "$packages" | xargs || true)
           fi
 
