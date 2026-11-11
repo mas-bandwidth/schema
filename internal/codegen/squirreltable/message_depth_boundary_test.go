@@ -161,8 +161,9 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 		}},
 	}
 	refBits := ir.TableMessageRefBits(len(entries))
-	if refBits != 3 || ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u))) != 3 {
-		t.Fatalf("refBits=%d, want 3", refBits)
+	unitRefBits := ir.TableMessageRefBits(len(tablewire.MessageVocabulary(u)))
+	if refBits != 3 || unitRefBits != 3 {
+		t.Fatalf("refBits=%d unitRefBits=%d, want 3", refBits, unitRefBits)
 	}
 	ann := depthBoundaryAnnouncement(0x0102030405060708, ir.TableVocabularyBytes(entries))
 	var cases []depthBoundaryCase
