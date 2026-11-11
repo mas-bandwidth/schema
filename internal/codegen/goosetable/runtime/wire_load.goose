@@ -2,11 +2,11 @@
 // §3, §3.1, §3.2, §4; docs/PORT-GOOSE.md, THE LOADED VALUE): the strict read
 // of form 1, ported decision for decision from the Go reference engine
 // (internal/tablewire decode.go, decodenodes.go, nodetable.go). Any reader
-// reads any data and the differences are REPORTED, never fatal: unknown ids
-// are skipped by their length and counted, a kind that grew is widened and
-// counted, out-of-range values clamp and count, a repeated map key counts
-// repeated, and a form byte this reader does not carry is refused. Damage
-// anywhere discards the whole load; no partial root is returned (§4).
+// reads any data, and every difference refuses the read: unknown ids are
+// skipped by their length and counted and a kind that grew is widened and
+// counted, while an out-of-range value, a repeated map key, a kind it cannot
+// land, a form byte it does not carry, a non-finite float or damage anywhere
+// refuses the whole load with the engine's reason; no partial root is returned (§4, §6.5).
 //
 // The walk is driven by THE LOAD DISPATCH TABLE (schema_tables.goose,
 // load_registry): each value's descriptor names its Loader, and the field,
@@ -174,7 +174,7 @@ struct LoadUnit {
 //   bits   an integer's value (sign-extended to 128 bits on a signed kind), a
 //          bool's 0 or 1, an enum's variant ordinal (0 = None), a union's tag,
 //          a pointer's node index, a float's IEEE bits (f32 in the low 32)
-//   off    a text, bytes or wstring value: a VIEW into the input, nothing
+//   off    a text or bytes value: a VIEW into the input, nothing
 //   len    copied; len is the view's byte length, or a collection's live count
 //   first  the first child slot: a record's fields in descriptor order, an
 //   count  array's elements, a map's entries, a union's one payload slot
@@ -769,8 +769,8 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
 // ---- THE DISPATCH (schema_tables.goose, load_registry; docs/PORT-GOOSE.md,
 // THE LOADED VALUE: the dispatch) ----
 
-// loader_of looks a descriptor up in the registry: the first row whose shape,
-// array kind (0: any) and wstring flag match. A shape no row registers reads
+// loader_of looks a descriptor up in the registry: the first row whose shape
+// and array kind (0: any) match. A shape no row registers reads
 // as a fixed-width scalar, as a header kind it does not know is skipped by
 // its width (docs/SPEC-TABLES.md §3).
 fn loader_of(d: FieldDesc) -> Loader {

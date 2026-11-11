@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0xeb26c970fde3fd71
+// package example — protocol id 0xf35accd0582cdd84
 //
 // Load through the loader beside this file (docs/PORT-SQUIRREL.md):
 //   local Wire = dofile(dir + "/schema_module.nut", true).require("Wire");
@@ -59,6 +59,18 @@ _M.Weapon <- {
   Laser = 1,
   Missile = 2,
   Railgun = 3,
+  Flak = 4,
+  Beam = 5,
+  Plasma = 6,
+  Torpedo = 7,
+  Mine = 8,
+  Drone = 9,
+  Swarm = 10,
+  Pulse = 11,
+  Lance = 12,
+  Comet = 13,
+  Quake = 14,
+  Arc = 15,
   Max = 15, // the exported extent (SPEC §4.2)
 };
 
@@ -68,6 +80,18 @@ _M.EnumNameWeapon <- function(value) {
     case 1: return "Laser";
     case 2: return "Missile";
     case 3: return "Railgun";
+    case 4: return "Flak";
+    case 5: return "Beam";
+    case 6: return "Plasma";
+    case 7: return "Torpedo";
+    case 8: return "Mine";
+    case 9: return "Drone";
+    case 10: return "Swarm";
+    case 11: return "Pulse";
+    case 12: return "Lance";
+    case 13: return "Comet";
+    case 14: return "Quake";
+    case 15: return "Arc";
     default: return "???";
   }
 };
