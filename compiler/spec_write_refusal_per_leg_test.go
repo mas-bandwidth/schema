@@ -142,7 +142,7 @@ func legListAfter(t *testing.T, text, marker string) []string {
 		t.Fatalf("`write-refusal` has no leg list after %q", marker)
 	}
 	var legs []string
-	for _, leg := range strings.Split(rest[open+1:closing], ",") {
+	for leg := range strings.SplitSeq(rest[open+1:closing], ",") {
 		if leg = strings.TrimSpace(leg); leg != "" {
 			legs = append(legs, leg)
 		}
