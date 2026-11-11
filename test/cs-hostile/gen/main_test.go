@@ -18,6 +18,10 @@ func badDispatchRows() []row {
 		{name: "carrier-quote", carrier: `ann"ounce`, schema: "tables/examples", table: "PackConfig"},
 		{name: "carrier-backslash", carrier: `ann\ounce`, schema: "tables/examples", table: "PackConfig"},
 		{name: "carrier-space", carrier: "ann ounce", schema: "tables/examples", table: "PackConfig"},
+		{name: "table-leading-digit", carrier: "announce", schema: "tables/examples", table: "1PackConfig"},
+		{name: "schema-leading-digit", carrier: "announce", schema: "1tables/examples", table: "PackConfig"},
+		{name: "carrier-leading-digit", carrier: "1announce", schema: "tables/examples", table: "PackConfig"},
+		{name: "table-hyphen", carrier: "announce", schema: "tables/examples", table: "Pack-Config"},
 	}
 }
 
