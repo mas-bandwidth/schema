@@ -181,6 +181,18 @@
       "source": "recorded in docs/SPEC.md §4.3; the maintainer's ruling that packet floats are finite-only in every language."
     },
     {
+      "id": "packet-canonical-end",
+      "date": "2026-10-22",
+      "quotes": [
+        "Approved. Let's go."
+      ],
+      "source": "relayed by the coordinator from the live session: the maintainer approved the canonical-read rule for serialize format 2.0, which the packet wire inherits (docs/SPEC.md §4.3): non-zero align padding, non-zero leftover bits in the final word, trailing bytes after the object and out-of-range integers are refused; every value has exactly one encoding. Specified for the packet wire in docs/SPEC.md §5 'Read termination' and docs/PACKET-WIRE-ALGORITHM.md §3 READ_PACKET",
+      "supersedes": [
+        "SPEC §5's \"bytes remaining after the last field are the caller's concern, not a validation failure\"",
+        "PACKET-WIRE-ALGORITHM §1.1's \"a reader that does not consume them does not check them\""
+      ]
+    },
+    {
       "id": "tables-finite-only",
       "date": "2026-10-27",
       "quotes": [

@@ -102,8 +102,8 @@ BYTES_WRITTEN(w) := CEIL8(w.bits_written)      // call FLUSH first
 
 **Always `FLUSH` after the last field**, then take `BYTES_WRITTEN`. Missing the flush drops the
 last scratch qword. The logical length is `bits_written`; the packet size is `CEIL8(bits_written)`
-bytes. Trailing bits in the last byte are zeros from the flush, and a reader that does not consume
-them does not check them.
+bytes. Trailing bits in the last byte are zeros from the flush, and a read REFUSES a final byte
+whose unused bits are not zero (SPEC §5).
 
 ### 1.2 ALIGN
 
@@ -338,14 +338,25 @@ READ_PACKET(T, buf, n, out) -> ok, bits:
     // allocation of buf extends at least 8 bytes past n
     r := ReadStream(buf, n)
     if not READ(T, r, out): return fail
+    if not END(r): return fail
     return ok, r.bits_read
-    // bytes remaining after the last field are the caller's concern, not a refusal
-    // a stream framed over a union ends on the in-band None tag by design
+
+END(r) -> ok:
+    remaining := 8 * r.num_bytes - r.bits_read
+    if remaining >= 8: REFUSE                  // a whole byte left after the object
+    if remaining == 0: return ok
+    if GET_BITS(r, remaining) != 0: REFUSE     // nonzero unused bits in the final byte
+    return ok
 
 READ(T, r, out):
     for item in T.items in declared order:
         READ_ITEM(r, item, out)
 ```
+
+`END` runs **once**, after the top-level object, and never inside a nested type's read. The
+generated public `Read<T>` is the one-packet read and ends with it; a nested type inside generated
+code reads through a per-type body that does not end (SPEC §5). Where the leg reports it, the read
+reports bits consumed.
 
 A refusal is terminal: generated code returns on the first failure, later items are not reached,
 and `out` is unspecified (SPEC §5). Past-end, a ranged offset above the span, and nonzero align

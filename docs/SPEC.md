@@ -2187,11 +2187,22 @@ read failure like any other) — and fail on any violation, because network
 input is the trust boundary. Generated read code never lets a value that
 controls iteration go unchecked before use.
 
-**Read termination:** `Read` consumes exactly the encoded bits and reports
-bits consumed, so callers can frame several objects in one buffer; bytes
-remaining after the last field are the caller's concern, not a validation
-failure — a stream framed over a union ends on the in-band `None` tag by
-design.
+**Read termination:** Every value has exactly one encoding, so a packet's end
+is checked, not assumed. After the top-level object's last field, a whole
+byte left over is a refusal, and so are non-zero unused bits in the final
+byte. The end check runs **once**, after the top-level object, and never
+inside a nested type's read. The generated public `Read<T>` of a type is the
+one-packet read and ends with that check: it uses the leg's runtime end check
+where the leg has a runtime (serialize format 2.0's `SerializeEnd` /
+`serializeEnd` end call) and its own equivalent where the generated code owns
+its bit reader (Java, Dart, Elixir and the JavaScript flat tier). A nested
+type inside generated code is read through a per-type body that does not end.
+Where the leg reports it, `Read` reports bits consumed. Framing several
+objects in one buffer is not several `Read<T>` calls: use a top-level type
+whose fields are the objects, or the leg's bit-offset entry where it has one
+(§6.1), and the one end check runs once, after the last. The Dart `read<T>`
+and the JavaScript `Read<T>Flat` return a boolean only; they do not report
+bits consumed today. That is an open question for the owner, not changed here.
 
 **Writes refuse what the declaration does not admit, by each language's own
 idiom.** A language verifies correctness the way that language verifies
