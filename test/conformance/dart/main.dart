@@ -124,11 +124,17 @@ import '../../../build/tables-generated-dart/features/FeaturewitnessesWire.dart'
 import '../../../build/tables-generated-dart/features/FeaturesCook.dart' as featurecook;
 
 // Decode JSON bytes before entering a generated String reader. Dart's UTF-8
-// decoder skips one leading BOM, matching the Go reader's whole-text boundary.
+// decoder drops one leading byte-order mark, and the generated reader skips
+// one leading U+FEFF itself (docs/SPEC-TABLES.md §16.2), so the mark is put
+// back: the reader, not the driver, is what skips it, and a second mark stays
+// one the reader refuses.
 String? readJsonTextFile(String path) {
   final bytes = File(path).readAsBytesSync();
   try {
-    return utf8.decode(bytes, allowMalformed: false);
+    final text = utf8.decode(bytes, allowMalformed: false);
+    final marked = bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+    if (!marked) return text;
+    return String.fromCharCode(0xFEFF) + text;
   } on FormatException {
     return null;
   }

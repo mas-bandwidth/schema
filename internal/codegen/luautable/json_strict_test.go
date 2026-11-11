@@ -21,14 +21,15 @@ import (
 
 // THE PLAIN NAME IS THE STRICT TEXT READ (docs/SPEC-TABLES.md §6.5), and THE
 // TEXT READ COUNTS A MISSING REQUIRED FIELD AS THE BINARY READ DOES (§2.3):
-// J.FromJson refuses with one named reason and no value every read that
-// crosses a meaning boundary (malformed, missing_required, blob_shared,
-// clamped, kind_mismatch), while unknown, widened and duplicate alone are
-// counted and the read succeeds; J.fromJsonWalk keeps the recovered value
-// with the counters, and answers no value on a malformed text or a missing
-// required field. Every answer is compared with schema-go's generated
-// <T>FromJSON and <T>FromJSONTolerant over the same unit and the same text,
-// never with a hand-typed expectation.
+// J.FromJson refuses with no value every read that crosses a meaning boundary
+// (malformed, missing_required, blob_shared, an out-of-range value, a kind
+// mismatch), while an unknown field alone is counted and the read succeeds.
+// Every verdict is compared with schema-go's generated <T>FromJSON over the
+// same unit and the same text, never with a hand-typed expectation. The
+// verdict is the contract (docs/rulings.json refusal-verdict-only), so a
+// refusal is compared as a refusal and its reason is the leg's own; the
+// tolerant twin the comparison once had is gone from the engine
+// (docs/rulings.json strict-only supersedes it), so there is one read to hold.
 const jsonStrictSchema = `package probe
 table Current
 {
@@ -83,7 +84,7 @@ var jsonStrictCases = []jsonStrictCase{
 }
 
 // jsonStrictGoOracle runs the generated Go reads over every case and returns
-// one "<strict>|<tolerant>" answer per case.
+// one verdict per case.
 func jsonStrictGoOracle(t *testing.T, u *ir.Unit) map[string]string {
 	t.Helper()
 	files, err := golang.Generate(u)
@@ -99,36 +100,24 @@ func jsonStrictGoOracle(t *testing.T, u *ir.Unit) map[string]string {
 	b.WriteString(`package probe
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 )
 
-func jsonStrictClass(ok bool, err error) string {
-	if ok && err == nil {
-		return "ok"
+// jsonStrictVerdict is the read's verdict: ok, or refused with the unknown
+// count of a read that succeeded beside it.
+func jsonStrictVerdict(ok bool, r *TableReport) string {
+	if ok && r.Err() == nil {
+		return fmt.Sprintf("ok,%d", r.Unknown)
 	}
-	var m TableMissingRequired
-	if errors.As(err, &m) {
-		return "missing_required: " + m.Fields
-	}
-	for _, r := range []TableRefuseReason{TableRefuseMalformed, TableRefuseBlobShared, TableRefuseClamped, TableRefuseKindMismatch, TableRefuseNonFiniteFloat} {
-		if errors.Is(err, r) {
-			return r.Error()
-		}
-	}
-	return fmt.Sprintf("other(%v)", err)
-}
-
-func jsonStrictTolerant(ok bool, r *TableReport) string {
-	return fmt.Sprintf("%t,%d,%d,%d,%d,%d,%t", ok, r.Unknown, r.KindMismatch, r.Clamped, r.Duplicate, r.MissingRequired, r.Malformed)
+	return "refused"
 }
 
 func TestJSONStrictOracle(t *testing.T) {
 `)
 	for _, c := range jsonStrictCases {
-		fmt.Fprintf(&b, "\t{ var v, w %sBuilder; if !v.Init() || !w.Init() { t.Fatal(\"builder\") }; var r, tr TableReport; ok := %sFromJSON(&v, []byte(%q), &r); tok := %sFromJSONTolerant(&w, []byte(%q), &tr); fmt.Printf(\"@%s|%%s|%%s\\n\", jsonStrictClass(ok, r.Err()), jsonStrictTolerant(tok, &tr)); v.Shutdown(); w.Shutdown() }\n",
-			c.root, c.root, c.text, c.root, c.text, c.name)
+		fmt.Fprintf(&b, "\t{ var v %sBuilder; if !v.Init() { t.Fatal(\"builder\") }; var r TableReport; ok := %sFromJSON(&v, []byte(%q), &r); fmt.Printf(\"@%s|%%s\\n\", jsonStrictVerdict(ok, &r)); v.Shutdown() }\n",
+			c.root, c.root, c.text, c.name)
 	}
 	b.WriteString("}\n")
 	dir := t.TempDir()
@@ -161,7 +150,7 @@ func jsonStrictAnswers(out string) map[string]string {
 	return got
 }
 
-// jsonStrictLuau runs both Luau reads over every case under the pinned
+// jsonStrictLuau runs the Luau strict read over every case under the pinned
 // interpreter, with the emitted JSON runtime passed through patch (the
 // identity for the gate, a sabotage for its control).
 func jsonStrictLuau(t *testing.T, u *ir.Unit, patch func(string) string) map[string]string {
@@ -179,13 +168,6 @@ func jsonStrictLuau(t *testing.T, u *ir.Unit, patch func(string) string) map[str
 	b.WriteString(jsonModules(g))
 	b.WriteString(`local json = require("./schema_json")
 local inputs = require("./inputs")
-local function tolerant(ok, r)
-	return string.format("%s,%d,%d,%d,%d,%d,%s", tostring(ok), r.unknown, r.kindMismatch, r.clamped,
-		r.duplicate, r.missingRequired or 0, tostring(r.malformed))
-end
-local function fresh()
-	return { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
-end
 local cases = {
 `)
 	for _, c := range jsonStrictCases {
@@ -195,13 +177,14 @@ local cases = {
 	b.WriteString(`}
 for _, c in cases do
 	local name, root = c[1], c[2]
-	local r = fresh()
+	local r = {}
 	local v = json.FromJson(root, inputs[name], r)
-	local strict = "ok"
-	if v == nil then strict = r.reason or "nil reason" end
-	local tr = fresh()
-	local w = json.fromJsonWalk(root, inputs[name], tr)
-	print("@" .. name .. "|" .. strict .. "|" .. tolerant(w ~= nil, tr))
+	local verdict = "ok," .. tostring(r.unknown)
+	if v == nil then
+		-- a refusal names its reason (the leg's own spelling)
+		verdict = if r.reason then "refused" else "refused with no reason"
+	end
+	print("@" .. name .. "|" .. verdict)
 end
 `)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.luau"), []byte(b.String()), 0o644); err != nil {
@@ -252,7 +235,7 @@ func TestLuauJsonPlainReadIsStrict(t *testing.T) {
 	}
 	refused := 0
 	for _, c := range jsonStrictCases {
-		if !strings.HasPrefix(want[c.name], "ok|") {
+		if !strings.HasPrefix(want[c.name], "ok,") {
 			refused++
 		}
 	}
@@ -280,7 +263,7 @@ func TestLuauJsonStrictNegativeControl(t *testing.T) {
 			"plain name tolerant",
 			"  for _, k in STRICT do\n",
 			"  for _, k in ({} :: { { string } }) do\n",
-			[]string{"exact-wrong-type", "plain-clamped", "plain-kind", "plain-string-clamped"},
+			[]string{"exact-wrong-type", "plain-clamped", "plain-duplicate", "plain-kind", "plain-string-clamped"},
 		},
 		{
 			"required close removed",

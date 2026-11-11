@@ -10,8 +10,8 @@
 # caller region, so it has no LoadMeasure. The plain arm holds a VARIABLE root
 # to its region measure, so there the driver answers the FIXED-class roots,
 # which always load and are never measured; the VARIABLE-class roots run under
-# the harness's builder arm (--builder), which compares the builder's
-# completion, the report and the saved bytes. Every mutant of every root the
+# the harness's builder arm (--builder), which compares the read's verdict
+# and the saved bytes. Every mutant of every root the
 # target generates is in exactly one of the two.
 
 .PHONY: tables-squirrel-wire-fuzz
@@ -21,8 +21,8 @@ tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel 
 
 .PHONY: tables-squirrel-release-negative-control
 # THE RELEASE TIER'S CONTROL (test/conformance/squirrel/release-negative-control):
-# the load overlaid so a stopped builder reports finished, the corpus
+# the load overlaid so a body that stops early reads as finished, the corpus
 # regenerated, and the release tier's builder-arm fuzz run against it at seed 1
-# and the PR count must go red on the builder's completion.
+# and the PR count must go red on the read's verdict.
 tables-squirrel-release-negative-control: build/conformance-harness toolchain-squirrel
 	SQ="$(SQ)" sh test/conformance/squirrel/release-negative-control --seed 1 --n 2000

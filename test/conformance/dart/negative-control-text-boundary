@@ -19,10 +19,10 @@ private_driver() {
     main="$target/tree/test/conformance/dart/main.dart"
     case "$variant" in
       replacement)
-        anchor='    return utf8.decode(bytes, allowMalformed: false);'
+        anchor='    final text = utf8.decode(bytes, allowMalformed: false);'
         matches=$(grep -Fxc "$anchor" "$source" || true)
         [ "$matches" = 1 ] || { echo "decoder anchor matched $matches times, want 1" >&2; exit 1; }
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
+        sed 's/final text = utf8.decode(bytes, allowMalformed: false);/final text = utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
         ;;
       reader)
         anchor='        final v = tabledemo.rootConfigFromJson(text, r);'
@@ -30,9 +30,13 @@ private_driver() {
         [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
         sed "s/final v = tabledemo.rootConfigFromJson(text, r);/final v = tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
         ;;
-      bom-preserve)
-        # Restore the decoded leading mark solely for this private control.
-        sed 's/return utf8.decode(bytes, allowMalformed: false);/return (bytes.length >= 3 \&\& bytes[0] == 0xEF \&\& bytes[1] == 0xBB \&\& bytes[2] == 0xBF ? String.fromCharCode(0xFEFF) : "") + utf8.decode(bytes, allowMalformed: false);/' "$source" > "$main"
+      bom-drop)
+        # Hand the reader the decoder's output alone, which has already
+        # dropped one leading mark, solely for this private control.
+        anchor='    if (!marked) return text;'
+        matches=$(grep -Fxc "$anchor" "$source" || true)
+        [ "$matches" = 1 ] || { echo "mark anchor matched $matches times, want 1" >&2; exit 1; }
+        sed 's/    if (!marked) return text;/    return text;/' "$source" > "$main"
         ;;
     esac
     if cmp -s "$source" "$main"; then echo "$variant changed nothing" >&2; exit 1; fi
@@ -64,15 +68,24 @@ printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
 rc=0
 build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = replacement ]; then
-    [ "$rc" -ne 0 ] || { cat "$out/log"; echo 'replacement decoding stayed green' >&2; exit 1; }
-    grep -q 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
-    if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
-        cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
+    # The corpus's one ill-formed row (str-illformed-at-bound) sits at its
+    # string's bound, so a U+FFFD put in for the 0xFF byte is past the bound
+    # and the read refuses it anyway: that row cannot see the decoder. The
+    # ill-formed byte under the bound below can, and the strict boundary
+    # refuses it (the positive run holds that).
+    if grep '^  dart / ' "$out/log"; then
+        cat "$out/log"; echo 'replacement decoding changed a corpus row the bound already refuses' >&2; exit 1
     fi
     grep -Eq '^json-read +pass ' "$out/log"
     grep -Eq '^json-write +pass ' "$out/log"
-    grep 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
-    echo 'Dart replacement-decoder control: only invalid UTF-8 fails; read/write remain green'
+    mkdir -p "$out/short/illformed" "$out/short/answers"
+    printf '{ "version_note": "a\377b" }\n' > "$out/short/illformed/RootConfig.json"
+    printf 'json-hostile illformed tabledemo RootConfig %s/short/illformed refused\n' "$out" > "$out/short/manifest"
+    "$binary" "$out/short/manifest" json-hostile "$out/short/answers"
+    if grep -qx 'refused' "$out/short/answers/illformed"; then
+        echo 'replacement decoding left the ill-formed byte under the bound refused' >&2; exit 1
+    fi
+    echo 'Dart replacement-decoder control: an ill-formed byte under the bound reads; read/write remain green'
     exit 0
 fi
 rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
@@ -80,6 +93,14 @@ if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $rows/$rows *\$" "$out/log
     cat "$out/log"; echo 'Dart strict text boundary claims failed' >&2; exit 1
 fi
 grep -E '^json-(read|write|hostile) ' "$out/log"
+
+# An ill-formed byte under the string's bound is refused at the boundary
+# (docs/SPEC-TABLES.md §16.3); the replacement control reads it.
+mkdir -p "$out/short/illformed" "$out/short/answers"
+printf '{ "version_note": "a\377b" }\n' > "$out/short/illformed/RootConfig.json"
+printf 'json-hostile illformed tabledemo RootConfig %s/short/illformed refused\n' "$out" > "$out/short/manifest"
+"$binary" "$out/short/manifest" json-hostile "$out/short/answers"
+grep -qx 'refused' "$out/short/answers/illformed" || { echo 'an ill-formed byte under the bound was not refused' >&2; exit 1; }
 
 # The corresponding Go test checks these exact bytes on tabledemo.RootConfig.
 mkdir -p "$out/bom/plain" "$out/bom/leading-bom" "$out/bom/double-bom" "$out/bom/space-bom" "$out/bom/cut-bom" "$out/bom/answers"
@@ -95,8 +116,8 @@ done
 "$binary" "$out/bom/manifest" json-hostile "$out/bom/answers"
 for name in plain leading-bom; do grep -qx '0,0,0,0,0,false,read' "$out/bom/answers/$name"; done
 for name in double-bom space-bom cut-bom; do grep -qx 'refused' "$out/bom/answers/$name"; done
-private_driver bom-preserve
-mkdir -p "$out/bom/retained"
-"$binary" "$out/bom/manifest" json-hostile "$out/bom/retained"
-grep -qx 'refused' "$out/bom/retained/leading-bom"
-echo 'Dart BOM control: exactly one leading mark is skipped; preserving it changes the generated reader result'
+private_driver bom-drop
+mkdir -p "$out/bom/dropped"
+"$binary" "$out/bom/manifest" json-hostile "$out/bom/dropped"
+grep -qx '0,0,0,0,0,false,read' "$out/bom/dropped/double-bom" || { echo 'a driver that drops the mark before the reader left double-bom refused' >&2; exit 1; }
+echo 'Dart BOM control: exactly one leading mark is skipped, by the generated reader; a driver that also drops one reads double-bom'

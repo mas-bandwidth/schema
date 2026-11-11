@@ -29,7 +29,7 @@ tables-goose-versioning: build/fixedform-corpus/.stamp
 # emitter is overlaid so a hash no entry holds refuses `layout_newer` instead
 # of `layout_unknown`, and the control requires the gate to go red on EXACTLY
 # the rows that read such a file — every OLD-REFUSES-NEW row whose two hashes
-# differ (25: the 28 rows less the three same-hash rows, which read both ways)
+# differ (24: the 27 rows less the three same-hash rows, which read both ways)
 # and hash_unknown — and on nothing else: no NEW-READS-OLD row, no floor, no
 # probe.
 GOOSE_VERSIONING_NC := build/goose-versioning-nc
@@ -52,10 +52,10 @@ tables-goose-versioning-negative-control: build/fixedform-corpus/.stamp
 	@if grep -v -E '^TestGooseFixedVersioning(OldRefusesNew/[a-zA-Z_]+|Hash/hash_unknown)$$' $(GOOSE_VERSIONING_NC)/failed; then \
 		echo "NEGATIVE CONTROL FAILED: the sabotage reddened a row it does not touch (above)"; exit 1; fi
 	@n=$$(grep -c '^TestGooseFixedVersioningOldRefusesNew/' $(GOOSE_VERSIONING_NC)/failed); \
-	if [ "$$n" -ne 25 ] || ! grep -qx 'TestGooseFixedVersioningHash/hash_unknown' $(GOOSE_VERSIONING_NC)/failed; then \
-		echo "NEGATIVE CONTROL FAILED: $$n OLD-REFUSES-NEW rows went red, want 25, and hash_unknown with them"; \
+	if [ "$$n" -ne 24 ] || ! grep -qx 'TestGooseFixedVersioningHash/hash_unknown' $(GOOSE_VERSIONING_NC)/failed; then \
+		echo "NEGATIVE CONTROL FAILED: $$n OLD-REFUSES-NEW rows went red, want 24, and hash_unknown with them"; \
 		cat $(GOOSE_VERSIONING_NC)/failed; exit 1; fi
 	@grep -q 'owes layout_unknown, answered n=-1 layout_newer' $(GOOSE_VERSIONING_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
 		  cat $(GOOSE_VERSIONING_NC)/log; exit 1; }
-	@echo 'negative control: the wrong name for a hash outside the lineage reds exactly the 25 OLD-REFUSES-NEW rows and hash_unknown'
+	@echo 'negative control: the wrong name for a hash outside the lineage reds exactly the 24 OLD-REFUSES-NEW rows and hash_unknown'

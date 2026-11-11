@@ -1667,7 +1667,7 @@ include make/schema-dart-generated-strict-analyze-gate.mk
 # and requires the matrix red on exactly one surface: `walk` negates the text
 # reader's bool arm (dart / json-read red, json-write and wire green); `zero`
 # removes the text_holds_zero refusal (docs/SPEC-TABLES.md §16.3) and turns
-# exactly the two carried json-hostile zero rows red. Nothing tracked is written.
+# exactly the four carried json-hostile zero rows red. Nothing tracked is written.
 .PHONY: conformance-negative-control-dart-walk conformance-negative-control-dart-zero
 conformance-negative-control-dart-walk: build/conformance-harness
 	sh test/conformance/dart/negative-control walk "$(DART)"
