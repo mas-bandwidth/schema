@@ -3920,7 +3920,11 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
                             case 0xc416c97e0d3218b3ull: slot = 3; break;
                             default: r->report->unknown++; break;
                         }
-                        if ( slot < 0 ) { continue; }
+                        if ( slot < 0 )
+                        {
+                            if ( !blockdemo_table_skip_framed( elem, elem_kind, 0, 0 ) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BLOCKDEMO_TABLE_REFUSE_WIRE_DAMAGED; break; }
+                            continue;
+                        }
                         switch ( elem_kind )
                         {
                             case 6:
