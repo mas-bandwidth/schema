@@ -12,8 +12,9 @@
 # Diagnostics and allocation measurements are not cross-language verdicts.
 #
 # Every pinned vector of test/conformance/lobster/vectors replays in the
-# builder arm; the retention and message arms replay the corpus's own pinned
-# vectors (testdata/wire/tables/fuzz-vectors).
+# builder arm; the retention arm replays the corpus's own pinned vector
+# (testdata/wire/tables/fuzz-vectors) and the message arm replays the golden's
+# ill-formed twin built from it.
 #
 # THE BUDGET IS A COUNT: the enumerated pass is a fixed function of the corpus
 # (the run reports its effective live seeds, roots and enumerated mutants).
@@ -32,6 +33,14 @@ LOBSTER_WIRE_FUZZ_SEED ?= $(SEED)
 LOBSTER_WIRE_FUZZ_LEAKS := test/conformance/lobster/wirefuzz-known-leaks.txt
 LOBSTER_WIRE_FUZZ_HOST  = build/lobster-wirefuzzhost --known-leaks $(LOBSTER_WIRE_FUZZ_LEAKS)
 
+# THE PINNED ILL-FORMED-TEXT VECTOR follows the golden it is a twin of
+# (testdata/wire/tables/fuzz-vectors/INDEX.txt): store_full_message with the
+# first byte of sku's text set to 0xFF, a lead byte UTF-8 never spells, and
+# nothing else moved. The golden is re-pinned over the message closure, so
+# build the twin from it rather than replaying the previous encoding, whose
+# references resolve to other entries.
+LOBSTER_WIRE_FUZZ_ILL_TEXT := build/lobster-wire-fuzz-vectors/message_ill_formed_text.bin
+
 # the generated units move with the emitters and both runtimes, not only with
 # the manifest make/lobster.mk names
 build/conformance-lobster: $(wildcard internal/codegen/lobster/*.go internal/codegen/lobstertable/*.go \
@@ -40,6 +49,10 @@ build/conformance-lobster: $(wildcard internal/codegen/lobster/*.go internal/cod
 build/lobster-wirefuzzhost: $(wildcard test/conformance/lobster/wirefuzzhost/*.go)
 	@mkdir -p build
 	go build -o $@ ./test/conformance/lobster/wirefuzzhost
+
+$(LOBSTER_WIRE_FUZZ_ILL_TEXT): testdata/wire/tables/store_full_message.bin
+	@mkdir -p $(@D)
+	@perl -0777 -pe 's/\x63oins\.pack/\xffoins.pack/ or die "the message golden carries no sku text\n"' $< > $@
 
 # lobster-dist-present fetches the pinned toolchain (sha256 checked by
 # dist-lobster) where none resolves: the negative-control rows run on a runner
@@ -56,7 +69,7 @@ define lobster_wire_fuzz_arm_vectors
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
 		--replay testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin --unit mapdemo --root Text
 	./build/conformance-harness wire-fuzz --message --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
-		--replay testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin --unit backenddemo --root StorePurchase
+		--replay $(LOBSTER_WIRE_FUZZ_ILL_TEXT) --unit backenddemo --root StorePurchase
 	./build/conformance-harness wire-fuzz --message --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(1)' \
 		--replay testdata/wire/tables/fuzz-vectors/message_bytes_truncated.bin --unit backenddemo --root LoginRequest
 endef
@@ -70,7 +83,7 @@ define lobster_wire_fuzz_vectors
 endef
 
 .PHONY: tables-lobster-wire-fuzz tables-lobster-wire-fuzz-negative-control tables-lobster-release
-tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost
+tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
 	@mkdir -p build/wire-fuzz
 	./build/conformance-harness wire-fuzz --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster.bin
@@ -95,7 +108,7 @@ tables-lobster-release:
 # A dropped unknown counter is a positive control: diagnostics alone must
 # leave a valid read and its write-back green. Unplanted vectors are green.
 LOBSTER_WIRE_FUZZ_PLANT := build/lobster-wire-fuzz-plant
-tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost
+tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
 	@rm -rf $(LOBSTER_WIRE_FUZZ_PLANT) && mkdir -p $(LOBSTER_WIRE_FUZZ_PLANT)
 	@cp -R build/conformance-lobster $(LOBSTER_WIRE_FUZZ_PLANT)/unknown
 	@sed -i.orig 's/rep\.unknown++$$/rep.unknown += 0/' $(LOBSTER_WIRE_FUZZ_PLANT)/unknown/*/load.lobster
@@ -142,7 +155,7 @@ tables-lobster-wire-fuzz-negative-control: lobster-dist-present build/conformanc
 	@if cmp -s build/conformance-lobster/backenddemo/message.lobster $(LOBSTER_WIRE_FUZZ_PLANT)/message/backenddemo/message.lobster; then \
 		echo 'NEGATIVE CONTROL FAILED: the planted message bug did not apply'; exit 1; fi
 	@if ./build/conformance-harness wire-fuzz --message --driver '$(LOBSTER_WIRE_FUZZ_HOST) --units $(LOBSTER_WIRE_FUZZ_PLANT)/message' \
-			--replay testdata/wire/tables/fuzz-vectors/message_ill_formed_text.bin --unit backenddemo --root StorePurchase \
+			--replay $(LOBSTER_WIRE_FUZZ_ILL_TEXT) --unit backenddemo --root StorePurchase \
 			> $(LOBSTER_WIRE_FUZZ_PLANT)/message.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a batch read that admits ill-formed text left the pinned vector green'; \
 		cat $(LOBSTER_WIRE_FUZZ_PLANT)/message.log; exit 1; fi
