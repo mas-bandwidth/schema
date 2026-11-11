@@ -504,6 +504,7 @@ func normalizeSyntax(s string) string {
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
 		{"const TableFixedEntry REF p = &plan[i];", "const TableFixedEntry REF p = plan[i];"},
 		{"guard_pool = nullptr", "guard_pool"},
+		{"defaults = nullptr", "defaults"},
 		{"const TableFixedGuardLink REF l = * ( const TableFixedGuardLink * )", "const TableFixedGuardLink REF l = ( const TableFixedGuardLink * )"},
 		{"TableFixedFail( TableFixedCheck REF c, int why )", "TableFixedFail( TableFixedCheck REF c, TableMessageReason why )"},
 		{"int kids_are_variants = true;", "bool kids_are_variants = true;"},
@@ -864,6 +865,9 @@ var (
 	// because a stripped line cannot red the diff. This rule goes when the C
 	// leg refuses in its check pass too.
 	reOwedBoolByte    = regexp.MustCompile(`if\s*\(\s*s\[i\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
+	// the same count for an optional's present flag, which lands through the
+	// present-defaults entry rather than a bool entry (docs/SPEC-TABLES.md §4.4)
+	reOwedPresentByte = regexp.MustCompile(`if\s*\(\s*src\[p(?:->|\.)src\] > 1\s*\)\s*\{\s*\(\*damaged\)\+\+;\s*\}`)
 	reCDamagedParam   = regexp.MustCompile(`,\s*int32_t \* damaged\s*\)`)
 	reCDamagedArg     = regexp.MustCompile(`,\s*&damaged\s*\)`)
 	reCDamagedLocal   = regexp.MustCompile(`int32_t damaged = 0;`)
@@ -872,6 +876,7 @@ var (
 
 func rewriteCCounter(s string) string {
 	s = reOwedBoolByte.ReplaceAllString(s, "")
+	s = reOwedPresentByte.ReplaceAllString(s, "")
 	s = reCDamagedParam.ReplaceAllString(s, " )")
 	s = reCDamagedArg.ReplaceAllString(s, " )")
 	s = reCDamagedLocal.ReplaceAllString(s, "")

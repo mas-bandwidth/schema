@@ -340,7 +340,7 @@ func TestCDamagedRefusalStillEmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []*regexp.Regexp{reOwedBoolByte, reCDamagedRefusal} {
+	for _, want := range []*regexp.Regexp{reOwedBoolByte, reOwedPresentByte, reCDamagedRefusal} {
 		if !want.MatchString(cPlain) {
 			t.Fatalf("the real C artifact no longer carries %q: the wire_damaged rule the twin map strips is gone from the C leg", want)
 		}
