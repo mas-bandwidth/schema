@@ -9965,7 +9965,7 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_load_messages(blockdemo_rend
 }
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
+    schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->cameras_count );
     for ( i = 0; i < value->cameras_count; i++ )
@@ -10007,7 +10007,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cameras_( blockdemo_
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->ships_count );
     for ( i = 0; i < value->ships_count; i++ )
@@ -10049,7 +10049,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_ships_( blockdemo_ta
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
+    schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->turrets_count );
     for ( i = 0; i < value->turrets_count; i++ )
@@ -10091,7 +10091,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_turrets_( blockdemo_
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->missiles_count );
     for ( i = 0; i < value->missiles_count; i++ )
@@ -10133,7 +10133,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_missiles_( blockdemo
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
+    schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->dynamic_props_count );
     for ( i = 0; i < value->dynamic_props_count; i++ )
@@ -10175,7 +10175,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_dynamic_props_( bloc
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
+    schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->static_props_count );
     for ( i = 0; i < value->static_props_count; i++ )
@@ -10217,7 +10217,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_static_props_( block
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
+    schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->cosmetic_props_count );
     for ( i = 0; i < value->cosmetic_props_count; i++ )
@@ -10259,7 +10259,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_cosmetic_props_( blo
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
+    schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->lasers_count );
     for ( i = 0; i < value->lasers_count; i++ )
@@ -10301,7 +10301,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_lasers_( blockdemo_t
 
 static SCHEMA_UNUSED int schema_blockdemo_render_frame_wire_explosions_( blockdemo_table_writer_t * w, const blockdemo_render_frame_t * value, int64_t * element_sizes )
 {
-    if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
+    schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
     int32_t i;
     blockdemo_table_writer_put8( w, 13 ); blockdemo_table_writer_leb( w, (uint64_t) value->explosions_count );
     for ( i = 0; i < value->explosions_count; i++ )
@@ -10352,7 +10352,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* cameras */
-        if ( value->cameras_count < 0 || value->cameras_count > 1 ) { return 0; }
+        schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
         if ( value->cameras_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 4, 0x0f9222d2ba7aa2a7ull, 14 );
@@ -10373,7 +10373,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* ships */
-        if ( value->ships_count < 0 || value->ships_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
         if ( value->ships_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 12, 0x294a5c4913e1ad44ull, 14 );
@@ -10394,7 +10394,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* turrets */
-        if ( value->turrets_count < 0 || value->turrets_count > 1024 ) { return 0; }
+        schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
         if ( value->turrets_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 38, 0x84f8260bc283608cull, 14 );
@@ -10415,7 +10415,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* missiles */
-        if ( value->missiles_count < 0 || value->missiles_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
         if ( value->missiles_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 9, 0x1c3027194b1ba4d0ull, 14 );
@@ -10436,7 +10436,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* dynamic_props */
-        if ( value->dynamic_props_count < 0 || value->dynamic_props_count > 4096 ) { return 0; }
+        schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
         if ( value->dynamic_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 19, 0x43125398a9903d27ull, 14 );
@@ -10457,7 +10457,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* static_props */
-        if ( value->static_props_count < 0 || value->static_props_count > 20000 ) { return 0; }
+        schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
         if ( value->static_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 62, 0xc1f8d7edff7fcfd2ull, 14 );
@@ -10478,7 +10478,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* cosmetic_props */
-        if ( value->cosmetic_props_count < 0 || value->cosmetic_props_count > 8192 ) { return 0; }
+        schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
         if ( value->cosmetic_props_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 14, 0x33408e39f5f480ffull, 14 );
@@ -10499,7 +10499,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* lasers */
-        if ( value->lasers_count < 0 || value->lasers_count > 32000 ) { return 0; }
+        schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
         if ( value->lasers_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 74, 0xd982b77b3e92d16dull, 14 );
@@ -10520,7 +10520,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
         }
     }
     { /* explosions */
-        if ( value->explosions_count < 0 || value->explosions_count > 32000 ) { return 0; }
+        schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
         if ( value->explosions_count > 0 )
         {
             blockdemo_table_writer_header_at( w, 39, 0x876a8c1a85806a69ull, 14 );
@@ -11047,10 +11047,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* cameras */
- if(value->cameras_count<0 || value->cameras_count>1) return 0;
+ schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
  if(value->cameras_count>0) {
   blockdemo_table_bit_put(w,32,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->cameras_count<0 || value->cameras_count>1) return 0;
+  schema_assert( 0 <= value->cameras_count && value->cameras_count <= 1 );
   blockdemo_table_bit_put(w,(uint64_t)value->cameras_count-0,1);
   { int32_t i;
   for(i=0;i<value->cameras_count;i++) {
@@ -11059,10 +11059,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* ships */
- if(value->ships_count<0 || value->ships_count>4096) return 0;
+ schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
  if(value->ships_count>0) {
   blockdemo_table_bit_put(w,33,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->ships_count<0 || value->ships_count>4096) return 0;
+  schema_assert( 0 <= value->ships_count && value->ships_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->ships_count-0,13);
   { int32_t i;
   for(i=0;i<value->ships_count;i++) {
@@ -11071,10 +11071,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* turrets */
- if(value->turrets_count<0 || value->turrets_count>1024) return 0;
+ schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
  if(value->turrets_count>0) {
   blockdemo_table_bit_put(w,34,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->turrets_count<0 || value->turrets_count>1024) return 0;
+  schema_assert( 0 <= value->turrets_count && value->turrets_count <= 1024 );
   blockdemo_table_bit_put(w,(uint64_t)value->turrets_count-0,11);
   { int32_t i;
   for(i=0;i<value->turrets_count;i++) {
@@ -11083,10 +11083,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* missiles */
- if(value->missiles_count<0 || value->missiles_count>4096) return 0;
+ schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
  if(value->missiles_count>0) {
   blockdemo_table_bit_put(w,35,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->missiles_count<0 || value->missiles_count>4096) return 0;
+  schema_assert( 0 <= value->missiles_count && value->missiles_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->missiles_count-0,13);
   { int32_t i;
   for(i=0;i<value->missiles_count;i++) {
@@ -11095,10 +11095,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* dynamic_props */
- if(value->dynamic_props_count<0 || value->dynamic_props_count>4096) return 0;
+ schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
  if(value->dynamic_props_count>0) {
   blockdemo_table_bit_put(w,36,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->dynamic_props_count<0 || value->dynamic_props_count>4096) return 0;
+  schema_assert( 0 <= value->dynamic_props_count && value->dynamic_props_count <= 4096 );
   blockdemo_table_bit_put(w,(uint64_t)value->dynamic_props_count-0,13);
   { int32_t i;
   for(i=0;i<value->dynamic_props_count;i++) {
@@ -11107,10 +11107,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* static_props */
- if(value->static_props_count<0 || value->static_props_count>20000) return 0;
+ schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
  if(value->static_props_count>0) {
   blockdemo_table_bit_put(w,37,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->static_props_count<0 || value->static_props_count>20000) return 0;
+  schema_assert( 0 <= value->static_props_count && value->static_props_count <= 20000 );
   blockdemo_table_bit_put(w,(uint64_t)value->static_props_count-0,15);
   { int32_t i;
   for(i=0;i<value->static_props_count;i++) {
@@ -11119,10 +11119,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* cosmetic_props */
- if(value->cosmetic_props_count<0 || value->cosmetic_props_count>8192) return 0;
+ schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
  if(value->cosmetic_props_count>0) {
   blockdemo_table_bit_put(w,38,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->cosmetic_props_count<0 || value->cosmetic_props_count>8192) return 0;
+  schema_assert( 0 <= value->cosmetic_props_count && value->cosmetic_props_count <= 8192 );
   blockdemo_table_bit_put(w,(uint64_t)value->cosmetic_props_count-0,14);
   { int32_t i;
   for(i=0;i<value->cosmetic_props_count;i++) {
@@ -11131,10 +11131,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* lasers */
- if(value->lasers_count<0 || value->lasers_count>32000) return 0;
+ schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
  if(value->lasers_count>0) {
   blockdemo_table_bit_put(w,39,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->lasers_count<0 || value->lasers_count>32000) return 0;
+  schema_assert( 0 <= value->lasers_count && value->lasers_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->lasers_count-0,15);
   { int32_t i;
   for(i=0;i<value->lasers_count;i++) {
@@ -11143,10 +11143,10 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
  }
  }
  { /* explosions */
- if(value->explosions_count<0 || value->explosions_count>32000) return 0;
+ schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
  if(value->explosions_count>0) {
   blockdemo_table_bit_put(w,40,BLOCKDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->explosions_count<0 || value->explosions_count>32000) return 0;
+  schema_assert( 0 <= value->explosions_count && value->explosions_count <= 32000 );
   blockdemo_table_bit_put(w,(uint64_t)value->explosions_count-0,15);
   { int32_t i;
   for(i=0;i<value->explosions_count;i++) {

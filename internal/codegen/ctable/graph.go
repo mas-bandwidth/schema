@@ -791,7 +791,7 @@ func (g *tableGen) emitGraphEdge(f *ir.Field, value, ind string, step *int) {
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = value + "_count"
-			g.pf("%sif (%s<0 || %s>%d) { return 0; }\n", ind, count, count, f.ArrayBound)
+			g.writeStorageBound(count, f.ArrayBound, ind)
 		}
 		g.pf("%s{ int32_t %s; for (%s=0; %s<%s; %s++) {\n", ind, index, index, index, count, index)
 		elem := *f

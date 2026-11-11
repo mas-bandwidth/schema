@@ -5398,7 +5398,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
 static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table_message_reader_t *,tabledemo_pack_config_t *);
 static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign_( tabledemo_table_writer_t * w, const tabledemo_gunner_settings_t * value )
 {
-    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
+    schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -5422,7 +5422,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body( tabledemo_table_wr
         }
     }
     { /* callsign */
-        if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
+        schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
         if ( value->callsign_length != 0 )
         {
             tabledemo_table_writer_header_at( w, 53, 0x5bc44627b9848818ull, 12 );
@@ -5579,10 +5579,10 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_message_body(tabledemo_t
  }
  }
  { /* callsign */
- if(value->callsign_length<0 || value->callsign_length>24) return 0;
+ schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
  if(value->callsign_length != 0) {
   tabledemo_table_bit_put(w,13,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->callsign_length<0 || value->callsign_length>24) return 0;
+  schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
   tabledemo_table_bit_put(w,(uint64_t)value->callsign_length,5);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->callsign,value->callsign_length);
@@ -5735,14 +5735,14 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_messages(tabledemo_gunne
 }
 static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name_( tabledemo_table_writer_t * w, const tabledemo_ship_entry_t * value )
 {
-    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; }
+    schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints_( tabledemo_table_writer_t * w, const tabledemo_ship_entry_t * value )
 {
-    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; }
+    schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 4 ); tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
     for ( i = 0; i < value->hardpoints_count; i++ )
@@ -5756,7 +5756,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
 {
     (void) value;
     { /* display_name */
-        if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0; }
+        schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
         if ( value->display_name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -5795,7 +5795,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
         }
     }
     { /* hardpoints */
-        if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; }
+        schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
         if ( value->hardpoints_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6045,13 +6045,13 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
 {
  (void)value;
  { /* display_name */
- if(value->display_name_length<0 || value->display_name_length>32) return 0;
+ schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
  if(value->display_name_length != 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,89,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->display_name_length<0 || value->display_name_length>32) return 0;
+  schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
   tabledemo_table_bit_put(w,(uint64_t)value->display_name_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->display_name,value->display_name_length);
@@ -6080,13 +6080,13 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_message_body(tabledemo_table_
  }
  }
  { /* hardpoints */
- if(value->hardpoints_count<0 || value->hardpoints_count>4) return 0;
+ schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
  if(value->hardpoints_count>0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,90,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->hardpoints_count<0 || value->hardpoints_count>4) return 0;
+  schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->hardpoints_count-0,3);
   { int32_t i;
   for(i=0;i<value->hardpoints_count;i++) {
@@ -6304,7 +6304,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_messages(tabledemo_ship_entry
 }
 static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note_( tabledemo_table_writer_t * w, const tabledemo_global_settings_t * value )
 {
-    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; }
+    schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }
@@ -6348,7 +6348,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
         }
     }
     { /* build_note */
-        if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0; }
+        schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
         if ( value->build_note_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
@@ -6636,13 +6636,13 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
  }
  }
  { /* build_note */
- if(value->build_note_length<0 || value->build_note_length>48) return 0;
+ schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
  if(value->build_note_length != 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   tabledemo_table_bit_put(w,9,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->build_note_length<0 || value->build_note_length>48) return 0;
+  schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
   tabledemo_table_bit_put(w,(uint64_t)value->build_note_length,6);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->build_note,value->build_note_length);
@@ -6659,7 +6659,6 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_message_body(tabledemo_t
   return 1;
   }
   tabledemo_table_bit_put(w,10,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(3<0 || 3>3) return 0;
   tabledemo_table_bit_put(w,(uint64_t)3-3,0);
   { int32_t i;
   for(i=0;i<3;i++) {
@@ -6935,7 +6934,7 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_thresholds_( tabledem
 
 static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_reserves_( tabledemo_table_writer_t * w, const tabledemo_pack_config_t * value, int64_t * element_sizes )
 {
-    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
+    schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 ); tabledemo_table_writer_leb( w, (uint64_t) value->reserves_count );
     for ( i = 0; i < value->reserves_count; i++ )
@@ -7061,7 +7060,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
         }
     }
     { /* reserves */
-        if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
+        schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
         if ( value->reserves_count > 0 )
         {
             tabledemo_table_writer_header_at( w, 64, 0x77707fccd201c228ull, 14 );
@@ -7473,10 +7472,10 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_message_body(tabledemo_table
  }
  }
  { /* reserves */
- if(value->reserves_count<0 || value->reserves_count>3) return 0;
+ schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
  if(value->reserves_count>0) {
   tabledemo_table_bit_put(w,31,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
-  if(value->reserves_count<0 || value->reserves_count>3) return 0;
+  schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
   tabledemo_table_bit_put(w,(uint64_t)value->reserves_count-0,2);
   { int32_t i;
   for(i=0;i<value->reserves_count;i++) {
@@ -9312,8 +9311,7 @@ static SCHEMA_UNUSED int schema_tabledemo_gunner_settings_wire_callsign__retain(
 {
     (void)retention;
 
-    if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0;
-    }
+    schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
     tabledemo_table_writer_raw( w, value->callsign, value->callsign_length );
     return !w->overflow;
 }
@@ -9346,8 +9344,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body_retain( tabledemo_t
     }
     { /* callsign */
     retention=tabledemo_table_retain_step(body_keep,2,0);
-        if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0;
-        }
+        schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
         if ( value->callsign_length != 0 )
         {
             tabledemo_table_retain_writer_id( w, 0x5bc44627b9848818ull , retention);
@@ -9507,8 +9504,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name__retain( 
 {
     (void)retention;
 
-    if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0;
-    }
+    schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
     tabledemo_table_writer_raw( w, value->display_name, value->display_name_length );
     return !w->overflow;
 }
@@ -9517,8 +9513,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_hardpoints__retain( ta
 {
     (void)retention;
 
-    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0;
-    }
+    schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
     int32_t i;
     tabledemo_table_writer_put8( w, 4 );
     tabledemo_table_writer_leb( w, (uint64_t) value->hardpoints_count );
@@ -9537,8 +9532,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body_retain( tabledemo_table_
     tabledemo_table_retain_walk_t body_keep=retention;
     { /* display_name */
     retention=tabledemo_table_retain_step(body_keep,0,0);
-        if ( value->display_name_length < 0 || value->display_name_length > 32 ) { return 0;
-        }
+        schema_assert( 0 <= value->display_name_length && value->display_name_length <= 32 );
         if ( value->display_name_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -9595,8 +9589,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body_retain( tabledemo_table_
     }
     { /* hardpoints */
     retention=tabledemo_table_retain_step(body_keep,3,0);
-        if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0;
-        }
+        schema_assert( 0 <= value->hardpoints_count && value->hardpoints_count <= 4 );
         if ( value->hardpoints_count > 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -9917,8 +9910,7 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note__retai
 {
     (void)retention;
 
-    if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0;
-    }
+    schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
     tabledemo_table_writer_raw( w, value->build_note, value->build_note_length );
     return !w->overflow;
 }
@@ -9983,8 +9975,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body_retain( tabledemo_t
     }
     { /* build_note */
     retention=tabledemo_table_retain_step(body_keep,2,0);
-        if ( value->build_note_length < 0 || value->build_note_length > 48 ) { return 0;
-        }
+        schema_assert( 0 <= value->build_note_length && value->build_note_length <= 48 );
         if ( value->build_note_length != 0 )
         {
             if ( w->check_default ) { w->offset = 2;
@@ -10432,8 +10423,7 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_wire_reserves__retain( tab
 {
     (void)retention;
 
-    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0;
-    }
+    schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
     int32_t i;
     tabledemo_table_writer_put8( w, 13 );
     tabledemo_table_writer_leb( w, (uint64_t) value->reserves_count );
@@ -10582,8 +10572,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body_retain( tabledemo_table
     }
     { /* reserves */
     retention=tabledemo_table_retain_step(body_keep,4,0);
-        if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0;
-        }
+        schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
         if ( value->reserves_count > 0 )
         {
             tabledemo_table_retain_writer_id( w, 0x77707fccd201c228ull , retention);
