@@ -2091,6 +2091,14 @@ class TableVocabulary {
   bool announced = false;
   bool attempted = false;
 
+  /// THE BODY'S SEEN SLOTS (docs/SPEC-TABLES.md §3.3, §4): one bitset over
+  /// this vocabulary's announced entries per body nesting level, sized ONCE
+  /// from the announced entry count and cleared by the body that uses it. A
+  /// field or a keyed slot met twice in one body is damage, and a nested body
+  /// keeps its own level so its fields do not shadow its host's.
+  Uint8List seen = Uint8List(0);
+  static const int seenBodyLevels = 129;
+
   /// "THE ONE-ANNOUNCEMENT WORK BUDGET" (§3.3): the caller declares the bound
   /// the payload length and the entry count are held to.
   int maxEntries;
@@ -2530,6 +2538,8 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   }
   vocabulary.count = seen;
   vocabulary.refBits = seen == 0 ? 1 : tableMessageBits(seen);
+  final stride = seen == 0 ? 1 : (seen + 7) >> 3;
+  vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
   vocabulary.announced = true;
   return true;
 }
@@ -2853,6 +2863,48 @@ class TableMessageReader {
   TableBitReader bits = TableBitReader(Uint8List(0));
   TableVocabulary vocabulary = TableVocabulary(entries: <TableMessageEntry>[]);
   TableReport report = TableReport();
+
+  /// THE SEEN SLOTS FOR THE BODY AT 'seenDepth': a bit per announced entry
+  /// (docs/SPEC-TABLES.md §3.3, §4). The buffer is allocated once from the
+  /// announced vocabulary; a body clears its own level only, so a host body's
+  /// fields survive a nested body's read.
+  Uint8List seen = Uint8List(0);
+  int seenStride = 0;
+  int seenDepth = 0;
+
+  void seenReset() {
+    if (seenStride == 0) return;
+    final at = seenDepth * seenStride;
+    seen.fillRange(at, at + seenStride, 0);
+  }
+
+  bool seenHas(int ref) {
+    if (seenStride == 0) return false;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
+  }
+
+  /// A body names a RESOLVED ID at most once, even where the announcement
+  /// carries that id at two shapes (docs/SPEC-TABLES.md §3.3, §4): the seen
+  /// bits at this level are scanned, so the check allocates nothing.
+  bool seenHasId(int id) {
+    if (seenStride == 0) return false;
+    final at = seenDepth * seenStride * 8;
+    for (var k = 0; k < vocabulary.count; k++) {
+      final bit = at + k;
+      if (((seen[bit >> 3] >> (bit & 7)) & 1) != 0 &&
+          vocabulary.entries[k].id == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void seenAdd(int ref) {
+    if (seenStride == 0) return;
+    final bit = seenDepth * seenStride * 8 + ref - 1;
+    seen[bit >> 3] |= 1 << (bit & 7);
+  }
 }
 
 /// Opens one form-2 batch: the form byte first, then the count, then the
@@ -2872,6 +2924,13 @@ int tableMessageBatchOpen(
   r.bits = TableBitReader(Uint8List.sublistView(data, 2));
   r.vocabulary = vocabulary;
   r.report = report;
+  final stride = vocabulary.count == 0 ? 1 : (vocabulary.count + 7) >> 3;
+  if (vocabulary.seen.length < stride * TableVocabulary.seenBodyLevels) {
+    vocabulary.seen = Uint8List(stride * TableVocabulary.seenBodyLevels);
+  }
+  r.seen = vocabulary.seen;
+  r.seenStride = stride;
+  r.seenDepth = 0;
   return data[1] + 1;
 }
 
@@ -3131,10 +3190,18 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
 
 bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
   initMixedEntity(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 31:
         {
@@ -3287,9 +3354,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -3318,10 +3383,18 @@ bool mixedStatSaveMessageBody(TableBitWriter w, MixedStat value) {
 
 bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
   initMixedStat(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 51:
         {
@@ -3348,9 +3421,7 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -3387,10 +3458,18 @@ bool mixedHitEventSaveMessageBody(TableBitWriter w, MixedHitEvent value) {
 
 bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
   initMixedHitEvent(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 45:
         {
@@ -3434,9 +3513,7 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -3465,10 +3542,18 @@ bool mixedChatEventSaveMessageBody(TableBitWriter w, MixedChatEvent value) {
 
 bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
   initMixedChatEvent(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 29:
         {
@@ -3495,9 +3580,7 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -3529,10 +3612,18 @@ bool mixedPickupEventLoadMessageBody(
   MixedPickupEvent value,
 ) {
   initMixedPickupEvent(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 49:
         {
@@ -3559,9 +3650,7 @@ bool mixedPickupEventLoadMessageBody(
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -3794,10 +3883,18 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
 
 bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
   initBenchMixed(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 1:
         {
@@ -3888,10 +3985,20 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (kept != value.entitiesCount) { r.report.Refuse('count_over_bound'); return false; }
             for (var i = 0; i < value.entitiesCount; i++) {
               if (i < kept) {
-                if (!mixedEntityLoadMessageBody(r, value.entities[i])) return false;
+                {
+                  r.seenDepth++;
+                  final ok = mixedEntityLoadMessageBody(r, value.entities[i]);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
               } else {
                     final t = MixedEntity();
-                  if (!mixedEntityLoadMessageBody(r, t)) return false;
+                  {
+                    r.seenDepth++;
+                    final ok = mixedEntityLoadMessageBody(r, t);
+                    r.seenDepth--;
+                    if (!ok) return false;
+                  }
               }
             }
             value.entitiesCount = kept;
@@ -3908,10 +4015,20 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (kept != value.statsCount) { r.report.Refuse('count_over_bound'); return false; }
             for (var i = 0; i < value.statsCount; i++) {
               if (i < kept) {
-                if (!mixedStatLoadMessageBody(r, value.stats[i])) return false;
+                {
+                  r.seenDepth++;
+                  final ok = mixedStatLoadMessageBody(r, value.stats[i]);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
               } else {
                     final t = MixedStat();
-                  if (!mixedStatLoadMessageBody(r, t)) return false;
+                  {
+                    r.seenDepth++;
+                    final ok = mixedStatLoadMessageBody(r, t);
+                    r.seenDepth--;
+                    if (!ok) return false;
+                  }
               }
             }
             value.statsCount = kept;
@@ -3925,15 +4042,30 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             switch (ref) {
               case 68:
                 value.gameEvent.type = MixedEventType.hit;
-                if (!mixedHitEventLoadMessageBody(r, value.gameEvent.hit)) return false;
+                {
+                  r.seenDepth++;
+                  final ok = mixedHitEventLoadMessageBody(r, value.gameEvent.hit);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
                 break;
               case 69:
                 value.gameEvent.type = MixedEventType.chat;
-                if (!mixedChatEventLoadMessageBody(r, value.gameEvent.chat)) return false;
+                {
+                  r.seenDepth++;
+                  final ok = mixedChatEventLoadMessageBody(r, value.gameEvent.chat);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
                 break;
               case 70:
                 value.gameEvent.type = MixedEventType.pickup;
-                if (!mixedPickupEventLoadMessageBody(r, value.gameEvent.pickup)) return false;
+                {
+                  r.seenDepth++;
+                  final ok = mixedPickupEventLoadMessageBody(r, value.gameEvent.pickup);
+                  r.seenDepth--;
+                  if (!ok) return false;
+                }
                 break;
               default:
                 if (ref > r.vocabulary.count || tableMessageReservedId(r.vocabulary.entries[ref - 1].id) || r.vocabulary.entries[ref - 1].kind == 0) {
@@ -4128,9 +4260,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
@@ -4157,13 +4287,26 @@ bool fixedTableSaveMessageBody(TableBitWriter w, FixedTable value) {
 
 bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
   initFixedTable(value);
+  r.seenReset();
   while (true) {
     final ref = r.bits.get(tableMessageRefBits);
     if (r.bits.failed) { r.report.Damage(); return false; }
     if (ref == 0) return true;
+    if (r.vocabulary.announced) {
+      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
+      final named = r.vocabulary.entries[ref - 1].id;
+      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
+      r.seenAdd(ref);
+    }
     switch (ref) {
       case 28:
-        if (!benchMixedLoadMessageBody(r, value.value)) return false;
+        {
+          r.seenDepth++;
+          final ok = benchMixedLoadMessageBody(r, value.value);
+          r.seenDepth--;
+          if (!ok) return false;
+        }
         break;
       default:
         if (ref > r.vocabulary.count) {
@@ -4171,9 +4314,7 @@ bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
           return false;
         }
         final named = r.vocabulary.entries[ref - 1].id;
-        if (named == TableVocabulary.buildVersionWireId ||
-            named == TableVocabulary.vocabularyWireId ||
-            named == TableVocabulary.nodeWireId) {
+        if (tableMessageReservedId(named)) {
           r.report.Damage();
           return false;
         }
