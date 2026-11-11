@@ -75,7 +75,7 @@ fixed table Config
 // from tableSrc on purpose — the zero-cost gate reads tableSrc and a keyed
 // array legitimately emits a C++ class template, which that gate greps for.
 const runtimeSrc = tableSrc + `
-fixed table Keyed
+fixed table KeyedSlots
 {
     slots [Kind]int32
     extra ?Point

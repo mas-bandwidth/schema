@@ -45,7 +45,7 @@ table Guarded { active bool
 enum Key { A, B }
 flags Flag { A, B }
 union Choice { n int32 }
-table Keyed { values [Key]int32 | required }
+table KeyedSlots { values [Key]int32 | required }
 table Shapes {
  enabled bool | required
  integer int32 | required
@@ -96,7 +96,7 @@ table Shapes {
 		{"Mapping", `{"items":{"1":{}}}`, "id", 0}, {"Graph", `{"child":{}}`, "id", 0},
 		{"Graph", `{"child":{"id":0}}`, "", 0}, {"Guarded", `{}`, "", 0},
 		{"Guarded", `{"active":true}`, "req", 0}, {"Guarded", `{"req":0,"active":true}`, "", 0},
-		{"Keyed", `{}`, "values", 0}, {"Keyed", `{"values":{}}`, "", 0},
+		{"KeyedSlots", `{}`, "values", 0}, {"KeyedSlots", `{"values":{}}`, "", 0},
 		{"Exact", `{}`, "ver", 0}, {"Exact", `{"ver":7}`, "", 0},
 	} {
 		fmt.Fprintf(&b, `{final r=w.TableTextReport();var reason='';try{w.%sFromJson(%q,r);}on FormatException catch(e){reason=e.message.toString();}
@@ -109,8 +109,8 @@ check(reason==%q,%q);}
 		}(), tc.root+" "+tc.input)
 	}
 	m := tabletext.NewModel(u)
-	pins := requiredDartGoPins(t, u, []string{"RequiredValue", "RequiredDefault", "RequiredArray", "RequiredEmpty", "Keyed", "Shapes", "Many"})
-	for _, root := range []string{"RequiredValue", "RequiredDefault", "RequiredArray", "RequiredEmpty", "Keyed", "Shapes", "Many"} {
+	pins := requiredDartGoPins(t, u, []string{"RequiredValue", "RequiredDefault", "RequiredArray", "RequiredEmpty", "KeyedSlots", "Shapes", "Many"})
+	for _, root := range []string{"RequiredValue", "RequiredDefault", "RequiredArray", "RequiredEmpty", "KeyedSlots", "Shapes", "Many"} {
 		value := m.New(u.Tables[root])
 		wire, err := tablewire.Encode(m, value)
 		if err != nil {

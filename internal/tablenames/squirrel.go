@@ -12,7 +12,7 @@ import "sort"
 const Squirrel Backend = 1 << 12 // 1<<9 is Lua's and 1<<10 is Luau's, on their own streams; 1<<11 is moo's
 
 func init() {
-	define(Squirrel,
+	names := []Name{
 		Name{Name: "noteStringOrigin", What: "decoded string identity bookkeeping", Scoped: true},
 		Name{Name: "stringIdentity", What: "decoded string identity bookkeeping", Scoped: true},
 		Name{Name: "ReadStrict", What: "the strict read over the load walk, naming the refusal and the first field that moved its counter (docs/SPEC-TABLES.md §6.5, §11)", Scoped: true},
@@ -38,7 +38,24 @@ func init() {
 		Name{Name: "LoadRetain", What: "the retain-unknown load (§6.6)", Scoped: true},
 		Name{Name: "MeasureRetain", What: "the retain-unknown measure (§6.6)", Scoped: true},
 		Name{Name: "SaveRetain", What: "the retain-unknown save (§6.6)", Scoped: true},
-	)
+	}
+	// THE UNIT'S TABLE MODULE IS THE ONE MODULE TABLE A DECLARATION IS WRITTEN
+	// ONTO, so its own keys claim a name, unlike a runtime file's export,
+	// which lives on its own module table. Registering them here makes the
+	// checker refuse a declaration named for one for EVERY target
+	// (docs/SPEC-TABLES.md §11); an entry above that already describes the
+	// key keeps its description and loses only its Scoped mark. The Squirrel
+	// emitter's refusal of a key assigned twice stays as its own backstop.
+	for _, key := range squirrelUnitModuleKeys {
+		if key == "UnitView" {
+			// The checker already claims UnitView in every unit as the
+			// generated unit registry (docs/SPEC-TABLES.md §8.3); a second
+			// claim on the same symbol would collide with itself.
+			continue
+		}
+		names = append(names, Name{Name: key, What: "a key of the unit's table module (<Package>Tables.nut) that a declaration of that name would replace (docs/SPEC-TABLES.md §11)"})
+	}
+	define(Squirrel, names...)
 }
 
 // squirrelDeclarationSuffixes are the names the Squirrel table emitter writes
@@ -57,25 +74,31 @@ func SquirrelDeclarationSuffixes() []string {
 	return append([]string(nil), squirrelDeclarationSuffixes...)
 }
 
+// squirrelUnitModuleKeys is every key of the unit's table module
+// (<Package>Tables.nut) that no declaration spells. A declaration is written
+// onto the SAME module table, so a declaration named for one of these would
+// replace it; init registers each as a claimed name so the checker refuses it
+// for every target (docs/SPEC-TABLES.md §11).
+var squirrelUnitModuleKeys = []string{
+	"Announce", "AnnounceMeasure", "AnnounceRead", "BuildVersionBytes", "Cook", "CookMeasure", "CookReason",
+	"Descriptors", "Keyed", "Package", "Roots", "TableBlockAlign", "TableBlockByteOrderBytes",
+	"TableBlockMagicBytes", "TableCookByteOrderBytes", "TableCookHeaderBytes", "TableCookMagicBytes",
+	"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageBatchMax",
+	"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRegionAlign", "TableRetainKnown",
+	"TableTagsNone", "TableUnitView", "UnitView", "blockBegin", "blockBytes", "blockCreate",
+	"blockDestroy", "blockForms", "blockKeyed", "blockOpen", "blockRecords", "blockRows", "blockSet",
+	"cookForms", "cookOpen", "cookWriteUnions",
+}
+
 // squirrelModuleKeys is every name the Squirrel table backend defines that a
 // declaration does not spell: the unit's own keys on its table module
-// (<Package>Tables.nut), and every runtime file's exports. It is NOT the
-// shared registry: a runtime export lives on its own module table and claims
-// nothing, and a unit key is held by the emitter's refusal of a key assigned
-// twice. compiler's TestSquirrelTableRuntimeNamesAreClaimed holds this list
-// to the emitted text both ways, and TestSquirrelRuntimeNameScanGoesRed is its
-// control.
+// (<Package>Tables.nut), and every runtime file's exports. The unit's keys are
+// claimed in the shared registry (squirrelUnitModuleKeys, init); a runtime
+// export lives on its own module table and claims nothing. compiler's
+// TestSquirrelTableRuntimeNamesAreClaimed holds this list to the emitted text
+// both ways, and TestSquirrelRuntimeNameScanGoesRed is its control.
 var squirrelModuleKeys = map[string][]string{
-	"the unit's table module (<Package>Tables.nut)": {
-		"Announce", "AnnounceMeasure", "AnnounceRead", "BuildVersionBytes", "Cook", "CookMeasure", "CookReason",
-		"Descriptors", "Keyed", "Package", "Roots", "TableBlockAlign", "TableBlockByteOrderBytes",
-		"TableBlockMagicBytes", "TableCookByteOrderBytes", "TableCookHeaderBytes", "TableCookMagicBytes",
-		"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageBatchMax",
-		"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRegionAlign", "TableRetainKnown",
-		"TableTagsNone", "TableUnitView", "UnitView", "blockBegin", "blockBytes", "blockCreate",
-		"blockDestroy", "blockForms", "blockKeyed", "blockOpen", "blockRecords", "blockRows", "blockSet",
-		"cookForms", "cookOpen", "cookWriteUnions",
-	},
+	"the unit's table module (<Package>Tables.nut)": squirrelUnitModuleKeys,
 	"the runtime files (schema_table_*.nut), each its own module table": {
 		"noteStringOrigin", "stringIdentity",
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",

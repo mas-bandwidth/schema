@@ -228,7 +228,7 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 		t.Fatal(err)
 	}
 	declared := map[string]bool{}
-	for _, name := range []string{"Point", "Kind", "Probe", "Config", "Keyed", "VariableNameProbe"} {
+	for _, name := range []string{"Point", "Kind", "Probe", "Config", "KeyedSlots", "VariableNameProbe"} {
 		declared[name] = true
 	}
 	emitted := map[string]bool{}

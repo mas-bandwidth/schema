@@ -43,7 +43,7 @@ table Guarded {
  if active { req int32 | required }
 }
 enum Key { A, B }
-table Keyed { values [Key]int32 | required }
+table KeyedSlots { values [Key]int32 | required }
 table EmptyFields {
  text string(8) | required
  values [..4]int32 | required
@@ -158,19 +158,19 @@ table EmptyFields {
   var bad = new TableReport();
   if (builder.Load(badGraph, bad) || bad.MissingRequired != 1 || bad.Reason != "missing_required: id" || bad.Malformed) throw new Exception("required pointer builder accepted absence");
  }
- CheckJSON(Schema.KeyedTableType(), """{}""", "values");
- CheckJSON(Schema.KeyedTableType(), """{"values":{}}""", null);
- var keyed = new Keyed(); byte[] keyedWire = new byte[Schema.KeyedMeasure(keyed)];
- Schema.KeyedSave(keyed, keyedWire);
- byte[] expectedKeyed = Convert.FromHexString("01011002040000fb674d1acf7b27210100000000000000");
+ CheckJSON(Schema.KeyedSlotsTableType(), """{}""", "values");
+ CheckJSON(Schema.KeyedSlotsTableType(), """{"values":{}}""", null);
+ var keyedSlots = new KeyedSlots(); byte[] keyedSlotsWire = new byte[Schema.KeyedSlotsMeasure(keyedSlots)];
+ Schema.KeyedSlotsSave(keyedSlots, keyedSlotsWire);
+ byte[] expectedKeyedSlots = Convert.FromHexString("01011002040000fb674d1acf7b27210100000000000000");
 
- CheckWire(Schema.KeyedTableType(), keyedWire, null);
+ CheckWire(Schema.KeyedSlotsTableType(), keyedSlotsWire, null);
  CheckJSON(Schema.EmptyFieldsTableType(), """{}""", "text, values, items");
  CheckJSON(Schema.EmptyFieldsTableType(), """{"text":"","values":[],"items":{}}""", null);
  var empties = new EmptyFields(); byte[] emptyWire = new byte[Schema.EmptyFieldsMeasure(empties)];
  Schema.EmptyFieldsSave(empties, emptyWire); CheckWire(Schema.EmptyFieldsTableType(), emptyWire, null);
  if (!emptyWire.AsSpan().SequenceEqual(Convert.FromHexString("GO_EMPTY"))) throw new Exception("required empty fields differ from generated Go");
- if (!keyedWire.AsSpan().SequenceEqual(expectedKeyed)) throw new Exception("required keyed zero collection differs: " + Convert.ToHexString(keyedWire) + " vs " + Convert.ToHexString(expectedKeyed));
+ if (!keyedSlotsWire.AsSpan().SequenceEqual(expectedKeyedSlots)) throw new Exception("required keyed zero collection differs: " + Convert.ToHexString(keyedSlotsWire) + " vs " + Convert.ToHexString(expectedKeyedSlots));
  }`))
 }
 
