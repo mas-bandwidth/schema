@@ -651,7 +651,7 @@ forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     
 # test/tables/hostile_main.cpp's, which reads these very rows.
 json-hostile array-past-bound              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/array-past-bound   refused
 json-hostile base64-empty                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-empty       read
-json-hostile base64-unpadded               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded    read
+json-hostile base64-unpadded               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/base64-unpadded    refused
 json-hostile bits-at-max                   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bits-at-max        read
 json-hostile bits-over-range               tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bits-over-range    refused
 json-hostile bytes-not-base64              tabledemo  RootConfig  testdata/conformance/tables/json-hostile/bytes-not-base64   refused
@@ -750,8 +750,9 @@ json-hostile str-lone-trail-surrogate      tabledemo  RootConfig  testdata/confo
 json-hostile str-surrogate-pair            tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair read
 # THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
 # U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
-# field. A zero in a value the read only SKIPS is not the event, and \u0001
-# reads clean. The ports that carry the str-zero-escape rows below carry this
+# field. A zero in a value the read only SKIPS refuses the read the same way
+# (docs/rulings.json `skipped-value-is-validated`), and \u0001 reads clean. The
+# ports that carry the str-zero-escape rows below carry this
 # refusal; every other port stores the zero as text and keeps the counters its
 # reader gives until its port.
 json-hostile str-zero-byte-bounded         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded refused
@@ -760,7 +761,8 @@ json-hostile str-zero-byte-bounded-nested  tabledemo  RootConfig  testdata/confo
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
 # <Table>.<field> for the innermost field that held it." A string the read only
-# SKIPS — the value of an unknown key — "stores nothing and is not this event".
+# SKIPS — the value of an unknown key — stores nothing, but is held to the same
+# text rules, and one that decodes to U+0000 refuses the read as a placed one does.
 # Held first in Go, carried by C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua and Luau: the two refusals carry the standard's verdict, and every
 # other port keeps the counters its reader gives (it stores the zero as text),
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
@@ -771,7 +773,7 @@ json-hostile str-zero-escape-map-key       mapdemo    Text        testdata/confo
 # A repeated map key in the text form is refused (§2.8): "A repeated key
 # refuses the read `malformed`, the object rule (§16.2) applied inside the map."
 json-hostile list-map-dup-key              listdemo   Army        testdata/conformance/tables/json-hostile/list-map-dup-key   refused
-json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key read
+json-hostile str-zero-escape-unknown-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-unknown-key refused
 json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
 json-hostile union-table-arm-two-keys      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys refused
 json-hostile union-table-arm-wrong-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape refused
@@ -1494,7 +1496,8 @@ write-refusal-message mref_text_illformed  backend_conn StorePurchase testdata/c
 write-refusal-message mref_text_wellformed backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin sku               bytes   61C3A962 wrote
 write-refusal-message mref_text_zero       backend_conn StorePurchase testdata/conformance/tables/wire/store_full.bin sku               bytes   610062   refused
 
-# THE TEXT WRITER WRITES A ZERO BYTE (docs/SPEC-TABLES.md §16.3): it
-# spells it `\u0000`, it does not refuse it. The driver answers `wrote` when
-# the text holds `\u0000` at that field, and `refused` when the writer refused.
-write-refusal-json jref_zero_byte tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin  version_note bytes 610062       wrote
+# THE TEXT WRITER REFUSES A ZERO BYTE (docs/SPEC-TABLES.md §16.3, W0): a zero
+# byte is storage that is not text, refused by row 8 of docs/SPEC.md §5.1, since
+# the text reader refuses the `\u0000` it would spell. The driver answers
+# `refused` when the writer refused, and `wrote` when the text holds `\u0000`.
+write-refusal-json jref_zero_byte tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin  version_note bytes 610062       refused
