@@ -220,7 +220,7 @@ func t03R10(t *testing.T) {
 
 // t03R15: R15 "the four forward-read clamps are retired — count clamp across
 // bounds, range clamp across versions, remap of an unknown variant to None,
-// drop-and-count of an unknown field: each is layout_newer now". The four
+// drop-and-count of an unknown field: each is layout_unknown now". The four
 // rows' OLD-REFUSES-NEW columns are TestFixedVersioningRows' (the rows are in
 // versioningRows and none is a sameHash row, so the column runs); this
 // subtest proves the four rows are in the suite and runs one of them for
@@ -238,22 +238,22 @@ func t03R15(t *testing.T) {
 			}
 		}
 		if !inRows {
-			t.Errorf("R15: %s is not in TestFixedVersioningRows' rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_newer by name", row)
+			t.Errorf("R15: %s is not in TestFixedVersioningRows' rows: its OLD-REFUSES-NEW column is where the retired clamp is layout_unknown by name", row)
 		}
 		if sameHashRows[row] {
 			t.Errorf("R15: %s is a same-hash row: it reads in both directions and cannot carry the refusal", row)
 		}
 	}
 	// And the run: a newer writer's file under the older reader refuses
-	// layout_newer before any record, on the file's hash alone.
+	// layout_unknown before any record, on the file's hash alone.
 	newFile := t03CorpusFile(t, "new_enum_append.bin")
 	_, classes := buildRow(t, t.TempDir(), "enum_append", []sideSpec{
 		{key: "reads", schema: "VNEW_enum_append.schema", older: []string{"VOLD_enum_append.schema"}},
 		{key: "refuses", schema: "VOLD_enum_append.schema"},
 	})
 	ref := runProbe(t, classes, "Probe_refuses", newFile)
-	if !ref.refused || ref.reason != "layoutNewer" {
-		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
+	if !ref.refused || ref.reason != "layoutUnknown" {
+		t.Errorf("R15: the retired remap-to-None read: refused=%v reason=%s, want a refusal named layoutUnknown", ref.refused, ref.reason)
 	}
 	if ref.damaged || ref.n != -1 {
 		t.Errorf("R15: the retired clamp moved on a newer file: %+v; a forward read refuses whole, before any record", ref)
@@ -505,7 +505,7 @@ func t03ReportField(r *probeRun, k, v string) {
 // row; the capability this subtest adds is the WRITE: the leg's own generated
 // writer saves the per-slot raw floor, zero and ceiling, the reader loads
 // them back exact with no counter moved, and the OLDER reader refuses the
-// saved file layout_newer on its hash alone.
+// saved file layout_unknown on its hash alone.
 func t03E3FixedArrayElement(t *testing.T) {
 	classes := t03Build(t, t.TempDir(), "fixed_I_grow_element", []sideSpec{
 		{key: "reads", schema: "VNEW_fixed_I_grow_element.schema", older: []string{"VOLD_fixed_I_grow_element.schema"}},
@@ -538,8 +538,8 @@ func t03E3FixedArrayElement(t *testing.T) {
 	} // THE OLDER READER REFUSES the newer writer's file, on its hash alone.
 	saved := t03BytesOf(t, out)
 	ref := runProbe(t, classes, "Probe_refuses", saved)
-	if !ref.refused || ref.reason != "layoutNewer" {
-		t.Errorf("E3/fixed-array-element: the older reader: refused=%v reason=%s, want layoutNewer", ref.refused, ref.reason)
+	if !ref.refused || ref.reason != "layoutUnknown" {
+		t.Errorf("E3/fixed-array-element: the older reader: refused=%v reason=%s, want layoutUnknown", ref.refused, ref.reason)
 	}
 	if want := fileHash(t, saved); ref.layoutHash != want {
 		t.Errorf("E3/fixed-array-element: the refusal carries %s, want the file's own hash %s", ref.layoutHash, want)
@@ -625,8 +625,8 @@ func t03E3OtherWidens(t *testing.T) {
 			}
 			saved := t03BytesOf(t, out)
 			ref := runProbe(t, classes, "Probe_refuses", saved)
-			if !ref.refused || ref.reason != "layoutNewer" {
-				t.Errorf("%s: the older reader: refused=%v reason=%s, want layoutNewer before any record", tc.row, ref.refused, ref.reason)
+			if !ref.refused || ref.reason != "layoutUnknown" {
+				t.Errorf("%s: the older reader: refused=%v reason=%s, want layoutUnknown before any record", tc.row, ref.refused, ref.reason)
 			}
 			if want := fileHash(t, saved); ref.layoutHash != want {
 				t.Errorf("%s: the refusal carries %s, want the file's own hash %s", tc.row, ref.layoutHash, want)

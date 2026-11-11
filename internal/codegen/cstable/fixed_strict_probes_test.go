@@ -44,7 +44,7 @@ var csStrictFramingReasons = []string{
 	"message_form_as_file",
 	"newer_form",
 	"layout_malformed",
-	"layout_newer",
+	"layout_unknown",
 	"layout_unsupported",
 	"no_layout",
 	"batch_too_large",
@@ -171,15 +171,15 @@ func csCheckReasons(body string, reasons []string) []string {
 	return bad
 }
 
-// csCheckLayoutNewerHash: a hash the lineage does not hold is layout_newer,
+// csCheckLayoutUnknownHash: a hash the lineage does not hold is layout_unknown,
 // and it reports THE FILE'S HASH and nothing else (§5.3).
-func csCheckLayoutNewerHash(body string) []string {
+func csCheckLayoutUnknownHash(body string) []string {
 	var bad []string
-	if !strings.Contains(body, `"layout_newer"`) {
-		bad = append(bad, "no layout_newer refusal by name")
+	if !strings.Contains(body, `"layout_unknown"`) {
+		bad = append(bad, "no layout_unknown refusal by name")
 	}
 	if !strings.Contains(body, "report.LayoutHash = hash") {
-		bad = append(bad, "layout_newer does not report the file's hash")
+		bad = append(bad, "layout_unknown does not report the file's hash")
 	}
 	return bad
 }
@@ -328,7 +328,7 @@ func TestCSharpFixedProbesStrict(t *testing.T) {
 	check("cs/F7 under 20 bytes", csCheckUnder20(framingBody))
 	check("cs/F8 ragged tail", csCheckRaggedTail(framingBody))
 	check("cs/F10 refuse writes nothing", csCheckStrictContract(framingBody))
-	check("cs/R8 hash unknown", csCheckLayoutNewerHash(framingBody))
+	check("cs/R8 hash unknown", csCheckLayoutUnknownHash(framingBody))
 	check("cs/R16 exact counters", csCheckExactCounters(csStrictText(csStrictGen(t, schemas["framing"]))))
 	check("cs/R30 compressed floats", csCheckNonFiniteFloat(cfloatText))
 	check("cs/E3/fixed-array-element", csCheckWidenedPerElement(arrayText))
@@ -370,10 +370,10 @@ func TestCSharpFixedProbesStrictNegativeControl(t *testing.T) {
 			},
 		},
 		{
-			name: "layout-newer-forgets-the-hash",
+			name: "layout-unknown-forgets-the-hash",
 			text: csMutateFixedLoadBody(framingText, "Lineage",
 				"report.LayoutHash = hash", ""),
-			probe: func(text string) []string { return csCheckLayoutNewerHash(csStrictFixedLoadBody(text, "Lineage")) },
+			probe: func(text string) []string { return csCheckLayoutUnknownHash(csStrictFixedLoadBody(text, "Lineage")) },
 		},
 		{
 			name: "refusal-returns-a-count",

@@ -137,7 +137,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		// dart/R7 "the identity lane is an index comparison, never a recomputed
 		// hash": "a runtime NEVER computes a hash from layout bytes it holds". The
 		// header hash is taken as given: this file's layout bytes are its own and
-		// intact, one hash bit is not, and the read refuses layout_newer with the
+		// intact, one hash bit is not, and the read refuses layout_unknown with the
 		// file's hash — a reader that re-derived the hash from the bytes would
 		// accept it. The static half is asserted over the generated load below.
 		{"dart/R7", ownRun(roadmapPrelude + `
@@ -147,7 +147,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
     final forged = Uint8List.fromList(data);
     final forgedHash = own ^ (1 << bit);
     ByteData.sublistView(forged).setUint64(hashAt, forgedHash, Endian.little);
-    final rep = refused(forged, values.length, t.TableFixedRefusal.layoutNewer, 'R7 header hash bit $bit flipped');
+    final rep = refused(forged, values.length, t.TableFixedRefusal.layoutUnknown, 'R7 header hash bit $bit flipped');
     check(rep.layoutHash == forgedHash, 'R7 reports the file\'s hash, not the layout\'s: ${why(rep)}');
   }
   poison();
@@ -156,14 +156,14 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
       'R7 the unforged file takes the identity lane: ${why(good)}');
   check(good.hash == own, 'R7 the report carries the header\'s own hash');`)},
 
-		// dart/R8 "a hash in no lineage entry → layout_newer, reporting the file's
+		// dart/R8 "a hash in no lineage entry → layout_unknown, reporting the file's
 		// hash AND NOTHING ELSE": the name, layoutHash == the file's hash, every
 		// other report field untouched and not one destination byte written.
 		{"dart/R8", ownRun(roadmapPrelude + `
   for (final stranger in <int>[0x0EADBEEFCAFEF00D, 0x7FFFFFFFFFFFFFFF, 1, -1, -0x7FFFFFFFFFFFFFFF]) {
     final forged = Uint8List.fromList(data);
     ByteData.sublistView(forged).setUint64(t.TableFixedLimits.hashAt, stranger, Endian.little);
-    final rep = refused(forged, values.length, t.TableFixedRefusal.layoutNewer, 'R8 stranger hash $stranger');
+    final rep = refused(forged, values.length, t.TableFixedRefusal.layoutUnknown, 'R8 stranger hash $stranger');
     check(rep.layoutHash == stranger, 'R8 reports the file\'s hash: ${rep.layoutHash} want $stranger');
     check(rep.hash == 0, 'R8 and NOTHING ELSE: the report\'s own hash stays zero: ${rep.hash}');
   }`)},
@@ -244,7 +244,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
   refused(newer, 1, t.TableFixedRefusal.newerForm, 'R13 a form byte this reader does not carry');
   final alien = Uint8List.fromList(data);
   ByteData.sublistView(alien).setUint64(t.TableFixedLimits.hashAt, 0x0EADBEEFCAFEF00D, Endian.little);
-  refused(alien, 1, t.TableFixedRefusal.layoutNewer, 'R13 a hash in no lineage entry');
+  refused(alien, 1, t.TableFixedRefusal.layoutUnknown, 'R13 a hash in no lineage entry');
   final lie = Uint8List.fromList(data)..[at0 - 1] ^= 0xff;
   refused(lie, 1, t.TableFixedRefusal.layoutDamaged, 'R13 a known hash over other layout bytes');
   poison();

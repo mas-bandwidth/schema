@@ -490,7 +490,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
 	g.pf("/// against these and on nothing else; the layout it carries is COMPARED\n")
 	g.pf("/// with the bytes the lock recorded and never parsed. A hash no entry holds\n")
-	g.pf("/// is `layout_newer` — ship the reader.\n")
+	g.pf("/// is `layout_unknown` — report the hash; nothing proves it newer.\n")
 	g.pf("%s", fixedFormatOff)
 	g.pf("final List<TableFixedKnownLayout> %sFixedKnown = <TableFixedKnownLayout>[\n", lower)
 	for _, e := range entries {
@@ -505,7 +505,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("%s\n", fixedFormatOn)
 	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below\n")
 	g.pf("/// it a layout this build once served is retired and the answer is\n")
-	g.pf("/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.\n")
+	g.pf("/// `layout_unsupported` — upgrade the client — rather than `layout_unknown`.\n")
 	g.pf("const int %sFixedFloor = %d;\n\n", lower, floor)
 	g.pf("/// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time\n")
 	g.pf("/// this list is read and never again (§5.9 #3): nothing on the load path\n")
@@ -672,9 +672,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("  ", "final hash = ", "view.getUint64",
 		[]string{"TableFixedLimits.hashAt", "Endian.little"}, ";")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
-	// upgrade the client. BOTH report the FILE'S hash (§5.9 #7), and
-	// layout_newer reports it AND NOTHING ELSE.
+	// layout_unknown — report the hash; nothing proves it newer. Below the floor
+	// is layout_unsupported — upgrade the client. BOTH report the FILE'S hash
+	// (§5.9 #7), and layout_unknown reports it AND NOTHING ELSE.
 	g.pf("  // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as\n")
 	g.pf("  // GIVEN — the digest is not on the wire, so it cannot be re-derived from a\n")
 	g.pf("  // file — and it is matched against the layouts THE LOCK recorded. Nothing\n")
@@ -682,7 +682,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  final pick = tableFixedSelect(%sFixedKnown, hash);\n", lower)
 	g.pf("  if (pick < 0) {\n")
 	g.pf("    report.layoutHash = hash;\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutNewer;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutUnknown;\n    return -1;\n  }\n")
 	g.pf("  if (pick < %sFixedFloor) {\n", lower)
 	g.pf("    report.layoutHash = hash;\n")
 	g.pf("    report.refused = TableFixedRefusal.layoutUnsupported;\n    return -1;\n  }\n")

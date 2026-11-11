@@ -30,7 +30,7 @@ package rusttable
 //
 // rust/R15 [verify]: the four forward-read clamps are retired — count clamp
 // across bounds, range clamp across versions, remap of an unknown variant to
-// None, drop-and-count of an unknown field: each is layout_newer now.
+// None, drop-and-count of an unknown field: each is layout_unknown now.
 //
 // rust/E3/other-required-widens [capability]: all other required widen-ladder
 // cases.
@@ -256,7 +256,7 @@ func t04R10(t *testing.T) {
 // ---- rust/R15 -----------------------------------------------------------------
 
 // t04R15 holds rust/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan (bill §12.5), which only a backward read
@@ -268,7 +268,7 @@ func t04R15(t *testing.T) {
 	if load == "" {
 		t.Fatal("R15: lineage_fixed_load is not emitted")
 	}
-	miss := strings.Index(load, "return report.refuse_layout(TableFixedReason::LayoutNewer, hash);")
+	miss := strings.Index(load, "return report.refuse_layout(TableFixedReason::LayoutUnknown, hash);")
 	records := strings.Index(load, "for k in 0..n {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)

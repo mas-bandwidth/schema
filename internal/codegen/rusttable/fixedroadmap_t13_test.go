@@ -171,6 +171,25 @@ fn main() {
         "the known layout's own file did not read clean",
     );
 
+    // (0b) A HASH NO LINEAGE ENTRY HOLDS: layout_unknown, reporting the file's
+    // hash and nothing else, the destination untouched (§5.3 step 5).
+    let stranger: u64 = LINEAGE_FIXED_HASH ^ 1;
+    let mut alien = good.clone();
+    alien[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
+        .copy_from_slice(&stranger.to_le_bytes());
+    let (n, report, values) = t13_read(&alien);
+    say(
+        "unknown-hash",
+        n.is_none()
+            && report.refused
+            && report.reason == TableFixedReason::LayoutUnknown
+            && report.reason.name() == "layout_unknown"
+            && !report.damaged
+            && report.layout_hash == stranger
+            && t13_untouched(&values),
+        "a hash in no lineage entry was not layout_unknown with the file's hash",
+    );
+
     // (a) THE HELD HASH OVER LAYOUT BYTES THAT DIFFER BY ONE BYTE
     // (docs/FIXED-FORM-ALGORITHM.md §5.3 step 7, row 5): the byte comparison
     // against the lock's layout is what holds the header and the layout together.
@@ -257,10 +276,11 @@ func t13Run(t *testing.T) string {
 }
 
 // TestFixedRoadmapRustT13LayoutHashCollision holds rust/F12: a valid file reads,
-// and each copy of it — a held hash over layout bytes that differ by one, and a
-// held hash over a different layout length — is refused as `layout_malformed`
-// before any record, the destination untouched (docs/FIXED-FORM-ALGORITHM.md
-// §5.3 step 7 and rows 4 and 5).
+// a copy whose hash no lineage entry holds is `layout_unknown`, and each copy
+// that keeps a held hash over layout bytes that differ by one, or over a
+// different layout length, is refused as `layout_malformed` before any record,
+// the destination untouched (docs/FIXED-FORM-ALGORITHM.md §5.3 steps 5 and 7,
+// and rows 4 and 5).
 func TestFixedRoadmapRustT13LayoutHashCollision(t *testing.T) {
 	t.Parallel()
 	out := t13Run(t)
@@ -269,6 +289,7 @@ func TestFixedRoadmapRustT13LayoutHashCollision(t *testing.T) {
 		why string
 	}{
 		{"valid-reads", "the known layout's own file must read"},
+		{"unknown-hash", "a hash in no lineage entry must refuse layout_unknown with the file's hash before any record"},
 		{"bytes-differ", "a held hash over layout bytes differing by one must refuse layout_malformed before any record"},
 		{"length-shorter", "a held hash over a shorter layout length must refuse layout_malformed before any record"},
 		{"length-longer", "a held hash over a longer layout length must refuse layout_malformed before any record"},

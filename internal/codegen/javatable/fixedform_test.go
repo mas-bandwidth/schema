@@ -373,7 +373,7 @@ fixed table LiveRoot
 // is the Java leg's twin of the pilot's TestFixedFormArgLaneTextUnderSecondArm —
 // it asserts that a DIFFERENT hash compiles a plan from the stranger's layout
 // and reads it, which is the forward read "the fixed table reads backward, never
-// forward" removed. Under §5.3 the FU1 file comes back `layout_newer` on an FU2
+// forward" removed. Under §5.3 the FU1 file comes back `layout_unknown` on an FU2
 // build that never locked it. THE COVERAGE IS OWED as a LINEAGE PAIR (FU1/FU2,
 // one of §5.7's seven pairs) in internal/codegen/javatable/fixedversioning_test.go,
 // where the newer build is given the older layout in its lineage; the arm's

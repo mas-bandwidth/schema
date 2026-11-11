@@ -742,7 +742,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so \"retired\" is an\n")
 	g.pf("   index cut and the operator's two answers stay distinct: below the floor is\n")
 	g.pf("   layout_unsupported (upgrade the client), outside the lineage is\n")
-	g.pf("   layout_newer (ship the reader). A retired entry stays forever (§5.2). */\n")
+	g.pf("   layout_unknown (report the hash; nothing proves it newer). A retired entry\n")
+	g.pf("   stays forever (§5.2). */\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_floor = %d;\n\n", n, floor)
 
 	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
@@ -899,8 +900,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   §5.3). The header's hash is TAKEN AS GIVEN — the definitions digest is not\n")
 	g.pf("   on the wire, so the hash cannot be re-derived from a file at all — and it\n")
 	g.pf("   selects one entry of the lineage THE BUILD laid down. Outside the lineage is\n")
-	g.pf("   layout_newer (ship the reader); below the floor is layout_unsupported\n")
-	g.pf("   (upgrade the client); a known hash whose bytes differ is layout_damaged.\n")
+	g.pf("   layout_unknown (report the hash; nothing proves it newer); below the floor\n")
+	g.pf("   is layout_unsupported (upgrade the client); a known hash whose bytes differ\n")
+	g.pf("   is layout_damaged.\n")
 	g.pf("   Then ONE loop over ONE plan, the identity plan for this build's own hash and\n")
 	g.pf("   the entry's own static plan otherwise. Same loop either way (§3.4).\n\n")
 	g.pf("   THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND, and on the identity\n")
@@ -981,7 +983,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// STEPS 5 and 6.
 	g.pf("    /* 5 and 6. SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */\n")
 	g.pf("    pick = table_fixed_select( %s_fixed_known, %s_fixed_known_count, hash );\n", n, n)
-	g.pf("    if ( pick < 0 ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, hash ); }\n")
+	g.pf("    if ( pick < 0 ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNKNOWN, hash ); }\n")
 	g.pf("    if ( pick < %s_fixed_floor ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, hash ); }\n", n)
 	// STEP 7.
 	g.pf("    /* 7. A KNOWN HASH IS READ UNDER THE LOCK'S LAYOUT BYTES. A difference is ONE\n")

@@ -491,11 +491,11 @@ public final class TableFixed {
         /** more records than the values array the caller handed in. */
         batchTooLarge,
         /**
-         * A HASH IN NO LINEAGE ENTRY: the writer is NEWER than this reader, and the operator's
-         * answer is SHIP THE READER. Its report carries the file's hash AND NOTHING ELSE (ALG 5.3,
-         * bill 12.4).
+         * A HASH IN NO LINEAGE ENTRY: it may be a newer writer's, an older layout nobody locked,
+         * or a damaged header, and the lineage does not say which. Its report carries the file's
+         * hash AND NOTHING ELSE (ALG 5.3, bill 12.4).
          */
-        layoutNewer,
+        layoutUnknown,
         /**
          * A HASH THIS BUILD ONCE SERVED AND HAS RETIRED -- below the floor. The operator's answer
          * is the other one: UPGRADE THE CLIENT. It reports the file's hash too (ALG 5.9 #7).
@@ -517,7 +517,13 @@ public final class TableFixed {
         nonFiniteFloat,
         outOfRange,
         countOverBound,
-        lengthOverBound
+        lengthOverBound;
+
+        /**
+         * RETIRED (docs/SPEC-TABLES.md §21.3): the same answer as layoutUnknown, kept so a locked
+         * caller's spelling still compiles; no read emits it.
+         */
+        public static final Reason layoutNewer = layoutUnknown;
     }
 
     /** §4's ledger and this form's refusals, in the caller's own object. */

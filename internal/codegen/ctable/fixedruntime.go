@@ -128,17 +128,23 @@ enum
     SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
     SCHEMA_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
     /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
-       §6b). A hash this reader's LINEAGE does not hold is layout_newer — ship
-       the reader; a hash the lineage holds BELOW THE FLOOR is
-       layout_unsupported — upgrade the client. They are the operator's two
-       distinct answers and both carry the FILE'S hash (§5.9 #7).
+       §6b). A hash this reader's LINEAGE does not hold is layout_unknown —
+       report the hash; nothing proves it newer. A hash the lineage holds BELOW
+       THE FLOOR is layout_unsupported — upgrade the client. They are the
+       operator's two distinct answers and both carry the FILE'S hash (§5.9 #7).
 
        THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
        the rule the ten above already state: the C enum numbers a set the C++
        enum orders, so a leg agrees on the NAME an endpoint is refused by and never
-       on the integer. These two take 18 and 19 in the order §5.3 names them. */
-    SCHEMA_TABLE_LAYOUT_NEWER = 18,
+       on the integer. layout_unknown and layout_unsupported take 18 and 19 in
+       the order §5.3 names them; layout_newer keeps the retired name's
+       ordinal. */
+    SCHEMA_TABLE_LAYOUT_UNKNOWN = 18,
     SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19,
+    /* layout_newer is RETIRED (docs/SPEC-TABLES.md §21.3): it keeps
+       layout_unknown's ordinal so a locked caller's spelling still compiles,
+       and no read answers it. */
+    SCHEMA_TABLE_LAYOUT_NEWER = SCHEMA_TABLE_LAYOUT_UNKNOWN,
     /* A CONTENT RULE REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5, fix 11): a
        string(N)'s used bytes that are not well-formed UTF-8 refuse the read
        by name, the verdict the packet reader gives, this form having no L to
@@ -261,8 +267,8 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
  * A fixed table reads BACKWARD and never forward. A file is matched on the
  * eight bytes of its header's hash against the lineage THE BUILD laid down, and
  * the layout it carries is held to a BYTE COMPARISON against the bytes the lock
- * recorded — never walked. A hash the lineage does not hold is layout_newer; a
- * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
+ * recorded — never walked. A hash the lineage does not hold is layout_unknown;
+ * a hash it holds below the floor is layout_unsupported. NOTHING PARSES A
  * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
 
 /* A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -1701,7 +1707,7 @@ typedef struct TableFixedKnownLayout
 } TableFixedKnownLayout;
 
 /* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
-   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+   entry holds is -1, which LOAD names layout_unknown (§5.3 step 5). */
 static SCHEMA_UNUSED int32_t table_fixed_select( const TableFixedKnownLayout * known, int32_t count, uint64_t hash )
 {
     int32_t i;

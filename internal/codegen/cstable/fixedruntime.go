@@ -156,9 +156,10 @@ public struct TableFixedFill
 // A fixed table reads BACKWARD and never forward. A file is matched on the eight
 // bytes of its header's hash against the lineage the BUILD laid down, and the
 // layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
-// (upgrade the client). Those are the operator's two distinct answers.
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (report the hash; nothing proves it newer); a hash it holds below the floor
+// is layout_unsupported (upgrade the client). Those are the operator's two
+// distinct answers.
 
 // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
 // on, the layout bytes verbatim, the byte length riding BESIDE the pointer, and
@@ -1050,7 +1051,7 @@ public static class TableFixedWire
     // not an exception: the record loop runs the list it was handed.
     // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
     // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
-    // lineage does not hold, which is layout_newer.
+    // lineage does not hold, which is layout_unknown.
     public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
     {
         for (int i = 0; i < known.Length; ++i)

@@ -35,7 +35,7 @@ import (
 
 // cT01Macros is the shared C: the poison, the reset, and the two answers a
 // load may give. §5.9 #7's table is the source of both — a REFUSAL BY NAME is
-// `refused` + `reason` (+ `layout_hash` on layout_newer / layout_unsupported)
+// `refused` + `reason` (+ `layout_hash` on layout_unknown / layout_unsupported)
 // and nothing else; a MALFORMED read is `malformed` and nothing else.
 const cT01Macros = `
 #define RESET_BACK() do { memset( back, 0x5A, sizeof( back ) ); memset( &r, 0, sizeof( r ) ); } while ( 0 )
@@ -114,7 +114,7 @@ func TestFixedRoadmapT01Framing(t *testing.T) {
 		{"c/F9", cT01BatchTooLarge},
 		{"c/F12", cT01SecondLayout},
 		{"c/R7", cT01IdentityLane},
-		{"c/R8", cT01LayoutNewer},
+		{"c/R8", cT01LayoutUnknown},
 		{"c/R9", cT01KnownHashLie},
 		{"c/R13", cT01RefuseIsTotal},
 	}
@@ -167,10 +167,10 @@ func cT01BatchTooLarge(t *testing.T, corpus string) {
 // for a hash already held is refused by name and changes nothing." The layout
 // is named by its hash and the hash is taken as given (§5.3 step 4), so a
 // second layout under a held hash is, at step 7, "a known hash whose bytes
-// differ": layout_malformed, one name, not layout_newer. Three vectors: every
+// differ": layout_malformed, one name, not layout_unknown. Three vectors: every
 // byte of the held layout bent in turn; the OTHER lock entry's real layout
 // under this build's hash; and this build's layout under the older entry's hash.
-// The contrast is a hash held by no entry, which is layout_newer and carries
+// The contrast is a hash held by no entry, which is layout_unknown and carries
 // the file's hash.
 func cT01SecondLayout(t *testing.T, corpus string) {
 	newer := cReadSchema(t, "VNEW_field_append")
@@ -226,7 +226,7 @@ func cT01SecondLayout(t *testing.T, corpus string) {
         memcpy( data + kTableFixedHashAt, &stranger, 8 );
         RESET_BACK();
         n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
-        EXPECT_REFUSED( "a hash in no entry", SCHEMA_TABLE_LAYOUT_NEWER, stranger );
+        EXPECT_REFUSED( "a hash in no entry", SCHEMA_TABLE_LAYOUT_UNKNOWN, stranger );
     }
 `)
 	})
@@ -301,14 +301,14 @@ func cT01IdentityLane(t *testing.T, corpus string) {
 	})
 }
 
-// c/R8 — "a hash in no lineage entry → layout_newer, reporting the file's hash
+// c/R8 — "a hash in no lineage entry → layout_unknown, reporting the file's hash
 // AND NOTHING ELSE" (algorithm §5.3 step 5, §5.9 #7). The OLD reader reads the
-// widened writer's file; the report must equal refused + layout_newer + the
+// widened writer's file; the report must equal refused + layout_unknown + the
 // FILE's hash, byte for byte, and not one destination byte may change. The hash
 // alone decides: stranger hashes stamped over a file whose layout bytes are the
 // lock's own, and a file cut after its layout (no record at all), answer the
 // same.
-func cT01LayoutNewer(t *testing.T, corpus string) {
+func cT01LayoutUnknown(t *testing.T, corpus string) {
 	older := cReadSchema(t, "VOLD_field_append")
 	newFile := filepath.Join(corpus, "new_field_append.bin")
 	h, l, _ := cT01Split(t, newFile)
@@ -317,7 +317,7 @@ func cT01LayoutNewer(t *testing.T, corpus string) {
 		cT01Probe(t, older, nil, 0, newFile, `
     RESET_BACK();
     n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
-    EXPECT_REFUSED( "old reader, new writer's file", SCHEMA_TABLE_LAYOUT_NEWER, want );
+    EXPECT_REFUSED( "old reader, new writer's file", SCHEMA_TABLE_LAYOUT_UNKNOWN, want );
     if ( want == 0 ) { printf( "the corpus hash is zero: the test cannot tell the file's hash from nothing\n" ); return 1; }
 `)
 	})
@@ -334,7 +334,7 @@ func cT01LayoutNewer(t *testing.T, corpus string) {
             snprintf( who, sizeof( who ), "stranger hash %d", c );
             RESET_BACK();
             n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
-            EXPECT_REFUSED( who, SCHEMA_TABLE_LAYOUT_NEWER, strangers[c] );
+            EXPECT_REFUSED( who, SCHEMA_TABLE_LAYOUT_UNKNOWN, strangers[c] );
         }
     }
 `)
@@ -418,7 +418,7 @@ func cT01KnownHashLie(t *testing.T, corpus string) {
 // c/R13 — "REFUSE is total: refused+reason and malformed are never both set,
 // every counter stays zero, and not one destination byte is written"
 // (algorithm §5.9 #7's table). Every refusal name a file load can answer —
-// previous_form, newer_form, message_form_as_file, layout_newer,
+// previous_form, newer_form, message_form_as_file, layout_unknown,
 // layout_unsupported, layout_malformed, plan_too_large, batch_too_large,
 // no_layout — is checked against the whole report, and the malformed answers
 // (a ragged tail, under twenty bytes, a nonzero reserved byte) against the
@@ -449,7 +449,7 @@ func cT01RefuseIsTotal(t *testing.T, corpus string) {
 
         { const uint64_t stranger = want ^ 1ull; memcpy( data + kTableFixedHashAt, &stranger, 8 );
           RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
-          EXPECT_REFUSED( "layout_newer", SCHEMA_TABLE_LAYOUT_NEWER, stranger ); }
+          EXPECT_REFUSED( "layout_unknown", SCHEMA_TABLE_LAYOUT_UNKNOWN, stranger ); }
         memcpy( data, orig, (size_t) L );
 
         data[kTableFixedHeaderBytes + 4] ^= 0x01; RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );

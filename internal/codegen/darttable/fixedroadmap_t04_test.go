@@ -30,7 +30,7 @@ package darttable
 //
 // dart/R15 [verify]: the four forward-read clamps are retired — count clamp
 // across bounds, range clamp across versions, remap of an unknown variant to
-// None, drop-and-count of an unknown field: each is layout_newer now.
+// None, drop-and-count of an unknown field: each is layout_unknown now.
 //
 // dart/E3/other-required-widens [capability]: all other required widen-ladder
 // cases.
@@ -209,7 +209,7 @@ func t04R3(t *testing.T) {
 	none, _ := t04Retire(t, 0)
 	noneLoad := t04Fn(none, "lineageFixedLoad")
 	if !strings.Contains(noneLoad, "if (pick < 0) {") {
-		t.Error("R3: the floor-0 reader carries no layout_newer select, so the floor check cannot be read against it")
+		t.Error("R3: the floor-0 reader carries no layout_unknown select, so the floor check cannot be read against it")
 	}
 	if strings.Count(noneLoad, "if (pick < lineageFixedFloor) {") != 1 {
 		t.Error("R3: a floor of 0 must still emit the one comparison, whose pick is never below it")
@@ -301,7 +301,7 @@ func t04R10(t *testing.T) {
 // ---- dart/R15 -----------------------------------------------------------------
 
 // t04R15 holds dart/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan (bill §12.5), which only a backward read
@@ -313,7 +313,7 @@ func t04R15(t *testing.T) {
 	if load == "" {
 		t.Fatal("R15: lineageFixedLoad is not emitted")
 	}
-	miss := strings.Index(load, "report.refused = TableFixedRefusal.layoutNewer;")
+	miss := strings.Index(load, "report.refused = TableFixedRefusal.layoutUnknown;")
 	records := strings.Index(load, "for (var k = 0; k < n; k++) {")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)

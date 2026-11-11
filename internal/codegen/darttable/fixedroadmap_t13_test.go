@@ -112,7 +112,7 @@ const t13HeldBody = `
 `
 
 // t13ReverseBody is the reversed witness: a forged copy whose header hash is
-// held by NO entry gets layout_newer (and reports the file's hash), not
+// held by NO entry gets layout_unknown (and reports the file's hash), not
 // layout_malformed, so the test tells the two conditions apart (§5.3 step 5,
 // §5.9 #7).
 const t13ReverseBody = `
@@ -139,13 +139,13 @@ const t13ReverseBody = `
   final rep = t.TableFixedReport();
   final n = t.lineageFixedLoad(values, values.length, alien, alien.length, plan, rep);
   check(n == -1, 'a hash in no entry owes -1, not $n: ${why(rep)}');
-  check(rep.refused == t.TableFixedRefusal.layoutNewer,
-      'a hash in no entry is layout_newer, not ${name(rep.refused)}');
+  check(rep.refused == t.TableFixedRefusal.layoutUnknown,
+      'a hash in no entry is layout_unknown, not ${name(rep.refused)}');
   check(rep.layoutHash == stranger,
-      'layout_newer reports the FILE\'s hash: ${rep.layoutHash} want $stranger');
+      'layout_unknown reports the FILE\'s hash: ${rep.layoutHash} want $stranger');
   check(rep.hash == 0 && rep.unknown == 0 && rep.widened == 0,
-      'layout_newer reports the file\'s hash AND NOTHING ELSE: ${why(rep)}');
-  check(untouched(), 'layout_newer writes not one destination byte');
+      'layout_unknown reports the file\'s hash AND NOTHING ELSE: ${why(rep)}');
+  check(untouched(), 'layout_unknown writes not one destination byte');
 `
 
 func TestFixedRoadmapDartT13SecondLayoutUnderAHeldHash(t *testing.T) {
@@ -157,7 +157,7 @@ func TestFixedRoadmapDartT13SecondLayoutUnderAHeldHash(t *testing.T) {
 		body string
 	}{
 		{"second-layout-under-a-held-hash", t13HeldBody},
-		{"unheld-hash-is-layout-newer", t13ReverseBody},
+		{"unheld-hash-is-layout-unknown", t13ReverseBody},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {

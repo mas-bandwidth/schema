@@ -118,7 +118,7 @@ func checkDartFixedCellsStrict(decode, run, load, all string) []string {
 	for _, want := range []string{
 		"TableFixedRefusal.damaged",
 		"TableFixedRefusal.layoutDamaged",
-		"TableFixedRefusal.layoutNewer",
+		"TableFixedRefusal.layoutUnknown",
 		"TableFixedRefusal.layoutUnsupported",
 		"TableFixedRefusal.noLayout",
 		"TableFixedRefusal.planTooLarge",

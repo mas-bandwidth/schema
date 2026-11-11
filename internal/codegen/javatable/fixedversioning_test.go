@@ -32,7 +32,7 @@ package javatable
 // prefill that did not run leaves the poison where a default belongs.
 //
 // OLD-REFUSES-NEW reads `new_<row>.bin` with the OLD build into a FRESH value:
-// `layout_newer` by name, the FILE's hash on the report and nothing else, no
+// `layout_unknown` by name, the FILE's hash on the report and nothing else, no
 // counter moved, `malformed` false, and the destination still every field of a
 // fresh value (§5.3, §5.7).
 
@@ -649,7 +649,7 @@ func parseProbe(t *testing.T, out string) probeRun {
 }
 
 // fileHash is the eight bytes at offset 8 — the hash the header carries, which
-// is what `layout_newer` reports and nothing else (§5.3).
+// is what `layout_unknown` reports and nothing else (§5.3).
 func fileHash(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -831,7 +831,7 @@ func TestFixedVersioningRows(t *testing.T) {
 				assertCounters(t, "NEW-READS-OLD", row, got)
 			}
 
-			// OLD-REFUSES-NEW: `layout_newer`, the FILE's hash and nothing
+			// OLD-REFUSES-NEW: `layout_unknown`, the FILE's hash and nothing
 			// else, no counter moved, nothing malformed, the destination still
 			// a fresh value (§5.3, §5.7).
 			if sameHashRows[row.name] {
@@ -842,8 +842,8 @@ func TestFixedVersioningRows(t *testing.T) {
 				return
 			}
 			ref := runProbe(t, classes, "Probe_refuses", newFile)
-			if !ref.refused || ref.reason != "layoutNewer" {
-				t.Errorf("OLD-REFUSES-NEW: refused=%v reason=%s, want a refusal named layoutNewer", ref.refused, ref.reason)
+			if !ref.refused || ref.reason != "layoutUnknown" {
+				t.Errorf("OLD-REFUSES-NEW: refused=%v reason=%s, want a refusal named layoutUnknown", ref.refused, ref.reason)
 			}
 			if ref.damaged {
 				t.Error("OLD-REFUSES-NEW: malformed is set beside a reason; the report is two answers and never both")
@@ -1117,7 +1117,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 }
 
 // TestFixedVersioningHash is §5.7's hash rows: an unknown hash is
-// `layout_newer`, a known hash whose bytes differ is `layout_malformed`, and
+// `layout_unknown`, a known hash whose bytes differ is `layout_malformed`, and
 // the reader's own hash selects the identity plan.
 func TestFixedVersioningHash(t *testing.T) {
 	corpus := corpusDir(t)
@@ -1149,8 +1149,8 @@ func TestFixedVersioningHash(t *testing.T) {
 			t.Fatal(err)
 		}
 		unknown := runProbe(t, classes, "Probe_reads", path)
-		if !unknown.refused || unknown.reason != "layoutNewer" {
-			t.Errorf("hash_unknown: refused=%v reason=%s, want layoutNewer", unknown.refused, unknown.reason)
+		if !unknown.refused || unknown.reason != "layoutUnknown" {
+			t.Errorf("hash_unknown: refused=%v reason=%s, want layoutUnknown", unknown.refused, unknown.reason)
 		}
 		if want := fileHash(t, path); unknown.layoutHash != want {
 			t.Errorf("hash_unknown: layoutHash=%s, want the file's own hash %s and nothing else", unknown.layoutHash, want)

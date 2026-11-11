@@ -250,7 +250,7 @@ func cT04R10(t *testing.T) {
 // ---- c/R15 ------------------------------------------------------------------
 
 // cT04R15 holds c/R15 to §5.6's retirement list and §5.3 step 5: the four
-// forward-read clamps are gone, and each is `layout_newer` now. A hash the
+// forward-read clamps are gone, and each is `layout_unknown` now. A hash the
 // lineage does not hold is refused BEFORE any record and before any plan
 // selection, on the file's hash; the count and text clamps that REMAIN are the
 // writer's bounds carried by the plan, which only a backward read over a locked
@@ -262,7 +262,7 @@ func cT04R15(t *testing.T) {
 	if load == "" {
 		t.Fatal("R15: lineage_fixed_load is not emitted")
 	}
-	miss := strings.Index(load, "table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, hash )")
+	miss := strings.Index(load, "table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNKNOWN, hash )")
 	records := strings.Index(load, "for ( k = 0; k < count; ++k )")
 	if miss < 0 || records < 0 {
 		t.Fatalf("R15: the load's refusals moved (%d, %d)", miss, records)

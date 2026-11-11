@@ -1156,7 +1156,7 @@ fixed table Fxnew {
 // wrong plan must go red, and so must each fix's own bug: this build's identity
 // plan over another schema's record". Two halves: the loader REFUSES a file
 // whose hash it does not lock (§4.2 row 4: "a hash in no entry is
-// `layout_newer`"), counting nothing; and Fxold's identity plan run straight
+// `layout_unknown`"), counting nothing; and Fxold's identity plan run straight
 // over Fxnew's record body does NOT reproduce the record — the path
 // select-by-hash exists to prevent. The legitimate value the rule admits
 // (Fxold reading its own record) is asserted too, so neither half is vacuous.
@@ -1188,7 +1188,7 @@ int main(void)
     memset(&back, 0x5A, sizeof(back));
     memset(&r, 0, sizeof(r));
     CHECK(fxold_fixed_load(&back, 1, w2, need, plan, 1024, NULL, &r) == -1);
-    CHECK(r.refused && r.reason == SCHEMA_TABLE_LAYOUT_NEWER);
+    CHECK(r.refused && r.reason == SCHEMA_TABLE_LAYOUT_UNKNOWN);
     CHECK(r.unknown == 0 && r.widened == 0);
 
     /* (1) THE WRONG PLAN IS WRONG: Fxold's identity plan over Fxnew's body. */

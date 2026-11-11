@@ -540,8 +540,8 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 `)
 	})
 
-	// c/R8: unknown hash refuses layout_newer with the file's hash.
-	t.Run("c/R8_layout_newer", func(t *testing.T) {
+	// c/R8: unknown hash refuses layout_unknown with the file's hash.
+	t.Run("c/R8_layout_unknown", func(t *testing.T) {
 		t.Parallel()
 		older := cReadSchema(t, "VOLD_field_append")
 		newFile := filepath.Join(corpus, "new_field_append.bin")
@@ -549,7 +549,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 		cStrictT01Probe(t, older, nil, 0, newFile, `
     RESET_BACK();
     n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
-    EXPECT_REFUSED( "old reader, new writer's file", SCHEMA_TABLE_LAYOUT_NEWER, want );
+    EXPECT_REFUSED( "old reader, new writer's file", SCHEMA_TABLE_LAYOUT_UNKNOWN, want );
     if ( want == 0 ) { printf( "the corpus hash is zero\n" ); return 1; }
 `)
 		cStrictT01Probe(t, older, nil, 0, cT01Forge(t, "f_r8.bin", cT01Join(h, l, nil)), `
@@ -563,7 +563,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
             snprintf( who, sizeof( who ), "stranger hash %d", c );
             RESET_BACK();
             n = @LOAD@( back, 8, data, len, plan, 4096, NULL, &r );
-            EXPECT_REFUSED( who, SCHEMA_TABLE_LAYOUT_NEWER, strangers[c] );
+            EXPECT_REFUSED( who, SCHEMA_TABLE_LAYOUT_UNKNOWN, strangers[c] );
         }
     }
 `)
@@ -658,7 +658,7 @@ func TestCFixedFormSourcesStrict(t *testing.T) {
 
         { const uint64_t stranger = want ^ 1ull; memcpy( data + kTableFixedHashAt, &stranger, 8 );
           RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
-          EXPECT_REFUSED( "layout_newer", SCHEMA_TABLE_LAYOUT_NEWER, stranger ); }
+          EXPECT_REFUSED( "layout_unknown", SCHEMA_TABLE_LAYOUT_UNKNOWN, stranger ); }
         memcpy( data, orig, (size_t) L );
 
         data[kTableFixedHeaderBytes + 4] ^= 0x01; RESET_BACK(); n = @LOAD@( back, 8, data, L, plan, 4096, NULL, &r );
@@ -869,9 +869,9 @@ int main(void) {
 `
 				} else {
 					oldBody = `
-    if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.refuse_reason != 0 )
-        { printf( "expected SCHEMA_TABLE_LAYOUT_NEWER: n=%lld refused=%d reason=%d rr=%d\n", (long long) n, r.refused, r.reason, r.refuse_reason ); return 1; }
-    if ( r.layout_hash != want ) { printf( "layout_newer reports THE FILE'S hash\n" ); return 1; }
+    if ( n != -1 || !r.refused || r.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN || r.refuse_reason != 0 )
+        { printf( "expected SCHEMA_TABLE_LAYOUT_UNKNOWN: n=%lld refused=%d reason=%d rr=%d\n", (long long) n, r.refused, r.reason, r.refuse_reason ); return 1; }
+    if ( r.layout_hash != want ) { printf( "layout_unknown reports THE FILE'S hash\n" ); return 1; }
     if ( r.widened != 0 || r.unknown != 0 ) { printf( "REFUSE is total: no counter moves\n" ); return 1; }
     if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "REFUSE wrote destination bytes\n" ); return 1; }
 `

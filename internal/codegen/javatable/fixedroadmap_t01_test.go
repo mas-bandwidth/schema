@@ -168,7 +168,7 @@ func t01F4(t *testing.T, e *t01Env) {
 // layout for a hash already held is refused by name and changes nothing". The
 // header's hash selects a held lineage entry; layout bytes that differ from the
 // lock's (one byte of each field, and a different length) refuse
-// `layout_malformed`, NOT `layout_newer`, with nothing decoded.
+// `layout_malformed`, NOT `layout_unknown`, with nothing decoded.
 func t01F12(t *testing.T, e *t01Env) {
 	count := (e.layoutLen() - 4) / t01EntryBytes
 	offsets := []int{0} // the entry count word
@@ -201,8 +201,8 @@ func t01F12(t *testing.T, e *t01Env) {
 	// The contrast that makes the row discriminating: a hash held by NO entry is
 	// the other name.
 	stranger := e.forge(t, "stranger.bin", func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b })
-	if r := runProbe(t, e.classes, "Probe_reads", stranger); r.reason != "layoutNewer" {
-		t.Errorf("an unheld hash: reason=%s, want layoutNewer, which is not the second-layout name", r.reason)
+	if r := runProbe(t, e.classes, "Probe_reads", stranger); r.reason != "layoutUnknown" {
+		t.Errorf("an unheld hash: reason=%s, want layoutUnknown, which is not the second-layout name", r.reason)
 	}
 }
 
@@ -311,7 +311,7 @@ func t01R13(t *testing.T, e *t01Env) {
 		mutate func(b []byte) []byte
 		reason string
 	}{
-		"layout_newer":     {func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b }, "layoutNewer"},
+		"layout_unknown":   {func(b []byte) []byte { b[t01HeaderBytes-8] ^= 0xFF; return b }, "layoutUnknown"},
 		"layout_malformed": {func(b []byte) []byte { b[t01HeaderBytes+t01LengthBytes+4] ^= 0xFF; return b }, "layoutMalformed"},
 		"layout_truncated": {func(b []byte) []byte { return b[:e.recordsAt()-1] }, "layoutMalformed"},
 		"no_layout": {func(b []byte) []byte {

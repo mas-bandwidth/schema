@@ -768,7 +768,7 @@ fn check_r27() -> Result<(), String> {
 }
 
 fn check_p4() -> Result<(), String> {
-    // 1. VOLD_int_widen loading new_int_widen.bin refuses layout_newer with
+    // 1. VOLD_int_widen loading new_int_widen.bin refuses layout_unknown with
     //    the file's hash and touches nothing.
     let new_widen = std::fs::read(format!("{CORPUS}/new_int_widen.bin"))
         .map_err(|e| format!("read new_int_widen.bin: {e}"))?;
@@ -782,13 +782,13 @@ fn check_p4() -> Result<(), String> {
     let mut remap = vec![0u16; 4096];
     let mut rep = TableFixedReport::default();
     if widen_old::int_widen_fixed_load(&mut dst, &new_widen, &mut plan, &mut remap, &mut rep).is_some() {
-        return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_newer".into());
+        return Err("VOLD_int_widen accepted new_int_widen.bin instead of refusing layout_unknown".into());
     }
-    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutNewer || rep.layout_hash != new_hash {
-        return Err("VOLD_int_widen did not report LayoutNewer with the file's hash".into());
+    if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutUnknown || rep.layout_hash != new_hash {
+        return Err("VOLD_int_widen did not report LayoutUnknown with the file's hash".into());
     }
     if !is_all_poison(&dst[0]) {
-        return Err("VOLD_int_widen modified destination on LayoutNewer".into());
+        return Err("VOLD_int_widen modified destination on LayoutUnknown".into());
     }
 
     // 2. Running VOLD_int_widen's identity plan directly over new_int_widen.bin's

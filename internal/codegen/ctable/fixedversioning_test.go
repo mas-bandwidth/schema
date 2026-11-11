@@ -10,7 +10,7 @@ package ctable
 //	                 of them zero, because an append the reader knows is not an
 //	                 event.
 //	OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//	                 `layout_newer` BEFORE any record, reporting THE FILE'S
+//	                 `layout_unknown` BEFORE any record, reporting THE FILE'S
 //	                 HASH and nothing else, with no counter moved and
 //	                 `malformed` clear (§5.3's joint answer).
 //
@@ -247,8 +247,8 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 			} else {
 				body = `
     if ( n != -1 ) { printf( "the older reader did not refuse the newer writer's file: n=%lld\n", (long long) n ); return 1; }
-    if ( r.reason != SCHEMA_TABLE_LAYOUT_NEWER ) { printf( "a hash in no lineage entry owes layout_newer, not %d\n", r.reason ); return 1; }
-    if ( r.layout_hash != want ) { printf( "layout_newer reports THE FILE'S hash\n" ); return 1; }
+    if ( r.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN ) { printf( "a hash in no lineage entry owes layout_unknown, not %d\n", r.reason ); return 1; }
+    if ( r.layout_hash != want ) { printf( "layout_unknown reports THE FILE'S hash\n" ); return 1; }
     if ( r.refused ) { printf( "a refusal by name never sets malformed too (§5.3, the joint answer)\n" ); return 1; }
     if ( r.widened != 0 || r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "REFUSE is total: no counter moves\n" ); return 1; }
@@ -268,7 +268,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an
 // index cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown` (report the file hash; nothing proves it newer). §5.2, §5.7's three floor rows.
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := cFixedCorpus(t)
@@ -321,13 +321,13 @@ func TestFixedVersioningHash(t *testing.T) {
 	newer := cReadSchema(t, "VNEW_field_append")
 	older := cReadSchema(t, "VOLD_field_append")
 
-	// hash_unknown: a hash in no lineage refuses layout_newer, on the FILE's
+	// hash_unknown: a hash in no lineage refuses layout_unknown, on the FILE's
 	// hash alone. The probe stamps a hash nothing can hold over the header.
 	t.Run("hash_unknown", func(t *testing.T) {
 		t.Parallel()
 		out, err := cRunVersionProbe(t, newer, []string{older}, 0,
 			filepath.Join(corpus, "old_field_append.bin"), `
-    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.refused )
+    if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.refused )
         { printf( "hash_unknown: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
 `, "", `
     memcpy( data + kTableFixedHashAt, &(uint64_t){ 0xDEADBEEFCAFEF00Dull }, 8 );

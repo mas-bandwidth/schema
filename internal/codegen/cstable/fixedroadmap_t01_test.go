@@ -154,7 +154,7 @@ const t01Refusals = `            foreach (string name in new string[] { @FILES@ 
                 W(shortLayout, 16, LayoutBytes(g) - 1, 4);
                 Expect(name + " no_layout", noLayout, 1, "no_layout", 0);
                 Expect(name + " batch_too_large", Records(g, 2), 1, "batch_too_large", 0);
-                Expect(name + " layout_newer", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_newer", 0x1122334455667788UL);
+                Expect(name + " layout_unknown", Put(g, 8, 0x1122334455667788L, 8), 1, "layout_unknown", 0x1122334455667788UL);
                 Expect(name + " layout_malformed bytes", Put(g, 24, Rd(g, 24, 4) ^ 0xFF, 4), 1, "layout_malformed", 0);
                 Expect(name + " layout_malformed length", shortLayout, 1, "layout_malformed", 0);
                 Expect(name + " layout_malformed past the file", Put(g, 16, g.Length, 4), 1, "layout_malformed", 0);
@@ -226,14 +226,14 @@ func t01Probes() []csVersionProbe {
 `),
 		// R7, §5.3 "EVERY HASH A RUNTIME HOLDS WAS HANDED TO IT": the header's hash is
 		// taken as given. A header hash outside the lineage over the file's TRUE layout
-		// bytes is layout_newer, so no hash is derived from the bytes; a header hash
+		// bytes is layout_unknown, so no hash is derived from the bytes; a header hash
 		// IN the lineage over other bytes is layout_malformed, so the bytes do not
 		// choose the lane.
 		lineage("cs/R7", `            foreach (string name in new string[] { `+files+` })
             {
                 byte[] g = Corpus(name);
                 ReadsClean(name + " unbroken", g, 1, 1);
-                Expect(name + " forged header hash over the true layout", Put(g, 8, 0x0123456789ABCDEFL, 8), 1, "layout_newer", 0x0123456789ABCDEFUL);
+                Expect(name + " forged header hash over the true layout", Put(g, 8, 0x0123456789ABCDEFL, 8), 1, "layout_unknown", 0x0123456789ABCDEFUL);
                 Expect(name + " the held hash over other layout bytes", Put(g, 24, Rd(g, 24, 4) + 1, 4), 1, "layout_malformed", 0);
             }
             {

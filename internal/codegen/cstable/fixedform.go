@@ -1901,7 +1901,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("};\n\n")
 	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
 	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
-	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
+	g.pf("// layout_unknown, which reports a hash no lineage entry holds (§5.2).\n")
 	g.pf("public const int %sFixedFloor = %d;\n\n", name, floor)
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
 	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
@@ -2023,12 +2023,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// re-derived from a file at all (§5.3).
 	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
-	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
-	// belongs to layout_newer alone is "and nothing else".
+	// layout_unknown — report the hash; nothing proves it newer. Below the floor
+	// is layout_unsupported — upgrade the client. BOTH report THE FILE'S hash
+	// (§5.9 #7), and what belongs to layout_unknown alone is "and nothing else".
 	g.pf("    int pick = TableFixedWire.Select(%sFixedKnown, hash);\n", name)
 	g.pf("    if (pick < 0)\n    {\n")
-	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_newer\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unknown\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (pick < %sFixedFloor)\n    {\n", name)
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unsupported\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
