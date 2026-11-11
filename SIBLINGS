@@ -1,0 +1,16 @@
+# The pinned sibling checkouts the build reads beside the worktree, as data a
+# tool can stage without running the build. One line per sibling:
+#
+#   <path> <clone-url> <tag> <commit>
+#
+# <path> is relative to this repository's root; <commit> is the 40-hex commit
+# the tag resolves to (the peeled commit for an annotated tag). The Makefile's
+# SERIALIZE*_PIN and SERIALIZE_GO_COMMIT are the authority, `make deps` stages
+# any sibling that is missing and leaves a present one alone, and
+# internal/ci/siblings_test.go holds this file equal to the Makefile's pins.
+../serialize https://github.com/mas-bandwidth/serialize.git v2.1.3 7bf1877b38cfdd737d0bf102a546ec2674335786
+../serialize.go https://github.com/mas-bandwidth/serialize.go.git v2.1.1 97c6825383cffe9f43af64526dea4e0ef10d1662
+../serialize.c https://github.com/mas-bandwidth/serialize.c.git v2.1.1 1d072f62e72ed357c094a7f52b29327ed8cdd862
+../serialize.cs https://github.com/mas-bandwidth/serialize.cs.git v2.1.1 d8ecd5c98381f2577cf53c9c3ac0e42021289f7f
+../serialize.rs https://github.com/mas-bandwidth/serialize.rs.git v5.0.0 be2591509c68f828b43029a543ef9ffa290637b8
+../serialize.js https://github.com/mas-bandwidth/serialize.js.git v2.1.2 5ed211576f9f2a780cfc95dd11b4ea2a3dc7d00d

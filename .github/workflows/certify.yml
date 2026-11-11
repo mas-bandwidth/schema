@@ -905,22 +905,29 @@ jobs:
       # ONE make invocation for the whole group, with -k so a control that
       # refuses does not hide the ones behind it, and the same log scan ci.yml
       # runs: a control's own refusal lines are the sentence a reader needs, and
-      # this pulls them out of a log thousands of compiler lines long.
+      # this pulls them out of a log thousands of compiler lines long. The
+      # refusals, the cause lines and the streamed log are ci-full.yml's; the
+      # block on its step says why each is what it is.
       - name: every negative control in the ${{ matrix.name }} group
         run: |
           set -o pipefail
           targets=$(go run ./tools/negativecontrols targets "${{ matrix.name }}")
           echo "$targets" | tr ' ' '\n'
+          refusal='^NEGATIVE CONTROL( FAILED)?:|^sabotage[ :]'
+          cause="$refusal"'|\*\*\* \[|^FAIL|--- FAIL'
           status=0
+          : >controls.log
           # shellcheck disable=SC2086
           make -k $targets \
             RUSTUP_BIN="$(dirname "$(command -v cargo)")" DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
-            >controls.log 2>&1 || status=1
-          cat controls.log
-          if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
+            2>&1 | awk '{ print; fflush(); print > "controls.log" }' || status=1
+          if grep -qE "$refusal" controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."
-            grep -nE '^NEGATIVE CONTROL( FAILED)?:' controls.log
             status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "the cause, as controls.log names it:"
+            grep -nE "$cause" controls.log || echo "no refusal or failure line in controls.log; read the log above"
           fi
           exit $status
 
