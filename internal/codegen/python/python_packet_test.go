@@ -676,8 +676,6 @@ func repoRoot(t *testing.T) string {
 	return root
 }
 
-var _ = slices.Contains[[]string, string]
-
 // TestPythonBranchReadLocalsAreUnique: a method binds its typed Ref[bool] and
 // Ref[int] holders once at entry, and every numbered temporary (_s_v1, ...) is
 // bound once across both arms of an if/else and past the branch so mypy sees a

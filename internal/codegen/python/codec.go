@@ -12,7 +12,7 @@ import (
 
 // A kindEmitter is one field kind's read, write, validate and zero emitters.
 // Every carried kind lives in its own file and registers from init(), so a
-// later packet card adds a file and one registration line
+// new packet kind adds a file and one registration line
 // (docs/PORT-PYTHON.md, THE PACKET CORE CUT).
 type kindEmitter struct {
 	name     string
@@ -186,7 +186,7 @@ func firstBlockerItem(items []ir.Item) string {
 }
 
 // checkCarried refuses the unit at generate time, by kind and field, when any
-// declaration needs a wire emitter this card does not carry.
+// declaration needs a wire emitter the target does not carry yet.
 func checkCarried(u *ir.Unit) error {
 	for _, f := range u.Files {
 		for _, d := range f.Decls {

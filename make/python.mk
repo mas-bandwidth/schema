@@ -18,7 +18,7 @@
 .PHONY: test-python update-goldens-python python-packet-core-negative-control
 test-python: python-toolchain-check python-toolchain-negative-control
 	SCHEMA_SLOW=1 go test ./internal/codegen/python/... -count=1
-	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonRefusesADeclarationThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
+	sh test/slowgate/proof test-python-compiler 'TestPythonTargetIsRegistered TestPythonGeneratesAnEmptyUnitThroughTheDriver TestPythonCarriesThePacketCoreThroughTheDriver TestNewLegPythonRecipe' -tags schema_leg_python ./compiler -run 'Python' -count=1
 update-goldens-python: ;
 
 # python-packet-core-negative-control: the packet core's own control. It edits

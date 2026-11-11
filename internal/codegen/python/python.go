@@ -8,7 +8,7 @@
 //	<package>/_schema/      the runtime: the errors, and serialize.py vendored
 //
 // The packet core carries the class surface of every declaration and the codec
-// of the kinds the first packet card names (bool, int8..uint64, enums, flags,
+// of the core packet kinds (bool, int8..uint64, enums, flags,
 // types by value, unions and if/else branches). A field or item of any other
 // kind is refused by name, naming the design's packet layer
 // (docs/PORT-PYTHON.md, THE PACKET CORE CUT).

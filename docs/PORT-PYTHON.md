@@ -410,9 +410,9 @@ its releases once the repository exists.
 
 ## THE PACKET CORE CUT
 
-The packet work is dealt in more than one card, so the first card carries the
-wire's core and refuses the rest by name. This section records where that cut
-departs from the P4 row above; the rules of this page are unchanged.
+The packet layer (P4 above) lands in steps. The target carries the wire's core
+today and refuses every other packet kind by name. This section records where
+the core stands against the P4 row; the rules of this page are unchanged.
 
 - **The class surface is complete; the codec is not.** Every packet
   declaration is emitted now: module constants, the enum and flags classes
@@ -424,7 +424,7 @@ departs from the P4 row above; the rules of this page are unchanged.
   `string`, `bytes`, an array, `const`, `reserved`, `align`, or a 128-bit
   integer) is refused at generate time by its kind, naming P4 the packet
   wire. The class surface knows how to birth and compare those kinds already;
-  only their wire emitters are later cards.
+  only their wire emitters are still to come.
 - **The implicit enum zero is `None_`.** Python will not let a class body
   assign to `None`, so the zero every leg spells `None` is spelled `None_`
   in generated code. The name tables keep the schema spelling `"None"`, and
