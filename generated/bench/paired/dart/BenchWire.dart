@@ -5741,7 +5741,7 @@ final class _JParse {
       if (i >= s.length) throw const FormatException('unterminated string');
       final c = s.codeUnitAt(i++);
       if (c == 0x22) return b.toString();
-      if (c < 0x20) throw FormatException('malformed', s, i - 1);
+      if (c < 0x20) throw FormatException('control character in string', s, i - 1);
       if (c != 0x5C) {
         b.writeCharCode(c);
         continue;

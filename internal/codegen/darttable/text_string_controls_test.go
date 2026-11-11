@@ -29,7 +29,7 @@ table Root {
 `
 
 // the parser line the fix added, and the planted edit that takes it out.
-const dartTextStringControlCheck = "if (c < 0x20) throw FormatException('malformed', s, i - 1);"
+const dartTextStringControlCheck = "if (c < 0x20) throw FormatException('control character in string', s, i - 1);"
 
 var dartTextStringControlCases = []struct {
 	name    string
