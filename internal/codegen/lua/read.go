@@ -254,7 +254,7 @@ func emitReadScalar(m *Module, f *ir.Field, name, ind string) {
 			holder = "BIG"
 		}
 		m.call(ind, fmt.Sprintf("stream:serializeFixed(%s, %d, %d, %s, %s)", holder,
-			f.Type.IntBits, f.Type.FracBits, rawLiteral(f.Type, f.IntMin), rawLiteral(f.Type, f.IntMax)), "")
+			f.Type.IntBits, f.Type.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), "")
 		m.Printf("%s%s = %s.value\n", ind, name, holder)
 	case ir.TInt:
 		if f.Type.Width == 128 {

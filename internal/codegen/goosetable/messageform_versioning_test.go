@@ -83,7 +83,7 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 					t.Fatal(err)
 				}
 				n = records[oldFile]
-				batch, refused = gooseMsgFromFixed(t, writer, root, data, n, true)
+				batch, _ = gooseMsgFromFixed(t, writer, root, data, n, true)
 				if batch == nil {
 					older := evolutionLoad(t, "test/tables/VOLD_"+c.row+".schema")
 					oldBatch, why := gooseMsgFromFixed(t, older, root, data, n, true)
