@@ -2293,23 +2293,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # bytes(N) rides as an array of u8 (kind 14, element kind 6): L then the count
-  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. A count past the
-  # declared size clamps.
+  # and the bytes (docs/SPEC-TABLES.md §3). Kind 8 is u32. The bytes after the
+  # count number exactly the count, never fewer and never more, and a body too
+  # short for its header is damage.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
       {_len, arr} when byte_size(arr) < 2 ->
-        {:cont, :inert, report}
+        {:cont, <<>>, throw(:wire_damaged)}
 
       {_len, <<actual, count_rest::binary>>} ->
         case leb(count_rest) do
           {n, bytes} when actual == 6 ->
             if n > f.size, do: throw(:wire_damaged)
 
-            keep = min(n, f.size)
-            report = report
-
-            if byte_size(bytes) >= keep do
-              {:cont, binary_part(bytes, 0, keep), report}
+            if byte_size(bytes) == n do
+              {:cont, bytes, report}
             else
               {:cont, bytes, throw(:wire_damaged)}
             end
@@ -6497,7 +6495,7 @@ const variableRetainSource = `
          retain,
          _path
        )
-       when t in [:list, :map, :keyed, :bytes] and len < 2 and byte_size(body) == len,
+       when t in [:list, :map, :keyed] and len < 2 and byte_size(body) == len,
        do: {:cont, :inert, report, retain}
 
   # an array of tables: element i is the step pair {ordinal, i}. A later

@@ -76,6 +76,13 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 				var report tabletext.Report
 				ok, e := tablewire.Decode(m, value, wire, &report)
 				label := fmt.Sprintf("%s/%s/%x", field, a.name, p.body)
+				// A bytes(N) arm's body is exactly its header and count: a
+				// body under its two-byte header is damage, not an inert arm
+				// (docs/SPEC-TABLES.md §3).
+				mismatch := p.mismatch
+				if a.name == "raw" && len(p.body) < 2 {
+					mismatch = 1
+				}
 				// Go oracle: strict readers refuse a kind mismatch (and any
 				// truncated arm payload they cannot read); a lawful arm reads whole.
 				var wantText, want []byte
@@ -97,7 +104,7 @@ func TestUnionArrayElementKindsElixir(t *testing.T) {
 				} else if e == nil || !report.Refused || report.Reason == "" || !tablewire.ReadRefusal(e) {
 					t.Fatalf("%s oracle refusal: %v %v %+v", label, ok, e, report)
 				}
-				if p.mismatch != 0 {
+				if mismatch != 0 {
 					fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,widened: 0,retained: 0,retain_lost: 0,reason: "",missing_required: 0}
