@@ -136,6 +136,55 @@ final class _JParse {
     i++;
   }
 
+  // scanNumber advances past RFC 8259's number production (§16.2): one pass
+  // and no RegExp, so a token of any length costs time in its length. The
+  // caller checks the byte after it is a delimiter.
+  void scanNumber() {
+    final start = i;
+    if (i < s.length && s.codeUnitAt(i) == 0x2D) i++;
+    if (i >= s.length) throw FormatException('unexpected character', s, start);
+    final first = s.codeUnitAt(i);
+    if (first == 0x30) {
+      i++;
+    } else if (first >= 0x31 && first <= 0x39) {
+      i++;
+      while (i < s.length) {
+        final c = s.codeUnitAt(i);
+        if (c < 0x30 || c > 0x39) break;
+        i++;
+      }
+    } else {
+      throw FormatException('unexpected character', s, start);
+    }
+    if (i < s.length && s.codeUnitAt(i) == 0x2E) {
+      i++;
+      final fracStart = i;
+      while (i < s.length) {
+        final c = s.codeUnitAt(i);
+        if (c < 0x30 || c > 0x39) break;
+        i++;
+      }
+      if (i == fracStart) throw FormatException('invalid JSON number', s, start);
+    }
+    if (i < s.length) {
+      final c = s.codeUnitAt(i);
+      if (c == 0x65 || c == 0x45) {
+        i++;
+        if (i < s.length) {
+          final sign = s.codeUnitAt(i);
+          if (sign == 0x2B || sign == 0x2D) i++;
+        }
+        final expStart = i;
+        while (i < s.length) {
+          final c = s.codeUnitAt(i);
+          if (c < 0x30 || c > 0x39) break;
+          i++;
+        }
+        if (i == expStart) throw FormatException('invalid JSON number', s, start);
+      }
+    }
+  }
+
   // the depth cap counts containers (§16.14 W2): a scalar, a string or a
   // null at depth 129 nests nothing
   dynamic value(int depth) {
@@ -203,16 +252,15 @@ final class _JParse {
       i += 4;
       return null;
     }
-    final number = RegExp(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?').matchAsPrefix(s, i);
-    if (number == null) throw FormatException('unexpected character', s, i);
-    i = number.end;
+    final start = i;
+    scanNumber();
     if (i < s.length) {
       final next = s.codeUnitAt(i);
       if (next != 0x2C && next != 0x5D && next != 0x7D && next != 0x20 && next != 0x09 && next != 0x0A && next != 0x0D) {
         throw FormatException('invalid JSON number', s, i);
       }
     }
-    final token = number.group(0)!;
+    final token = s.substring(start, i);
     // -0 stays a _JNum: an int has no negative zero, and a float field owes
     // the sign the token spells (§16.2)
     if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
@@ -335,48 +383,10 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('kind_mismatch');
     return def;
   }
-  var i = 0;
-  var negative = false;
-  if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-    negative = token[i] == '-';
-    i++;
-  }
-  final intDigits = StringBuffer();
-  final fracDigits = StringBuffer();
-  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-    intDigits.write(token[i]);
-    i++;
-  }
-  if (i < token.length && token[i] == '.') {
-    i++;
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      fracDigits.write(token[i]);
-      i++;
-    }
-  }
-  var exp = 0;
-  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
-    i++;
-    var expNegative = false;
-    if (i < token.length && (token[i] == '-' || token[i] == '+')) {
-      expNegative = token[i] == '-';
-      i++;
-    }
-    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
-      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
-      i++;
-    }
-    if (expNegative) exp = -exp;
-  }
-  var digits = intDigits.toString() + fracDigits.toString();
-  var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits[0] == '0') {
-    digits = digits.substring(1);
-    point--;
-  }
-  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  final parts = _jsonNumberParts(token);
+  final digits = parts.digits;
+  final point = parts.point;
+  final negative = parts.negative;
   final domainLo = signed ? -(BigInt.one << 127) : BigInt.zero;
   final domainHi = signed ? (BigInt.one << 127) - BigInt.one : (BigInt.one << 128) - BigInt.one;
   BigInt raw;
@@ -386,6 +396,12 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
     r.refuse('out_of_range');
     return def;
   } else if (point < -40) {
+    r.refuse('kind_mismatch');
+    return def;
+  } else if (point < digits.length && digits.length - point > frac) {
+    // A fraction with more significant digits than the Q I.F grid has
+    // fraction bits cannot be exact; decide it before any big arithmetic,
+    // so BigInt.parse only ever sees a bounded string (§16.2).
     r.refuse('kind_mismatch');
     return def;
   } else {
@@ -601,15 +617,16 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
     if (expNeg) exp = -exp;
   }
   if (i != k.length) throw const FormatException('invalid integer map key');
-  var digits = intDigits + fracDigits;
+  final all = intDigits + fracDigits;
+  var start = 0;
   var point = intDigits.length + exp;
-  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
-    digits = digits.substring(1);
+  while (start < all.length && all.codeUnitAt(start) == 0x30) {
+    start++;
     point--;
   }
-  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
-    digits = digits.substring(0, digits.length - 1);
-  }
+  var end = all.length;
+  while (end > start && all.codeUnitAt(end - 1) == 0x30) end--;
+  final digits = all.substring(start, end);
   BigInt mag;
   if (digits.isEmpty) {
     mag = BigInt.zero;
