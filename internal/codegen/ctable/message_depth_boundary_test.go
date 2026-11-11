@@ -32,10 +32,14 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// The message closure of this unit holds four field entries, so the announcement
-// carries four and every generated runtime reads its references in three bits:
+// The message closure of this unit holds four field entries. The announcement
+// carries those four in slots 1..4 and three entries the root does not declare
+// in slots 5..7, so every generated runtime reads its references in three bits:
 // the depth boundary below is encoded at that width. A shorter closure would
-// make the generated readers one-bit and the probe would no longer fit.
+// make the generated readers one-bit and the probe would no longer fit. The
+// unknown entries sit ABOVE the root's own slots, so a reference to one of them
+// names no field the reader holds a constant for, which is what the skip walk
+// is asked to step over.
 const depthBoundarySchema = `package depthprobe
 
 fixed table Root {
@@ -100,6 +104,12 @@ func depthBoundaryEncodeAnnouncement(buildVersion uint64, vocabBytes []byte) []b
 	return out
 }
 
+const (
+	depthUnknownTableRef = 5
+	depthUnknownUnionRef = 6
+	depthUnknownArrayRef = 7
+)
+
 func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) []byte {
 	t.Helper()
 	var bits []uint8
@@ -111,21 +121,21 @@ func depthBoundaryEncodeBatch(t *testing.T, family string, depth, refBits int) [
 	switch family {
 	case "body":
 		for range depth {
-			put(2, refBits)
+			put(depthUnknownTableRef, refBits)
 		}
 		for range depth {
 			put(0, refBits)
 		}
 	case "union":
 		for i := 0; i < depth+1; i++ {
-			put(3, refBits)
+			put(depthUnknownUnionRef, refBits)
 		}
 		put(0, refBits)
 	case "array":
 		for i := 0; i < depth-2; i++ {
-			put(2, refBits)
+			put(depthUnknownTableRef, refBits)
 		}
-		put(4, refBits)
+		put(depthUnknownArrayRef, refBits)
 		for i := 0; i < depth-1; i++ {
 			put(0, refBits)
 		}
@@ -159,6 +169,9 @@ func depthBoundaryFixtures(t *testing.T) (*ir.Unit, []byte, []depthBoundaryCase)
 	}
 	entries := []ir.TableVocabularyEntry{
 		ir.TableFieldEntry(st.Fields[0]),
+		ir.TableFieldEntry(st.Fields[1]),
+		ir.TableFieldEntry(st.Fields[2]),
+		ir.TableFieldEntry(st.Fields[3]),
 		{Id: 0x9991, Kind: ir.TableKindTable},
 		{Id: 0x9992, Kind: ir.TableKindUnion},
 		{
@@ -314,8 +327,8 @@ int main(void)
 {
 `)
 	fmt.Fprintf(&src, "    static const uint8_t ann[] = { %s };\n", depthBoundaryHexList(ann, ""))
-	src.WriteString(`    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocab = table_vocabulary(entries, kTableMessageEntriesHere);
+	src.WriteString(`    TableMessageEntry entries[64];
+    TableVocabulary vocab = table_vocabulary(entries, 64);
     TableReport arep;
     memset(&arep, 0, sizeof(arep));
     if (!announce_read(&vocab, ann, (int64_t)sizeof(ann), &arep) || !vocab.announced) {
@@ -424,8 +437,8 @@ int main(void)
 {
 `)
 	fmt.Fprintf(&src, "    static const uint8_t ann[] = { %s };\n", depthBoundaryHexList(ann, ""))
-	src.WriteString(`    TableMessageEntry entries[kTableMessageEntriesHere];
-    TableVocabulary vocab(entries, kTableMessageEntriesHere);
+	src.WriteString(`    TableMessageEntry entries[64];
+    TableVocabulary vocab(entries, 64);
     TableReport arep;
     memset(&arep, 0, sizeof(arep));
     if (!AnnounceRead(vocab, ann, (int64_t)sizeof(ann), &arep) || !vocab.announced) {
@@ -741,7 +754,7 @@ import (
 func TestProbe(t *testing.T) {
 `)
 	fmt.Fprintf(&testSrc, "\tann := []byte{%s}\n", depthBoundaryHexList(ann, ""))
-	testSrc.WriteString(`	var storage [TableMessageEntriesHere]TableMessageEntry
+	testSrc.WriteString(`	var storage [64]TableMessageEntry
 	var vocab TableVocabulary
 	vocab.Init(storage[:])
 	var arep TableReport
@@ -927,7 +940,7 @@ func runAllRuntimesJS(t *testing.T, u *ir.Unit, ann []byte, cases []depthBoundar
 	probe.WriteString(`import * as m from "./DepthProbeTable.js";
 const ann = new Uint8Array([` + depthBoundaryHexList(ann, "") + `]);
 const vocab = new m.TableVocabulary();
-vocab.Init(new Array(m.TableMessageEntriesHere));
+vocab.Init(new Array(64));
 const arep = {};
 if (!m.AnnounceRead(vocab, ann, arep) || !vocab.Announced) process.exit(2);
 let failed = false;
