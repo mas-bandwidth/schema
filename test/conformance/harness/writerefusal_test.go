@@ -54,7 +54,6 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 	}
 	u := newUnits(m)
 	for _, wr := range m.WriteRefusals {
-		wr := wr
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
 			answer, err := writeRefusalAnswer(root, m, u, wr)
 			if err != nil {
@@ -101,7 +100,6 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	}
 	u := newUnits(m)
 	for _, wr := range m.WriteRefusals {
-		wr := wr
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
 			t.Parallel()
 			if !current[filepath.Clean(wr.Wire)] {
@@ -175,8 +173,12 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 	// THE ROOT'S OWN FILE-FORM READ: form 3 at a declared fixed root, form 1
 	// at a variable one. A previous-form file beside the current-form instance
 	// is a different row, and a write-refusal row names the current form.
-	if ok, err := tablewire.Decode(model, inst, wire, &report); !ok || err != nil {
-		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %v %+v", wr.Name, err, report)
+	ok, err := tablewire.Decode(model, inst, wire, &report)
+	if err != nil {
+		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %w %+v", wr.Name, err, report)
+	}
+	if !ok {
+		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %+v", wr.Name, report)
 	}
 	held, err := mutateWriteRefusal(model, inst, wr.Path, wr.Kind, wr.Value)
 	if err != nil {
