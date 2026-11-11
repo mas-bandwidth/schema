@@ -397,11 +397,12 @@ The reader validates on load in **every** build, release included; a count or le
 **A record is a positional image and the read loop moves bytes: it asks nothing about what they mean.** Two
 things a declaration bounds are held by nobody in §4.5 — a RANGED SCALAR's min and max, and an ORDINAL's set: a
 union tag past the arm count, an enum ordinal past the enum's top value. They are held by **STRAIGHT-LINE CODE
-AFTER THE PLAN RUN, and NOT BY PLAN ENTRIES**, an entry per bounded field being a test on every read of every
-record. **THE PASS RUNS OVER STORAGE, which is what makes ONE pass cover BOTH plans**: both land values in the
-same places, so a compiled plan needs no op of its own. It walks only **what a read can have written**, the LIVE data defined in §5.3 (a
+IN THE CHECK PASS, BEFORE ANY DESTINATION BYTE LANDS, and NOT BY PLAN ENTRIES**, an entry per bounded field
+being a test on every read of every record. **THE PASS READS THE RECORD BYTES THROUGH THE PLAN, which is what
+makes ONE pass cover BOTH plans**: both name the same source offsets and kinds, so a compiled plan needs no op
+of its own. It walks only **what a read can land**, the LIVE data defined in §5.3 (a
 counted array's first `min(count, bound)` elements, an optional's payload when its present byte is `1`, an arm
-whose guards hold) and never slack, because the prefill's defaults are in range by construction. **The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all.
+whose guards hold) and never slack, because the prefill's defaults are in range by construction. **The pass REFUSES; it never clamps.** A type that bounds nothing emits no pass at all. A value the plan would widen is read at the WRITER's kind and held in the reader's type, exactly as the `widen` op lands it.
 
 **THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
 for** (bill §12.5), and never the reader's: the reader's range is the wider one, so holding to it would admit a
@@ -941,13 +942,13 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
          ill-formed used text:                          REFUSE text_ill_formed
          a count or length past the plan's bound:      REFUSE count_over_bound / length_over_bound
          a NaN or an infinity:                          REFUSE non_finite_float
+         a ranged scalar or a `bits(N)` past the plan's range: REFUSE out_of_range
+         an ordinal or a tag past the plan's set:       REFUSE out_of_range
        at := at + record_bytes
- 12  LAND, every record                               -- the bounds pass refuses `out_of_range`
+ 12  LAND, every record                               -- the check pass has already refused every bad value
      per record, at `at`:
        PREFILL(out[rec], fills)                         -- §4.3
        RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
-       BOUNDS(out[rec])                                 -- §4.6, against THE PLAN'S bounds: REFUSE out_of_range,
-                                                        -- resetting every value written (below)
        at := at + record_bytes
      return n
 ```
@@ -1003,27 +1004,35 @@ nothing could reach.
 | a bool or a present byte other than `0` or `1` | `wire_damaged` (§4.5) | the name |
 | a ranged scalar, a `bits(N)`, an ordinal or a tag outside the WRITER's range or set (§4.5, §4.6) | `out_of_range` | the name, naming the field |
 
-**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal up to
-and including the per-record hash, count, length and text checks writes not one destination byte, the prefill
-included. A refusal the bounds pass meets after a record has landed (`out_of_range`) RESETS every value the load wrote to its declared defaults before it returns, which is
-the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a short header, a nonzero
-reserved byte, a ragged tail — is a refusal like any other, each by its own name (`truncated`,
-`reserved_not_zero`).
+**REFUSE is total: no counter moves and the caller holds nothing the read produced.** Every refusal,
+`out_of_range` included, writes not one destination byte, the prefill included: the bounds checks run in the
+check pass, before any record lands, beside the per-record hash and the count, length, text, bool and
+present-byte checks, and step 12 lands values already known good and refuses nothing. **A check that needs a
+value the plan would widen, or a planned offset, computes it from the record bytes and the plan**: a ranged
+scalar or a `bits(N)` is read at its `src` through the plan's entry, at the writer's width and signedness,
+then held in the reader's own type exactly as the `widen` op would land it (a fixed-point value shifted into
+VALUE UNITS by its `F`); an ordinal or tag is read at its own width, and a value past the plan's set is
+refused on the rule the remap table applies. Every refusal therefore leaves the caller's destination exactly
+as it was before the load — never clamped, never zero-filled, never prefilled, never reset to its declared
+defaults — which is the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first byte, a
+short header, a nonzero reserved byte, a ragged tail — is a refusal like any other, each by its own name
+(`truncated`, `reserved_not_zero`).
 
 **LIVE IS A TOTAL FUNCTION OF THE RECORD AND THE PLAN.** A datum is live when every guard on its chain
 holds its ordinal in the record (a tag byte equal to the guard's value, compared at its width), and, for
 an optional's payload, when its present byte is `1`. A counted array's live elements are its first
 `min(count, bound)` elements, `bound` being the plan's; a count past the bound is itself refused, so on a
 record that reads the two agree. A fixed array's elements are all live. A present byte other than `0` or `1` is
-refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the bounds pass,
-not in the check loop (§4.6): a tag past the writer's arm count equals no guard's value, so no arm under it
-is live, and the bounds pass then refuses the tag.
+refused by the check loop itself, so no payload's liveness rests on it. A TAG is checked in the check pass,
+before any record lands (§4.6), from the record bytes and the plan: a tag past the writer's arm count equals
+no guard's value, so no arm under it is live, and the check pass then refuses the tag.
 
 **TOTAL OVER THE BATCH.** A reader checks EVERY record's hash and its live counts, lengths, used text, bool
-and present bytes and floats, each against the WRITER's layout, before the first record lands, in whatever
-order is fastest for its language, and refuses at the first condition it meets. Only then does it land the
-records and run the bounds pass. A refusal of the check loop leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
-left partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
+and present bytes, floats, ranges, ordinals and tags, each against the WRITER's layout, before the first
+record lands, in whatever order is fastest for its language, and refuses at the first condition it meets.
+Only then does it land the records, values already known good. A refusal leaves `out[0..k-1]` exactly as
+untouched as `out[k]`, so a hostile image is refused by its name and is never left partly landed. This is the
+answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
 
 **THE CROSS-LANGUAGE ANSWER IS THE VERDICT** (SPEC-TABLES §6.5): "refused", or a read that lands values,
 which written back equal the canonical bytes. The reason and the `widened` count are per-language
