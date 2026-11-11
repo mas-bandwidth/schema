@@ -20,7 +20,7 @@ import (
 func TestCSharpTablesCheckedBuild(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the .NET SDK")
-	out, code := runCSharpCheckedBuild(t, csharpCheckedBuildFiles(t), false)
+	out, code := runCSharpCheckedBuild(t, csharpCheckedBuildFiles(t), true)
 	for _, row := range []string{"fixed_roundtrip", "variable_roundtrip", "json_negative"} {
 		if !strings.Contains(out, "ROW "+row+": ok") {
 			t.Fatalf("%s did not pass under -checked+ (exit %d)\n%s", row, code, out)
@@ -72,6 +72,7 @@ fixed table Fix {
 table Var {
     big uint32
     small int32
+    label string(512)
     tags map[uint32]int32
     data *bytes
 }
@@ -121,6 +122,8 @@ static class CheckedBuildProbe
     static void SameVar(Var a, Var b)
     {
         if (a.Big != b.Big || a.Small != b.Small) { throw new Exception("scalars differ"); }
+        if (a.LabelLength != b.LabelLength) { throw new Exception("label length differs"); }
+        for (int i = 0; i < a.LabelLength; ++i) { if (a.Label[i] != b.Label[i]) { throw new Exception("label bytes differ"); } }
         if (a.TagsCount != b.TagsCount) { throw new Exception("map count differs"); }
         for (int i = 0; i < a.TagsCount; ++i)
         {
@@ -146,15 +149,25 @@ static class CheckedBuildProbe
         if (Schema.FixFixedSave(back, again) != n || !Same(buffer, again)) { throw new Exception("fixed round trip bytes differ"); }
     }
 
+    static byte[] Blob(int length)
+    {
+        byte[] data = new byte[length];
+        for (int i = 0; i < length; ++i) { data[i] = (byte)((i * 7) & 0xff); }
+        return data;
+    }
+
     static void VariableRoundtrip()
     {
         var value = new Var { Big = 1000000u, Small = -123456 };
+        value.LabelLength = 300;
+        for (int i = 0; i < value.LabelLength; ++i) { value.Label[i] = (byte)('a' + i % 26); }
         value.Tags = new VarTagsEntry[] {
             new VarTagsEntry { Key = 200u, Value = -9 },
             new VarTagsEntry { Key = 300u, Value = 70000 },
+            new VarTagsEntry { Key = 400u, Value = 500 },
         };
-        value.TagsCount = 2;
-        value.Data = new TableBlob(new byte[] { 1, 2, 3, 130, 255 });
+        value.TagsCount = 3;
+        value.Data = new TableBlob(Blob(300));
         byte[] wire = FileSave(value);
         var back = new Var();
         var report = new TableReport();
@@ -166,16 +179,18 @@ static class CheckedBuildProbe
     static void JsonNegative()
     {
         var value = new Var { Big = 200u, Small = -7 };
+        value.LabelLength = 300;
+        for (int i = 0; i < value.LabelLength; ++i) { value.Label[i] = (byte)('A' + i % 26); }
         value.Tags = new VarTagsEntry[] { new VarTagsEntry { Key = 5u, Value = -42 } };
         value.TagsCount = 1;
-        value.Data = new TableBlob(new byte[] { 0, 255, 16, 128 });
+        value.Data = new TableBlob(Blob(300));
         long n = Schema.VarToJsonMeasure(value);
         byte[] text = new byte[n];
         if (Schema.VarToJson(value, text) != n) { throw new Exception("to-json returned a different size"); }
         var back = new Var();
         var report = new TableReport();
         if (!Schema.VarFromJson(back, text, report)) { throw new Exception("from-json refused valid text"); }
-        if (back.Small != value.Small || back.TagsCount != 1 || back.Tags[0].Value != -42) { throw new Exception("json scalars differ"); }
+        if (back.Small != value.Small || back.LabelLength != value.LabelLength || back.TagsCount != 1 || back.Tags[0].Value != -42) { throw new Exception("json scalars differ"); }
         if (back.Data == null || !Same(back.Data.Data, value.Data.Data)) { throw new Exception("json blob differs"); }
         long ren = Schema.VarToJsonMeasure(back);
         byte[] retext = new byte[ren];
