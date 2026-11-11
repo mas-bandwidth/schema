@@ -1391,14 +1391,49 @@ func (g *gen) writeClause(f *ir.Field, name string, k int64) {
 	g.sbKnown, g.scZero = false, false
 	g.scBound, g.sbBound = true, true
 	g.dataBound = true
-	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))
-	for _, ev := range evs {
+	// An element that rides no value emits no reference to its binding: name
+	// that slot for the reader instead of binding a local nothing uses.
+	bodies := make([]string, k)
+	for i, ev := range evs {
+		saved := g.fn
+		g.fn = strings.Builder{}
 		g.emitWriteElem(f, ev, "    ")
+		bodies[i] = g.fn.String()
+		g.fn = saved
+		if !namesLocal(bodies[i], ev) {
+			evs[i] = "_"
+		}
+	}
+	g.pf("  defp %s([%s | rest], data, scratch, scratch_bits) do\n", name, strings.Join(evs, ", "))
+	for _, body := range bodies {
+		g.fn.WriteString(body)
 	}
 	g.flushW("    ") // the clause's tail is a barrier: the next entry is < 8 bits
 	g.syncSB("    ") // an align inside an element can have made it static again
 	g.pf("    %s(rest, data, scratch, scratch_bits)\n", name)
 	g.pf("  end\n\n")
+}
+
+// namesLocal reports whether body holds local as a whole identifier rather
+// than as part of a longer name.
+func namesLocal(body, local string) bool {
+	for at := 0; ; {
+		i := strings.Index(body[at:], local)
+		if i < 0 {
+			return false
+		}
+		start, end := at+i, at+i+len(local)
+		before := start == 0 || !elixirIdentByte(body[start-1])
+		after := end == len(body) || !elixirIdentByte(body[end])
+		if before && after {
+			return true
+		}
+		at = start + 1
+	}
+}
+
+func elixirIdentByte(c byte) bool {
+	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // emitWriteElem writes one array element bound to ev.
