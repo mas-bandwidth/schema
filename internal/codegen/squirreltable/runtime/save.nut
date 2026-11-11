@@ -157,6 +157,9 @@ local refuseNonFinite = function(d) {
 // ELISION COMPARES A FLOAT'S BITS (docs/SPEC-TABLES.md §3.3): -0 under a +0
 // default rides, and a float32 compares at float32
 local floatIsDefault = function(d, val, def) {
+  // a value that is not a number is never the default: it goes on to the
+  // writer, which refuses it
+  if (typeof val != "float" && typeof val != "integer") return false;
   // a COMPRESSED float compares by value at float32 (the engine's
   // cellIsDefault): its -0 is +0 (§3.3), so it elides as +0 does
   if (d.f32 && d.fmin != null) {
@@ -501,7 +504,11 @@ local writePrim, writeElement, writeValue, writeUnionValue, writeTabBody, writeB
 // flags little-endian at its width, a float32 narrowed and a float64 whole,
 // an enum as a reference into the id table (§5).
 writePrim = function(w, d, val, ids) {
-  if (d.shape == "bool") { wu8(w, val ? 1 : 0); return true; }
+  if (d.shape == "bool") {
+    if (typeof val != "bool") return refuseValue(w);
+    wu8(w, val ? 1 : 0);
+    return true;
+  }
   if (d.shape == "float") {
     if (typeof val != "float" && typeof val != "integer") return refuseValue(w);
     if (!floatFinite(d, val)) return refuseNonFinite(d);

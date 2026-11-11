@@ -15,7 +15,8 @@ import (
 // offContractSaveSchema has one field per row of the write contract
 // (docs/SPEC.md §5.1): a ranged integer, a bits(N), a counted array, a bounded
 // string and bytes, an enum, a union, a ranged float, a bare signed and
-// unsigned integer, a *string, a []string text list and a map with a text key.
+// unsigned integer, a *string, a []string text list, a map with a text key, a
+// bool and an enum-keyed float array.
 const offContractSaveSchema = `package probe
 
 enum Mode { Idle, Run, Fly }
@@ -37,6 +38,8 @@ table Root
     text *string
     names []string
     lookup map[string]int32
+    flag bool
+    weights [Mode]float32
 }
 `
 
@@ -85,7 +88,8 @@ type offContractCase struct {
 	name string
 	// goBad and goGood are the same value in the Go engine's model; nil where
 	// the engine has no way to hold it (a wrong Squirrel type) or where its
-	// writer does not refuse it today (a zero byte in a *string).
+	// writer does not refuse it today (a zero byte in a *string). goGood is nil
+	// for the enum-keyed array row, whose twin is held on the Squirrel side.
 	goBad   func(*tabletext.Model, *tabletext.Instance)
 	goGood  func(*tabletext.Model, *tabletext.Instance)
 	nutBad  string
@@ -294,6 +298,27 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 			name:   "wrong_type_string",
 			nutBad: `v.Small = "x";`, nutGood: "v.Small = 1;",
 		},
+		// a wrong Squirrel type in a float or a bool field: the Go model has
+		// no way to hold one, so the Go side writes the lawful twin only
+		{
+			name:   "ratio_string",
+			goGood: func(_ *tabletext.Model, inst *tabletext.Instance) { field(inst, "ratio").Cell.F = 0.5 },
+			nutBad: `v.Ratio = "x";`, nutGood: "v.Ratio = 0.5;",
+		},
+		{
+			name:   "weights_string",
+			nutBad: `v.Weights[1] = "x";`, nutGood: "v.Weights[1] = 0.5;",
+		},
+		{
+			name:   "flag_string",
+			goGood: func(_ *tabletext.Model, inst *tabletext.Instance) { field(inst, "flag").Cell.B = true },
+			nutBad: `v.Flag = "x";`, nutGood: "v.Flag = true;",
+		},
+		{
+			name:   "flag_integer",
+			goGood: func(_ *tabletext.Model, inst *tabletext.Instance) { field(inst, "flag").Cell.B = true },
+			nutBad: "v.Flag = 1;", nutGood: "v.Flag = true;",
+		},
 	}
 	for _, location := range []string{"name", "text", "names", "lookup"} {
 		for _, text := range texts {
@@ -316,18 +341,20 @@ func TestSquirrelVariableSaveRefusesOffContract(t *testing.T) {
 		t.Parallel()
 		m := tabletext.NewModel(unit)
 		for _, c := range cases {
-			if c.goBad == nil {
+			if c.goBad != nil {
+				inst := m.New(m.Lookup("Root"))
+				c.goBad(m, inst)
+				out, err := tablewire.Encode(m, inst)
+				if err == nil || out != nil {
+					t.Errorf("%s: the Go variable writer answered %x, %v, want invalid_value", c.name, out, err)
+				}
+			}
+			if c.goGood == nil {
 				continue
 			}
 			inst := m.New(m.Lookup("Root"))
-			c.goBad(m, inst)
-			out, err := tablewire.Encode(m, inst)
-			if err == nil || out != nil {
-				t.Errorf("%s: the Go variable writer answered %x, %v, want invalid_value", c.name, out, err)
-			}
-			inst = m.New(m.Lookup("Root"))
 			c.goGood(m, inst)
-			out, err = tablewire.Encode(m, inst)
+			out, err := tablewire.Encode(m, inst)
 			if err != nil || len(out) == 0 {
 				t.Errorf("%s twin: the Go variable writer answered %x, %v, want bytes", c.name, out, err)
 			}
