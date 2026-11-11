@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1329,9 +1330,7 @@ func TestGooseControlsInstallThePin(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}
-		for k, v := range got {
-			rules[k] = v
-		}
+		maps.Copy(rules, got)
 	}
 
 	m, err := loadManifest(root)

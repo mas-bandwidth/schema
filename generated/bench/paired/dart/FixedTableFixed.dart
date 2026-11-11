@@ -903,7 +903,7 @@ int fixedTableLoadMessages(
   if (count < 0) return -1;
   if (count > values.length) {
     report.Refuse('batch_too_large');
-    return count;
+    return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!fixedTableLoadMessageBody(r, values[i])) {

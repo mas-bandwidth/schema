@@ -651,8 +651,11 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 # The DART leg's driver: one AOT executable, because `dart run` would pay a JIT
 # start-up per surface and the two-minute rule is measured across every leg.
 # The cards wire library is generated beside it so the wire-fuzz mode below can
-# bind the Card codec.
-build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
+# bind the Card codec. The cards prerequisite is a real stamp rather than the
+# phony cards-dart-generate target: a restored driver must not rebuild only
+# because the phony target is always considered out of date.
+CARDS_DART_STAMP := build/tables-generated-dart/cards/.stamp
+build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
@@ -1444,11 +1447,20 @@ test-dart:
 
 # cards-dart-generate produces ONLY build/tables-generated-dart/cards, cleaning
 # that owned output first so a deleted symbol cannot survive a regeneration.
+# It is a phony alias for the stamp, not a second copy of the recipe: under
+# make -j the driver and the cards test both reach the tree, and two recipes
+# would clean it under each other.
 .PHONY: cards-dart-generate
-cards-dart-generate: bin/schema
+cards-dart-generate: $(CARDS_DART_STAMP)
+
+# The stamp the driver depends on, so a cached build is not invalidated by the
+# phony regenerator above. It still cleans its owned output whenever bin/schema
+# or the Card schemas move, so a deleted symbol cannot survive regeneration.
+$(CARDS_DART_STAMP): bin/schema $(wildcard tables/cards/*.schema)
 	@rm -rf build/tables-generated-dart/cards
 	@mkdir -p build/tables-generated-dart/cards
 	./bin/schema generate --lang dart --out build/tables-generated-dart/cards tables/cards
+	@touch $@
 
 # cards-dart-wire-fuzz is the oracle harness over the Card root only. --vectors
 # '' keeps the default pinned vectors out of this Card-only manifest. The greps
@@ -1731,7 +1743,7 @@ tables-dart-wire-fuzz-smoke: build/conformance-harness build/conformance-dart
 	$(MAKE) tables-dart-wire-fuzz SEED=$(SEED) N=$(DART_FUZZ_SMOKE_N)
 
 tables-dart-wire-fuzz: build/conformance-harness build/conformance-dart
-	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
+	SCHEMA_DART_ROSTER_DRIVER="$(CURDIR)/build/conformance-dart" sh test/slowgate/proof tables-dart-wire-fuzz 'TestDartRetainingRosterAllRoots TestDartBuilderRefusalAndRetentionVectors' -timeout=0 -count=1 ./test/conformance/harness -run '^TestDart(RetainingRosterAllRoots|BuilderRefusalAndRetentionVectors)$$'
 	./build/conformance-harness wire-fuzz --builder --driver 'build/conformance-dart wire-fuzz' --seed $(SEED) --n $(N)
 
 # Its control: the emitter's counted-list `widened` count is removed
@@ -1781,7 +1793,7 @@ test-dart: tables-dart-discard tables-dart-discard-negative-control
 # Keep the JSON byte boundary strict before invoking generated String readers.
 .PHONY: conformance-dart-text-boundary conformance-negative-control-dart-text-boundary
 conformance-dart-text-boundary: build/conformance-harness build/conformance-dart
-	go test -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
+	sh test/slowgate/proof conformance-dart-text-boundary 'TestDartTextBoundaryBOMOracle' -timeout=0 -count=1 -run '^TestDartTextBoundaryBOMOracle$$' ./test/conformance/harness
 	sh test/conformance/dart/negative-control-text-boundary positive "$(DART)"
 
 conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
