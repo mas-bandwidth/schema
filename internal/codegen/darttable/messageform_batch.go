@@ -245,7 +245,7 @@ func (g *fixedModule) emitLoadMessageBody(st *ir.Struct) {
 	g.pf("      if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n")
 	g.pf("      final named = r.vocabulary.entries[ref - 1].id;\n")
 	g.pf("      if (tableMessageReservedId(named)) { r.report.Damage(); return false; }\n")
-	g.pf("      if (r.seenHas(ref)) { r.report.Damage(); return false; }\n")
+	g.pf("      if (r.seenHasId(named)) { r.report.Damage(); return false; }\n")
 	g.pf("      r.seenAdd(ref);\n")
 	g.pf("    }\n")
 	g.pf("    switch (ref) {\n")
@@ -1143,6 +1143,22 @@ class TableMessageReader {
     if (seenStride == 0) return false;
     final bit = seenDepth * seenStride * 8 + ref - 1;
     return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
+  }
+
+  /// A body names a RESOLVED ID at most once, even where the announcement
+  /// carries that id at two shapes (docs/SPEC-TABLES.md §3.3, §4): the seen
+  /// bits at this level are scanned, so the check allocates nothing.
+  bool seenHasId(int id) {
+    if (seenStride == 0) return false;
+    final at = seenDepth * seenStride * 8;
+    for (var k = 0; k < vocabulary.count; k++) {
+      final bit = at + k;
+      if (((seen[bit >> 3] >> (bit & 7)) & 1) != 0 &&
+          vocabulary.entries[k].id == id) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void seenAdd(int ref) {

@@ -311,6 +311,51 @@ func syntheticFieldOnceVectors(t *testing.T, u *ir.Unit) (string, []fieldOnceVec
 	}
 }
 
+// fieldOnceTwoShapesUnit announces one field id at two shapes: A.x is int32
+// and B.x is int64, both under the same wire id (docs/SPEC-TABLES.md §3.3).
+const fieldOnceTwoShapesUnit = `package probe
+
+fixed table A
+{
+    x int32
+}
+
+fixed table B
+{
+    x int64
+}
+`
+
+// twoShapesFieldOnceVectors builds a body of A that names A.x and then B.x:
+// one resolved id at two announced shapes, which the Go engine damages.
+func twoShapesFieldOnceVectors(t *testing.T, u *ir.Unit) (string, []fieldOnceVector) {
+	t.Helper()
+	const root = "A"
+	m := tabletext.NewModel(u)
+	v := fieldOnceVocab(t, u)
+	a := fieldOnceEncode(t, u, "A", `{"x":7}`)
+	b := fieldOnceEncode(t, u, "B", `{"x":9}`)
+	sa := fieldOnceSpots(t, m, "A", a, v)
+	sb := fieldOnceSpots(t, m, "B", b, v)
+	rb := sa[0].Width
+	w := newFieldOnceBatch(1)
+	w.putSpan(a, 8, sa[len(sa)-1].Off)
+	w.putSpan(b, 8, sb[len(sb)-1].Off+rb)
+	return root, []fieldOnceVector{
+		{
+			name:      "one field id at two shapes in one body",
+			wire:      w.bytes(),
+			refused:   true,
+			dropCheck: "check(value.x == 0, 'the refused batch kept x=${value.x}');",
+		},
+		{
+			name:       "each field named once at its own shape",
+			wire:       a,
+			cleanCheck: "check(value.x == 7, 'x=${value.x}');",
+		},
+	}
+}
+
 // TestDartMessageBodyFieldOnce holds §3.3's body rule on the emitted Dart: a
 // field id twice in one body is damage, an unknown entry included, and so is a
 // nested body's field and a keyed array's slot. The Go engine's verdict on the
@@ -325,6 +370,12 @@ func TestDartMessageBodyFieldOnce(t *testing.T) {
 	t.Run("nested and keyed bodies", func(t *testing.T) {
 		u := unitFrom(t, fieldOnceSyntheticUnit)
 		root, vectors := syntheticFieldOnceVectors(t, u)
+		fieldOnceHoldToEngine(t, u, root, vectors)
+	})
+	t.Run("one id at two shapes", func(t *testing.T) {
+		t.Parallel()
+		u := unitFrom(t, fieldOnceTwoShapesUnit)
+		root, vectors := twoShapesFieldOnceVectors(t, u)
 		fieldOnceHoldToEngine(t, u, root, vectors)
 	})
 }
@@ -354,12 +405,12 @@ func TestDartMessageBodyFieldOnceNegativeControl(t *testing.T) {
 	replaced := 0
 	out, err := runBatchProbeWith(t, u, root, body, func(files map[string][]byte) {
 		for name, data := range files {
-			n := strings.Count(string(data), "r.seenHas(ref)")
+			n := strings.Count(string(data), "r.seenHasId(named)")
 			if n == 0 {
 				continue
 			}
 			replaced += n
-			files[name] = []byte(strings.ReplaceAll(string(data), "r.seenHas(ref)", "false"))
+			files[name] = []byte(strings.ReplaceAll(string(data), "r.seenHasId(named)", "false"))
 		}
 	})
 	if replaced == 0 {

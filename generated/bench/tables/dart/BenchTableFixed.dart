@@ -2791,6 +2791,22 @@ class TableMessageReader {
     return ((seen[bit >> 3] >> (bit & 7)) & 1) != 0;
   }
 
+  /// A body names a RESOLVED ID at most once, even where the announcement
+  /// carries that id at two shapes (docs/SPEC-TABLES.md §3.3, §4): the seen
+  /// bits at this level are scanned, so the check allocates nothing.
+  bool seenHasId(int id) {
+    if (seenStride == 0) return false;
+    final at = seenDepth * seenStride * 8;
+    for (var k = 0; k < vocabulary.count; k++) {
+      final bit = at + k;
+      if (((seen[bit >> 3] >> (bit & 7)) & 1) != 0 &&
+          vocabulary.entries[k].id == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   void seenAdd(int ref) {
     if (seenStride == 0) return;
     final bit = seenDepth * seenStride * 8 + ref - 1;
@@ -3210,7 +3226,7 @@ bool tableEntityLoadMessageBody(TableMessageReader r, TableEntity value) {
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
@@ -3403,7 +3419,7 @@ bool tableStatLoadMessageBody(TableMessageReader r, TableStat value) {
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
@@ -3478,7 +3494,7 @@ bool tableHitEventLoadMessageBody(TableMessageReader r, TableHitEvent value) {
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
@@ -3562,7 +3578,7 @@ bool tableChatEventLoadMessageBody(TableMessageReader r, TableChatEvent value) {
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
@@ -3632,7 +3648,7 @@ bool tablePickupEventLoadMessageBody(
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
@@ -3935,7 +3951,7 @@ bool tableMixedLoadMessageBody(TableMessageReader r, TableMixed value) {
       if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
       final named = r.vocabulary.entries[ref - 1].id;
       if (tableMessageReservedId(named)) { r.report.Damage(); return false; }
-      if (r.seenHas(ref)) { r.report.Damage(); return false; }
+      if (r.seenHasId(named)) { r.report.Damage(); return false; }
       r.seenAdd(ref);
     }
     switch (ref) {
