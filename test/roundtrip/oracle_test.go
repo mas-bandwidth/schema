@@ -277,8 +277,8 @@ func callName(e ast.Expr) string {
 // and to refusing one it does not.
 func TestOracleSampleGrammar(t *testing.T) {
 	for expr, want := range map[string]string{
-		`"{\"a\":1}"`: `{"a":1}`,
-		`"[" + strings.Repeat(",x", 2) + "]"`:                                     `[,x,x]`,
+		`"{\"a\":1}"`:                         `{"a":1}`,
+		`"[" + strings.Repeat(",x", 2) + "]"`: `[,x,x]`,
 		`"\"" + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x5a}, 3)) + "\""`: `"` + base64.StdEncoding.EncodeToString([]byte("ZZZ")) + `"`,
 		`strings.Repeat("," + "1", 3)`: `,1,1,1`,
 	} {
