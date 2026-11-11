@@ -24,6 +24,14 @@ const int _kTypeMixedPickupEvent = 4432242110510439820; // fnv1a64("MixedPickupE
 const int _kTypeBenchMixed = -1476952163658023588; // fnv1a64("BenchMixed")
 const int _kTypeFixedTable = -8800255099513911629; // fnv1a64("FixedTable")
 
+// THE BINARY NESTING BOUND (docs/SPEC-TABLES.md §4, binary_max_depth): a
+// root body or a node record is level 0, and each structural payload inside
+// it is one level deeper. Every walk of the binary form holds it.
+const int _kBinaryMaxDepth = 128;
+
+// _structuralKind is a kind whose payload nests one level (§4): a table
+// body, an array, a keyed or map body, and a union.
+bool _structuralKind(int kind) => kind == 13 || kind == 14 || kind == 16 || kind == 15;
 
 final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
 bool _requiredCollectionKind(TableWireReader r, int expected) {
@@ -1355,6 +1363,12 @@ final class TableWireReader {
         final alen = _wireLeb(buf, arm.$2 + 1);
         if (alen == null || alen.$1 < 0 || alen.$1 > buf.length - alen.$2) return -1;
         final end = alen.$2 + alen.$1;
+        // A union whose arm is a table, an array, a keyed or map body or
+        // another union is one level deeper; a scalar arm adds none (§4).
+        if (_structuralKind(akind)) {
+          if (depth >= _kBinaryMaxDepth) return -1;
+          return _wireContent(buf.sublist(alen.$2, end), akind, out, depth + 1) ? end : -1;
+        }
         return _wireContent(buf.sublist(alen.$2, end), akind, out, depth) ? end : -1;
       case 12:
       case 13:
@@ -1380,9 +1394,9 @@ final class TableWireReader {
       case 32:
         return kind != 32 || b.isEmpty;
       case 13:
-        return depth < 64 && _wireBody(b, false, out, depth + 1);
+        return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1);
       case 14:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1392,7 +1406,7 @@ final class TableWireReader {
         }
         return off == b.length;
       case 16:
-        if (depth >= 64 || b.length < 2) return false;
+        if (depth >= _kBinaryMaxDepth || b.length < 2) return false;
         final head = _wireLeb(b, 1);
         if (head == null || head.$1 < 0) return false;
         var off = head.$2;
@@ -1839,8 +1853,9 @@ List<int>? _retainRaw(TableWireReader r, int n) {
 // it) and returns it with every reference widened to its 64-bit id (§6.6).
 // Null means the field is an excluded class — kind 17, a reserved id, or a
 // damaged walk — and the caller counts one retainLost and re-skips the field.
+// depth is the level of the body or content holding the payload, counted as
+// the binary nesting bound counts it (§4): a root body is level 0.
 List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
-  if (depth > 64) return null;
   final w = _retainWidth(kind);
   if (w != 0) return _retainRaw(r, w);
   switch (kind) {
@@ -1875,7 +1890,9 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainFramed(r, ak, depth);
+      // A union whose arm is structural is one level deeper (§4).
+      if (_structuralKind(ak) && depth >= _kBinaryMaxDepth) return null;
+      final sub = _retainFramed(r, ak, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -1888,22 +1905,23 @@ List<int>? _retainFramed(TableWireReader r, int kind, int depth) {
   if (n == null || !r.has(n)) return null;
   final end = r.pos + n;
   final sub = TableWireReader.sub(r, r.pos, end);
-  final content = _retainContent(sub, kind, depth + 1);
+  final content = _retainContent(sub, kind, depth);
   if (content == null || sub.pos != end) return null;
   r.pos = end;
   return <int>[..._u64le(content.length), ...content];
 }
 
 List<int>? _retainContent(TableWireReader r, int kind, int depth) {
-  if (depth > 64) return null;
   switch (kind) {
     case 17:
       return null;
     case 13:
-      return _retainBody(r, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainBody(r, depth + 1);
     case 14:
     case 16:
-      return _retainArray(r, kind, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainArray(r, kind, depth + 1);
     case 15:
     case 30:
       return _retainResolve(r, kind, depth);
@@ -1926,7 +1944,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     if (id == null) return null;
     if (!r.has(1)) return null;
     final kind = r.readByte();
-    final sub = _retainResolve(r, kind, depth + 1);
+    final sub = _retainResolve(r, kind, depth);
     if (sub == null) return null;
     out.addAll(_u64le(id));
     out.add(kind);
@@ -1946,12 +1964,12 @@ List<int>? _retainArray(TableWireReader r, int kind, int depth) {
       if (ref == null) return null;
       final id = _retainId(r, ref);
       if (id == null) return null;
-      final framed = _retainFramed(r, ek, depth + 1);
+      final framed = _retainFramed(r, ek, depth);
       if (framed == null) return null;
       out.addAll(_u64le(id));
       out.addAll(framed);
     } else {
-      final sub = _retainResolve(r, ek, depth + 1);
+      final sub = _retainResolve(r, ek, depth);
       if (sub == null) return null;
       out.addAll(sub);
     }
@@ -1989,8 +2007,8 @@ List<int>? _retainEmit(WireState state, int kind, List<int> resolved) {
   return out;
 }
 
+// depth counts as _retainResolve counts it (§4).
 List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int depth) {
-  if (depth > 64) return null;
   final w = _retainWidth(kind);
   if (w != 0) {
     if (c.at + w > c.b.length) return null;
@@ -2041,7 +2059,8 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitFramed(state, ak, c, depth);
+      if (_structuralKind(ak) && depth >= _kBinaryMaxDepth) return null;
+      final sub = _retainEmitFramed(state, ak, c, _structuralKind(ak) ? depth + 1 : depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -2058,7 +2077,7 @@ List<int>? _retainEmitFramed(WireState state, int kind, _RetainCursor c, int dep
   if (len == null) return null;
   final end = c.at + len;
   if (end > c.b.length) return null;
-  final content = _retainEmitContent(state, kind, c, end, depth + 1);
+  final content = _retainEmitContent(state, kind, c, end, depth);
   if (content == null || c.at != end) return null;
   final o = <int>[];
   _lebOut(o, content.length);
@@ -2071,10 +2090,12 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 17:
       return null;
     case 13:
-      return _retainEmitBody(state, c, end, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainEmitBody(state, c, end, depth + 1);
     case 14:
     case 16:
-      return _retainEmitArray(state, kind, c, end, depth);
+      if (depth >= _kBinaryMaxDepth) return null;
+      return _retainEmitArray(state, kind, c, end, depth + 1);
     case 15:
     case 30:
       return _retainEmitPayload(state, kind, c, depth);
@@ -2096,7 +2117,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
     if (ref == 0) return null;
     final kind = c.byte();
     if (kind == null) return null;
-    final sub = _retainEmitPayload(state, kind, c, depth + 1);
+    final sub = _retainEmitPayload(state, kind, c, depth);
     if (sub == null) return null;
     _lebOut(o, ref);
     o.add(kind);
@@ -2117,12 +2138,12 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
       if (keyId == null) return null;
       final ref = state.retainRefFor(keyId);
       if (ref == 0) return null;
-      final framed = _retainEmitFramed(state, ek, c, depth + 1);
+      final framed = _retainEmitFramed(state, ek, c, depth);
       if (framed == null) return null;
       _lebOut(o, ref);
       o.addAll(framed);
     } else {
-      final sub = _retainEmitPayload(state, ek, c, depth + 1);
+      final sub = _retainEmitPayload(state, ek, c, depth);
       if (sub == null) return null;
       o.addAll(sub);
     }
